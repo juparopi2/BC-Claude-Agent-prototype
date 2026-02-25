@@ -157,6 +157,31 @@ Mejoras perceptibles para el usuario final.
 **Archivos afectados:** `components/layout/MainLayout.tsx`, `src/domains/ui/uiPreferencesStore.ts`
 **Estimación:** 0.5-1 día
 
+### Modal de Vista Previa de Imágenes — Navegación & Referencia al Chat (Media)
+**Necesidad:** Al abrir el modal de previsualización de imágenes desde el File Explorer, el usuario no puede navegar entre las imágenes de la carpeta actual sin cerrar el modal y abrir otro archivo. Además, no existe forma de referenciar el archivo directamente en el chat desde el modal.
+
+**Funcionalidades a implementar:**
+
+**1. Navegación entre imágenes (← →)**
+- El modal ya contiene botones de navegación (izquierda/derecha) pero están deshabilitados o sin lógica.
+- Habilitar los botones para iterar sobre todos los archivos de tipo imagen que estén en la misma carpeta que la imagen actualmente abierta.
+- Orden: el mismo orden de la vista actual del `FileDataTable` (respetando el sort/filter vigente).
+- El botón izquierdo debe deshabilitarse si es la primera imagen; el derecho si es la última.
+- Soporte de teclado: teclas `←` y `→` para navegar mientras el modal está abierto.
+
+**2. Botón "Reference in Chat"**
+- Agregar un botón prominente en el modal con el texto **"Reference in Chat"** (icono: `@` o `MessageSquarePlus`).
+- Al hacer clic, el modal se cierra e inserta automáticamente la mención `@<nombre-del-archivo>` en el chat input de la sesión activa.
+- Si el chat input ya contiene texto, la mención se agrega al final con un espacio previo.
+- La mención debe activar el flujo existente de `@mention` (autocomplete + chip de mención), es decir, usar el mismo mecanismo que cuando el usuario escribe `@` manualmente.
+- Si no hay sesión activa (ej. vista standalone del File Explorer), el botón debe estar deshabilitado con un tooltip: `"Open a chat session to reference files"`.
+
+**Archivos afectados:**
+- `components/files/modals/FilePreviewModal.tsx` — lógica de navegación y botón "Reference in Chat".
+- `src/domains/files/stores/fileListStore.ts` (o hook `useFiles`) — para obtener la lista de imágenes de la carpeta actual.
+- `src/domains/chat/` — para insertar la mención en el input (probablemente `pendingChatStore` o un ref compartido del editor).
+**Estimación:** 2-3 días
+
 ### "Show Favorites" — Filtro de Favoritos en Files (Baja)
 **Necesidad:** El botón de estrella ⭐ en el toolbar de archivos actualmente implementa "Show Favorites First" (re-ordena), pero la funcionalidad está rota porque depende de un re-fetch a la API con mecanismos de coordinación frágiles que fallan en React Strict Mode / concurrent rendering.
 **Nuevo comportamiento deseado:**
@@ -413,7 +438,7 @@ Herramientas para administración y visión del negocio.
 | Categoría | Estimación Total Aprox. |
 |-----------|-------------------------|
 | 🛠 Deuda Técnica | ~15-20 días |
-| ✨ Nuevas Funcionalidades | ~67-92 días |
+| ✨ Nuevas Funcionalidades | ~70-96 días |
 | 🟢 Integraciones | ~20 días |
 | 🚀 Rendimiento | ~11 días |
 | 📊 Analítica | ~35-40 días |

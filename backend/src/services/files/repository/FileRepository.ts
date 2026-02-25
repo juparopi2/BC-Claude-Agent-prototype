@@ -85,6 +85,7 @@ export interface IFileRepository {
   findFolderIdByName(userId: string, name: string, parentId?: string | null): Promise<string | null>;
   getFilesPendingProcessing(limit: number): Promise<FilePendingProcessing[]>;
   findByName(userId: string, fileName: string, folderId: string | null): Promise<ParsedFile | null>;
+  findByNameGlobal(userId: string, fileName: string): Promise<ParsedFile | null>;
   findByContentHash(userId: string, contentHash: string): Promise<ParsedFile[]>;
   searchByName(userId: string, query: string, options?: { limit?: number }): Promise<ParsedFile[]>;
   getDescendantFileIds(userId: string, folderId: string): Promise<string[]>;
@@ -732,6 +733,36 @@ export class FileRepository implements IFileRepository {
         user_id: userId,
         name: fileName,
         parent_folder_id: folderId,
+        is_folder: false,
+        deletion_status: null,
+      },
+    });
+
+    if (!record) return null;
+    return parseFile(record as unknown as FileDbRecord);
+  }
+
+  // --------------------------------------------------------------------------
+  // findByNameGlobal
+  // --------------------------------------------------------------------------
+
+  /**
+   * Find a file by name across all folders (global search).
+   *
+   * Used as fallback when the LLM passes a filename instead of a UUID.
+   *
+   * @param userId   - Owner UUID (UPPERCASE)
+   * @param fileName - Exact file name to search for
+   * @returns ParsedFile or null if not found
+   */
+  async findByNameGlobal(
+    userId: string,
+    fileName: string,
+  ): Promise<ParsedFile | null> {
+    const record = await this.prisma.files.findFirst({
+      where: {
+        user_id: userId,
+        name: fileName,
         is_folder: false,
         deletion_status: null,
       },

@@ -75,6 +75,12 @@ export class FileContextPreparer implements IFileContextPreparer {
     if (scopeFileIds.length > 0) {
       mentionScope = await this.resolveMentions(userId, scopeFileIds);
       resolvedScopeIds = mentionScope.scopeFileIds;
+
+      this.logger.info({
+        inputScopeCount: scopeFileIds.length,
+        resolvedScopeCount: resolvedScopeIds.length,
+        mentionedFiles: mentionScope.mentionedFiles.map(m => ({ name: m.fileName, isFolder: m.isFolder })),
+      }, 'Resolved @mention scope');
     }
 
     // If scope is provided, automatically enable scoped semantic search

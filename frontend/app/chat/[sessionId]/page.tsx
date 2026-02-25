@@ -163,6 +163,7 @@ export default function ChatPage() {
             targetAgentId: isDirected ? uiPrefs.selectedAgentId : undefined,
             mentionedFileIds: allMentionIds.length > 0 ? allMentionIds : undefined,
             enableWebSearch: store.enableWebSearch || undefined,
+            mentions: store.mentions.length > 0 ? [...store.mentions] : undefined,
           });
         }
 

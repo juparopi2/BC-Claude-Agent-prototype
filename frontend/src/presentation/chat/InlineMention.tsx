@@ -23,7 +23,7 @@ export function InlineMention({ name, isFolder, mimeType }: InlineMentionProps) 
   const Icon = isFolder ? Folder : isImage ? Image : File;
 
   return (
-    <span className="inline-flex items-center gap-0.5 px-1 py-0.5 mx-0.5 rounded text-xs font-medium bg-emerald-500/15 text-emerald-200 border border-emerald-500/25">
+    <span className="inline-flex items-center gap-0.5 px-1 py-0.5 mx-0.5 rounded text-xs font-medium bg-white/20 text-primary-foreground border border-white/30">
       <Icon className="size-3 shrink-0" />
       <span>@{name}</span>
     </span>

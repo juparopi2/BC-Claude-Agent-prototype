@@ -10,7 +10,7 @@
 
 import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
-import { HumanMessage, SystemMessage, type BaseMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, type BaseMessage, type MessageContent } from '@langchain/core/messages';
 import type { LanguageModelLike } from '@langchain/core/language_models/base';
 import { AGENT_ID, type AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
@@ -164,11 +164,12 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const sessionId = typedInputs.context?.sessionId ?? '';
     const messages = typedInputs.messages ?? [];
 
-    // Get the user's prompt from the last message
+    // Get the user's message content (may be string or content block array)
     const lastMessage = messages[messages.length - 1];
-    const prompt = typeof lastMessage === 'object' && lastMessage !== null && 'content' in lastMessage
-      ? String((lastMessage as { content: unknown }).content)
-      : '';
+    const messageContent: MessageContent =
+      typeof lastMessage === 'object' && lastMessage !== null && 'content' in lastMessage
+        ? (lastMessage as { content: MessageContent }).content
+        : '';
 
     // 1. Check for targetAgentId (direct agent invocation, bypass supervisor LLM)
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
@@ -197,7 +198,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
           const agentResult = await targetAgent.agent.invoke(
             {
-              messages: [new HumanMessage(prompt)],
+              messages: [new HumanMessage({ content: messageContent })],
             },
             {
               configurable: {
@@ -225,13 +226,21 @@ class SupervisorGraphAdapter implements ICompiledGraph {
 
     // Augment prompt with web search hint when enableWebSearch is true.
     // This guides the supervisor to prefer the research-agent for the current request.
-    const supervisorPrompt = enableWebSearch
-      ? `[WEB SEARCH ENABLED] You MUST route this request to research-agent for web research.\n\n${prompt}`
-      : prompt;
+    // Preserve content blocks (string or array) — prepend hint as a text block when needed.
+    const supervisorContent: MessageContent = enableWebSearch
+      ? (typeof messageContent === 'string'
+        ? `[WEB SEARCH ENABLED] You MUST route this request to research-agent for web research.\n\n${messageContent}`
+        : [{ type: 'text' as const, text: '[WEB SEARCH ENABLED] You MUST route this request to research-agent for web research.' }, ...(Array.isArray(messageContent) ? messageContent : [])])
+      : messageContent;
 
     if (enableWebSearch) {
       logger.info({ sessionId }, 'Web search enabled — augmenting supervisor prompt with research-agent hint');
     }
+
+    logger.info(
+      { hasScopeFileIds: !!scopeFileIds?.length, scopeCount: scopeFileIds?.length ?? 0 },
+      'Invoking supervisor with scope'
+    );
 
     logger.debug(
       { sessionId, userId, messageCount: messages.length },
@@ -245,7 +254,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     try {
       const invocationId = `inv-${Date.now()}`;
       const stream = await compiledSupervisor.stream(
-        { messages: [new HumanMessage(supervisorPrompt)] },
+        { messages: [new HumanMessage({ content: supervisorContent })] },
         {
           configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, chatImageEmbeddings },
           recursionLimit: options?.recursionLimit ?? 100,

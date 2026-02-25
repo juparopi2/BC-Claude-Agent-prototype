@@ -11,7 +11,7 @@
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useAgentState, useSocketConnection, useChatAttachments, useAudioRecording, useFileMentionStore } from '@/src/domains/chat';
+import { useAgentState, useSocketConnection, useChatAttachments, useAudioRecording, useFileMentionStore, usePendingChatStore } from '@/src/domains/chat';
 import { env } from '@/lib/config/env';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -136,11 +136,19 @@ export default function ChatInput({
   const [atTriggerPosition, setAtTriggerPosition] = useState<number | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
 
-  // File mentions store (for normal mode)
-  const mentions = useFileMentionStore((s) => s.mentions);
-  const addMention = useFileMentionStore((s) => s.addMention);
-  const removeMention = useFileMentionStore((s) => s.removeMention);
+  // File mentions — use pendingChatStore in pendingMode, fileMentionStore otherwise
+  const normalMentions = useFileMentionStore((s) => s.mentions);
+  const normalAddMention = useFileMentionStore((s) => s.addMention);
+  const normalRemoveMention = useFileMentionStore((s) => s.removeMention);
   const clearMentions = useFileMentionStore((s) => s.clearMentions);
+
+  const pendingMentions = usePendingChatStore((s) => s.mentions);
+  const pendingAddMention = usePendingChatStore((s) => s.addMention);
+  const pendingRemoveMention = usePendingChatStore((s) => s.removeMention);
+
+  const mentions = pendingMode ? pendingMentions : normalMentions;
+  const addMention = pendingMode ? pendingAddMention : normalAddMention;
+  const removeMention = pendingMode ? pendingRemoveMention : normalRemoveMention;
 
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
@@ -697,7 +705,7 @@ export default function ChatInput({
                 "min-h-[44px] max-h-[200px] resize-none",
                 mentions.length > 0 && "!text-transparent caret-foreground selection:bg-primary/20"
               )}
-              style={mentions.length > 0 ? { caretColor: 'hsl(var(--foreground))' } : undefined}
+              style={mentions.length > 0 ? { caretColor: 'var(--foreground)' } : undefined}
               rows={1}
             />
           </div>

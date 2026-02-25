@@ -115,6 +115,12 @@ export class ChatMessageHandler {
       messageLength: message?.length || 0,
       messagePreview: message?.substring(0, 100) || 'EMPTY',
       hasMessage: !!message,
+      hasMentionedFileIds: !!data.mentionedFileIds?.length,
+      mentionedFileIdCount: data.mentionedFileIds?.length ?? 0,
+      mentionedFileIds: data.mentionedFileIds,
+      hasMentions: !!data.mentions?.length,
+      mentionCount: data.mentions?.length ?? 0,
+      mentionNames: data.mentions?.map(m => m.name),
     }, 'Chat message received');
 
     // Validate message is not empty

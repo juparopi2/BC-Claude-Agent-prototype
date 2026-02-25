@@ -235,6 +235,14 @@ export class FileService {
   // ========================================================================
 
   /**
+   * Find a file by exact name across all folders (global search).
+   * Used as fallback when the LLM passes a filename instead of a UUID.
+   */
+  public async findByNameGlobal(userId: string, fileName: string): Promise<ParsedFile | null> {
+    return this.repository.findByNameGlobal(userId, fileName);
+  }
+
+  /**
    * Search files by name across all folders.
    */
   public async searchByName(

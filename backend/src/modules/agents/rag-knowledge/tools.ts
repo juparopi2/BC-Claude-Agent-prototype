@@ -19,10 +19,13 @@ import { getSemanticSearchService, SEMANTIC_THRESHOLD } from '@/services/search/
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getImageEmbeddingRepository } from '@/repositories/ImageEmbeddingRepository';
 import { getFileService } from '@/services/files/FileService';
+import { createChildLogger } from '@/shared/utils/logger';
 import {
   createEmptySearchResult,
   createErrorSearchResult,
 } from './schemas';
+
+const logger = createChildLogger({ service: 'RagTools' });
 
 /**
  * RAG tool threshold multiplier for broader recall.
@@ -36,8 +39,38 @@ const RAG_THRESHOLD_MULTIPLIER = 0.85;
  */
 function buildScopeFilter(config: RunnableConfig): string | undefined {
   const scopeFileIds = config?.configurable?.scopeFileIds as string[] | undefined;
-  if (!scopeFileIds?.length) return undefined;
-  return `search.in(fileId, '${scopeFileIds.join(',')}', ',')`;
+  if (!scopeFileIds?.length) {
+    logger.debug('No scopeFileIds — searching globally');
+    return undefined;
+  }
+  const normalized = scopeFileIds.map(id => id.toUpperCase());
+  const filter = `search.in(fileId, '${normalized.join(',')}', ',')`;
+  logger.info({ scopeCount: normalized.length, filter: filter.slice(0, 200) }, 'Scope filter built');
+  return filter;
+}
+
+/**
+ * Build an OData date range filter.
+ * Returns undefined if no date parameters are provided.
+ */
+function buildDateFilter(dateFrom?: string, dateTo?: string): string | undefined {
+  const parts: string[] = [];
+  if (dateFrom) parts.push(`fileModifiedAt ge ${dateFrom}T00:00:00Z`);
+  if (dateTo) parts.push(`fileModifiedAt le ${dateTo}T23:59:59Z`);
+  return parts.length > 0 ? parts.join(' and ') : undefined;
+}
+
+/**
+ * Build a combined OData filter merging scope + date range.
+ * Returns undefined if neither scope nor date filters apply.
+ */
+function buildCombinedFilter(config: RunnableConfig, dateFrom?: string, dateTo?: string): string | undefined {
+  const parts: string[] = [];
+  const scope = buildScopeFilter(config);
+  if (scope) parts.push(scope);
+  const date = buildDateFilter(dateFrom, dateTo);
+  if (date) parts.push(date);
+  return parts.length > 0 ? parts.join(' and ') : undefined;
 }
 
 /**
@@ -94,7 +127,7 @@ export const searchKnowledgeTool = tool(
         threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
         filterMimeTypes: mimeTypes ? [...mimeTypes] : undefined,
         dateFilter: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined,
-        additionalFilter: buildScopeFilter(config),
+        additionalFilter: buildCombinedFilter(config, dateFrom, dateTo),
       });
 
       if (results.results.length === 0) {
@@ -175,7 +208,7 @@ export const visualImageSearchTool = tool(
         threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
         searchMode: 'image',
         dateFilter: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined,
-        additionalFilter: buildScopeFilter(config),
+        additionalFilter: buildCombinedFilter(config, dateFrom, dateTo),
       });
 
       if (results.results.length === 0) {
@@ -238,7 +271,7 @@ export const visualImageSearchTool = tool(
  * User says "find images similar to [this file/attachment]".
  */
 export const findSimilarImagesTool = tool(
-  async ({ fileId, chatAttachmentId, maxResults = 5 }, config: RunnableConfig): Promise<string> => {
+  async ({ fileId, chatAttachmentId, maxResults = 5, dateFrom, dateTo }, config: RunnableConfig): Promise<string> => {
     const userId = config?.configurable?.userId as string | undefined;
 
     if (!userId) {
@@ -249,6 +282,8 @@ export const findSimilarImagesTool = tool(
     try {
       let sourceEmbedding: { embedding: number[] };
       let fileName: string;
+      // Track resolved file ID for self-filtering (hoisted for use outside if/else)
+      let resolvedFileId: string | undefined;
 
       // Path A: Chat attachment (ephemeral image) — use pre-computed embedding from context
       const chatImageEmbeddings = config?.configurable?.chatImageEmbeddings as Array<{
@@ -270,7 +305,23 @@ export const findSimilarImagesTool = tool(
         // Path B: KB file — look up embedding from DB
         // fileId is guaranteed non-undefined here because the schema .refine() ensures
         // at least one of fileId or chatAttachmentId is present.
-        const resolvedFileId = fileId as string;
+        resolvedFileId = fileId as string;
+
+        // Check if LLM passed a filename instead of UUID — attempt resolution
+        const UUID_REGEX = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
+        if (!UUID_REGEX.test(resolvedFileId)) {
+          const fileService = getFileService();
+          const resolved = await fileService.findByNameGlobal(userId, resolvedFileId);
+          if (resolved) {
+            logger.info({ inputName: resolvedFileId, resolvedId: resolved.id }, 'Resolved filename to fileId');
+            resolvedFileId = resolved.id;
+          } else {
+            return JSON.stringify(createErrorSearchResult(
+              'similar images',
+              `Could not resolve "${resolvedFileId}" to a file. Use the UUID from the mention's id attribute.`
+            ));
+          }
+        }
 
         // 1. Look up source file name for user-friendly display
         const fileService = getFileService();
@@ -296,12 +347,13 @@ export const findSimilarImagesTool = tool(
         embedding: sourceEmbedding.embedding,
         userId,
         top: maxResults + 1, // +1 to exclude self when searching by KB file
-        additionalFilter: buildScopeFilter(config),
+        additionalFilter: buildCombinedFilter(config, dateFrom, dateTo),
       });
 
       // 4. Exclude the source KB image from results (not applicable for chat attachments)
-      const filtered = fileId
-        ? results.filter(r => r.fileId.toUpperCase() !== fileId.toUpperCase())
+      // Use resolvedFileId (UUID) for filtering, not original fileId (which might be a filename)
+      const filtered = resolvedFileId
+        ? results.filter(r => r.fileId.toUpperCase() !== resolvedFileId.toUpperCase())
         : results;
       const finalResults = filtered.slice(0, maxResults);
 
@@ -310,19 +362,23 @@ export const findSimilarImagesTool = tool(
         return JSON.stringify(emptyResult);
       }
 
-      const documents: CitedDocument[] = finalResults.map((r) => ({
-        fileId: r.fileId,
-        fileName: r.fileName,
-        mimeType: 'image/jpeg', // searchImages doesn't return mimeType
-        sourceType: 'blob_storage' as const,
-        isImage: true,
-        documentRelevance: r.score,
-        passages: [{
-          citationId: `${r.fileId}-0`,
-          excerpt: `Similar image: ${r.fileName} (similarity: ${(r.score * 100).toFixed(1)}%)`,
-          relevanceScore: r.score,
-        }],
-      }));
+      const documents: CitedDocument[] = finalResults.map((r) => {
+        // Clamp score to [0, 1] range for Zod schema compliance
+        const score = Math.min(1, Math.max(0, r.score));
+        return {
+          fileId: r.fileId,
+          fileName: r.fileName,
+          mimeType: 'image/jpeg', // searchImages doesn't return mimeType
+          sourceType: 'blob_storage' as const,
+          isImage: true,
+          documentRelevance: score,
+          passages: [{
+            citationId: `${r.fileId}-0`,
+            excerpt: `Similar image: ${r.fileName} (similarity: ${(r.score * 100).toFixed(1)}%)`,
+            relevanceScore: score,
+          }],
+        };
+      });
 
       const citationResult: CitationResult = {
         _type: 'citation_result',
@@ -349,6 +405,8 @@ export const findSimilarImagesTool = tool(
       chatAttachmentId: z.string().optional().describe('Chat attachment ID of an ephemeral image to find similar images for.'),
       maxResults: z.number().int().min(1).max(20).optional()
         .describe('Maximum number of similar images to return. Default: 5.'),
+      dateFrom: z.string().optional().describe('ISO date (YYYY-MM-DD). Only return images from this date onward.'),
+      dateTo: z.string().optional().describe('ISO date (YYYY-MM-DD). Only return images up to this date.'),
     }).refine(
       (data) => !!(data.fileId || data.chatAttachmentId),
       { message: 'Either fileId or chatAttachmentId must be provided' }

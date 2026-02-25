@@ -57,6 +57,7 @@ export interface UseSocketConnectionReturn {
       targetAgentId?: string;
       mentionedFileIds?: string[];
       enableWebSearch?: boolean;
+      mentions?: import('@bc-agent/shared').FileMention[];
     }
   ) => void;
   /** Stop the agent */
@@ -243,6 +244,7 @@ export function useSocketConnection(
         targetAgentId?: string;
         mentionedFileIds?: string[];
         enableWebSearch?: boolean;
+        mentions?: import('@bc-agent/shared').FileMention[];
       }
     ) => {
       if (!user?.id || !currentSessionRef.current) {
@@ -269,6 +271,7 @@ export function useSocketConnection(
         content: message,
         sequence_number: Date.now(),
         created_at: new Date().toISOString(),
+        mentions: opts?.mentions,
       });
 
       // Send to server
@@ -288,6 +291,7 @@ export function useSocketConnection(
         targetAgentId: opts?.targetAgentId,
         mentionedFileIds: opts?.mentionedFileIds,
         enableWebSearch: opts?.enableWebSearch,
+        mentions: opts?.mentions,
       });
 
       // Update reconnecting state based on pending messages

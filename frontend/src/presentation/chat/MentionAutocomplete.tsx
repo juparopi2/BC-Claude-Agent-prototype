@@ -28,6 +28,8 @@ interface MentionAutocompleteProps {
   highlightedIndex: number;
   /** Set highlighted index */
   onHighlightChange: (index: number) => void;
+  /** Ref to expose current results to parent for keyboard selection */
+  resultsRef?: React.MutableRefObject<ParsedFile[]>;
 }
 
 /**
@@ -46,9 +48,15 @@ export function MentionAutocomplete({
   onClose,
   highlightedIndex,
   onHighlightChange,
+  resultsRef,
 }: MentionAutocompleteProps) {
   const { results, isSearching } = useFileMentionSearch(query);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Sync results to parent ref for keyboard Enter selection
+  useEffect(() => {
+    if (resultsRef) resultsRef.current = results;
+  }, [results, resultsRef]);
 
   // Scroll highlighted item into view
   useEffect(() => {

@@ -54,7 +54,7 @@ import { FileContextMenu } from './FileContextMenu';
 import { MultiFileContextMenu } from './MultiFileContextMenu';
 import { FilePreviewModal } from './modals/FilePreviewModal';
 import { createFileColumns } from './file-columns';
-import { useFiles, useFileSelection, useFolderNavigation } from '@/src/domains/files';
+import { useFiles, useFileSelection, useFolderNavigation, useFilePreviewStore, type FolderPreviewItem } from '@/src/domains/files';
 import { useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { useSelectionStore } from '@/src/domains/files/stores/selectionStore';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
@@ -178,11 +178,23 @@ export function FileDataTable() {
   const setColumnOrder = useSortFilterStore((s) => s.setColumnOrder);
   const setColumnSizing = useSortFilterStore((s) => s.setColumnSizing);
 
+  // File preview store
+  const openFolderPreview = useFilePreviewStore((s) => s.openFolderPreview);
+  const previewIsOpen = useFilePreviewStore((s) => s.isOpen);
+  const isFolderNav = useFilePreviewStore((s) => s.isFolderNavigationMode);
+  const previewFileId = useFilePreviewStore((s) => s.fileId);
+  const previewFileName = useFilePreviewStore((s) => s.fileName);
+  const previewMimeType = useFilePreviewStore((s) => s.mimeType);
+  const previewIndex = useFilePreviewStore((s) => s.currentIndex);
+  const previewNavMode = useFilePreviewStore((s) => s.isNavigationMode);
+  const folderFiles = useFilePreviewStore((s) => s.folderFiles);
+  const closePreview = useFilePreviewStore((s) => s.closePreview);
+  const navigateNextPreview = useFilePreviewStore((s) => s.navigateNext);
+  const navigatePrevPreview = useFilePreviewStore((s) => s.navigatePrev);
+
   // Local sorting state (TanStack sorts client-side; backend sort is separate)
   const [sorting, setSorting] = useState<SortingState>([]);
 
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [activePreviewFile, setActivePreviewFile] = useState<ParsedFile | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleFavoriteToggle = useCallback((fileId: string) => {
@@ -261,6 +273,15 @@ export function FileDataTable() {
     [handleSelect, deletingFileIds]
   );
 
+  // Compute previewable sibling files for folder navigation
+  const previewableFiles: FolderPreviewItem[] = useMemo(
+    () =>
+      files
+        .filter((f) => !f.isFolder && isPreviewableFile(f.mimeType))
+        .map((f) => ({ fileId: f.id, fileName: f.name, mimeType: f.mimeType })),
+    [files]
+  );
+
   const handleDoubleClick = useCallback(
     async (file: ParsedFile) => {
       if (file.isFolder) {
@@ -268,8 +289,8 @@ export function FileDataTable() {
         return;
       }
       if (isPreviewableFile(file.mimeType)) {
-        setActivePreviewFile(file);
-        setPreviewModalOpen(true);
+        const startIndex = previewableFiles.findIndex((f) => f.fileId === file.id);
+        openFolderPreview(previewableFiles, Math.max(0, startIndex));
         return;
       }
       try {
@@ -286,7 +307,7 @@ export function FileDataTable() {
         toast.error('Download failed', { description: 'An unexpected error occurred' });
       }
     },
-    [navigateToFolder]
+    [navigateToFolder, previewableFiles, openFolderPreview]
   );
 
   // Keyboard navigation
@@ -374,13 +395,21 @@ export function FileDataTable() {
         onDoubleClick={() => handleDoubleClick(file)}
         draggable
         onDragStart={(e) => {
-          const mention = {
-            fileId: file.id,
-            name: file.name,
-            isFolder: file.isFolder,
-            mimeType: file.mimeType || '',
-          };
-          e.dataTransfer.setData('application/x-file-mention', JSON.stringify(mention));
+          const filesToDrag = (isSelected && hasMultipleSelected)
+            ? selectedFiles
+            : [file];
+
+          const mentions = filesToDrag.map(f => ({
+            fileId: f.id,
+            name: f.name,
+            isFolder: f.isFolder,
+            mimeType: f.mimeType || '',
+          }));
+
+          e.dataTransfer.setData(
+            'application/x-file-mention',
+            JSON.stringify(mentions)
+          );
           e.dataTransfer.effectAllowed = 'copy';
         }}
       >
@@ -438,13 +467,20 @@ export function FileDataTable() {
         </ScrollArea>
       </div>
 
-      {activePreviewFile && (
+      {previewIsOpen && isFolderNav && previewFileId && previewFileName && previewMimeType && (
         <FilePreviewModal
-          isOpen={previewModalOpen}
-          onClose={() => setPreviewModalOpen(false)}
-          fileId={activePreviewFile.id}
-          fileName={activePreviewFile.name}
-          mimeType={activePreviewFile.mimeType}
+          isOpen={previewIsOpen}
+          onClose={closePreview}
+          fileId={previewFileId}
+          fileName={previewFileName}
+          mimeType={previewMimeType}
+          hasNavigation={previewNavMode}
+          canGoPrev={previewIndex > 0}
+          canGoNext={previewIndex < folderFiles.length - 1}
+          onNavigatePrev={navigatePrevPreview}
+          onNavigateNext={navigateNextPreview}
+          currentPosition={previewIndex + 1}
+          totalItems={folderFiles.length}
         />
       )}
     </>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useMemo } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import { Folder, Upload } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { FileItem } from './FileItem';
 import { FileContextMenu } from './FileContextMenu';
 import { MultiFileContextMenu } from './MultiFileContextMenu';
-import { useFiles, useFileSelection, useFolderNavigation } from '@/src/domains/files';
+import { useFiles, useFileSelection, useFolderNavigation, useFilePreviewStore, type FolderPreviewItem } from '@/src/domains/files';
 import { useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { useSelectionStore } from '@/src/domains/files/stores/selectionStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
@@ -56,8 +56,19 @@ export function FileList() {
   const moveFocus = useSelectionStore((state) => state.moveFocus);
   const extendSelection = useSelectionStore((state) => state.extendSelection);
 
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [activePreviewFile, setActivePreviewFile] = useState<ParsedFile | null>(null);
+  // File preview store
+  const openFolderPreview = useFilePreviewStore((s) => s.openFolderPreview);
+  const previewIsOpen = useFilePreviewStore((s) => s.isOpen);
+  const isFolderNav = useFilePreviewStore((s) => s.isFolderNavigationMode);
+  const previewFileId = useFilePreviewStore((s) => s.fileId);
+  const previewFileName = useFilePreviewStore((s) => s.fileName);
+  const previewMimeType = useFilePreviewStore((s) => s.mimeType);
+  const previewIndex = useFilePreviewStore((s) => s.currentIndex);
+  const previewNavMode = useFilePreviewStore((s) => s.isNavigationMode);
+  const folderFiles = useFilePreviewStore((s) => s.folderFiles);
+  const closePreview = useFilePreviewStore((s) => s.closePreview);
+  const navigateNextPreview = useFilePreviewStore((s) => s.navigateNext);
+  const navigatePrevPreview = useFilePreviewStore((s) => s.navigatePrev);
 
   // Ref for the container element (for keyboard focus)
   const containerRef = useRef<HTMLDivElement>(null);
@@ -107,21 +118,27 @@ export function FileList() {
     selectFile(fileId, multi);
   }, [selectFile]);
 
+  // Compute previewable sibling files for folder navigation
+  const previewableFiles: FolderPreviewItem[] = useMemo(
+    () =>
+      files
+        .filter((f) => !f.isFolder && isPreviewableFile(f.mimeType))
+        .map((f) => ({ fileId: f.id, fileName: f.name, mimeType: f.mimeType })),
+    [files]
+  );
+
   const handleDoubleClick = useCallback(async (file: ParsedFile) => {
     if (file.isFolder) {
-      // Pass full folder data for breadcrumb path construction
       navigateToFolder(file.id, file);
       return;
     }
 
-    // Handle previewable files with the preview modal
     if (isPreviewableFile(file.mimeType)) {
-      setActivePreviewFile(file);
-      setPreviewModalOpen(true);
+      const startIndex = previewableFiles.findIndex((f) => f.fileId === file.id);
+      openFolderPreview(previewableFiles, Math.max(0, startIndex));
       return;
     }
 
-    // Handle other files by downloading them
     try {
       const fileApi = getFileApiClient();
 
@@ -147,7 +164,7 @@ export function FileList() {
       });
       console.error('Download exception:', error);
     }
-  }, [navigateToFolder]);
+  }, [navigateToFolder, previewableFiles, openFolderPreview]);
 
   const handleFavoriteToggle = useCallback((fileId: string) => {
     toggleFavorite(fileId);
@@ -237,13 +254,20 @@ export function FileList() {
         </div>
       </ScrollArea>
     </div>
-    {activePreviewFile && (
+    {previewIsOpen && isFolderNav && previewFileId && previewFileName && previewMimeType && (
         <FilePreviewModal
-          isOpen={previewModalOpen}
-          onClose={() => setPreviewModalOpen(false)}
-          fileId={activePreviewFile.id}
-          fileName={activePreviewFile.name}
-          mimeType={activePreviewFile.mimeType}
+          isOpen={previewIsOpen}
+          onClose={closePreview}
+          fileId={previewFileId}
+          fileName={previewFileName}
+          mimeType={previewMimeType}
+          hasNavigation={previewNavMode}
+          canGoPrev={previewIndex > 0}
+          canGoNext={previewIndex < folderFiles.length - 1}
+          onNavigatePrev={navigatePrevPreview}
+          onNavigateNext={navigateNextPreview}
+          currentPosition={previewIndex + 1}
+          totalItems={folderFiles.length}
         />
       )}
     </>

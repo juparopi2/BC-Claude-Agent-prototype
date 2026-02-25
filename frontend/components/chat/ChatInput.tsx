@@ -123,6 +123,8 @@ export default function ChatInput({
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Track cursor position to insert text at the correct place
   const cursorPositionRef = useRef<number | null>(null);
+  // Ref to access autocomplete results for Enter key selection
+  const autocompleteResultsRef = useRef<ParsedFile[]>([]);
 
   const updateCursorPosition = () => {
     if (textareaRef.current) {
@@ -259,11 +261,15 @@ export default function ChatInput({
     const data = e.dataTransfer.getData('application/x-file-mention');
     if (data) {
       try {
-        const mention: FileMention = JSON.parse(data);
-        addMention(mention);
-        // Insert @[Name] marker into text (consistent with handleMentionSelect)
-        const marker = `@[${mention.name}] `;
-        setMessage(message ? `${message}${marker}` : marker);
+        const parsed = JSON.parse(data);
+        const fileMentions: FileMention[] = Array.isArray(parsed) ? parsed : [parsed];
+
+        let markers = '';
+        for (const mention of fileMentions) {
+          addMention(mention);
+          markers += `@[${mention.name}] `;
+        }
+        setMessage(message ? `${message}${markers}` : markers);
       } catch {
         // Ignore invalid data
       }
@@ -413,8 +419,15 @@ export default function ChatInput({
         setHighlightedIndex((prev) => Math.max(0, prev - 1));
         return;
       }
-      // Enter in autocomplete handled via MentionAutocomplete component's highlighted item
-      // (we don't have results count here, so we just close autocomplete on Enter)
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const results = autocompleteResultsRef.current;
+        if (results.length > 0) {
+          const clampedIndex = Math.min(highlightedIndex, results.length - 1);
+          handleMentionSelect(results[clampedIndex]);
+        }
+        return;
+      }
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -679,6 +692,7 @@ export default function ChatInput({
             onClose={() => setIsAutocompleteOpen(false)}
             highlightedIndex={highlightedIndex}
             onHighlightChange={setHighlightedIndex}
+            resultsRef={autocompleteResultsRef}
           />
 
           <div className="relative flex-1">

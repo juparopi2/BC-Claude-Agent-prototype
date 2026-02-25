@@ -57,7 +57,13 @@ export function CitationList({ citationInfos, documents, totalResults, maxVisibl
 
           {/* Overflow indicator */}
           {overflowCount > 0 && (
-            <Card className="w-24 shrink-0 flex items-center justify-center border-dashed">
+            <Card
+              className="w-24 shrink-0 flex items-center justify-center border-dashed cursor-pointer hover:bg-muted/50 transition-colors"
+              onClick={() => {
+                const validCitations = citationInfos.filter(c => !c.isDeleted && c.fileId);
+                openCitationPreview(validCitations, maxVisible);
+              }}
+            >
               <CardContent className="p-3 flex flex-col items-center gap-1 text-muted-foreground">
                 <ChevronRight className="size-5" />
                 <span className="text-sm font-medium">+{overflowCount}</span>

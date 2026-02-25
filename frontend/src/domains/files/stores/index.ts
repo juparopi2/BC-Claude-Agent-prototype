@@ -11,6 +11,7 @@ export {
   resetFilePreviewStore,
   type FilePreviewState,
   type FilePreviewActions,
+  type FolderPreviewItem,
 } from './filePreviewStore';
 
 export {

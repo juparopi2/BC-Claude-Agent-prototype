@@ -24,3 +24,19 @@ export function citedDocumentToCitationInfo(doc: CitedDocument): CitationInfo {
 export function citedDocumentsToCitationInfos(docs: CitedDocument[]): CitationInfo[] {
   return docs.map(citedDocumentToCitationInfo);
 }
+
+/**
+ * Deduplicate CitedDocuments by fileId, keeping the one with highest documentRelevance.
+ * Falls back to fileName as key when fileId is null.
+ */
+export function deduplicateCitedDocuments(docs: CitedDocument[]): CitedDocument[] {
+  const seen = new Map<string, CitedDocument>();
+  for (const doc of docs) {
+    const key = doc.fileId ?? doc.fileName;
+    const existing = seen.get(key);
+    if (!existing || doc.documentRelevance > existing.documentRelevance) {
+      seen.set(key, doc);
+    }
+  }
+  return Array.from(seen.values());
+}

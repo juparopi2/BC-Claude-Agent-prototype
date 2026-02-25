@@ -40,5 +40,6 @@ export { MentionChip } from './MentionChip';
 export { InlineMention } from './InlineMention';
 export { MentionAwareContent } from './MentionAwareContent';
 export { MentionHighlightOverlay } from './MentionHighlightOverlay';
+export { UseAsContextButton } from './UseAsContextButton';
 export { AudioReactiveMicButton } from './AudioReactiveMicButton';
 export type { AudioReactiveMicButtonProps } from './AudioReactiveMicButton';

@@ -37,6 +37,7 @@ import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import type { CitationInfo } from '@/lib/types/citation.types';
 import type { FetchStrategy } from '@bc-agent/shared';
+import { UseAsContextButton } from '@/src/presentation/chat/UseAsContextButton';
 
 interface SourcePreviewModalProps {
   isOpen: boolean;
@@ -425,7 +426,7 @@ export function SourcePreviewModal({
           )}
 
           {/* Preview Content */}
-          <div className="flex-1 min-h-[300px]">
+          <div key={currentCitation.fileId} className="flex-1 min-h-[300px]">
             {previewType === 'pdf' && (
               <PDFPreview fileId={currentCitation.fileId} fetchStrategy={currentCitation.fetchStrategy} />
             )}
@@ -470,6 +471,11 @@ export function SourcePreviewModal({
 
         {/* Footer Actions */}
         <div className="flex justify-start items-center gap-2 mt-4">
+          <UseAsContextButton
+            fileId={currentCitation.fileId!}
+            fileName={currentCitation.fileName}
+            mimeType={currentCitation.mimeType}
+          />
           {onGoToPath && (
             <Button
               variant="outline"

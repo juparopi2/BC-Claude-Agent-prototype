@@ -26,11 +26,13 @@ import {
   Code,
   Download,
   FileQuestion,
-  X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { env } from '@/lib/config/env';
 import { Light as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomOneDark } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import { UseAsContextButton } from '@/src/presentation/chat/UseAsContextButton';
 
 interface FilePreviewModalProps {
   isOpen: boolean;
@@ -38,6 +40,20 @@ interface FilePreviewModalProps {
   fileId: string;
   fileName: string;
   mimeType: string;
+  /** Whether navigation arrows should be shown */
+  hasNavigation?: boolean;
+  /** Whether previous navigation is available */
+  canGoPrev?: boolean;
+  /** Whether next navigation is available */
+  canGoNext?: boolean;
+  /** Navigate to previous file */
+  onNavigatePrev?: () => void;
+  /** Navigate to next file */
+  onNavigateNext?: () => void;
+  /** Current position (1-based) */
+  currentPosition?: number;
+  /** Total items for position indicator */
+  totalItems?: number;
 }
 
 /**
@@ -305,6 +321,8 @@ function DownloadFallback({
 
 /**
  * FilePreviewModal Component
+ *
+ * Supports optional prev/next navigation for browsing sibling files in a folder.
  */
 export function FilePreviewModal({
   isOpen,
@@ -312,26 +330,44 @@ export function FilePreviewModal({
   fileId,
   fileName,
   mimeType,
+  hasNavigation = false,
+  canGoPrev = false,
+  canGoNext = false,
+  onNavigatePrev,
+  onNavigateNext,
+  currentPosition,
+  totalItems,
 }: FilePreviewModalProps) {
   const previewType = getPreviewType(mimeType);
   const icon = getFileIcon(previewType);
 
-  // Handle escape key
+  // Handle keyboard navigation
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+
+      switch (e.key) {
+        case 'Escape':
+          onClose();
+          break;
+        case 'ArrowLeft':
+          if (hasNavigation && canGoPrev && onNavigatePrev) {
+            e.preventDefault();
+            onNavigatePrev();
+          }
+          break;
+        case 'ArrowRight':
+          if (hasNavigation && canGoNext && onNavigateNext) {
+            e.preventDefault();
+            onNavigateNext();
+          }
+          break;
       }
     };
 
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, onClose]);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, hasNavigation, canGoPrev, canGoNext, onNavigatePrev, onNavigateNext]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -341,31 +377,73 @@ export function FilePreviewModal({
         aria-label={`File preview: ${fileName}`}
       >
         <DialogHeader className="flex flex-row items-center justify-between pr-8">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             {icon}
             <DialogTitle className="text-base font-medium truncate">
               {fileName}
             </DialogTitle>
+            {hasNavigation && currentPosition != null && totalItems != null && (
+              <span className="text-sm text-muted-foreground ml-2 shrink-0">
+                {currentPosition} of {totalItems}
+              </span>
+            )}
           </div>
         </DialogHeader>
         <DialogDescription className="sr-only">
           Preview of {fileName}
         </DialogDescription>
 
-        <div className="mt-4">
-          {previewType === 'pdf' && <PDFPreview fileId={fileId} />}
-          {previewType === 'image' && (
-            <ImagePreview fileId={fileId} fileName={fileName} />
+        {/* Navigation + Content */}
+        <div className="flex items-center gap-2 mt-4">
+          {/* Left Arrow */}
+          {hasNavigation && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 size-10 disabled:opacity-30"
+              onClick={onNavigatePrev}
+              disabled={!canGoPrev}
+              aria-label="Previous file"
+            >
+              <ChevronLeft className="size-5" />
+            </Button>
           )}
-          {previewType === 'text' && (
-            <TextPreview fileId={fileId} fileName={fileName} mimeType={mimeType} />
-          )}
-          {previewType === 'unsupported' && (
-            <DownloadFallback fileId={fileId} fileName={fileName} />
+
+          {/* Preview Content */}
+          <div key={fileId} className="flex-1 min-h-[300px]">
+            {previewType === 'pdf' && <PDFPreview fileId={fileId} />}
+            {previewType === 'image' && (
+              <ImagePreview fileId={fileId} fileName={fileName} />
+            )}
+            {previewType === 'text' && (
+              <TextPreview fileId={fileId} fileName={fileName} mimeType={mimeType} />
+            )}
+            {previewType === 'unsupported' && (
+              <DownloadFallback fileId={fileId} fileName={fileName} />
+            )}
+          </div>
+
+          {/* Right Arrow */}
+          {hasNavigation && (
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 size-10 disabled:opacity-30"
+              onClick={onNavigateNext}
+              disabled={!canGoNext}
+              aria-label="Next file"
+            >
+              <ChevronRight className="size-5" />
+            </Button>
           )}
         </div>
 
-        <div className="flex justify-end mt-4">
+        <div className="flex justify-between items-center mt-4">
+          <UseAsContextButton
+            fileId={fileId}
+            fileName={fileName}
+            mimeType={mimeType}
+          />
           <Button variant="outline" onClick={onClose} aria-label="Close preview">
             Close
           </Button>

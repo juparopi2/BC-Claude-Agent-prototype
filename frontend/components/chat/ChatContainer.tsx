@@ -56,6 +56,7 @@ export default function ChatContainer() {
   const isPreviewOpen = useFilePreviewStore((s) => s.isOpen);
   const previewCitations = useFilePreviewStore((s) => s.citations);
   const currentPreviewIndex = useFilePreviewStore((s) => s.currentIndex);
+  const isFolderNavigationMode = useFilePreviewStore((s) => s.isFolderNavigationMode);
   // Go to file path hook
   const { goToFilePath, isNavigating: isGoingToPath } = useGoToFilePath();
 
@@ -430,8 +431,8 @@ export default function ChatContainer() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Source Preview Modal with Navigation */}
-      {isPreviewOpen && (
+      {/* Source Preview Modal with Navigation (hidden when folder preview is active) */}
+      {isPreviewOpen && !isFolderNavigationMode && (
         <SourcePreviewModal
           isOpen={isPreviewOpen}
           onClose={closePreview}

@@ -3,13 +3,22 @@
  *
  * Zustand store for managing file preview modal state.
  * Controls which file is being previewed and modal visibility.
- * Supports both single file preview and citation carousel navigation.
+ * Supports both citation carousel navigation and folder file navigation.
  *
  * @module domains/files/stores/filePreviewStore
  */
 
 import { create } from 'zustand';
 import type { CitationInfo } from '@/lib/types/citation.types';
+
+/**
+ * Item representing a previewable file in folder navigation mode
+ */
+export interface FolderPreviewItem {
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+}
 
 /**
  * File preview state
@@ -25,10 +34,14 @@ export interface FilePreviewState {
   mimeType: string | null;
   /** Array of citations for carousel navigation */
   citations: CitationInfo[];
-  /** Current index in the citations array */
+  /** Current index in the navigation array */
   currentIndex: number;
-  /** Whether navigation mode is active (multiple citations) */
+  /** Whether navigation mode is active (multiple items) */
   isNavigationMode: boolean;
+  /** Array of folder files for folder navigation mode */
+  folderFiles: FolderPreviewItem[];
+  /** Whether folder navigation mode is active */
+  isFolderNavigationMode: boolean;
 }
 
 /**
@@ -39,14 +52,24 @@ export interface FilePreviewActions {
   openPreview: (fileId: string, fileName: string, mimeType: string) => void;
   /** Open the preview modal with citation navigation */
   openCitationPreview: (citations: CitationInfo[], startIndex: number) => void;
-  /** Navigate to a specific index in citations */
+  /** Open the preview modal with folder file navigation */
+  openFolderPreview: (files: FolderPreviewItem[], startIndex: number) => void;
+  /** Navigate to a specific index */
   navigateTo: (index: number) => void;
-  /** Navigate to next citation */
+  /** Navigate to next item */
   navigateNext: () => void;
-  /** Navigate to previous citation */
+  /** Navigate to previous item */
   navigatePrev: () => void;
   /** Close the preview modal */
   closePreview: () => void;
+}
+
+/**
+ * Get the current navigation items based on mode
+ */
+function getNavigationItems(state: FilePreviewState): Array<{ fileId: string | null; fileName: string; mimeType: string }> {
+  if (state.isFolderNavigationMode) return state.folderFiles;
+  return state.citations;
 }
 
 /**
@@ -60,6 +83,8 @@ const initialState: FilePreviewState = {
   citations: [],
   currentIndex: 0,
   isNavigationMode: false,
+  folderFiles: [],
+  isFolderNavigationMode: false,
 };
 
 /**
@@ -80,6 +105,8 @@ export const useFilePreviewStore = create<FilePreviewState & FilePreviewActions>
         citations: [],
         currentIndex: 0,
         isNavigationMode: false,
+        folderFiles: [],
+        isFolderNavigationMode: false,
       });
     },
 
@@ -102,16 +129,40 @@ export const useFilePreviewStore = create<FilePreviewState & FilePreviewActions>
         fileName: current.fileName,
         mimeType: current.mimeType,
         isNavigationMode: validCitations.length > 1,
+        folderFiles: [],
+        isFolderNavigationMode: false,
+      });
+    },
+
+    openFolderPreview: (files: FolderPreviewItem[], startIndex: number) => {
+      if (files.length === 0) {
+        return;
+      }
+
+      const safeIndex = Math.min(Math.max(0, startIndex), files.length - 1);
+      const current = files[safeIndex];
+
+      set({
+        isOpen: true,
+        folderFiles: files,
+        currentIndex: safeIndex,
+        fileId: current.fileId,
+        fileName: current.fileName,
+        mimeType: current.mimeType,
+        isNavigationMode: files.length > 1,
+        isFolderNavigationMode: true,
+        citations: [],
       });
     },
 
     navigateTo: (index: number) => {
-      const { citations } = get();
-      if (index < 0 || index >= citations.length) {
+      const state = get();
+      const items = getNavigationItems(state);
+      if (index < 0 || index >= items.length) {
         return;
       }
 
-      const current = citations[index];
+      const current = items[index];
       set({
         currentIndex: index,
         fileId: current.fileId,
@@ -121,14 +172,15 @@ export const useFilePreviewStore = create<FilePreviewState & FilePreviewActions>
     },
 
     navigateNext: () => {
-      const { currentIndex, citations } = get();
-      const nextIndex = currentIndex + 1;
+      const state = get();
+      const items = getNavigationItems(state);
+      const nextIndex = state.currentIndex + 1;
 
-      if (nextIndex >= citations.length) {
+      if (nextIndex >= items.length) {
         return;
       }
 
-      const current = citations[nextIndex];
+      const current = items[nextIndex];
       set({
         currentIndex: nextIndex,
         fileId: current.fileId,
@@ -138,14 +190,15 @@ export const useFilePreviewStore = create<FilePreviewState & FilePreviewActions>
     },
 
     navigatePrev: () => {
-      const { currentIndex, citations } = get();
-      const prevIndex = currentIndex - 1;
+      const state = get();
+      const items = getNavigationItems(state);
+      const prevIndex = state.currentIndex - 1;
 
       if (prevIndex < 0) {
         return;
       }
 
-      const current = citations[prevIndex];
+      const current = items[prevIndex];
       set({
         currentIndex: prevIndex,
         fileId: current.fileId,
@@ -155,15 +208,7 @@ export const useFilePreviewStore = create<FilePreviewState & FilePreviewActions>
     },
 
     closePreview: () => {
-      set({
-        isOpen: false,
-        fileId: null,
-        fileName: null,
-        mimeType: null,
-        citations: [],
-        currentIndex: 0,
-        isNavigationMode: false,
-      });
+      set(initialState);
     },
   })
 );

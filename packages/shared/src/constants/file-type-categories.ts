@@ -14,7 +14,6 @@ export const FILE_TYPE_CATEGORIES = {
     'image/png',
     'image/gif',
     'image/webp',
-    'image/avif',
     'image/svg+xml',
   ],
   documents: [
@@ -49,11 +48,11 @@ export function getValidCategories(): FileTypeCategory[] {
 
 /** Human-readable descriptions of supported file types by category */
 export const FILE_TYPE_DISPLAY = {
-  images: { label: 'Images', extensions: '.jpg, .png, .gif, .webp, .avif, .svg' },
+  images: { label: 'Images', extensions: '.jpg, .png, .gif, .webp, .svg' },
   documents: { label: 'Documents', extensions: '.pdf, .docx, .txt, .md' },
   spreadsheets: { label: 'Spreadsheets', extensions: '.xlsx, .csv' },
   code: { label: 'Code', extensions: '.json, .js, .html, .css' },
 } as const;
 
 /** All supported extensions as a flat string for UX display */
-export const SUPPORTED_EXTENSIONS_DISPLAY = 'PDF, DOCX, XLSX, CSV, TXT, MD, JPG, PNG, GIF, WebP, AVIF, SVG, JSON, JS, HTML, CSS';
+export const SUPPORTED_EXTENSIONS_DISPLAY = 'PDF, DOCX, XLSX, CSV, TXT, MD, JPG, PNG, GIF, WebP, SVG, JSON, JS, HTML, CSS';

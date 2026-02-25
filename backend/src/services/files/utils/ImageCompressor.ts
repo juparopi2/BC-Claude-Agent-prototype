@@ -27,7 +27,7 @@ export interface CompressionResult {
   /** Final buffer size in bytes */
   finalSize: number;
   /** Output format */
-  format: 'jpeg' | 'png' | 'webp' | 'gif' | 'avif' | 'unknown';
+  format: 'jpeg' | 'png' | 'webp' | 'gif' | 'unknown';
   /** JPEG quality level used (if applicable) */
   quality?: number;
   /** Final image dimensions */
@@ -49,7 +49,7 @@ const MAX_DIMENSION = 4096;
 /**
  * Detect image format from buffer magic bytes
  */
-function detectFormat(buffer: Buffer): 'jpeg' | 'png' | 'webp' | 'gif' | 'avif' | 'unknown' {
+function detectFormat(buffer: Buffer): 'jpeg' | 'png' | 'webp' | 'gif' | 'unknown' {
   if (buffer.length < 12) return 'unknown';
 
   // JPEG: FF D8 FF
@@ -77,20 +77,6 @@ function detectFormat(buffer: Buffer): 'jpeg' | 'png' | 'webp' | 'gif' | 'avif' 
   ) {
     return 'webp';
   }
-  // AVIF: ftyp box with "avif" brand (offset 4: 66 74 79 70 61 76 69 66)
-  if (
-    buffer[4] === 0x66 && // f
-    buffer[5] === 0x74 && // t
-    buffer[6] === 0x79 && // y
-    buffer[7] === 0x70 && // p
-    buffer[8] === 0x61 && // a
-    buffer[9] === 0x76 && // v
-    buffer[10] === 0x69 && // i
-    buffer[11] === 0x66    // f
-  ) {
-    return 'avif';
-  }
-
   return 'unknown';
 }
 

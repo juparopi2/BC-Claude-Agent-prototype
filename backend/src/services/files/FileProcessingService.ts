@@ -120,7 +120,6 @@ export class FileProcessingService {
       'image/png',
       'image/gif',
       'image/webp',
-      'image/avif',
     ];
 
     imageMimeTypes.forEach((mimeType) => {

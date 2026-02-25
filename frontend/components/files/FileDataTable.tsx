@@ -47,7 +47,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { FileContextMenu } from './FileContextMenu';
@@ -437,7 +437,14 @@ export function FileDataTable() {
     <>
       <div ref={containerRef} tabIndex={0} className="outline-none h-full min-h-0 flex flex-col">
         {/* Table */}
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea
+          className={cn(
+            "flex-1 min-h-0",
+            "[&_[data-slot=table-container]]:overflow-visible",
+            "[&_[data-slot=scroll-area-thumb]]:bg-foreground/20",
+            "[&_[data-slot=scroll-area-scrollbar]:hover_[data-slot=scroll-area-thumb]]:bg-foreground/40"
+          )}
+        >
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -464,6 +471,7 @@ export function FileDataTable() {
               </TableBody>
             </Table>
           </DndContext>
+          <ScrollBar orientation="horizontal" />
         </ScrollArea>
       </div>
 

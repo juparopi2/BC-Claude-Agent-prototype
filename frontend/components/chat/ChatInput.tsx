@@ -261,6 +261,9 @@ export default function ChatInput({
       try {
         const mention: FileMention = JSON.parse(data);
         addMention(mention);
+        // Insert @[Name] marker into text (consistent with handleMentionSelect)
+        const marker = `@[${mention.name}] `;
+        setMessage(message ? `${message}${marker}` : marker);
       } catch {
         // Ignore invalid data
       }

@@ -15,6 +15,7 @@ import { InlineMention } from './InlineMention';
 interface MentionAwareContentProps {
   content: string;
   mentions: FileMention[];
+  onMentionClick?: (mention: FileMention) => void;
 }
 
 /** Regex to match @[Name] markers in text */
@@ -74,7 +75,7 @@ function splitByMentionMarkers(
   return parts;
 }
 
-export function MentionAwareContent({ content, mentions }: MentionAwareContentProps) {
+export function MentionAwareContent({ content, mentions, onMentionClick }: MentionAwareContentProps) {
   const parts = splitByMentionMarkers(content, mentions);
 
   return (
@@ -88,6 +89,7 @@ export function MentionAwareContent({ content, mentions }: MentionAwareContentPr
             name={part.name}
             isFolder={part.mention.isFolder}
             mimeType={part.mention.mimeType}
+            onClick={onMentionClick ? () => onMentionClick(part.mention) : undefined}
           />
         )
       )}

@@ -13,6 +13,7 @@
 import { ThinkingBlock } from './ThinkingBlock';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { MentionAwareContent } from './MentionAwareContent';
+import { MentionContextBadge } from './MentionContextBadge';
 import { PersistenceIndicator } from './PersistenceIndicator';
 import { SourceCarousel } from './SourceCarousel';
 import { MessageAttachmentCarousel } from './MessageAttachmentCarousel';
@@ -58,6 +59,8 @@ interface MessageBubbleProps {
   messageAttachments?: ChatAttachmentSummary[];
   /** Callback when an attachment card is clicked */
   onAttachmentClick?: (attachment: ChatAttachmentSummary, allAttachments: ChatAttachmentSummary[]) => void;
+  /** Callback when an inline @mention or context badge chip is clicked */
+  onMentionClick?: (mention: FileMention) => void;
 }
 
 export default function MessageBubble({
@@ -70,6 +73,7 @@ export default function MessageBubble({
   onCitationInfoOpen,
   messageAttachments,
   onAttachmentClick,
+  onMentionClick,
 }: MessageBubbleProps) {
 
   // Handle thinking messages with unified ThinkingBlock component
@@ -163,6 +167,7 @@ export default function MessageBubble({
             <MentionAwareContent
               content={message.content}
               mentions={message.mentions}
+              onMentionClick={onMentionClick}
             />
           ) : (
             <MarkdownRenderer
@@ -172,6 +177,14 @@ export default function MessageBubble({
             />
           )}
         </div>
+
+        {/* MentionContextBadge for user messages with @mentions */}
+        {isUser && message.mentions && message.mentions.length > 0 && (
+          <MentionContextBadge
+            mentions={message.mentions}
+            onMentionClick={onMentionClick}
+          />
+        )}
 
         {/* MessageAttachmentCarousel for user messages with attachments */}
         {isUser && messageAttachments && messageAttachments.length > 0 && (

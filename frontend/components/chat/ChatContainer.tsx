@@ -3,12 +3,13 @@
 import { useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { getSocketClient } from '@/src/infrastructure/socket';
-import { useFilePreviewStore, useFiles, useGoToFilePath } from '@/src/domains/files';
+import { useFilePreviewStore, useFiles, useGoToFilePath, useFolderNavigation } from '@/src/domains/files';
+import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useAuthStore, selectUserInitials } from '@/src/domains/auth';
 import { useMessages, useAgentState, useCitationStore, usePagination, useChatAttachmentStore, useAgentWorkflow, type AgentProcessingGroup } from '@/src/domains/chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
-import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary, type Message } from '@bc-agent/shared';
+import { isToolUseMessage, isToolResultMessage, isThinkingMessage, type ChatAttachmentSummary, type Message, type FileMention } from '@bc-agent/shared';
 import {
   MessageBubble,
   ThinkingBlock,
@@ -57,6 +58,10 @@ export default function ChatContainer() {
   const currentPreviewIndex = useFilePreviewStore((s) => s.currentIndex);
   // Go to file path hook
   const { goToFilePath, isNavigating: isGoingToPath } = useGoToFilePath();
+
+  // Folder navigation for mention clicks
+  const { navigateToFolder } = useFolderNavigation();
+  const setFileSidebarVisible = useUIPreferencesStore((s) => s.setFileSidebarVisible);
 
   // User initials for MessageBubble avatar
   const userInitials = useAuthStore(selectUserInitials);
@@ -157,6 +162,29 @@ export default function ChatContainer() {
   );
 
 
+  /**
+   * Handle @mention click — open file preview or navigate to folder
+   */
+  const handleMentionClick = useCallback((mention: FileMention) => {
+    if (mention.isFolder) {
+      navigateToFolder(mention.fileId);
+      setFileSidebarVisible(true);
+    } else {
+      const mimeType = mention.mimeType || 'application/octet-stream';
+      const citation: CitationInfo = {
+        fileName: mention.name,
+        fileId: mention.fileId,
+        mimeType,
+        isImage: mimeType.startsWith('image/'),
+        isDeleted: false,
+        sourceType: 'blob_storage',
+        fetchStrategy: 'internal_api',
+        relevanceScore: 1,
+      };
+      openCitationPreview([citation], 0);
+    }
+  }, [navigateToFolder, setFileSidebarVisible, openCitationPreview]);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement>(null);
   const topSentinelRef = useRef<HTMLDivElement>(null);
@@ -222,10 +250,11 @@ export default function ChatContainer() {
           onCitationInfoOpen={handleCitationInfoOpen}
           messageAttachments={getMessageAttachments(message.id)}
           onAttachmentClick={handleAttachmentClick}
+          onMentionClick={handleMentionClick}
         />
       </div>
     );
-  }, [userInitials, citationFileMap, handleCitationOpen, getMessageCitations, handleCitationInfoOpen, getMessageAttachments, handleAttachmentClick]);
+  }, [userInitials, citationFileMap, handleCitationOpen, getMessageCitations, handleCitationInfoOpen, getMessageAttachments, handleAttachmentClick, handleMentionClick]);
 
   /**
    * Render messages in workflow mode: grouped by agent sections (PRD-092).

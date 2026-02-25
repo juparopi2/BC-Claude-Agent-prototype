@@ -174,6 +174,9 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
     const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
     const scopeFileIds = typedInputs.context?.options?.scopeFileIds as string[] | undefined;
+    const chatImageEmbeddings = typedInputs.context?.options?.chatImageEmbeddings as
+      | Array<{ attachmentId: string; name: string; embedding: number[] }>
+      | undefined;
 
     if (targetAgentId && targetAgentId !== 'auto' && targetAgentId !== 'supervisor') {
       // When web search is enabled with a non-research target, fall through to supervisor
@@ -202,6 +205,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
                 userId,
                 invocationId: `inv-${Date.now()}`,
                 scopeFileIds,
+                chatImageEmbeddings,
               },
               recursionLimit: options?.recursionLimit ?? 100,
               signal: options?.signal,
@@ -243,7 +247,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       const stream = await compiledSupervisor.stream(
         { messages: [new HumanMessage(supervisorPrompt)] },
         {
-          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds },
+          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, chatImageEmbeddings },
           recursionLimit: options?.recursionLimit ?? 100,
           signal: options?.signal,
           streamMode: 'values',

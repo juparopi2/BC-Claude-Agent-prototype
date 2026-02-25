@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand';
-import type { FileMention, FileMentionMode } from '@bc-agent/shared';
+import type { FileMention } from '@bc-agent/shared';
 
 // ============================================================================
 // Types
@@ -24,8 +24,6 @@ export interface FileMentionActions {
   addMention: (mention: FileMention) => void;
   /** Remove a mention by fileId */
   removeMention: (fileId: string) => void;
-  /** Toggle mention mode between rag_context and direct_vision */
-  toggleMode: (fileId: string) => void;
   /** Clear all mentions */
   clearMentions: () => void;
 }
@@ -48,15 +46,6 @@ export const useFileMentionStore = create<FileMentionStore>((set) => ({
   removeMention: (fileId) =>
     set((state) => ({
       mentions: state.mentions.filter((m) => m.fileId !== fileId),
-    })),
-
-  toggleMode: (fileId) =>
-    set((state) => ({
-      mentions: state.mentions.map((m) =>
-        m.fileId === fileId
-          ? { ...m, mode: (m.mode === 'rag_context' ? 'direct_vision' : 'rag_context') as FileMentionMode }
-          : m
-      ),
     })),
 
   clearMentions: () => set({ mentions: [] }),

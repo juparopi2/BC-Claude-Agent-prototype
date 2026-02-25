@@ -56,10 +56,9 @@ const mockAudioRecordingState = {
 
 // Mock mention store
 const mockMentionStoreState = {
-  mentions: [] as Array<{ fileId: string; name: string; isFolder: boolean; mimeType: string; mode: string }>,
+  mentions: [] as Array<{ fileId: string; name: string; isFolder: boolean; mimeType: string }>,
   addMention: vi.fn(),
   removeMention: vi.fn(),
-  toggleMode: vi.fn(),
   clearMentions: vi.fn(),
 };
 

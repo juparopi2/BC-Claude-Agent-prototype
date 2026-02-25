@@ -100,6 +100,8 @@ export interface ImageSearchQuery {
   userId: string;
   top?: number;
   minScore?: number;
+  /** Additional OData filter to append (e.g., scope filter for @mention scoping) */
+  additionalFilter?: string;
 }
 
 /**

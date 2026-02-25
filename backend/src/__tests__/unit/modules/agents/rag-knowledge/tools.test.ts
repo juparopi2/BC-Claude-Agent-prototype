@@ -1,7 +1,7 @@
 /**
  * RAG Knowledge Tools Tests (PRD-071)
  *
- * Tests that knowledgeSearchTool returns CitationResult format
+ * Tests that searchKnowledgeTool returns CitationResult format
  * for successful searches and StructuredSearchResult for errors/empty.
  */
 
@@ -39,9 +39,9 @@ vi.mock('@/services/files/FileService', () => ({
   }),
 }));
 
-import { knowledgeSearchTool, visualImageSearchTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
+import { searchKnowledgeTool, visualImageSearchTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
 
-describe('knowledgeSearchTool', () => {
+describe('searchKnowledgeTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -64,7 +64,7 @@ describe('knowledgeSearchTool', () => {
       threshold: 0.6,
     });
 
-    const result = await knowledgeSearchTool.invoke(
+    const result = await searchKnowledgeTool.invoke(
       { query: 'test query' },
       { configurable: { userId: 'USER-1' } }
     );
@@ -98,7 +98,7 @@ describe('knowledgeSearchTool', () => {
       threshold: 0.6,
     });
 
-    const result = await knowledgeSearchTool.invoke(
+    const result = await searchKnowledgeTool.invoke(
       { query: 'search' },
       { configurable: { userId: 'USER-1' } }
     );
@@ -135,7 +135,7 @@ describe('knowledgeSearchTool', () => {
       threshold: 0.6,
     });
 
-    const result = await knowledgeSearchTool.invoke(
+    const result = await searchKnowledgeTool.invoke(
       { query: 'my query' },
       { configurable: { userId: 'USER-1' } }
     );
@@ -152,7 +152,7 @@ describe('knowledgeSearchTool', () => {
       threshold: 0.6,
     });
 
-    const result = await knowledgeSearchTool.invoke(
+    const result = await searchKnowledgeTool.invoke(
       { query: 'empty query' },
       { configurable: { userId: 'USER-1' } }
     );
@@ -166,7 +166,7 @@ describe('knowledgeSearchTool', () => {
   it('returns StructuredSearchResult with error for failures (no _type)', async () => {
     mockSearchRelevantFiles.mockRejectedValue(new Error('Service unavailable'));
 
-    const result = await knowledgeSearchTool.invoke(
+    const result = await searchKnowledgeTool.invoke(
       { query: 'fail query' },
       { configurable: { userId: 'USER-1' } }
     );
@@ -177,7 +177,7 @@ describe('knowledgeSearchTool', () => {
   });
 
   it('returns error when no userId in config', async () => {
-    const result = await knowledgeSearchTool.invoke(
+    const result = await searchKnowledgeTool.invoke(
       { query: 'no user' },
       { configurable: {} }
     );

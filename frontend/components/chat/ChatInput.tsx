@@ -45,7 +45,7 @@ export interface ChatInputProps {
   // Socket state from parent (avoids duplicate useSocket calls)
   isConnected?: boolean;
   isReconnecting?: boolean;
-  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; visionFileIds?: string[]; enableWebSearch?: boolean; mentions?: FileMention[] }) => void;
+  sendMessage?: (message: string, options?: { enableThinking?: boolean; thinkingBudget?: number; attachments?: string[]; chatAttachments?: string[]; enableAutoSemanticSearch?: boolean; targetAgentId?: string; mentionedFileIds?: string[]; enableWebSearch?: boolean; mentions?: FileMention[] }) => void;
   stopAgent?: () => void;
 
   // ============================================
@@ -140,7 +140,6 @@ export default function ChatInput({
   const mentions = useFileMentionStore((s) => s.mentions);
   const addMention = useFileMentionStore((s) => s.addMention);
   const removeMention = useFileMentionStore((s) => s.removeMention);
-  const toggleMentionMode = useFileMentionStore((s) => s.toggleMode);
   const clearMentions = useFileMentionStore((s) => s.clearMentions);
 
   // Drag and drop state
@@ -189,7 +188,6 @@ export default function ChatInput({
       name: file.name,
       isFolder: file.isFolder,
       mimeType: file.mimeType || '',
-      mode: 'rag_context',
     });
 
     // Replace @query with @[Name] inline
@@ -322,9 +320,8 @@ export default function ChatInput({
 
     const isDirected = selectedAgentId !== 'auto';
 
-    // Extract mention IDs by mode
-    const ragMentions = mentions.filter((m) => m.mode === 'rag_context').map((m) => m.fileId);
-    const visionMentions = mentions.filter((m) => m.mode === 'direct_vision').map((m) => m.fileId);
+    // Collect all mention IDs
+    const allMentionIds = mentions.map((m) => m.fileId);
 
     if (onSend) {
       // Simple callback mode (works for both pending and normal mode without sessionId)
@@ -336,10 +333,9 @@ export default function ChatInput({
         thinkingBudget: 10000,
         // Use chatAttachments for ephemeral files sent directly to Anthropic
         chatAttachments: completedAttachmentIds.length > 0 ? completedAttachmentIds : undefined,
-        enableAutoSemanticSearch: selectedAgentId === 'rag-agent' || ragMentions.length > 0,
+        enableAutoSemanticSearch: selectedAgentId === 'rag-agent' || allMentionIds.length > 0,
         targetAgentId: isDirected ? selectedAgentId : undefined,
-        mentionedFileIds: ragMentions.length > 0 ? ragMentions : undefined,
-        visionFileIds: visionMentions.length > 0 ? visionMentions : undefined,
+        mentionedFileIds: allMentionIds.length > 0 ? allMentionIds : undefined,
         enableWebSearch: webSearchEnabled || undefined,
         mentions: mentions.length > 0 ? [...mentions] : undefined,
       };
@@ -527,7 +523,6 @@ export default function ChatInput({
               <MentionChip
                 key={mention.fileId}
                 mention={mention}
-                onToggleMode={() => toggleMentionMode(mention.fileId)}
                 onRemove={() => handleRemoveMention(mention.fileId)}
               />
             ))}

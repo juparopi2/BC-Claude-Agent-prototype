@@ -15,15 +15,15 @@ import { CITATION_PRODUCING_TOOLS, type ICitationExtractor } from './types';
 /**
  * Extracts citations from RAG tool results.
  *
- * This service parses structured JSON results from the search_knowledge_base tool
+ * This service parses structured JSON results from the search_knowledge tool
  * and converts them to CitedFile[] for frontend rendering.
  *
  * @example
  * ```typescript
  * const extractor = getCitationExtractor();
  *
- * if (extractor.producesCitations('search_knowledge_base')) {
- *   const citations = extractor.extract('search_knowledge_base', toolResult);
+ * if (extractor.producesCitations('search_knowledge')) {
+ *   const citations = extractor.extract('search_knowledge', toolResult);
  *   ctx.citedSources.push(...citations);
  * }
  * ```

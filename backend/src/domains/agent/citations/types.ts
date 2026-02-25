@@ -12,7 +12,7 @@ import type { CitedFile } from '@bc-agent/shared';
  * List of tool names that produce extractable citations.
  * Add new tools here as they are implemented.
  */
-export const CITATION_PRODUCING_TOOLS = ['search_knowledge_base'] as const;
+export const CITATION_PRODUCING_TOOLS = ['search_knowledge'] as const;
 
 /**
  * Type for tools that produce citations.

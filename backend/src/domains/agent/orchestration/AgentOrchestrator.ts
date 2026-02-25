@@ -129,7 +129,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     // =========================================================================
     // 1. INPUT VALIDATION
     // =========================================================================
-    const requiresUserId = !!(options?.attachments?.length || options?.enableAutoSemanticSearch || options?.mentionedFileIds?.length || options?.visionFileIds?.length);
+    const requiresUserId = !!(options?.attachments?.length || options?.enableAutoSemanticSearch || options?.mentionedFileIds?.length);
     if (requiresUserId && !userId) {
       throw new Error('UserId required for file attachments or semantic search');
     }
@@ -211,7 +211,6 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           timeoutMs: ctx.timeoutMs,
           targetAgentId: options?.targetAgentId,
           mentionedFileIds: options?.mentionedFileIds,
-          visionFileIds: options?.visionFileIds,
           enableWebSearch: options?.enableWebSearch,
         }
       );

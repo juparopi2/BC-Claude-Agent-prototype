@@ -29,9 +29,10 @@ vi.mock('../../../core/langchain/ModelFactory', () => ({
 }));
 
 vi.mock('./tools', () => ({
-  createKnowledgeSearchTool: vi.fn().mockReturnValue({
-    name: 'search_knowledge_base',
-  }),
+  searchKnowledgeTool: {
+    name: 'search_knowledge',
+    invoke: vi.fn(),
+  },
 }));
 
 describe('RAGAgent', () => {

@@ -54,7 +54,6 @@ export type {
 
 // File Mention types (@ mentions in chat input)
 export type {
-  FileMentionMode,
   FileMention,
 } from './file-mention.types';
 

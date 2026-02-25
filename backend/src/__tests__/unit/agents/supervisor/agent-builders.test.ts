@@ -73,8 +73,7 @@ vi.mock('@/modules/agents/research/tools', () => ({
 
 // Mock RAG tools to include the new visual search tools
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
-  knowledgeSearchTool: { name: 'knowledgeSearch', description: 'Search knowledge', schema: {} },
-  filteredKnowledgeSearchTool: { name: 'filteredKnowledgeSearch', description: 'Filtered search', schema: {} },
+  searchKnowledgeTool: { name: 'search_knowledge', description: 'Search knowledge', schema: {} },
   visualImageSearchTool: { name: 'visualImageSearch', description: 'Visual image search', schema: {} },
   findSimilarImagesTool: { name: 'findSimilarImages', description: 'Find similar images', schema: {} },
 }));

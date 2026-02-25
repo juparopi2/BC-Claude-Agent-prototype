@@ -2,7 +2,7 @@
  * File Type Categories for RAG Filtered Search
  *
  * Maps semantic categories to MIME types from ALLOWED_MIME_TYPES.
- * Used by the RAG agent's filtered_knowledge_search tool and
+ * Used by the RAG agent's search_knowledge tool and
  * frontend display components.
  *
  * @module constants/file-type-categories

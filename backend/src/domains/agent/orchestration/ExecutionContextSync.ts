@@ -83,12 +83,6 @@ export interface ExecuteSyncOptions {
   mentionedFileIds?: string[];
 
   /**
-   * KB image IDs to send directly to Anthropic vision API.
-   * These are Knowledge Base files from blob storage.
-   */
-  visionFileIds?: string[];
-
-  /**
    * Enable web search capability for this message.
    * When true, the supervisor prompt is augmented with a hint to prefer research-agent.
    * @default false

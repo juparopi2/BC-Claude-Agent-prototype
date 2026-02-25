@@ -1,7 +1,7 @@
 /**
  * Zod Schema for Structured Search Results
  *
- * Defines the JSON structure returned by the RAG tool's search_knowledge_base function.
+ * Defines the JSON structure returned by the RAG tool's search_knowledge function.
  * Used for validation, type inference, and ensuring consistent output format.
  *
  * @module modules/agents/rag-knowledge/schemas/searchResult

@@ -302,7 +302,6 @@ export type {
   ChartConfig,
 
   // File Mention types (@ mentions in chat input)
-  FileMentionMode,
   FileMention,
 
   // Agent Identity types (PRD-020/070)

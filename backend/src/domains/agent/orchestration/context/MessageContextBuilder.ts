@@ -57,10 +57,17 @@ export interface MessageContextOptions {
   targetAgentId?: string;
   /** File/folder IDs from @mentions to scope semantic search */
   mentionedFileIds?: string[];
-  /** KB image IDs for direct vision */
-  visionFileIds?: string[];
   /** Enable web search capability — supervisor will be hinted to prefer research-agent */
   enableWebSearch?: boolean;
+}
+
+/**
+ * Image embedding for a chat attachment (used by find_similar_images tool).
+ */
+export interface ChatImageEmbedding {
+  attachmentId: string;
+  name: string;
+  embedding: number[];
 }
 
 /**
@@ -81,6 +88,7 @@ export interface MessageContextBuildResult {
         targetAgentId?: string;
         enableWebSearch?: boolean;
         scopeFileIds?: string[];
+        chatImageEmbeddings?: ChatImageEmbedding[];
       };
     };
   };
@@ -163,6 +171,7 @@ export function buildMessageContent(
  * @param sessionId - Session ID
  * @param contextResult - File context for tracking
  * @param options - Execution options
+ * @param chatImageEmbeddings - Pre-computed image embeddings for chat attachments
  * @returns Graph inputs object
  */
 export function buildGraphInputs(
@@ -170,7 +179,8 @@ export function buildGraphInputs(
   userId: string | undefined,
   sessionId: string,
   contextResult: FileContextPreparationResult,
-  options?: MessageContextOptions
+  options?: MessageContextOptions,
+  chatImageEmbeddings?: ChatImageEmbedding[]
 ): MessageContextBuildResult['inputs'] {
   return {
     messages: [
@@ -190,6 +200,7 @@ export function buildGraphInputs(
         targetAgentId: options?.targetAgentId,
         enableWebSearch: options?.enableWebSearch,
         scopeFileIds: contextResult.mentionScope?.scopeFileIds,
+        chatImageEmbeddings: chatImageEmbeddings?.length ? chatImageEmbeddings : undefined,
       },
     },
   };
@@ -242,80 +253,263 @@ export class MessageContextBuilder {
       );
     }
 
-    // Step 2b: Resolve vision files (KB images sent directly to Anthropic)
-    if (options?.visionFileIds?.length && userId) {
-      const visionBlocks = await this.resolveVisionFiles(userId, options.visionFileIds);
-      for (const block of visionBlocks) {
-        anthropicBlocks.push(block);
-      }
+    // Step 2b: Resolve @mentioned individual files to content blocks (images, PDFs, text)
+    const mentionBlocks: (AnthropicAttachmentContentBlock | { type: 'text'; text: string })[] = [];
+    if (contextResult.mentionScope?.mentionedFiles.length && userId) {
+      const resolved = await this.resolveMentionContentBlocks(
+        userId,
+        contextResult.mentionScope.mentionedFiles
+      );
+      mentionBlocks.push(...resolved);
       logger.debug(
-        { sessionId, visionCount: visionBlocks.length },
-        'Resolved vision files for message'
+        { sessionId, mentionBlockCount: resolved.length },
+        'Resolved mention content blocks for message'
+      );
+    }
+
+    // Step 2c: Generate image embeddings for chat attachments (for find_similar_images tool)
+    let chatImageEmbeddings: ChatImageEmbedding[] | undefined;
+    if (options?.chatAttachments?.length && userId) {
+      chatImageEmbeddings = await this.generateChatImageEmbeddings(
+        userId,
+        sessionId,
+        options.chatAttachments
       );
     }
 
     // Step 3: Convert to LangChain format
-    const langChainBlocks = convertToLangChainFormat(anthropicBlocks);
+    // Separate mention text blocks from binary blocks (images/PDFs)
+    const mentionTextBlocks = mentionBlocks.filter(
+      (b): b is { type: 'text'; text: string } => b.type === 'text'
+    );
+    const mentionBinaryBlocks = mentionBlocks.filter(
+      (b): b is AnthropicAttachmentContentBlock => b.type !== 'text'
+    );
+
+    const allAnthropicBlocks = [...anthropicBlocks, ...mentionBinaryBlocks];
+    const langChainBlocks = convertToLangChainFormat(allAnthropicBlocks);
+
+    // Add mention text blocks as LangChain text content blocks
+    const allLangChainBlocks = [
+      ...langChainBlocks,
+      ...mentionTextBlocks.map(b => ({ type: 'text' as const, text: b.text })),
+    ];
 
     // Step 4: Build message content
-    const messageContent = buildMessageContent(prompt, contextResult, langChainBlocks);
+    const messageContent = buildMessageContent(prompt, contextResult, allLangChainBlocks);
 
     // Step 5: Build graph inputs
-    const inputs = buildGraphInputs(messageContent, userId, sessionId, contextResult, options);
+    const inputs = buildGraphInputs(
+      messageContent,
+      userId,
+      sessionId,
+      contextResult,
+      options,
+      chatImageEmbeddings
+    );
 
     return { inputs, contextResult };
   }
 
   /**
-   * Resolve KB image files for direct vision.
-   * Downloads from blob storage and converts to base64 image blocks.
+   * Resolve @mentioned individual files as LLM content blocks.
+   *
+   * Iterates mentionedFiles, skipping folders. For each individual file:
+   * - Images: base64 image block (max 30MB)
+   * - PDFs: base64 document block (max 32MB)
+   * - Text-based: text block with file name header (max 10MB)
+   * - Binary (docx, xlsx): skipped — already in semantic search context as chunked text
+   *
+   * Max 5 content blocks to avoid token explosion.
    */
-  private async resolveVisionFiles(
+  private async resolveMentionContentBlocks(
     userId: string,
-    fileIds: string[]
-  ): Promise<AnthropicAttachmentContentBlock[]> {
+    mentionedFiles: Array<{ fileId: string; fileName: string; mimeType: string; isFolder: boolean }>
+  ): Promise<Array<AnthropicAttachmentContentBlock | { type: 'text'; text: string }>> {
     const { getFileService } = await import('@/services/files/FileService');
     const { getFileUploadService } = await import('@/services/files/FileUploadService');
     const { isImageMimeType } = await import('@bc-agent/shared');
 
-    const blocks: AnthropicAttachmentContentBlock[] = [];
+    const TEXT_MIME_TYPES = new Set([
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'text/html',
+      'application/json',
+      'text/javascript',
+      'text/css',
+    ]);
+
+    const MAX_MENTION_BLOCKS = 5;
+    const MAX_IMAGE_BYTES = 30 * 1024 * 1024;  // 30MB
+    const MAX_PDF_BYTES = 32 * 1024 * 1024;    // 32MB
+    const MAX_TEXT_BYTES = 10 * 1024 * 1024;   // 10MB
+
+    const blocks: Array<AnthropicAttachmentContentBlock | { type: 'text'; text: string }> = [];
     const fileService = getFileService();
     const uploadService = getFileUploadService();
 
-    for (const fileId of fileIds) {
+    for (const mention of mentionedFiles) {
+      if (blocks.length >= MAX_MENTION_BLOCKS) {
+        logger.warn(
+          { userId, limit: MAX_MENTION_BLOCKS },
+          'Mention content block limit reached, skipping remaining mentions'
+        );
+        break;
+      }
+
+      // Skip folders — they are used for scoping semantic search, not direct content
+      if (mention.isFolder) continue;
+
       try {
-        const file = await fileService.getFile(userId, fileId);
-        if (!file || !isImageMimeType(file.mimeType)) {
-          logger.warn({ fileId, userId }, 'Vision file not found or not an image, skipping');
+        const file = await fileService.getFile(userId, mention.fileId);
+        if (!file) {
+          logger.warn({ fileId: mention.fileId, userId }, 'Mentioned file not found, skipping');
           continue;
         }
 
-        // Skip oversized files (30MB limit for Anthropic)
-        if (file.sizeBytes > 30 * 1024 * 1024) {
-          logger.warn({ fileId, sizeBytes: file.sizeBytes }, 'Vision file too large, skipping');
-          continue;
+        if (isImageMimeType(file.mimeType)) {
+          // Image block
+          if (file.sizeBytes > MAX_IMAGE_BYTES) {
+            logger.warn(
+              { fileId: mention.fileId, sizeBytes: file.sizeBytes },
+              'Mentioned image too large, skipping'
+            );
+            continue;
+          }
+          const buffer = await uploadService.downloadFromBlob(file.blobPath);
+          blocks.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: file.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: buffer.toString('base64'),
+            },
+          });
+        } else if (file.mimeType === 'application/pdf') {
+          // PDF document block
+          if (file.sizeBytes > MAX_PDF_BYTES) {
+            logger.warn(
+              { fileId: mention.fileId, sizeBytes: file.sizeBytes },
+              'Mentioned PDF too large, skipping'
+            );
+            continue;
+          }
+          const buffer = await uploadService.downloadFromBlob(file.blobPath);
+          blocks.push({
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: buffer.toString('base64'),
+            },
+          } as AnthropicAttachmentContentBlock);
+        } else if (TEXT_MIME_TYPES.has(file.mimeType)) {
+          // Text block
+          if (file.sizeBytes > MAX_TEXT_BYTES) {
+            logger.warn(
+              { fileId: mention.fileId, sizeBytes: file.sizeBytes },
+              'Mentioned text file too large, skipping'
+            );
+            continue;
+          }
+          const buffer = await uploadService.downloadFromBlob(file.blobPath);
+          const content = buffer.toString('utf-8');
+          blocks.push({
+            type: 'text',
+            text: `[File: ${mention.fileName}]\n${content}`,
+          });
+        } else {
+          // Binary files (docx, xlsx, etc.) — skip, already in semantic search context as chunked text
+          logger.debug(
+            { fileId: mention.fileId, mimeType: file.mimeType },
+            'Mentioned binary file skipped (handled via semantic search)'
+          );
         }
-
-        const buffer = await uploadService.downloadFromBlob(file.blobPath);
-        const base64Data = buffer.toString('base64');
-
-        blocks.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: file.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-            data: base64Data,
-          },
-        });
       } catch (error) {
         const errorInfo = error instanceof Error
           ? { message: error.message, name: error.name }
           : { value: String(error) };
-        logger.warn({ fileId, userId, error: errorInfo }, 'Failed to resolve vision file, skipping');
+        logger.warn(
+          { fileId: mention.fileId, userId, error: errorInfo },
+          'Failed to resolve mention content block, skipping'
+        );
       }
     }
 
     return blocks;
+  }
+
+  /**
+   * Generate image embeddings for chat attachments.
+   * Used by find_similar_images tool for visual similarity search.
+   * Only generates embeddings for image MIME types — other types are skipped.
+   */
+  private async generateChatImageEmbeddings(
+    userId: string,
+    sessionId: string,
+    chatAttachmentIds: string[]
+  ): Promise<ChatImageEmbedding[] | undefined> {
+    try {
+      const { getChatAttachmentService } = await import('@/domains/chat-attachments');
+      const { isImageMimeType } = await import('@bc-agent/shared');
+      const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
+      const { getFileUploadService } = await import('@/services/files/FileUploadService');
+
+      const embeddingService = EmbeddingService.getInstance();
+      const attachmentService = getChatAttachmentService();
+      const uploadService = getFileUploadService();
+
+      const embeddings: ChatImageEmbedding[] = [];
+
+      for (const attachmentId of chatAttachmentIds) {
+        try {
+          // Use getAttachmentRecord to access blob_path (not exposed on ParsedChatAttachment)
+          const record = await attachmentService.getAttachmentRecord(userId, attachmentId);
+          if (!record || !isImageMimeType(record.mime_type)) continue;
+
+          const buffer = await uploadService.downloadFromBlob(record.blob_path);
+          const imageEmbedding = await embeddingService.generateImageEmbedding(
+            buffer,
+            userId,
+            attachmentId,
+            { skipTracking: true }
+          );
+          embeddings.push({
+            attachmentId,
+            name: record.name,
+            embedding: imageEmbedding.embedding,
+          });
+        } catch (err) {
+          const errorInfo = err instanceof Error
+            ? { message: err.message }
+            : { value: String(err) };
+          logger.warn(
+            { attachmentId, error: errorInfo },
+            'Failed to generate image embedding for chat attachment, skipping'
+          );
+        }
+      }
+
+      if (embeddings.length > 0) {
+        logger.debug(
+          { sessionId, count: embeddings.length },
+          'Generated chat image embeddings'
+        );
+        return embeddings;
+      }
+
+      return undefined;
+    } catch (err) {
+      const errorInfo = err instanceof Error
+        ? { message: err.message }
+        : { value: String(err) };
+      logger.warn(
+        { sessionId, error: errorInfo },
+        'Failed to initialize embedding service for chat attachments, skipping'
+      );
+      return undefined;
+    }
   }
 }
 

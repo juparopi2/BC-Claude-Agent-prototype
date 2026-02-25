@@ -1,14 +1,11 @@
 /**
  * File Mention Types
  *
- * Types for @mentions in chat input, supporting RAG context scoping
- * and direct vision mode for KB images.
+ * Types for @mentions in chat input, supporting RAG context scoping.
+ * The LLM decides how to use mentioned files (search scope + content blocks).
  *
  * @module @bc-agent/shared/types/file-mention
  */
-
-/** Mode for how a mentioned file is used */
-export type FileMentionMode = 'rag_context' | 'direct_vision';
 
 /** A file/folder mention in the chat input */
 export interface FileMention {
@@ -20,6 +17,4 @@ export interface FileMention {
   isFolder: boolean;
   /** MIME type of the file (empty string for folders) */
   mimeType: string;
-  /** How this mention is used: RAG search scope or direct vision */
-  mode: FileMentionMode;
 }

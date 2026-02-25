@@ -16,8 +16,8 @@ describe('CitationExtractor', () => {
   });
 
   describe('producesCitations', () => {
-    it('returns true for search_knowledge_base', () => {
-      expect(extractor.producesCitations('search_knowledge_base')).toBe(true);
+    it('returns true for search_knowledge', () => {
+      expect(extractor.producesCitations('search_knowledge')).toBe(true);
     });
 
     it('returns false for unknown tools', () => {
@@ -47,7 +47,7 @@ describe('CitationExtractor', () => {
         query: 'test',
       };
 
-      const citations = extractor.extract('search_knowledge_base', JSON.stringify(citationResult));
+      const citations = extractor.extract('search_knowledge', JSON.stringify(citationResult));
 
       expect(citations).toHaveLength(1);
       expect(citations[0].fileName).toBe('report.pdf');
@@ -79,7 +79,7 @@ describe('CitationExtractor', () => {
         query: 'test',
       };
 
-      const citations = extractor.extract('search_knowledge_base', JSON.stringify(citationResult));
+      const citations = extractor.extract('search_knowledge', JSON.stringify(citationResult));
 
       expect(citations[0].relevanceScore).toBe(0.75);
     });
@@ -112,7 +112,7 @@ describe('CitationExtractor', () => {
         query: 'test',
       };
 
-      const citations = extractor.extract('search_knowledge_base', JSON.stringify(citationResult));
+      const citations = extractor.extract('search_knowledge', JSON.stringify(citationResult));
 
       expect(citations).toHaveLength(2);
       expect(citations[0].fileName).toBe('doc1.pdf');
@@ -141,7 +141,7 @@ describe('CitationExtractor', () => {
         },
       };
 
-      const citations = extractor.extract('search_knowledge_base', JSON.stringify(legacyResult));
+      const citations = extractor.extract('search_knowledge', JSON.stringify(legacyResult));
 
       expect(citations).toHaveLength(1);
       expect(citations[0].fileName).toBe('report.pdf');
@@ -157,12 +157,12 @@ describe('CitationExtractor', () => {
     });
 
     it('returns empty array for malformed JSON', () => {
-      const citations = extractor.extract('search_knowledge_base', 'not json');
+      const citations = extractor.extract('search_knowledge', 'not json');
       expect(citations).toEqual([]);
     });
 
     it('returns empty array for empty string', () => {
-      const citations = extractor.extract('search_knowledge_base', '');
+      const citations = extractor.extract('search_knowledge', '');
       expect(citations).toEqual([]);
     });
 
@@ -174,7 +174,7 @@ describe('CitationExtractor', () => {
         totalResults: 0,
         query: 'test',
       };
-      const citations = extractor.extract('search_knowledge_base', JSON.stringify(result));
+      const citations = extractor.extract('search_knowledge', JSON.stringify(result));
       expect(citations).toEqual([]);
     });
   });

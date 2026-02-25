@@ -36,7 +36,9 @@ vi.mock('@/modules/agents/business-central/tools', () => ({
 
 // Mock RAG Agent tools
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
-  createKnowledgeSearchTool: vi.fn(() => ({ name: 'knowledge_search', invoke: vi.fn() })),
+  searchKnowledgeTool: { name: 'search_knowledge', invoke: vi.fn() },
+  visualImageSearchTool: { name: 'visual_image_search', invoke: vi.fn() },
+  findSimilarImagesTool: { name: 'find_similar_images', invoke: vi.fn() },
 }));
 
 // Mock ModelFactory with factory function

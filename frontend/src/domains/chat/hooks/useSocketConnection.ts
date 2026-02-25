@@ -56,7 +56,6 @@ export interface UseSocketConnectionReturn {
       enableAutoSemanticSearch?: boolean;
       targetAgentId?: string;
       mentionedFileIds?: string[];
-      visionFileIds?: string[];
       enableWebSearch?: boolean;
     }
   ) => void;
@@ -243,7 +242,6 @@ export function useSocketConnection(
         enableAutoSemanticSearch?: boolean;
         targetAgentId?: string;
         mentionedFileIds?: string[];
-        visionFileIds?: string[];
         enableWebSearch?: boolean;
       }
     ) => {
@@ -289,7 +287,6 @@ export function useSocketConnection(
         enableAutoSemanticSearch: opts?.enableAutoSemanticSearch,
         targetAgentId: opts?.targetAgentId,
         mentionedFileIds: opts?.mentionedFileIds,
-        visionFileIds: opts?.visionFileIds,
         enableWebSearch: opts?.enableWebSearch,
       });
 

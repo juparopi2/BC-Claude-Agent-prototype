@@ -165,7 +165,6 @@ export class ChatMessageHandler {
           thinkingBudget: data.thinking?.thinkingBudget,
           targetAgentId: data.targetAgentId,
           mentionedFileIds: data.mentionedFileIds,
-          visionFileIds: data.visionFileIds,
           enableWebSearch: data.enableWebSearch,
           mentions: data.mentions,
         }

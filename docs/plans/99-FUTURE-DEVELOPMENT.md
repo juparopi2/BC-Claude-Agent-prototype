@@ -1,7 +1,7 @@
 # Futuros Desarrollos y Deuda Técnica
 
 **Estado**: Organizado
-**Última actualización**: 2026-02-23
+**Última actualización**: 2026-02-25
 
 Este documento centraliza todos los planes futuros, organizados por categoría para facilitar la priorización y ejecución.
 
@@ -146,6 +146,29 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 
 Mejoras perceptibles para el usuario final.
 
+
+### Panel de Sesiones Redimensionable (Media)
+**Necesidad:** El panel izquierdo (lista de sesiones de chat) actualmente tiene un ancho fijo de 280px y no puede ser redimensionado por el usuario. En algunos flujos de trabajo es necesario ver más o menos historial de sesiones sin perder espacio útil del chat.
+**Specs:**
+- Convertir el panel izquierdo en `MainLayout.tsx` a un `ResizablePanel` de la librería `react-resizable-panels` (ya usada para el panel derecho).
+- Rango: mínimo ~170px, máximo ~490px, default ~280px.
+- El botón de colapsar/expandir sigue funcionando mediante control imperativo.
+- Persistir el ancho preferido del usuario en `useUIPreferencesStore` (localStorage).
+**Archivos afectados:** `components/layout/MainLayout.tsx`, `src/domains/ui/uiPreferencesStore.ts`
+**Estimación:** 0.5-1 día
+
+### "Show Favorites" — Filtro de Favoritos en Files (Baja)
+**Necesidad:** El botón de estrella ⭐ en el toolbar de archivos actualmente implementa "Show Favorites First" (re-ordena), pero la funcionalidad está rota porque depende de un re-fetch a la API con mecanismos de coordinación frágiles que fallan en React Strict Mode / concurrent rendering.
+**Nuevo comportamiento deseado:**
+- Renombrar a **"Show Favorites"** (no "Favorites First").
+- Al activarlo, mostrar únicamente los archivos y carpetas marcados como favoritos (`isFavorite === true`), sin importar la carpeta actual.
+- Implementar como **filtro puramente en cliente** (los datos ya están en memoria) — eliminar el re-fetch a la API.
+- Al desactivarlo, vuelve al listado completo normal.
+**Archivos afectados:**
+- `src/domains/files/stores/sortFilterStore.ts` — renombrar `showFavoritesFirst` → `showOnlyFavorites`, renombrar acciones.
+- `src/domains/files/hooks/useFiles.ts` — eliminar mecanismo de re-fetch, agregar filtro en el `useMemo`.
+- `components/files/FileToolbar.tsx` — actualizar bindings y tooltip.
+**Estimación:** 0.5 día
 
 ### Mobile First & iFrame Experience (Alta)
 **Necesidad:** Rediseñar y adaptar la interfaz bajo una filosofía *Mobile First* para garantizar una experiencia totalmente responsiva y funcional en dispositivos móviles (navegador/app futura). Además, preparar el frontend para ser embebido vía iFrame en aplicaciones de terceros como funcionalidad futura.
@@ -350,6 +373,39 @@ Herramientas para administración y visión del negocio.
 **Visión:** Dashboard para admins con métricas de uso, errores, latencia y costos.
 **Estimación:** 10 días
 
+### Usage Tracking & Subscription Plans (Alta)
+**Necesidad:** A medida que los usuarios empiecen a usar el sistema en producción, debemos garantizar que el consumo real por usuario quede registrado correctamente y que exista la infraestructura para limitar el uso según el plan contratado.
+
+#### Planes previstos (por definir precios exactos)
+| Plan | Precio estimado | Perfil de usuario |
+|------|----------------|-------------------|
+| Free | $0/mes | Exploración, pruebas |
+| Starter | ~$20–30/mes | Usuarios regulares / PyMEs pequeñas |
+| Professional | ~$200/mes | Power users, empresas medianas |
+
+#### Dimensiones de consumo a rastrear
+- **Tokens LLM**: tokens de entrada y salida por agente y por modelo.
+- **Thinking tokens**: presupuesto de extended thinking consumido.
+- **Tool calls**: cantidad de llamadas a herramientas (web search, BC tools, RAG, etc.).
+- **Almacenamiento KB**: MB/GB de Knowledge Base activo.
+- **Chat attachments**: archivos adjuntos procesados (tamaño y cantidad).
+- **Upload sessions**: archivos subidos y procesados (embeddings generados).
+
+#### Scopes de límite
+- **Por sesión** (ventana de 8 horas): límite de tokens/herramientas por conversación continua.
+- **Semanal**: acumulado de consumo en los últimos 7 días.
+- **Mensual**: techo de facturación mensual; al alcanzar el límite, mostrar opción de upgrade.
+
+#### Diseño técnico previsto
+- **Tabla `usage_events`**: un registro por evento de consumo (model call, tool call, upload, etc.), con `user_id`, `resource_type`, `amount`, `session_scope_id`, `timestamp`.
+- **Tabla `usage_summaries`**: vistas materializadas o jobs de agregación por (usuario, período) para consultas rápidas.
+- **Middleware de límites**: antes de ejecutar cualquier acción costosa, chequear si el usuario tiene cuota disponible (`UsageLimitService`). Si no, lanzar error 402 con mensaje claro.
+- **UI de consumo**: widget en Settings mostrando uso actual vs. límites del plan con barra de progreso.
+- **Alertas**: WebSocket push al acercarse al límite (D9 — WebSocket Usage Alerts).
+
+**Dependencias:** Requiere definir los planes y precios finales antes de implementar los límites.
+**Estimación:** 10-15 días (tracking) + 5-7 días (enforcement de límites + UI)
+
 ---
 
 ## Resumen de Estimaciones
@@ -357,8 +413,8 @@ Herramientas para administración y visión del negocio.
 | Categoría | Estimación Total Aprox. |
 |-----------|-------------------------|
 | 🛠 Deuda Técnica | ~15-20 días |
-| ✨ Nuevas Funcionalidades | ~66-90 días |
+| ✨ Nuevas Funcionalidades | ~67-92 días |
 | 🟢 Integraciones | ~20 días |
 | 🚀 Rendimiento | ~11 días |
-| 📊 Analítica | ~10 días |
-| **Total Estimado** | **~122-151 días** |
+| 📊 Analítica | ~35-40 días |
+| **Total Estimado** | **~148-183 días** |

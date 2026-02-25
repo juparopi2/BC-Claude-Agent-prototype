@@ -60,12 +60,8 @@ function renderHighlightedText(
     const mention = mentionMap.get(name);
 
     if (mention) {
-      const colorClass = mention.mode === 'direct_vision'
-        ? 'text-purple-600 dark:text-purple-400 font-medium'
-        : 'text-emerald-600 dark:text-emerald-400 font-medium';
-
       nodes.push(
-        <span key={`m-${match.index}`} className={colorClass}>
+        <span key={`m-${match.index}`} className="text-emerald-600 dark:text-emerald-400 font-medium">
           {match[0]}
         </span>
       );

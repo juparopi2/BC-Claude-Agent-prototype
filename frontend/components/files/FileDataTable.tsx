@@ -379,7 +379,6 @@ export function FileDataTable() {
             name: file.name,
             isFolder: file.isFolder,
             mimeType: file.mimeType || '',
-            mode: 'rag_context' as const,
           };
           e.dataTransfer.setData('application/x-file-mention', JSON.stringify(mention));
           e.dataTransfer.effectAllowed = 'copy';

@@ -152,22 +152,16 @@ export default function ChatPage() {
           const uiPrefs = useUIPreferencesStore.getState();
           const isDirected = uiPrefs.selectedAgentId !== 'auto';
 
-          // Extract mention IDs by mode
-          const ragMentions = store.mentions
-            .filter((m) => m.mode === 'rag_context')
-            .map((m) => m.fileId);
-          const visionMentions = store.mentions
-            .filter((m) => m.mode === 'direct_vision')
-            .map((m) => m.fileId);
+          // Collect all mention IDs
+          const allMentionIds = store.mentions.map((m) => m.fileId);
 
           sendMessage(store.message, {
             enableThinking: true,
             thinkingBudget: 10000,
-            enableAutoSemanticSearch: uiPrefs.selectedAgentId === 'rag-agent' || store.useMyContext || ragMentions.length > 0 || undefined,
+            enableAutoSemanticSearch: uiPrefs.selectedAgentId === 'rag-agent' || store.useMyContext || allMentionIds.length > 0 || undefined,
             chatAttachments: uploadedIds.length > 0 ? uploadedIds : undefined,
             targetAgentId: isDirected ? uiPrefs.selectedAgentId : undefined,
-            mentionedFileIds: ragMentions.length > 0 ? ragMentions : undefined,
-            visionFileIds: visionMentions.length > 0 ? visionMentions : undefined,
+            mentionedFileIds: allMentionIds.length > 0 ? allMentionIds : undefined,
             enableWebSearch: store.enableWebSearch || undefined,
           });
         }

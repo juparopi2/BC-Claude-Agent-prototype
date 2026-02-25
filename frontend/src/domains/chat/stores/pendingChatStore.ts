@@ -12,7 +12,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { FileMention, FileMentionMode } from '@bc-agent/shared';
+import type { FileMention } from '@bc-agent/shared';
 
 // ============================================================================
 // Types
@@ -66,7 +66,6 @@ export interface PendingChatActions {
   setSelectedAgent: (agent: string | null) => void;
   addMention: (mention: FileMention) => void;
   removeMention: (fileId: string) => void;
-  toggleMentionMode: (fileId: string) => void;
   addPendingFile: (file: PendingFileInfo) => void;
   removePendingFile: (tempId: string) => void;
   /** Mark state as ready for processing (sets hasPendingChat = true) */
@@ -117,15 +116,6 @@ export const usePendingChatStore = create<PendingChatStore>()(
       removeMention: (fileId) =>
         set((state) => ({
           mentions: state.mentions.filter((m) => m.fileId !== fileId),
-        })),
-
-      toggleMentionMode: (fileId) =>
-        set((state) => ({
-          mentions: state.mentions.map((m) =>
-            m.fileId === fileId
-              ? { ...m, mode: (m.mode === 'rag_context' ? 'direct_vision' : 'rag_context') as FileMentionMode }
-              : m
-          ),
         })),
 
       addPendingFile: (file) =>

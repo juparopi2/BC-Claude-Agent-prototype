@@ -4,7 +4,7 @@ import { ModelFactory } from '../../../core/langchain/ModelFactory';
 import { getModelConfig } from '@/infrastructure/config/models';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { AIMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
-import { createKnowledgeSearchTool } from './tools';
+import { searchKnowledgeTool } from './tools';
 import { createChildLogger } from '@/shared/utils/logger';
 import { StructuredToolInterface } from '@langchain/core/tools';
 import { AGENT_ID, AGENT_DISPLAY_NAME, AGENT_ICON, AGENT_COLOR } from '@bc-agent/shared';
@@ -50,8 +50,8 @@ export class RAGAgent {
        modelString: ragConfig.modelString,
      }, 'RAGAgent: Model initialized');
 
-     // Create tool instance bound to the current user
-     const searchTool = createKnowledgeSearchTool(userId);
+     // Use the static searchKnowledgeTool (userId resolved via config.configurable at runtime)
+     const searchTool = searchKnowledgeTool;
      const toolsMap = new Map<string, StructuredToolInterface>([[searchTool.name, searchTool]]);
 
      logger.debug({ userId, toolName: searchTool.name }, 'RAGAgent: Created knowledge search tool');

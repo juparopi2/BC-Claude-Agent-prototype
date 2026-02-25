@@ -592,7 +592,12 @@ export class VectorSearchService {
     // Security: Always enforce userId filter + isImage filter (D24: normalize userId)
     // Also exclude files marked for deletion (fileStatus ne 'deleting')
     const normalizedUserId = this.normalizeUserId(userId);
-    const searchFilter = `userId eq '${normalizedUserId}' and isImage eq true and (fileStatus ne 'deleting' or fileStatus eq null)`;
+    let searchFilter = `userId eq '${normalizedUserId}' and isImage eq true and (fileStatus ne 'deleting' or fileStatus eq null)`;
+
+    // Append additional filter if provided (e.g., scope filter for @mention scoping)
+    if (query.additionalFilter) {
+      searchFilter = `(${searchFilter}) and (${query.additionalFilter})`;
+    }
 
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,

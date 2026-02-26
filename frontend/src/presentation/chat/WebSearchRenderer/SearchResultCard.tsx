@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -25,10 +26,22 @@ function extractDomain(url: string): string {
 
 export function SearchResultCard({ result }: SearchResultCardProps) {
   const domain = extractDomain(result.url);
+  const [faviconError, setFaviconError] = useState(false);
 
   return (
     <div className="flex items-start gap-2.5 py-2 px-1">
-      <Globe className="size-4 shrink-0 mt-0.5 text-indigo-500" />
+      {faviconError ? (
+        <Globe className="size-4 shrink-0 mt-0.5 text-indigo-500" />
+      ) : (
+        <img
+          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=16`}
+          alt=""
+          width={16}
+          height={16}
+          className="size-4 shrink-0 mt-0.5"
+          onError={() => setFaviconError(true)}
+        />
+      )}
       <div className="min-w-0 flex-1">
         <a
           href={result.url}

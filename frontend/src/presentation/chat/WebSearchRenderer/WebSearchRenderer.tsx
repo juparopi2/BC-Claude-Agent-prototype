@@ -5,7 +5,7 @@ import { Search, ChevronDown, ChevronUp } from 'lucide-react';
 import type { RendererProps } from '../AgentResultRenderer/types';
 import { SearchResultCard } from './SearchResultCard';
 
-const MAX_VISIBLE_RESULTS = 8;
+const MAX_VISIBLE_RESULTS = 3;
 
 interface SearchResult {
   type: string;

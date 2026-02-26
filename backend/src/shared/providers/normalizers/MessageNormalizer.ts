@@ -398,8 +398,27 @@ export function normalizeAIMessage(
   // Handle array content (rich blocks)
   if (Array.isArray(content)) {
     let thinkingContent = '';
-    let textContent = '';
-    const toolRequests: NormalizedToolRequestEvent[] = [];
+
+    // Segment-based tracking: text is split at server tool boundaries so that
+    // [text1, server_tool_use, result, text2] produces separate assistant_message events
+    // instead of one concatenated message.
+    type ContentSegment =
+      | { kind: 'text'; content: string }
+      | { kind: 'server_tool_request'; event: NormalizedToolRequestEvent }
+      | { kind: 'server_tool_response'; event: NormalizedToolResponseEvent };
+
+    const segments: ContentSegment[] = [];
+    let pendingText = '';
+    const regularToolRequests: NormalizedToolRequestEvent[] = [];
+    let hasToolUseContentBlocks = false;
+
+    // Helper to flush accumulated text into a segment
+    const flushText = () => {
+      if (pendingText.trim()) {
+        segments.push({ kind: 'text', content: pendingText });
+      }
+      pendingText = '';
+    };
 
     // Parse content blocks
     for (const block of content as ContentBlock[]) {
@@ -412,22 +431,25 @@ export function normalizeAIMessage(
         case 'text':
         case 'text_delta':
           if ('text' in block) {
-            textContent += (block as TextBlock).text;
+            pendingText += (block as TextBlock).text;
           }
           break;
         case 'tool_use':
           if ('id' in block && 'name' in block) {
+            hasToolUseContentBlocks = true;
             const toolBlock = block as ToolUseBlock;
             const toolEvent = createToolRequestEvent(
               sessionId, toolBlock.id, toolBlock.name, toolBlock.input, provider,
               timestamp, messageIndex * 100 + eventIndex++
             );
             toolEvent.sourceAgentId = sourceAgentId;
-            toolRequests.push(toolEvent);
+            regularToolRequests.push(toolEvent);
           }
           break;
         case 'server_tool_use': {
-          // Server-side tool invocation (web_search, code_execution, etc.)
+          hasToolUseContentBlocks = true;
+          // Flush any pending text BEFORE the server tool
+          flushText();
           const serverBlock = block as ServerToolUseBlock;
           if (serverBlock.id && serverBlock.name) {
             const toolEvent = createToolRequestEvent(
@@ -435,7 +457,7 @@ export function normalizeAIMessage(
               timestamp, messageIndex * 100 + eventIndex++
             );
             toolEvent.sourceAgentId = sourceAgentId;
-            toolRequests.push(toolEvent);
+            segments.push({ kind: 'server_tool_request', event: toolEvent });
           }
           break;
         }
@@ -443,6 +465,8 @@ export function normalizeAIMessage(
           // Handle server tool result blocks (web_search_tool_result, code_execution_tool_result, etc.)
           const resultBlock = block as { type?: string; tool_use_id?: string; content?: unknown };
           if (resultBlock.type?.endsWith('_tool_result') && resultBlock.tool_use_id) {
+            // Flush any pending text before the server tool result (handles orphan results)
+            flushText();
             // Extract the tool name from the result type (e.g., 'web_search_tool_result' → 'web_search')
             const toolName = resultBlock.type.replace('_tool_result', '');
             const toolResponseEvent = createToolResponseEvent(
@@ -450,15 +474,18 @@ export function normalizeAIMessage(
               timestamp, messageIndex * 100 + eventIndex++
             );
             toolResponseEvent.sourceAgentId = sourceAgentId;
-            events.push(toolResponseEvent);
+            segments.push({ kind: 'server_tool_response', event: toolResponseEvent });
           }
           break;
         }
       }
     }
 
-    // Prefer LangChain standardized tool_calls if available and no tool_use blocks found
-    if (toolRequests.length === 0) {
+    // Flush remaining text after all blocks
+    flushText();
+
+    // Prefer LangChain standardized tool_calls if no tool_use content blocks found
+    if (!hasToolUseContentBlocks) {
       const toolCalls = (message as { tool_calls?: LangChainToolCall[] }).tool_calls;
       if (toolCalls?.length) {
         for (const tc of toolCalls) {
@@ -467,21 +494,26 @@ export function normalizeAIMessage(
             timestamp, messageIndex * 100 + eventIndex++
           );
           toolEvent.sourceAgentId = sourceAgentId;
-          toolRequests.push(toolEvent);
+          regularToolRequests.push(toolEvent);
         }
       }
     }
 
-    // Tag handoff-back text content as internal (PRD-061)
-    const isHandoffBackArray = HANDOFF_BACK_PATTERN.test(textContent.trim()) && !usage;
+    // Concatenate all text for handoff-back detection
+    const allTextContent = segments
+      .filter((s): s is { kind: 'text'; content: string } => s.kind === 'text')
+      .map(s => s.content)
+      .join('');
+
+    const isHandoffBackArray = HANDOFF_BACK_PATTERN.test(allTextContent.trim()) && !usage;
     if (isHandoffBackArray) {
       logger.debug(
-        { sessionId, messageIndex, content: textContent.substring(0, 60) },
+        { sessionId, messageIndex, content: allTextContent.substring(0, 60) },
         'Tagged handoff-back message as internal (array content)'
       );
     }
 
-    // Emit in semantic order: thinking -> text -> tools
+    // Emit in source order: thinking -> segments -> regular tools
 
     // 1. Thinking first
     if (thinkingContent) {
@@ -493,22 +525,49 @@ export function normalizeAIMessage(
       events.push(thinkingEvent);
     }
 
-    // 2. Assistant message (text) before tools
-    if (textContent.trim()) {
-      const msgEvent = createAssistantMessageEvent(
-        sessionId, messageId, textContent, stopReason, model, usage, provider,
-        timestamp, messageIndex * 100 + eventIndex++
-      );
-      msgEvent.sourceAgentId = sourceAgentId;
-      if (isHandoffBackArray) {
-        msgEvent.isInternal = true;
-        (msgEvent as { persistenceStrategy: string }).persistenceStrategy = 'transient';
+    // 2. Segments in source order (text, server tool requests, server tool responses)
+    let isFirstTextSegment = true;
+    for (const segment of segments) {
+      switch (segment.kind) {
+        case 'text': {
+          // Each text segment needs a unique messageId for the frontend store's dedup index.
+          // Only the first segment keeps the original messageId; subsequent segments get new UUIDs.
+          const segmentMessageId = isFirstTextSegment ? messageId : randomUUID();
+          const msgEvent = createAssistantMessageEvent(
+            sessionId, segmentMessageId, segment.content, stopReason, model,
+            isFirstTextSegment ? usage : null,  // Only first text segment gets usage
+            provider, timestamp, messageIndex * 100 + eventIndex++
+          );
+          msgEvent.sourceAgentId = sourceAgentId;
+          if (isHandoffBackArray) {
+            msgEvent.isInternal = true;
+            (msgEvent as { persistenceStrategy: string }).persistenceStrategy = 'transient';
+          }
+          events.push(msgEvent);
+          isFirstTextSegment = false;
+          break;
+        }
+        case 'server_tool_request':
+          events.push(segment.event);
+          break;
+        case 'server_tool_response':
+          events.push(segment.event);
+          break;
       }
-      events.push(msgEvent);
     }
 
-    // 3. Tool requests last
-    events.push(...toolRequests);
+    // 3. Regular tool requests last (their results come from ToolMessages via BatchResultNormalizer)
+    events.push(...regularToolRequests);
+
+    // 4. Re-index originalIndex after segment emission to maintain monotonic ordering
+    const hasServerTools = segments.some(s => s.kind === 'server_tool_request');
+    if (hasServerTools) {
+      let idx = 0;
+      for (const evt of events) {
+        evt.originalIndex = messageIndex * 100 + idx++;
+      }
+      eventIndex = idx;
+    }
   }
 
   return events;

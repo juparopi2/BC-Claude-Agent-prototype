@@ -261,6 +261,230 @@ describe('MessageNormalizer', () => {
       });
     });
 
+    describe('server tool events (web_search, code_execution)', () => {
+      it('should place tool_request before tool_response for server tools', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'text', text: 'Let me search for that.' },
+            { type: 'server_tool_use', id: 'srvtoolu_123', name: 'web_search', input: { query: 'test query' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_123', content: [{ type: 'web_search_result', url: 'https://example.com', title: 'Example' }] },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_srv1',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        expect(types).toEqual(['assistant_message', 'tool_request', 'tool_response']);
+
+        // Verify tool_request and tool_response share the same toolUseId
+        const toolReq = events.find(e => e.type === 'tool_request') as any;
+        const toolRes = events.find(e => e.type === 'tool_response') as any;
+        expect(toolReq.toolUseId).toBe('srvtoolu_123');
+        expect(toolRes.toolUseId).toBe('srvtoolu_123');
+      });
+
+      it('should interleave multiple server tool requests and responses correctly', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'server_tool_use', id: 'srv_a', name: 'web_search', input: { query: 'first' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_a', content: [{ type: 'web_search_result', url: 'https://a.com' }] },
+            { type: 'server_tool_use', id: 'srv_b', name: 'web_search', input: { query: 'second' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_b', content: [{ type: 'web_search_result', url: 'https://b.com' }] },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_srv2',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        expect(types).toEqual(['tool_request', 'tool_response', 'tool_request', 'tool_response']);
+
+        // Verify pairing
+        expect((events[0] as any).toolUseId).toBe('srv_a');
+        expect((events[1] as any).toolUseId).toBe('srv_a');
+        expect((events[2] as any).toolUseId).toBe('srv_b');
+        expect((events[3] as any).toolUseId).toBe('srv_b');
+      });
+
+      it('should emit server tool pair in source order, then regular tools at end', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'tool_use', id: 'toolu_regular', name: 'search_docs', input: { q: 'test' } },
+            { type: 'server_tool_use', id: 'srv_ws', name: 'web_search', input: { query: 'test' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_ws', content: [] },
+          ],
+          responseMetadata: { stop_reason: 'tool_use', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_srv3',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        // Server tool pair first (from segments), then regular tool at end
+        expect(types).toEqual(['tool_request', 'tool_response', 'tool_request']);
+
+        // Server tool pair
+        expect((events[0] as any).toolUseId).toBe('srv_ws');
+        expect((events[1] as any).toolUseId).toBe('srv_ws');
+        // Regular tool last (its response comes from ToolMessage separately)
+        expect((events[2] as any).toolUseId).toBe('toolu_regular');
+      });
+
+      it('should have monotonically increasing originalIndex after server tool interleaving', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'thinking', thinking: 'Let me search...' },
+            { type: 'text', text: 'Searching now.' },
+            { type: 'server_tool_use', id: 'srv_idx', name: 'web_search', input: { query: 'test' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_idx', content: [] },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_srv4',
+        });
+
+        const events = normalizeAIMessage(message, 2, SESSION_ID);
+
+        // Verify monotonically increasing originalIndex
+        for (let i = 1; i < events.length; i++) {
+          expect(events[i].originalIndex).toBeGreaterThan(events[i - 1].originalIndex);
+        }
+
+        // All should be in messageIndex=2 range (200+)
+        for (const event of events) {
+          expect(event.originalIndex).toBeGreaterThanOrEqual(200);
+          expect(event.originalIndex).toBeLessThan(300);
+        }
+      });
+
+      it('should split text into separate messages around server tools', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'text', text: 'Let me search for that.' },
+            { type: 'server_tool_use', id: 'srv_split', name: 'web_search', input: { query: 'test' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_split', content: [{ type: 'web_search_result', url: 'https://example.com', title: 'Example' }] },
+            { type: 'text', text: 'Here are the results I found.' },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_split1',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        expect(types).toEqual(['assistant_message', 'tool_request', 'tool_response', 'assistant_message']);
+
+        // Verify text content is split correctly
+        expect((events[0] as any).content).toBe('Let me search for that.');
+        expect((events[3] as any).content).toBe('Here are the results I found.');
+
+        // Each text segment must have a unique messageId (frontend dedup depends on this)
+        const firstMsgId = (events[0] as any).messageId;
+        const secondMsgId = (events[3] as any).messageId;
+        expect(firstMsgId).toBe('msg_split1');  // First keeps original
+        expect(secondMsgId).not.toBe(firstMsgId);  // Second gets new UUID
+      });
+
+      it('should attach usage only to first text segment when split by server tools', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'text', text: 'Before the search.' },
+            { type: 'server_tool_use', id: 'srv_usage', name: 'web_search', input: { query: 'test' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_usage', content: [] },
+            { type: 'text', text: 'After the search.' },
+          ],
+          responseMetadata: {
+            stop_reason: 'end_turn',
+            model: 'claude-sonnet-4-5-20250929',
+            usage: { input_tokens: 100, output_tokens: 50 },
+          },
+          id: 'msg_usage_split',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        // First text segment gets the usage
+        const firstMsg = events[0] as any;
+        expect(firstMsg.type).toBe('assistant_message');
+        expect(firstMsg.tokenUsage).toEqual({ inputTokens: 100, outputTokens: 50 });
+
+        // Second text segment gets zero usage
+        const secondMsg = events[3] as any;
+        expect(secondMsg.type).toBe('assistant_message');
+        expect(secondMsg.tokenUsage).toEqual({ inputTokens: 0, outputTokens: 0 });
+      });
+
+      it('should handle text-tool-text-tool-text pattern', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'text', text: 'First part.' },
+            { type: 'server_tool_use', id: 'srv_a', name: 'web_search', input: { query: 'first' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_a', content: [] },
+            { type: 'text', text: 'Middle part.' },
+            { type: 'server_tool_use', id: 'srv_b', name: 'web_search', input: { query: 'second' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_b', content: [] },
+            { type: 'text', text: 'Final part.' },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_multi_split',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        expect(types).toEqual([
+          'assistant_message', 'tool_request', 'tool_response',
+          'assistant_message', 'tool_request', 'tool_response',
+          'assistant_message',
+        ]);
+
+        expect((events[0] as any).content).toBe('First part.');
+        expect((events[3] as any).content).toBe('Middle part.');
+        expect((events[6] as any).content).toBe('Final part.');
+      });
+
+      it('should handle server tool with no preceding text', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'server_tool_use', id: 'srv_no_pre', name: 'web_search', input: { query: 'test' } },
+            { type: 'web_search_tool_result', tool_use_id: 'srv_no_pre', content: [] },
+            { type: 'text', text: 'Here are the results.' },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_no_pre',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        expect(types).toEqual(['tool_request', 'tool_response', 'assistant_message']);
+
+        expect((events[2] as any).content).toBe('Here are the results.');
+      });
+
+      it('should push orphan server tool_response to end when no matching request found', () => {
+        const message = createMockMessage({
+          content: [
+            { type: 'text', text: 'Some text.' },
+            // Orphan result with no matching server_tool_use
+            { type: 'web_search_tool_result', tool_use_id: 'srv_orphan', content: [] },
+          ],
+          responseMetadata: { stop_reason: 'end_turn', model: 'claude-sonnet-4-5-20250929' },
+          id: 'msg_srv5',
+        });
+
+        const events = normalizeAIMessage(message, 0, SESSION_ID);
+
+        const types = events.map(e => e.type);
+        expect(types).toEqual(['assistant_message', 'tool_response']);
+
+        // Orphan pushed to end
+        expect((events[events.length - 1] as any).toolUseId).toBe('srv_orphan');
+      });
+    });
+
     describe('non-AI messages', () => {
       it('should return empty array for human messages', () => {
         const message = createMockMessage({ content: 'User input', type: 'human' });

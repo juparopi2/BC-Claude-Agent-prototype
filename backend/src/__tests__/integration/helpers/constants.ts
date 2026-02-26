@@ -71,7 +71,7 @@ export const TEST_TIMEOUTS = {
   /** afterAll hook timeout (ms) */
   AFTER_ALL: 30000,
   /** Database initialization timeout (ms) */
-  DATABASE_INIT: 30000,
+  DATABASE_INIT: 90000,
   /** Redis initialization timeout (ms) */
   REDIS_INIT: 10000,
   /** Socket connection timeout (ms) */

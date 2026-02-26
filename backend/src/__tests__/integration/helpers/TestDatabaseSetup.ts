@@ -197,12 +197,12 @@ export async function closeDatabaseConnection(): Promise<void> {
  * ```
  */
 export function setupDatabaseForTests(options: {
-  /** Timeout for database initialization in ms (default: 30000) */
+  /** Timeout for database initialization in ms (default: 90000) */
   timeout?: number;
   /** Skip Redis initialization (default: false) */
   skipRedis?: boolean;
 } = {}) {
-  const timeout = options.timeout || 30000;
+  const timeout = options.timeout || 90000;
   const skipRedis = options.skipRedis || false;
 
   beforeAll(async () => {
@@ -280,7 +280,7 @@ export function setupFullIntegrationTest(options: {
   /** Timeout for initialization in ms */
   timeout?: number;
 } = {}) {
-  const timeout = options.timeout || 30000;
+  const timeout = options.timeout || 90000;
 
   // Setup Database and Redis (production client for TestSessionFactory compatibility)
   beforeAll(async () => {

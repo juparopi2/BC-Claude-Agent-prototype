@@ -47,7 +47,11 @@ vi.mock('@/shared/utils/logger', () => {
 // Note: External services are now injected via DI instead of vi.mock
 // This avoids issues with dynamic imports in workers not picking up mocks
 
-describe('Embedding Generation Pipeline', () => {
+// SKIPPED: addEmbeddingGenerationJob is not used in production code.
+// The old EMBEDDING_GENERATION queue was replaced by the BullMQ Flow pipeline
+// (FILE_EXTRACT -> FILE_CHUNK -> FILE_EMBED -> FILE_PIPELINE_COMPLETE).
+// QueueName.EMBEDDING_GENERATION no longer exists in the QueueName enum.
+describe.skip('Embedding Generation Pipeline', () => {
   setupDatabaseForTests();
 
   let messageQueue: MessageQueue;

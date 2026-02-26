@@ -30,7 +30,7 @@ import type { FileDeletionJobData } from '@bc-agent/shared';
 
 // Re-export from constants for backward compatibility
 export { QueueName } from './constants';
-import { QueueName, JOB_PRIORITY, SHUTDOWN_DELAYS } from './constants';
+import { QueueName, JOB_PRIORITY, SHUTDOWN_DELAYS, RATE_LIMIT } from './constants';
 
 // Re-export types for backward compatibility
 export type {
@@ -39,6 +39,7 @@ export type {
   EventProcessingJob,
   UsageAggregationJob,
   CitationPersistenceJob,
+  EmbeddingGenerationJob,
 } from './types';
 import type {
   MessagePersistenceJob,
@@ -380,6 +381,9 @@ export class MessageQueue {
 
   /**
    * Add Message to Persistence Queue
+   *
+   * Tracks rate limit usage per session in Redis using INCR with TTL.
+   * Key: queue:ratelimit:{sessionId}, TTL: RATE_LIMIT.WINDOW_SECONDS
    */
   public async addMessagePersistence(data: MessagePersistenceJob): Promise<string> {
     await this.waitForReady();
@@ -387,6 +391,15 @@ export class MessageQueue {
     const queue = this.queueManager.getQueue(QueueName.MESSAGE_PERSISTENCE);
     if (!queue) {
       throw new Error('Message persistence queue not initialized');
+    }
+
+    // Track rate limit usage per session
+    const rateLimitKey = `${RATE_LIMIT.KEY_PREFIX}${data.sessionId}`;
+    const redis = this.redisManager.getConnection();
+    const count = await redis.incr(rateLimitKey);
+    if (count === 1) {
+      // First increment: set TTL for the rate limit window
+      await redis.expire(rateLimitKey, RATE_LIMIT.WINDOW_SECONDS);
     }
 
     const job = await queue.add('persist-message', data, {
@@ -404,6 +417,35 @@ export class MessageQueue {
     });
 
     return job.id || '';
+  }
+
+  /**
+   * Get rate limit status for a session
+   *
+   * Returns current job count, limit, remaining, and whether within limit.
+   * Uses Redis key: queue:ratelimit:{sessionId}
+   */
+  public async getRateLimitStatus(sessionId: string): Promise<{
+    count: number;
+    limit: number;
+    remaining: number;
+    withinLimit: boolean;
+  }> {
+    await this.waitForReady();
+
+    const rateLimitKey = `${RATE_LIMIT.KEY_PREFIX}${sessionId}`;
+    const redis = this.redisManager.getConnection();
+    const raw = await redis.get(rateLimitKey);
+    const count = raw ? parseInt(raw, 10) : 0;
+    const limit = RATE_LIMIT.MAX_JOBS_PER_SESSION;
+    const remaining = Math.max(0, limit - count);
+
+    return {
+      count,
+      limit,
+      remaining,
+      withinLimit: count <= limit,
+    };
   }
 
   /**

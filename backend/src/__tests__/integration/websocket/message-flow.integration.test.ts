@@ -56,7 +56,10 @@ vi.mock('@domains/agent/orchestration', async (importOriginal) => {
  */
 describe('WebSocket Message Flow Integration', () => {
   // Setup REAL database + Redis connection
-  setupDatabaseForTests();
+  // Use a 90s timeout to handle transient Azure SQL connection exhaustion during
+  // consecutive test suite runs. connectWithRetry uses up to 10 attempts with
+  // exponential backoff (max 3.2s/attempt) + 30s connectionTimeout per attempt.
+  setupDatabaseForTests({ timeout: TEST_TIMEOUTS.DATABASE_INIT });
 
   let serverResult: SocketIOServerResult;
   let factory: TestSessionFactory;

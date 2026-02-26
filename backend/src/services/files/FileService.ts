@@ -111,8 +111,23 @@ export class FileService {
 
   /**
    * Create file record
+   *
+   * Validates that the filename is not a blob path or contains path segments
+   * that belong to the blob storage structure.
    */
   public async createFileRecord(options: CreateFileOptions): Promise<string> {
+    const { name } = options;
+
+    // Reject filenames that look like blob storage paths:
+    // 1. Names that contain 'users/' (blob path prefix)
+    // 2. Names that match the blob filename pattern: <13-digit-timestamp>-<sanitized-name>
+    const isBlobPathPrefix = name.includes('users/');
+    const isBlobFilenamePattern = /^\d{13}-.+/.test(name);
+
+    if (isBlobPathPrefix || isBlobFilenamePattern) {
+      throw new Error('File name cannot be a blob path');
+    }
+
     return this.repository.create(options);
   }
 

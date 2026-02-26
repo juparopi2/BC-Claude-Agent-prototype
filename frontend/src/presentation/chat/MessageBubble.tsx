@@ -172,6 +172,7 @@ export default function MessageBubble({
           ) : (
             <MarkdownRenderer
               content={message.content}
+              variant={isUser ? 'user' : 'default'}
               citationFileMap={citationFileMap}
               onCitationOpen={onCitationOpen}
             />

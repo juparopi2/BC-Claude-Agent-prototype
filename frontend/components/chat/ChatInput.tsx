@@ -675,7 +675,7 @@ export default function ChatInput({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Web search</p>
+                  <p className="text-xs">Enforced web search</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

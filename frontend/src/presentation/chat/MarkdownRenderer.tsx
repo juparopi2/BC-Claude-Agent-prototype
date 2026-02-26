@@ -17,6 +17,8 @@ import type { CitationFileMap } from '@/lib/types/citation.types';
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  /** Render variant: 'user' adjusts link colors for primary background */
+  variant?: 'default' | 'user';
   /** Map of fileName -> fileId for citation matching */
   citationFileMap?: CitationFileMap;
   /** Callback when a citation is clicked */
@@ -26,6 +28,7 @@ interface MarkdownRendererProps {
 export function MarkdownRenderer({
   content,
   className,
+  variant = 'default',
   citationFileMap,
   onCitationOpen,
 }: MarkdownRendererProps) {
@@ -206,7 +209,12 @@ export function MarkdownRenderer({
     a: ({ href, children }) => (
       <a
         href={href}
-        className="text-primary underline hover:text-primary/80 transition-colors"
+        className={cn(
+          'underline transition-colors',
+          variant === 'user'
+            ? 'text-inherit font-bold hover:opacity-80'
+            : 'text-primary hover:text-primary/80'
+        )}
         target="_blank"
         rel="noopener noreferrer"
       >

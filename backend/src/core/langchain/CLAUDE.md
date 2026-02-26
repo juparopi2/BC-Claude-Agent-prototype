@@ -73,6 +73,8 @@ This split exists because Anthropic's API prohibits combining thinking with tool
 
 - **Location**: `core/langchain/FirstCallToolEnforcer.ts`
 - **Purpose**: Forces tool_choice: 'any' on first LLM call, then 'auto' for subsequent calls
+- **Supports**: Both client-side tools (`StructuredToolInterface`) and server-side tools (`ServerTool`)
+- **Applied to**: ALL worker agents (BC, RAG, Graphing, Research)
 - **Mechanism**: Overrides `invoke()` on a pre-bound `RunnableBinding`, switching between forced/auto models based on call count per thread_id
 - **Thread safety**: Uses Map<thread_id, callCount> for concurrent invocations (evicts at 100 entries)
 - **Integration**: `agent-builders.ts` wraps each worker model with `createFirstCallEnforcer(model, tools)`

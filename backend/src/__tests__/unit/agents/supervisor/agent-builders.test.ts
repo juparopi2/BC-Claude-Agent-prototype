@@ -178,34 +178,32 @@ describe('agent-builders', () => {
       }
     });
 
-    it('should pass enforced model (not raw model) to createReactAgent for client-tool agents', async () => {
+    it('should pass enforced model (not raw model) to createReactAgent for ALL worker agents', async () => {
       const { createReactAgent } = await import('@langchain/langgraph/prebuilt');
       const mockCreateReactAgent = vi.mocked(createReactAgent);
 
       await buildReactAgents();
 
-      // Verify the enforced model is passed for agents with client-side tools (BC, RAG, Graphing).
-      // Research agent uses Anthropic server-side tools and binds directly — its llm is not the enforcer.
-      const clientToolAgentNames = ['bc-agent', 'rag-agent', 'graphing-agent'];
-      const clientToolCalls = mockCreateReactAgent.mock.calls.filter((call) => {
+      // All worker agents (BC, RAG, Graphing, Research) use FirstCallToolEnforcer.
+      const allWorkerAgentNames = ['bc-agent', 'rag-agent', 'graphing-agent', 'research-agent'];
+      const enforcedCalls = mockCreateReactAgent.mock.calls.filter((call) => {
         const config = call[0] as { name?: string };
-        return clientToolAgentNames.includes(config.name ?? '');
+        return allWorkerAgentNames.includes(config.name ?? '');
       });
 
-      expect(clientToolCalls).toHaveLength(3);
-      for (const call of clientToolCalls) {
+      expect(enforcedCalls).toHaveLength(4);
+      for (const call of enforcedCalls) {
         const config = call[0] as { llm: unknown };
         expect(config.llm).toBe(mockEnforcerResult);
         expect(config.llm).not.toBe(mockModel);
       }
     });
 
-    it('should call createFirstCallEnforcer with model and domain tools for each agent', async () => {
+    it('should call createFirstCallEnforcer with model and domain tools for ALL worker agents', async () => {
       await buildReactAgents();
 
-      // 3 client-tool worker agents: BC, RAG, Graphing
-      // Research agent uses Anthropic server-side tools (bindTools directly), no enforcer needed
-      expect(mockCreateFirstCallEnforcer).toHaveBeenCalledTimes(3);
+      // All 4 worker agents: BC, RAG, Graphing, Research — all use FirstCallToolEnforcer
+      expect(mockCreateFirstCallEnforcer).toHaveBeenCalledTimes(4);
 
       // Each call should receive the model and an array of tools
       for (const call of mockCreateFirstCallEnforcer.mock.calls) {

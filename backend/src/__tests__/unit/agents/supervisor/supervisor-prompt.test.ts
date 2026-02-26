@@ -52,5 +52,23 @@ describe('supervisor-prompt', () => {
       expect(prompt.toLowerCase()).toContain('agent');
       expect(prompt).toContain('AVAILABLE AGENTS');
     });
+
+    it('should contain orchestrator identity', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('Orchestrator');
+    });
+
+    it('should contain evaluation workflow', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('EVALUATE');
+      expect(prompt).toContain('PLAN');
+      expect(prompt).toContain('DELEGATE');
+      expect(prompt).toContain('DECIDE');
+    });
+
+    it('should NOT contain "You are a ROUTER"', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).not.toContain('You are a ROUTER');
+    });
   });
 });

@@ -19,7 +19,7 @@
  */
 
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import type { StructuredToolInterface } from '@langchain/core/tools';
+import type { StructuredToolInterface, ServerTool } from '@langchain/core/tools';
 import type { Runnable, RunnableConfig } from '@langchain/core/runnables';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { RunnableBinding } from '@langchain/core/runnables';
@@ -29,6 +29,9 @@ const logger = createChildLogger({ service: 'FirstCallToolEnforcer' });
 
 /** Maximum tracked thread_ids before eviction (prevents unbounded growth) */
 const MAX_TRACKED_THREADS = 100;
+
+/** Both client-side (StructuredToolInterface) and server-side (ServerTool) tools */
+type EnforceableTool = StructuredToolInterface | ServerTool;
 
 /**
  * Creates a hybrid tool-enforced model wrapper.
@@ -40,14 +43,18 @@ const MAX_TRACKED_THREADS = 100;
  * (ChatAnthropic.bindTools uses withConfig, storing tools in config not kwargs).
  * createReactAgent's _shouldBindTools() checks config.tools as fallback → returns false.
  *
+ * Supports both client-side tools (StructuredToolInterface) and server-side tools
+ * (ServerTool, e.g., Anthropic web_search, code_execution). ChatAnthropic.bindTools()
+ * accepts both types at runtime.
+ *
  * @param model - Base chat model (must support bindTools)
- * @param tools - Domain tools to bind
+ * @param tools - Domain tools to bind (client-side or server-side)
  * @returns Pre-bound Runnable compatible with createReactAgent's llm param
  * @throws If model does not support bindTools
  */
 export function createFirstCallEnforcer(
   model: BaseChatModel,
-  tools: StructuredToolInterface[],
+  tools: EnforceableTool[],
 ): Runnable {
   if (!('bindTools' in model) || typeof model.bindTools !== 'function') {
     throw new Error(

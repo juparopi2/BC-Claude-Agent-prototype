@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createFirstCallEnforcer } from '@/core/langchain/FirstCallToolEnforcer';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import type { StructuredToolInterface } from '@langchain/core/tools';
+import type { StructuredToolInterface, ServerTool } from '@langchain/core/tools';
 
 /**
  * Creates a mock BaseChatModel with bindTools support.
@@ -47,6 +47,13 @@ function createMockTools(count = 1): StructuredToolInterface[] {
     invoke: vi.fn(),
     lc_namespace: ['test'],
   })) as unknown as StructuredToolInterface[];
+}
+
+function createMockServerTools(count = 1): ServerTool[] {
+  return Array.from({ length: count }, (_, i) => ({
+    type: `web_search_2025030${i}`,
+    name: `web_search_${i}`,
+  })) as ServerTool[];
 }
 
 describe('FirstCallToolEnforcer', () => {
@@ -225,6 +232,47 @@ describe('FirstCallToolEnforcer', () => {
       // Only first call is forced, rest auto (same thread_id key persists)
       expect(forcedInvoke).toHaveBeenCalledTimes(1);
       expect(autoInvoke).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('with server-side tools (ServerTool type)', () => {
+    it('should accept server-side tools without throwing', () => {
+      const { model } = createMockModel();
+      const serverTools = createMockServerTools(2);
+
+      const result = createFirstCallEnforcer(model, serverTools);
+
+      expect(result).toBeDefined();
+      expect(model.bindTools).toHaveBeenCalledTimes(2);
+      expect(model.bindTools).toHaveBeenCalledWith(serverTools, { tool_choice: 'any' });
+      expect(model.bindTools).toHaveBeenCalledWith(serverTools);
+    });
+
+    it('should enforce tool_choice on first call with server-side tools', async () => {
+      const { model, forcedInvoke, autoInvoke } = createMockModel();
+      const serverTools = createMockServerTools(3);
+
+      const result = createFirstCallEnforcer(model, serverTools);
+
+      const config = { configurable: { thread_id: 'server-tools-thread' } };
+      await result.invoke('input 1', config);
+      await result.invoke('input 2', config);
+
+      expect(forcedInvoke).toHaveBeenCalledTimes(1);
+      expect(autoInvoke).toHaveBeenCalledTimes(1);
+    });
+
+    it('should accept a mix of client and server tools', () => {
+      const { model } = createMockModel();
+      const clientTools = createMockTools(2);
+      const serverTools = createMockServerTools(1);
+      const mixedTools = [...clientTools, ...serverTools];
+
+      const result = createFirstCallEnforcer(model, mixedTools);
+
+      expect(result).toBeDefined();
+      expect(model.bindTools).toHaveBeenCalledWith(mixedTools, { tool_choice: 'any' });
+      expect(model.bindTools).toHaveBeenCalledWith(mixedTools);
     });
   });
 });

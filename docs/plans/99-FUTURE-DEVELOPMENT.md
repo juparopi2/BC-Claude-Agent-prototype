@@ -28,7 +28,7 @@ Este documento centraliza todos los planes futuros, organizados por categoría p
 9. **Fase 7**: ✅ Agent-Specific UI Rendering - **COMPLETADO** (2026-02-09)
 10. **Fase 8**: 🟡 Optimization (Prompt Caching) - **Planificado** (PRD-080)
 
-**Estado**: En Progreso - Phases 0, 0.5, 1, 5 Completados. System prompts alineados con product context.
+**Estado**: En Progreso - Phases 0, 0.5, 1, 5 Completados. Phases 3/4 partially addressed (tool enforcement + Orchestrator-Judge prompt + anti-confusion worker prompts). System prompts alineados con product context.
 
 **Próximo paso inmediato**: Agent Selector UI (dropdown para selección de agentes, reemplaza toggle "My Files")
 
@@ -100,6 +100,31 @@ Mejoras en la estabilidad, calidad del código e infraestructura existente.
 **Solución:** Reenfocar tests a validar estructura, flujo y metadatos, no contenido determinista. Implementar "Ground Truth" real.
 **Estimación:** 5-7 días
 
+
+### Supervisor Architecture Optimization (Media)
+**Context:** The multi-agent supervisor architecture was strengthened (tool enforcement for
+server-side tools, Orchestrator-Judge prompt pattern, anti-confusion worker prompts).
+Several optimizations were identified but deferred:
+
+**O1: Model Upgrade for Research Agent**
+- Current: Claude Haiku 4.5 (cost-optimized)
+- Consideration: Sonnet for better multi-step reasoning
+- Deferred: Cost constraints. Re-evaluate when budget allows.
+
+**O2: Context Optimization (Supervisor vs User visibility)**
+- Current: `outputMode: 'full_history'` — supervisor sees ALL agent messages
+- Consideration: Separate what the supervisor evaluates from what the user sees
+- Deferred: Requires framework changes. Full history needed for frontend tool rendering.
+
+**O3: addHandoffBackMessages Evaluation**
+- Current: `addHandoffBackMessages: true` adds synthetic "Transferring back to supervisor"
+  messages after each agent completes. Properly tagged as `isInternal: true` by
+  `MessageNormalizer.ts` (HANDOFF_BACK_PATTERN) and filtered from WebSocket/reload.
+- Finding: These messages don't confuse agents (added AFTER execution), but consume
+  tokens in the supervisor's context. Root cause of confusion was lack of tool enforcement
+  and weak prompts (both fixed).
+- Decision: Keep enabled. Re-evaluate if confusion persists post-fix.
+- Files: `supervisor-graph.ts`, `MessageNormalizer.ts` (HANDOFF_BACK_PATTERN)
 
 ### D28: WebSocket Event Constants Centralization (Media)
 **Problema:** Strings mágicos para eventos WS dispersos.

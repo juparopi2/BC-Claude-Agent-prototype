@@ -4,11 +4,10 @@
  * Builds createReactAgent() instances from the AgentRegistry.
  * Each agent is compiled once at startup with its static tools.
  *
- * Tool enforcement: Workers with client-side tools use FirstCallToolEnforcer to
- * guarantee at least one domain tool call per invocation (tool_choice: 'any' on
- * first call, 'auto' on subsequent calls for natural termination).
- * Workers with Anthropic server-side tools skip enforcement — Anthropic handles
- * their execution and they bind directly without FirstCallToolEnforcer.
+ * Tool enforcement: ALL worker agents use FirstCallToolEnforcer to guarantee
+ * at least one domain tool call per invocation (tool_choice: 'any' on first call,
+ * 'auto' on subsequent calls for natural termination). This applies to both
+ * client-side tools (StructuredToolInterface) and server-side tools (ServerTool).
  *
  * @module modules/agents/supervisor/agent-builders
  */
@@ -112,38 +111,22 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
         })
       : agentDef.systemPrompt;
 
-    // Detect if all tools are Anthropic server-side tools.
-    // Server tools don't need FirstCallToolEnforcer — Anthropic handles execution.
-    const allServerTools = domainTools.every(t => isAnthropicServerTool(t));
-
-    let modelToUse;
-    if (allServerTools) {
-      // Server-side tools: bind directly without enforcement.
-      // BaseChatModel.bindTools is optional — guard to ensure it exists at runtime.
-      if (!('bindTools' in model) || typeof model.bindTools !== 'function') {
-        throw new Error(
-          `Agent "${agentDef.id}" model does not support bindTools — cannot bind server-side tools`
-        );
-      }
-      modelToUse = model.bindTools(domainTools);
-      logger.info(
+    // Unified enforcement: ALL worker agents use FirstCallToolEnforcer.
+    // The enforcer accepts both client-side (StructuredToolInterface) and server-side (ServerTool) tools.
+    // It returns a pre-bound RunnableBinding that createReactAgent detects as already bound
+    // (_shouldBindTools → false), so it won't re-bind.
+    const enforcedModel = createFirstCallEnforcer(model, domainTools);
+    if (!RunnableBinding.isRunnableBinding(enforcedModel)) {
+      logger.error(
         { agentId: agentDef.id },
-        'Using server-side tools — skipping FirstCallToolEnforcer'
+        'CRITICAL: Enforcer is NOT a RunnableBinding — _shouldBindTools will re-bind and bypass enforcement!'
       );
-    } else {
-      // Custom client tools: apply hybrid enforcement (tool_choice 'any' first, then 'auto').
-      // The enforcer returns a pre-bound RunnableBinding that createReactAgent
-      // detects as already bound (_shouldBindTools → false), so it won't re-bind.
-      // Cast is safe: non-server-tools path means all entries are StructuredToolInterface.
-      const clientTools = domainTools as import('@langchain/core/tools').StructuredToolInterface[];
-      const enforcedModel = createFirstCallEnforcer(model, clientTools);
-      if (!RunnableBinding.isRunnableBinding(enforcedModel)) {
-        logger.error(
-          { agentId: agentDef.id },
-          'CRITICAL: Enforcer is NOT a RunnableBinding — _shouldBindTools will re-bind and bypass enforcement!'
-        );
-      }
-      modelToUse = enforcedModel;
+    }
+    const modelToUse = enforcedModel;
+
+    const allServerTools = domainTools.every(t => isAnthropicServerTool(t));
+    if (allServerTools) {
+      logger.info({ agentId: agentDef.id }, 'Server-side tools — enforcement via FirstCallToolEnforcer');
     }
 
     const agent = createReactAgent({

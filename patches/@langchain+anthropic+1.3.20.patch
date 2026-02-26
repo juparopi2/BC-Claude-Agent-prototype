@@ -23,25 +23,29 @@ index 3af742b..15f65bd 100644
  		"web_search_tool_result"
  	];
 diff --git a/node_modules/@langchain/anthropic/dist/utils/message_outputs.cjs b/node_modules/@langchain/anthropic/dist/utils/message_outputs.cjs
-index d005135..92907eb 100644
+index d005135..cc8f34f 100644
 --- a/node_modules/@langchain/anthropic/dist/utils/message_outputs.cjs
 +++ b/node_modules/@langchain/anthropic/dist/utils/message_outputs.cjs
-@@ -43,6 +43,7 @@ function _makeMessageChunkFromAnthropicEvent(data, fields) {
+@@ -43,6 +43,9 @@ function _makeMessageChunkFromAnthropicEvent(data, fields) {
  		"tool_use",
  		"document",
  		"server_tool_use",
++		"bash_code_execution_tool_result",
++		"text_editor_code_execution_tool_result",
 +		"web_fetch_tool_result",
  		"web_search_tool_result"
  	].includes(data.content_block.type)) {
  		const contentBlock = data.content_block;
 diff --git a/node_modules/@langchain/anthropic/dist/utils/message_outputs.js b/node_modules/@langchain/anthropic/dist/utils/message_outputs.js
-index 5222261..78a8fe1 100644
+index 5222261..8a9fbbe 100644
 --- a/node_modules/@langchain/anthropic/dist/utils/message_outputs.js
 +++ b/node_modules/@langchain/anthropic/dist/utils/message_outputs.js
-@@ -42,6 +42,7 @@ function _makeMessageChunkFromAnthropicEvent(data, fields) {
+@@ -42,6 +42,9 @@ function _makeMessageChunkFromAnthropicEvent(data, fields) {
  		"tool_use",
  		"document",
  		"server_tool_use",
++		"bash_code_execution_tool_result",
++		"text_editor_code_execution_tool_result",
 +		"web_fetch_tool_result",
  		"web_search_tool_result"
  	].includes(data.content_block.type)) {

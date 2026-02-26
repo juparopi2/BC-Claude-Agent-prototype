@@ -163,9 +163,11 @@ export class ModelFactory {
 
     switch (provider) {
       case 'anthropic': {
-        // Build beta headers list
+        // Build beta headers list (each server tool requires its own beta header)
         const betaHeaders: string[] = [];
         if (config.promptCaching) betaHeaders.push('prompt-caching-2024-07-31');
+        if (config.serverTools?.includes('web_search')) betaHeaders.push('web-search-2025-03-05');
+        if (config.serverTools?.includes('web_fetch')) betaHeaders.push('web-fetch-2025-09-10');
         if (config.serverTools?.includes('code_execution')) betaHeaders.push('code-execution-2025-08-25');
 
         const defaultHeaders: Record<string, string> | undefined = betaHeaders.length > 0

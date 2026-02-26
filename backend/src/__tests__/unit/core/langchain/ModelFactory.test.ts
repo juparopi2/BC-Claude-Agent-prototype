@@ -132,6 +132,18 @@ describe('ModelFactory', () => {
       );
     });
 
+    it('should include server tool beta headers for roles with serverTools', async () => {
+      await ModelFactory.create('research_agent');
+
+      const call = mockChatAnthropicConstructor.mock.calls[0][0];
+      const betaHeader = call.clientOptions?.defaultHeaders?.['anthropic-beta'] as string;
+      expect(betaHeader).toBeDefined();
+      expect(betaHeader).toContain('web-search-2025-03-05');
+      expect(betaHeader).toContain('web-fetch-2025-09-10');
+      expect(betaHeader).toContain('code-execution-2025-08-25');
+      expect(betaHeader).toContain('prompt-caching-2024-07-31');
+    });
+
     it('should not pass thinking config when disabled', async () => {
       await ModelFactory.create('bc_agent');
 

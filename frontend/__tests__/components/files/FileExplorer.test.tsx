@@ -7,9 +7,40 @@
  * Updated to use new domain hooks (useFiles, useFolderNavigation).
  */
 
+import React from 'react';
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { act } from '@testing-library/react';
+
+// Mock react-resizable-panels to avoid imperative panel API errors in test env
+vi.mock('react-resizable-panels', () => {
+  const PanelGroup = React.forwardRef<HTMLDivElement, React.PropsWithChildren<Record<string, unknown>>>(
+    ({ children, ...props }, ref) => <div ref={ref} data-testid="panel-group">{children}</div>
+  );
+  PanelGroup.displayName = 'PanelGroup';
+
+  const Panel = React.forwardRef<unknown, React.PropsWithChildren<Record<string, unknown>>>(
+    ({ children, ...props }, ref) => {
+      React.useImperativeHandle(ref, () => ({
+        expand: () => {},
+        collapse: () => {},
+        getSize: () => 20,
+        resize: () => {},
+        isCollapsed: () => false,
+        isExpanded: () => true,
+      }));
+      return <div data-testid="panel">{children}</div>;
+    }
+  );
+  Panel.displayName = 'Panel';
+
+  const PanelResizeHandle = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
+    <div data-testid="resize-handle">{children}</div>
+  );
+
+  return { PanelGroup, Panel, PanelResizeHandle };
+});
+
 import { FileExplorer } from '../../../components/files/FileExplorer';
 import {
   resetFileListStore,

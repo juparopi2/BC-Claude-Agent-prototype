@@ -62,6 +62,13 @@ const mockMentionStoreState = {
   clearMentions: vi.fn(),
 };
 
+// Mock pending chat store (used for mentions in pending mode)
+const mockPendingChatStoreState = {
+  mentions: [] as Array<{ fileId: string; name: string; isFolder: boolean; mimeType: string }>,
+  addMention: vi.fn(),
+  removeMention: vi.fn(),
+};
+
 vi.mock('@/src/domains/chat', () => ({
   useAgentState: vi.fn(() => mockAgentState),
   useSocketConnection: vi.fn(() => mockSocketConnection),
@@ -76,6 +83,9 @@ vi.mock('@/src/domains/chat', () => ({
   useAudioRecording: vi.fn(() => mockAudioRecordingState),
   useFileMentionStore: vi.fn((selector: (state: typeof mockMentionStoreState) => unknown) =>
     selector(mockMentionStoreState)
+  ),
+  usePendingChatStore: vi.fn((selector: (state: typeof mockPendingChatStoreState) => unknown) =>
+    selector(mockPendingChatStoreState)
   ),
 }));
 

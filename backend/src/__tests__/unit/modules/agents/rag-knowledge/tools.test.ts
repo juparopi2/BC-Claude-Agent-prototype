@@ -291,16 +291,24 @@ describe('visualImageSearchTool', () => {
 });
 
 describe('findSimilarImagesTool', () => {
+  // Use valid UUID-format IDs so the tool's UUID regex matches
+  // and doesn't trigger the findByNameGlobal fallback path
+  const FILE_1 = 'A1B2C3D4-0001-0000-0000-000000000001';
+  const FILE_2 = 'A1B2C3D4-0001-0000-0000-000000000002';
+  const FILE_3 = 'A1B2C3D4-0001-0000-0000-000000000003';
+  const FILE_4 = 'A1B2C3D4-0001-0000-0000-000000000004';
+  const FILE_MISSING = 'A1B2C3D4-0001-0000-0000-000000000099';
+
   beforeEach(() => {
     vi.clearAllMocks();
     // Default: return a file for getFile lookups
-    mockGetFile.mockResolvedValue({ id: 'FILE-1', name: 'source.jpg', mimeType: 'image/jpeg' });
+    mockGetFile.mockResolvedValue({ id: FILE_1, name: 'source.jpg', mimeType: 'image/jpeg' });
   });
 
   it('returns similar images excluding the source image', async () => {
     mockGetByFileId.mockResolvedValue({
       id: 'emb-1',
-      fileId: 'FILE-1',
+      fileId: FILE_1,
       userId: 'USER-1',
       embedding: new Array(1024).fill(0.1),
       dimensions: 1024,
@@ -309,29 +317,29 @@ describe('findSimilarImagesTool', () => {
     });
 
     mockSearchImages.mockResolvedValue([
-      { fileId: 'FILE-1', fileName: 'source.jpg', score: 1.0, isImage: true },
-      { fileId: 'FILE-2', fileName: 'similar1.jpg', score: 0.9, isImage: true },
-      { fileId: 'FILE-3', fileName: 'similar2.jpg', score: 0.8, isImage: true },
+      { fileId: FILE_1, fileName: 'source.jpg', score: 1.0, isImage: true },
+      { fileId: FILE_2, fileName: 'similar1.jpg', score: 0.9, isImage: true },
+      { fileId: FILE_3, fileName: 'similar2.jpg', score: 0.8, isImage: true },
     ]);
 
     const result = await findSimilarImagesTool.invoke(
-      { fileId: 'FILE-1' },
+      { fileId: FILE_1 },
       { configurable: { userId: 'USER-1' } }
     );
 
     const parsed = JSON.parse(result);
     expect(parsed._type).toBe('citation_result');
-    // Should exclude source (FILE-1), leaving FILE-2 and FILE-3
+    // Should exclude source (FILE_1), leaving FILE_2 and FILE_3
     expect(parsed.documents).toHaveLength(2);
-    expect(parsed.documents[0].fileId).toBe('FILE-2');
-    expect(parsed.documents[1].fileId).toBe('FILE-3');
+    expect(parsed.documents[0].fileId).toBe(FILE_2);
+    expect(parsed.documents[1].fileId).toBe(FILE_3);
   });
 
   it('returns error when source embedding not found', async () => {
     mockGetByFileId.mockResolvedValue(null);
 
     const result = await findSimilarImagesTool.invoke(
-      { fileId: 'NONEXISTENT' },
+      { fileId: FILE_MISSING },
       { configurable: { userId: 'USER-1' } }
     );
 
@@ -341,7 +349,7 @@ describe('findSimilarImagesTool', () => {
 
   it('returns error when no userId in config', async () => {
     const result = await findSimilarImagesTool.invoke(
-      { fileId: 'FILE-1' },
+      { fileId: FILE_1 },
       { configurable: {} }
     );
 
@@ -352,7 +360,7 @@ describe('findSimilarImagesTool', () => {
   it('respects maxResults parameter', async () => {
     mockGetByFileId.mockResolvedValue({
       id: 'emb-1',
-      fileId: 'FILE-1',
+      fileId: FILE_1,
       userId: 'USER-1',
       embedding: new Array(1024).fill(0.1),
       dimensions: 1024,
@@ -362,14 +370,14 @@ describe('findSimilarImagesTool', () => {
 
     // Return more results than maxResults
     mockSearchImages.mockResolvedValue([
-      { fileId: 'FILE-1', fileName: 'source.jpg', score: 1.0, isImage: true },
-      { fileId: 'FILE-2', fileName: 's1.jpg', score: 0.9, isImage: true },
-      { fileId: 'FILE-3', fileName: 's2.jpg', score: 0.8, isImage: true },
-      { fileId: 'FILE-4', fileName: 's3.jpg', score: 0.7, isImage: true },
+      { fileId: FILE_1, fileName: 'source.jpg', score: 1.0, isImage: true },
+      { fileId: FILE_2, fileName: 's1.jpg', score: 0.9, isImage: true },
+      { fileId: FILE_3, fileName: 's2.jpg', score: 0.8, isImage: true },
+      { fileId: FILE_4, fileName: 's3.jpg', score: 0.7, isImage: true },
     ]);
 
     const result = await findSimilarImagesTool.invoke(
-      { fileId: 'FILE-1', maxResults: 2 },
+      { fileId: FILE_1, maxResults: 2 },
       { configurable: { userId: 'USER-1' } }
     );
 
@@ -380,7 +388,7 @@ describe('findSimilarImagesTool', () => {
   it('returns empty result when no similar images found', async () => {
     mockGetByFileId.mockResolvedValue({
       id: 'emb-1',
-      fileId: 'FILE-1',
+      fileId: FILE_1,
       userId: 'USER-1',
       embedding: new Array(1024).fill(0.1),
       dimensions: 1024,
@@ -390,11 +398,11 @@ describe('findSimilarImagesTool', () => {
 
     // Only the source image itself is returned
     mockSearchImages.mockResolvedValue([
-      { fileId: 'FILE-1', fileName: 'source.jpg', score: 1.0, isImage: true },
+      { fileId: FILE_1, fileName: 'source.jpg', score: 1.0, isImage: true },
     ]);
 
     const result = await findSimilarImagesTool.invoke(
-      { fileId: 'FILE-1' },
+      { fileId: FILE_1 },
       { configurable: { userId: 'USER-1' } }
     );
 
@@ -404,13 +412,15 @@ describe('findSimilarImagesTool', () => {
   });
 
   it('normalizes fileId to uppercase for repository lookup', async () => {
+    // Use a lowercase UUID — the tool should uppercase it before calling getByFileId
+    const lowercaseUuid = 'a1b2c3d4-0001-0000-0000-000000000001';
     mockGetByFileId.mockResolvedValue(null);
 
     await findSimilarImagesTool.invoke(
-      { fileId: 'lowercase-file-id' },
+      { fileId: lowercaseUuid },
       { configurable: { userId: 'USER-1' } }
     );
 
-    expect(mockGetByFileId).toHaveBeenCalledWith('LOWERCASE-FILE-ID', 'USER-1');
+    expect(mockGetByFileId).toHaveBeenCalledWith('A1B2C3D4-0001-0000-0000-000000000001', 'USER-1');
   });
 });

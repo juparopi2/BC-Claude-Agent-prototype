@@ -42,7 +42,6 @@ import type { ModelProvider } from '@/core/langchain/ModelFactory';
  */
 export const AnthropicModels = {
   HAIKU_4_5: 'claude-haiku-4-5-20251001',
-  HAIKU_3_5: 'claude-3-5-haiku-20241022',
 } as const;
 
 export type AnthropicModelId = (typeof AnthropicModels)[keyof typeof AnthropicModels];
@@ -210,10 +209,10 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
   session_title: {
     role: 'session_title',
     description: 'Generate concise session titles from conversation',
-    modelString: AnthropicModels.HAIKU_3_5,
+    modelString: AnthropicModels.HAIKU_4_5,
     fallback: FallbackModels.OPENAI_GPT4O_MINI,
     provider: 'anthropic',
-    modelName: AnthropicModels.HAIKU_3_5,
+    modelName: AnthropicModels.HAIKU_4_5,
     temperature: 0.7,
     maxTokens: 50,
     streaming: false,

@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Users, Image as ImageIcon, FileText, Loader2 } from 'lucide-react';
+import { MessageSquare, HelpCircle, Loader2 } from 'lucide-react';
 import ChatInput from '@/components/chat/ChatInput';
 import { usePendingChat } from '@/src/domains/chat';
 
@@ -69,11 +69,18 @@ export default function Home() {
   };
 
   /**
-   * Handle suggestion button click
+   * Handle suggestion button click - sets message and auto-sends
    */
-  const handleSuggestion = (suggestion: string) => {
+  const handleSuggestion = async (suggestion: string) => {
+    if (isSubmitting) return;
     setMessage(suggestion);
-    // Don't auto-submit, let user add options/files first
+    setIsSubmitting(true);
+    // setMessage updates the Zustand store synchronously,
+    // so submit() will read the correct message from the store
+    const sessionId = await submit();
+    if (!sessionId) {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -106,34 +113,16 @@ export default function Home() {
               Your AI assistant for seamless business operations
             </p>
 
-            {/* Suggestion buttons */}
-            <div className="flex flex-wrap justify-center gap-3 mt-4">
+            {/* Suggestion button */}
+            <div className="flex justify-center mt-4">
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={() => handleSuggestion('List all customers')}
+                onClick={() => handleSuggestion('What can you do for my business?')}
                 disabled={isSubmitting}
               >
-                <Users className="size-4" />
-                List all customers
-              </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => handleSuggestion('Analyze this image')}
-                disabled={isSubmitting}
-              >
-                <ImageIcon className="size-4" />
-                Analyze this image
-              </Button>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => handleSuggestion('Create a quotation for customer')}
-                disabled={isSubmitting}
-              >
-                <FileText className="size-4" />
-                Create a quotation
+                <HelpCircle className="size-4" />
+                What can you do for my business?
               </Button>
             </div>
 

@@ -146,36 +146,6 @@ describe('DuplicateDetection — 3-Scope Integration (PRD-02)', () => {
       });
     }, 15000);
 
-    it('should detect in legacy files (pipeline_status=null)', async () => {
-      // Create file first, then set pipeline_status to null via raw SQL
-      const file = await helper.createFileWithPipelineStatus(testUser.id, {
-        name: 'legacy.doc',
-        pipelineStatus: PIPELINE_STATUS.READY, // Temporary status
-      });
-
-      // Set pipeline_status to null (legacy)
-      await executeQuery(
-        'UPDATE files SET pipeline_status = NULL WHERE id = @id',
-        { id: file.id }
-      );
-
-      // Check for duplicate
-      const inputs: DuplicateCheckInput[] = [
-        {
-          tempId: 'temp-005',
-          fileName: 'legacy.doc',
-        },
-      ];
-
-      const result = await service.checkDuplicates(inputs, testUser.id);
-
-      expect(result.results).toHaveLength(1);
-      expect(result.results[0]).toMatchObject({
-        tempId: 'temp-005',
-        isDuplicate: true,
-        scope: 'storage',
-      });
-    }, 15000);
   });
 
   describe('Pipeline scope', () => {

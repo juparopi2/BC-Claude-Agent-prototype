@@ -14,13 +14,13 @@ import { act } from '@testing-library/react';
 
 // Mock react-resizable-panels to avoid imperative panel API errors in test env
 vi.mock('react-resizable-panels', () => {
-  const PanelGroup = React.forwardRef<HTMLDivElement, React.PropsWithChildren<Record<string, unknown>>>(
-    ({ children, ...props }, ref) => <div ref={ref} data-testid="panel-group">{children}</div>
+  const PanelGroup = React.forwardRef<HTMLDivElement, { children?: React.ReactNode }>(
+    ({ children }, ref) => <div ref={ref} data-testid="panel-group">{children}</div>
   );
   PanelGroup.displayName = 'PanelGroup';
 
-  const Panel = React.forwardRef<unknown, React.PropsWithChildren<Record<string, unknown>>>(
-    ({ children, ...props }, ref) => {
+  const Panel = React.forwardRef<unknown, { children?: React.ReactNode }>(
+    ({ children }, ref) => {
       React.useImperativeHandle(ref, () => ({
         expand: () => {},
         collapse: () => {},
@@ -34,7 +34,7 @@ vi.mock('react-resizable-panels', () => {
   );
   Panel.displayName = 'Panel';
 
-  const PanelResizeHandle = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
+  const PanelResizeHandle = ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="resize-handle">{children}</div>
   );
 

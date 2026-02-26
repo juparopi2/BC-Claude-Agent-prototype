@@ -311,6 +311,7 @@ function configureMiddleware(): void {
       ? env.CORS_ORIGIN.split(',').map(o => o.trim())
       : env.CORS_ORIGIN,
     credentials: true,
+    exposedHeaders: ['Content-Disposition'],
   }));
 
   // HTTP request/response logging (Pino) - EARLY in middleware chain

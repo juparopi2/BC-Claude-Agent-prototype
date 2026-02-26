@@ -47,3 +47,16 @@ export {
 
 // File Mention Search Hook
 export { useFileMentionSearch } from './useFileMentionSearch';
+
+// Sandbox File Download Hook
+export {
+  useSandboxFileDownload,
+  type UseSandboxFileDownloadReturn,
+} from './useSandboxFileDownload';
+
+// Sandbox File Metadata Hook
+export {
+  useSandboxFileMetadata,
+  type SandboxFileMetadata,
+  type UseSandboxFileMetadataReturn,
+} from './useSandboxFileMetadata';

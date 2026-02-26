@@ -64,6 +64,71 @@ export class AnthropicFilesService {
   }
 
   /**
+   * Retrieve metadata for a sandbox-generated file from Anthropic's Files API.
+   *
+   * @param fileId - Anthropic file ID (e.g., "file_abc123")
+   * @returns File metadata including filename, MIME type, size, and downloadable status
+   */
+  async getFileMetadata(fileId: string): Promise<{
+    id: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    downloadable: boolean;
+  }> {
+    try {
+      const file = await this.client.beta.files.retrieveMetadata(fileId, {
+        betas: [FILES_API_BETA],
+      });
+
+      return {
+        id: file.id,
+        filename: file.filename,
+        mimeType: file.mime_type,
+        sizeBytes: file.size_bytes,
+        downloadable: file.downloadable,
+      };
+    } catch (error) {
+      const errorInfo =
+        error instanceof Error
+          ? { message: error.message, name: error.name }
+          : { value: String(error) };
+      logger.error(
+        { error: errorInfo, fileId },
+        'Failed to retrieve file metadata from Anthropic Files API'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Download a sandbox-generated file from Anthropic's Files API.
+   *
+   * @param fileId - Anthropic file ID (e.g., "file_abc123")
+   * @returns File content as Buffer
+   */
+  async downloadSandboxFile(fileId: string): Promise<Buffer> {
+    try {
+      const response = await this.client.beta.files.download(fileId, {
+        betas: [FILES_API_BETA],
+      });
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      const errorInfo =
+        error instanceof Error
+          ? { message: error.message, name: error.name }
+          : { value: String(error) };
+      logger.error(
+        { error: errorInfo, fileId },
+        'Failed to download file from Anthropic Files API'
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Delete a file from Anthropic's Files API.
    *
    * @param fileId - Anthropic file ID to delete

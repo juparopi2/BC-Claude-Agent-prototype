@@ -15,6 +15,17 @@ import {
 } from '../constants/file.constants';
 
 /**
+ * Schema for Anthropic sandbox file ID parameter
+ *
+ * Anthropic file IDs follow the pattern "file_<alphanumeric>" (NOT UUID format).
+ */
+export const anthropicFileIdSchema = z.object({
+  fileId: z.string().regex(/^file_[a-zA-Z0-9]+$/, 'Invalid Anthropic file ID format'),
+});
+
+export type AnthropicFileIdInput = z.infer<typeof anthropicFileIdSchema>;
+
+/**
  * Schema for file upload request body
  */
 export const uploadFileSchema = z.object({

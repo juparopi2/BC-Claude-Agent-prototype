@@ -464,6 +464,25 @@ export class FileApiClient {
   }
 
   // ============================================
+  // Sandbox File Metadata Endpoint
+  // ============================================
+
+  /**
+   * Get metadata for a sandbox-generated file without downloading it
+   *
+   * @param fileId - Anthropic file ID (e.g., "file_abc123")
+   * @returns File metadata (filename, MIME type, size)
+   */
+  async getSandboxFileMetadata(
+    fileId: string
+  ): Promise<ApiResponse<{ filename: string; mimeType: string; sizeBytes: number }>> {
+    return this.request<{ filename: string; mimeType: string; sizeBytes: number }>(
+      'GET',
+      `/api/files/sandbox/${fileId}/metadata`
+    );
+  }
+
+  // ============================================
   // File Download Endpoint
   // ============================================
 
@@ -535,6 +554,101 @@ export class FileApiClient {
         error: {
           error: 'Network Error',
           message: error instanceof Error ? error.message : 'Failed to download file',
+          code: ErrorCode.SERVICE_UNAVAILABLE,
+        },
+      };
+    }
+  }
+
+  // ============================================
+  // Sandbox File Download Endpoint
+  // ============================================
+
+  /**
+   * Download a sandbox-generated file from Anthropic's code execution
+   *
+   * Proxied through the backend — the backend fetches from Anthropic's Files API
+   * and streams the content. Sandbox files are ephemeral and may expire.
+   *
+   * @param fileId - Anthropic file ID (e.g., "file_abc123")
+   * @returns Blob content and extracted filename
+   *
+   * @example
+   * ```typescript
+   * const result = await fileApi.downloadSandboxFile('file_abc123');
+   * if (result.success) {
+   *   const url = URL.createObjectURL(result.data.blob);
+   *   const a = document.createElement('a');
+   *   a.href = url;
+   *   a.download = result.data.filename;
+   *   a.click();
+   *   URL.revokeObjectURL(url);
+   * }
+   * ```
+   */
+  async downloadSandboxFile(
+    fileId: string
+  ): Promise<ApiResponse<{ blob: Blob; filename: string }>> {
+    const url = `${this.baseUrl}/api/files/sandbox/${fileId}/download`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        try {
+          const data = await response.json();
+          if (isApiErrorResponse(data)) {
+            return { success: false, error: data };
+          }
+          return {
+            success: false,
+            error: {
+              error: response.statusText,
+              message: data.message || 'Download failed',
+              code: response.status === 410 ? ErrorCode.EXPIRED : ErrorCode.INTERNAL_ERROR,
+            },
+          };
+        } catch {
+          return {
+            success: false,
+            error: {
+              error: response.statusText,
+              message: response.status === 410
+                ? 'This file has expired and is no longer available'
+                : 'Download failed',
+              code: response.status === 410 ? ErrorCode.EXPIRED : ErrorCode.INTERNAL_ERROR,
+            },
+          };
+        }
+      }
+
+      const blob = await response.blob();
+
+      // Extract filename from Content-Disposition header
+      const disposition = response.headers.get('Content-Disposition');
+      let filename = 'download';
+      if (disposition) {
+        // Try filename*= (RFC 5987) first, then filename=
+        const utf8Match = disposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/);
+        const basicMatch = disposition.match(/filename="(.+?)"/);
+        if (utf8Match) {
+          filename = decodeURIComponent(utf8Match[1]);
+        } else if (basicMatch) {
+          filename = basicMatch[1];
+        }
+      }
+
+      return { success: true, data: { blob, filename } };
+    } catch (error) {
+      console.error('[FileApiClient] Sandbox download failed:', error);
+      return {
+        success: false,
+        error: {
+          error: 'Network Error',
+          message: error instanceof Error ? error.message : 'Failed to download sandbox file',
           code: ErrorCode.SERVICE_UNAVAILABLE,
         },
       };

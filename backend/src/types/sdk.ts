@@ -14,7 +14,7 @@
  * type StopReason = 'end_turn' | 'tool_use' | 'max_tokens';
  *
  * @module types/sdk
- * @version SDK 0.71.0
+ * @version SDK 0.78.0
  */
 
 import type {
@@ -111,7 +111,7 @@ export type { Model } from '@anthropic-ai/sdk/resources/messages';
 /**
  * Current SDK version - used by validation scripts to detect upgrades
  */
-export const ANTHROPIC_SDK_VERSION = '0.71.0';
+export const ANTHROPIC_SDK_VERSION = '0.78.0';
 
 // ============================================================================
 // Type Guards

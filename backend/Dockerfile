@@ -88,8 +88,16 @@ COPY frontend/package.json ./frontend/
 COPY backend/prisma ./backend/prisma/
 
 # Install production dependencies only
-# --omit=dev excludes devDependencies
-RUN npm ci --omit=dev && npm cache clean --force
+# --ignore-scripts: patch-package (root) and prisma (backend) are devDeps,
+# so their postinstall scripts would fail with --omit=dev.
+# We restore their artifacts from the deps stage below.
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+# Restore postinstall artifacts from deps stage (where all deps were installed):
+# 1. Prisma generated client (backend postinstall: prisma generate)
+COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
+# 2. Patched @langchain/anthropic files (root postinstall: patch-package)
+COPY --from=deps /app/node_modules/@langchain/anthropic/dist/utils ./node_modules/@langchain/anthropic/dist/utils
 
 # Copy built shared package
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist

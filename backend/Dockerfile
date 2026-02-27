@@ -14,6 +14,9 @@ WORKDIR /app
 # Copy workspace configuration files
 COPY package.json package-lock.json ./
 
+# Copy patches (required for root postinstall: patch-package)
+COPY patches ./patches/
+
 # Copy shared package configuration
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/shared/tsconfig.json ./packages/shared/
@@ -31,6 +34,10 @@ COPY frontend/package.json ./frontend/
 # Install ALL workspace dependencies (needed for build)
 # This resolves @bc-agent/shared as a workspace package
 RUN npm ci
+
+# Explicitly generate Prisma client (workspace postinstall may not run in Docker)
+# Output goes to backend/node_modules/.prisma/client (co-located with @prisma/client)
+RUN cd backend && npx prisma generate
 
 # -----------------------------------------------------------------------------
 # Stage 2: Builder
@@ -94,8 +101,8 @@ COPY backend/prisma ./backend/prisma/
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 # Restore postinstall artifacts from deps stage (where all deps were installed):
-# 1. Prisma generated client (backend postinstall: prisma generate)
-COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
+# 1. Prisma generated client (co-located with @prisma/client in backend/node_modules)
+COPY --from=deps /app/backend/node_modules/.prisma ./backend/node_modules/.prisma
 # 2. Patched @langchain/anthropic files (root postinstall: patch-package)
 COPY --from=deps /app/node_modules/@langchain/anthropic/dist/utils ./node_modules/@langchain/anthropic/dist/utils
 

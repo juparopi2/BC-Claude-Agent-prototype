@@ -22,8 +22,6 @@ export const SECRET_NAMES = {
   BC_CLIENT_SECRET: 'BC-ClientSecret',
   // Claude
   CLAUDE_API_KEY: 'Claude-ApiKey',
-  // JWT (deprecated - use Microsoft OAuth)
-  JWT_SECRET: 'JWT-Secret',
   // Microsoft OAuth
   MICROSOFT_CLIENT_ID: 'Microsoft-ClientId',
   MICROSOFT_CLIENT_SECRET: 'Microsoft-ClientSecret',
@@ -176,10 +174,6 @@ export async function loadSecretsFromKeyVault(): Promise<void> {
     // Load Claude API key
     const claudeApiKey = await getSecret(SECRET_NAMES.CLAUDE_API_KEY, 'ANTHROPIC_API_KEY');
     if (claudeApiKey) process.env.ANTHROPIC_API_KEY = claudeApiKey;
-
-    // Load JWT secret (deprecated)
-    const jwtSecret = await getSecret(SECRET_NAMES.JWT_SECRET, 'JWT_SECRET');
-    if (jwtSecret) process.env.JWT_SECRET = jwtSecret;
 
     // Load Microsoft OAuth credentials
     const microsoftClientId = await getSecret(SECRET_NAMES.MICROSOFT_CLIENT_ID, 'MICROSOFT_CLIENT_ID');

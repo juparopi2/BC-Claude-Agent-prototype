@@ -55,17 +55,11 @@ const envSchema = z.object({
   BC_ENVIRONMENT: z.string().default('production'),
 
 
-  // JWT (deprecated - use Microsoft OAuth)
-  JWT_SECRET: z.string().optional(),
-  JWT_EXPIRES_IN: z.string().default('24h'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
-
   // Microsoft OAuth 2.0
   MICROSOFT_CLIENT_ID: z.string().optional(),
   MICROSOFT_CLIENT_SECRET: z.string().optional(),
   MICROSOFT_TENANT_ID: z.string().default('common'),
   MICROSOFT_REDIRECT_URI: z.string().url().optional(),
-  MICROSOFT_SCOPES: z.string().optional(),
 
   // Encryption for BC tokens (per-user)
   ENCRYPTION_KEY: z.string().optional(),
@@ -82,9 +76,6 @@ const envSchema = z.object({
 
   // Logging
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
-
-  // Session
-  SESSION_TIMEOUT_MINUTES: z.string().default('30').transform(Number).pipe(z.number()),
 
   // Agent
   MAX_CONTEXT_TOKENS: z.string().default('100000').transform(Number).pipe(z.number()),
@@ -140,10 +131,6 @@ const envSchema = z.object({
   QUEUE_FILE_CHUNKING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_EMBEDDING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_CITATION_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
-  QUEUE_FILE_BULK_UPLOAD_CONCURRENCY: z.string().default('10').transform(Number).pipe(z.number().min(1).max(30)),
-
-  // Queue Lock Configuration (for long-running jobs like Azure Document Intelligence)
-  QUEUE_FILE_PROCESSING_LOCK_DURATION: z.string().default('300000').transform(Number).pipe(z.number().min(60000).max(600000)),
 });
 
 /**

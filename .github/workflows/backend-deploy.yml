@@ -110,7 +110,6 @@ jobs:
               bc-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
               bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
               bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
-              jwt-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret,identityref:system \
               storage-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
               session-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
               encryption-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
@@ -125,6 +124,8 @@ jobs:
               azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
               azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
               azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
+              azure-audio-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
+              azure-audio-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
               applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
@@ -162,7 +163,6 @@ jobs:
               BC_CLIENT_SECRET=secretref:bc-client-secret \
               BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
               BC_ENVIRONMENT=production \
-              JWT_SECRET=secretref:jwt-secret \
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
               STORAGE_CONTAINER_NAME=user-files \
               APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:applicationinsights-connectionstring \
@@ -184,6 +184,8 @@ jobs:
               AZURE_VISION_KEY=secretref:azure-vision-key \
               AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \
               AZURE_DI_KEY=secretref:azure-di-key \
+              AZURE_AUDIO_ENDPOINT=secretref:azure-audio-endpoint \
+              AZURE_AUDIO_KEY=secretref:azure-audio-key \
               FRONTEND_URL=$FRONTEND_URL \
               CORS_ORIGIN=$FRONTEND_URL \
               LOG_LEVEL=info \
@@ -191,10 +193,8 @@ jobs:
               ENABLE_EXTENDED_THINKING=true \
               MAX_CONTEXT_TOKENS=100000 \
               QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
-              QUEUE_FILE_BULK_UPLOAD_CONCURRENCY=10 \
               QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
-              QUEUE_EMBEDDING_CONCURRENCY=3 \
-              QUEUE_FILE_PROCESSING_LOCK_DURATION=300000
+              QUEUE_EMBEDDING_CONCURRENCY=3
 
           # Update ingress configuration for the backend
           az containerapp ingress update \
@@ -215,7 +215,6 @@ jobs:
               bc-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
               bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
               bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
-              jwt-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/JWT-Secret,identityref:system \
               storage-connection-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
               session-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
               encryption-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
@@ -230,6 +229,8 @@ jobs:
               azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
               azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
               azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
+              azure-audio-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
+              azure-audio-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
               applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system
           echo "✅ Secrets configured from Key Vault"
 
@@ -269,7 +270,6 @@ jobs:
               BC_CLIENT_SECRET=secretref:bc-client-secret \
               BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
               BC_ENVIRONMENT=production \
-              JWT_SECRET=secretref:jwt-secret \
               STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
               STORAGE_CONTAINER_NAME=user-files \
               APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:applicationinsights-connectionstring \
@@ -291,6 +291,8 @@ jobs:
               AZURE_VISION_KEY=secretref:azure-vision-key \
               AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \
               AZURE_DI_KEY=secretref:azure-di-key \
+              AZURE_AUDIO_ENDPOINT=secretref:azure-audio-endpoint \
+              AZURE_AUDIO_KEY=secretref:azure-audio-key \
               FRONTEND_URL=$FRONTEND_URL \
               CORS_ORIGIN=$FRONTEND_URL \
               LOG_LEVEL=info \
@@ -298,10 +300,8 @@ jobs:
               ENABLE_EXTENDED_THINKING=true \
               MAX_CONTEXT_TOKENS=100000 \
               QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
-              QUEUE_FILE_BULK_UPLOAD_CONCURRENCY=10 \
               QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
-              QUEUE_EMBEDDING_CONCURRENCY=3 \
-              QUEUE_FILE_PROCESSING_LOCK_DURATION=300000
+              QUEUE_EMBEDDING_CONCURRENCY=3
 
       - name: Configure Ingress
         run: |

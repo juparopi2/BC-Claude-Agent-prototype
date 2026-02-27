@@ -49,6 +49,18 @@ vi.mock('@/shared/utils/logger', () => ({
   trace: mockLogger.trace,
 }));
 
+// Mock Prisma client globally to prevent eager DATABASE_* env var validation
+// during module import. Tests needing specific Prisma behavior (e.g., FileRepositoryV2)
+// already define their own vi.mock() with factory functions, which override this.
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    $disconnect: vi.fn(),
+    $connect: vi.fn(),
+    $on: vi.fn(),
+  },
+  disconnectPrisma: vi.fn(),
+}));
+
 // Reduce log verbosity during tests (improves performance)
 process.env.LOG_LEVEL = 'warn';
 

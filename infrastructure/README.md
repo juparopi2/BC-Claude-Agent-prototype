@@ -1,152 +1,203 @@
-# Infrastructure Deployment
+# Infrastructure — Azure Bicep Templates
 
-Este directorio contiene scripts e instrucciones para desplegar la infraestructura de Azure necesaria para BC-Claude-Agent-Prototype.
+Declarative infrastructure-as-code for the MyWorkMate platform using [Azure Bicep](https://learn.microsoft.com/en-us/azure/azure-resource-manager/bicep/overview).
 
-## Recursos de Azure
+## Directory Structure
 
-### Resource Groups (ya existentes)
-- `rg-BCAgentPrototype-app-dev` - Aplicaciones y servicios
-- `rg-BCAgentPrototype-data-dev` - Bases de datos y almacenamiento
-- `rg-BCAgentPrototype-sec-dev` - Seguridad e identidades
+```
+infrastructure/
+  bicep/
+    main.bicep                              # Subscription-level orchestrator
+    environments/
+      dev.bicepparam                        # Dev environment parameters
+      prod.bicepparam                       # Prod skeleton (adjust before use)
+    modules/
+      security.bicep                        # Key Vault
+      data.bicep                            # SQL + Redis + Storage + AI Search
+      cognitive.bicep                       # OpenAI + Vision + Doc Intelligence
+      monitoring.bicep                      # Log Analytics + App Insights
+      container-environment.bicep           # ACR + Container Apps Environment
+      keyvault-secrets.bicep                # All Key Vault secrets (28+)
+  scripts/
+    deploy.sh                               # Deploy wrapper (what-if + apply)
+    setup-storage-cors.sh                   # Post-deploy: CORS rules
+    setup-container-app-identity.sh         # Post-deploy: RBAC for MIs
+    update-search-index-schema.sh           # Post-deploy: Search index fields
+    update-search-semantic-config.sh        # Post-deploy: Semantic config
+  diagnostics/                              # Troubleshooting scripts
+  blob-lifecycle-policy.json                # Reference (inlined in data.bicep)
+```
 
-### Recursos que se crearán
+## Resource Inventory
 
-#### Security (rg-BCAgentPrototype-sec-dev)
-- **Key Vault**: `kv-bcagent-dev` - Almacenamiento seguro de secrets
-- **Managed Identity (Backend)**: `mi-bcagent-backend-dev` - Identidad para el backend
-- **Managed Identity (Frontend)**: `mi-bcagent-frontend-dev` - Identidad para el frontend
+### Naming Convention
 
-#### Data (rg-BCAgentPrototype-data-dev)
-- **SQL Server**: `sqlsrv-bcagent-dev` - Servidor de base de datos
-- **SQL Database**: `sqldb-bcagent-dev` - Base de datos principal
-- **Redis Cache**: `redis-bcagent-dev` - Caché y sesiones
-- **Storage Account**: `sabcagentdev` - Almacenamiento de archivos
+All resource names follow `{type}-{project}-{environment}` with computed variables:
 
-#### Application (rg-BCAgentPrototype-app-dev)
-- **Container Registry**: `crbcagentdev` - Registro de imágenes Docker
-- **Container Apps Environment**: `cae-bcagent-dev` - Entorno para Container Apps
-- **Backend App**: `app-bcagent-backend-dev` - Aplicación backend
-- **Frontend App**: `app-bcagent-frontend-dev` - Aplicación frontend
+| Variable | Pattern | Dev Example |
+|---|---|---|
+| Resource Groups | `{rgPrefix}-{area}-{env}` | `rg-BCAgentPrototype-sec-dev` |
+| Key Vault | `kv-{project}-{env}` | `kv-bcagent-dev` |
+| SQL Server | `sqlsrv-{project}-{env}` | `sqlsrv-bcagent-dev` |
+| SQL Database | `sqldb-{project}-{env}` | `sqldb-bcagent-dev` |
+| Redis Cache | `redis-{project}-{env}` | `redis-bcagent-dev` |
+| Storage Account | `sa{project}{env}` | `sabcagentdev` |
+| Container Registry | `cr{project}{env}` | `crbcagentdev` |
+| CAE | `cae-{project}-{env}` | `cae-bcagent-dev` |
+| AI Search | `search-{project}-{env}` | `search-bcagent-dev` |
+| OpenAI | `openai-{project}-{env}` | `openai-bcagent-dev` |
+| Computer Vision | `cv-{project}-{env}` | `cv-bcagent-dev` |
+| Doc Intelligence | `di-{project}-{env}` | `di-bcagent-dev` |
+| Log Analytics | `law-{project}-{env}` | `law-bcagent-dev` |
+| App Insights | `ai-{project}-{env}` | `ai-bcagent-dev` |
 
-## Prerequisitos
+Changing `environment` from `dev` to `prod` automatically creates an entirely separate set of resources in separate resource groups.
 
-1. Azure CLI instalado y configurado
-2. Permisos de Contributor en la suscripción `5343f6e1-f251-4b50-a592-18ff3e97eaa7`
-3. OpenSSL instalado (para generar JWT secret)
+### Resource Groups (3 per environment)
+
+| Group | Purpose | Example Resources |
+|---|---|---|
+| `rg-...-sec-{env}` | Security | Key Vault |
+| `rg-...-data-{env}` | Data | SQL, Redis, Storage, AI Search |
+| `rg-...-app-{env}` | Application | ACR, CAE, OpenAI, Vision, Doc Intelligence, Monitoring |
+
+### Key Vault Secrets (28+)
+
+**Auto-derived** (from Bicep outputs — no manual input needed):
+- `SqlDb-ConnectionString`, `Redis-ConnectionString`, `Storage-ConnectionString`
+- `Database-Server`, `Database-Name`, `Database-User`, `Database-Password`
+- `AZURE-OPENAI-ENDPOINT`, `AZURE-OPENAI-KEY`, `AZURE-OPENAI-EMBEDDING-DEPLOYMENT`
+- `AZURE-SEARCH-ENDPOINT`, `AZURE-SEARCH-KEY`
+- `AZURE-VISION-ENDPOINT`, `AZURE-VISION-KEY`
+- `DocumentIntelligence-Endpoint`, `DocumentIntelligence-Key`
+- `ApplicationInsights-ConnectionString`, `ApplicationInsights-InstrumentationKey`
+
+**Manual** (provided via environment variables):
+- `Claude-ApiKey`, `SESSION-SECRET`, `ENCRYPTION-KEY`
+- `BC-TenantId`, `BC-ClientId`, `BC-ClientSecret`
+- `Microsoft-ClientId`, `Microsoft-ClientSecret`, `Microsoft-TenantId`
+- `AZURE-AUDIO-ENDPOINT`, `AZURE-AUDIO-KEY`
 
 ## Deployment
 
-### Paso 1: Ejecutar el script de deployment
+### Prerequisites
+
+- Azure CLI (`az`) installed and logged in
+- Contributor role on the target subscription
+- All manual secret environment variables exported (see below)
+
+### Required Environment Variables
 
 ```bash
-# Hacer el script ejecutable (en Linux/Mac)
-chmod +x deploy-azure-resources.sh
-
-# Ejecutar el script
-./deploy-azure-resources.sh
+export SQL_ADMIN_PASSWORD='...'
+export CLAUDE_API_KEY='...'
+export BC_TENANT_ID='...'
+export BC_CLIENT_ID='...'
+export BC_CLIENT_SECRET='...'
+export SESSION_SECRET='...'
+export ENCRYPTION_KEY='...'
+export MICROSOFT_CLIENT_ID='...'
+export MICROSOFT_CLIENT_SECRET='...'
+export MICROSOFT_TENANT_ID='...'
+export AZURE_AUDIO_ENDPOINT='...'
+export AZURE_AUDIO_KEY='...'
 ```
 
-En Windows (usando Git Bash o WSL):
-```bash
-bash deploy-azure-resources.sh
-```
-
-El script te pedirá:
-- **SQL Server admin password**: Debe cumplir con requisitos de complejidad (mínimo 8 caracteres, mayúsculas, minúsculas, números y caracteres especiales)
-
-### Paso 2: Agregar Claude API Key
-
-Después de que el script termine, agrega tu Claude API key manualmente:
+### Deploy
 
 ```bash
-az keyvault secret set \
-  --vault-name kv-bcagent-dev \
-  --name "Claude-ApiKey" \
-  --value "sk-ant-YOUR_API_KEY_HERE"
+# Preview changes (safe — no modifications)
+ENVIRONMENT=dev bash infrastructure/scripts/deploy.sh --what-if
+
+# Deploy dev environment
+ENVIRONMENT=dev bash infrastructure/scripts/deploy.sh
+
+# Deploy prod environment
+ENVIRONMENT=prod bash infrastructure/scripts/deploy.sh
 ```
 
-### Paso 3: Verificar los recursos
+The deploy script:
+1. Validates all required environment variables
+2. Runs `az deployment sub what-if` to preview changes
+3. Asks for confirmation
+4. Runs `az deployment sub create`
+5. Prints post-deploy checklist
+
+### Post-Deploy Steps (run once per new environment)
+
+After Bicep deployment completes, and after CI/CD creates the Container Apps:
 
 ```bash
-# Listar recursos en cada RG
-az resource list --resource-group rg-BCAgentPrototype-app-dev --output table
-az resource list --resource-group rg-BCAgentPrototype-data-dev --output table
-az resource list --resource-group rg-BCAgentPrototype-sec-dev --output table
+# 1. Configure managed identity permissions (ACR + Key Vault)
+ENVIRONMENT=dev bash infrastructure/scripts/setup-container-app-identity.sh
+
+# 2. Configure Storage CORS rules
+ENVIRONMENT=dev bash infrastructure/scripts/setup-storage-cors.sh
+
+# 3. Create/update AI Search index
+bash infrastructure/scripts/update-search-index-schema.sh
+
+# 4. Configure semantic search
+bash infrastructure/scripts/update-search-semantic-config.sh
 ```
 
-## Secrets en Key Vault
+## Architecture Decisions
 
-Los siguientes secrets se configuran automáticamente:
+### Why Bicep over Bash Scripts?
 
-| Secret Name | Description |
-|-------------|-------------|
-| `BC-TenantId` | Business Central Tenant ID |
-| `BC-ClientId` | Business Central Client ID |
-| `BC-ClientSecret` | Business Central Client Secret |
-| `JWT-Secret` | Secret para JWT tokens (generado automáticamente) |
-| `SqlDb-ConnectionString` | Connection string de Azure SQL |
-| `Redis-ConnectionString` | Connection string de Redis |
-| `Storage-ConnectionString` | Connection string de Storage Account |
-| `Claude-ApiKey` | **MANUAL**: Tu API key de Anthropic Claude |
+- **Declarative**: Define desired state, not imperative steps. Azure handles create-vs-update.
+- **Idempotent**: Run multiple times safely — incremental mode only changes what's different.
+- **Parameterized**: Single template, environment-specific `.bicepparam` files.
+- **What-if**: Preview changes before applying.
+- **Dependency management**: Bicep handles resource ordering automatically.
 
-## Acceder a los secrets
+### What's NOT in Bicep
 
-### Desde Azure CLI
-```bash
-az keyvault secret show --vault-name kv-bcagent-dev --name "BC-TenantId" --query value -o tsv
-```
+- **Container Apps** — Created by CI/CD workflows (GitHub Actions). Bicep manages the environment but not the apps themselves.
+- **CORS rules** — Require the frontend Container App FQDN, which is only known after CI/CD deploys it.
+- **Search index schema** — Azure AI Search index definition requires REST API calls, not supported by Bicep.
+- **RBAC assignments** — System-assigned managed identities only exist after Container Apps are created.
 
-### Desde el código (con Managed Identity)
-Las aplicaciones backend y frontend usan sus Managed Identities para acceder al Key Vault automáticamente.
+### Key Technical Choices
 
-## Costos Estimados (por mes)
+| Decision | Rationale |
+|---|---|
+| Subscription-level deployment | Needed to create resource groups |
+| Incremental mode (default) | Safely adopts existing resources |
+| `listKeys()` for auto-derived secrets | Eliminates two-step create-then-query |
+| `readEnvironmentVariable()` in .bicepparam | No secrets committed to files |
+| System-assigned MIs only | Confirmed via `az containerapp show` |
+| No user-assigned MIs | `mi-bcagent-*-dev` resources are unused — can be deleted |
 
-Basado en el tier seleccionado:
+## Cost Estimate (Dev)
 
-- **Key Vault**: ~$0.03/10,000 operations
-- **SQL Database (S0)**: ~$15/month
-- **Redis (Basic C0)**: ~$16/month
-- **Storage Account (LRS)**: ~$0.02/GB
-- **Container Registry (Basic)**: ~$5/month
-- **Container Apps**: ~$0.000012/vCore-second + $0.000002/GiB-second
-- **Managed Identities**: Free
+| Resource | SKU | ~Monthly Cost |
+|---|---|---|
+| Key Vault | Standard | $0.03/10k ops |
+| SQL Database | S0 (10 DTU) | ~$15 |
+| Redis Cache | Basic C0 | ~$16 |
+| Storage Account | Standard LRS | ~$1 |
+| Container Registry | Basic | ~$5 |
+| Container Apps | Consumption | ~$0-10 |
+| Azure OpenAI | S0 | Pay per token |
+| AI Search | Basic | ~$25 |
+| Computer Vision | S1 | Pay per call |
+| Doc Intelligence | S0 | ~$1.50/1k pages |
+| Log Analytics | PerGB | ~$2.76/GB |
+| App Insights | Workspace-based | Included in LAW |
+| **Total** | | **~$65-80/month** |
 
-**Total estimado**: ~$40-60/month (sin contar Container Apps usage)
-
-## Troubleshooting
-
-### Error: Key Vault name already exists
-Si el nombre del Key Vault ya está en uso, puedes:
-1. Cambiar el nombre en el script
-2. Recuperar el Key Vault eliminado: `az keyvault recover --name kv-bcagent-dev`
-
-### Error: SQL Server name already exists
-Cambia el nombre del SQL Server en el script o usa uno existente.
-
-### Error: Redis creation timeout
-Redis puede tardar 10-15 minutos en crearse. Espera y verifica con:
-```bash
-az redis show --name redis-bcagent-dev --resource-group rg-BCAgentPrototype-data-dev
-```
-
-## Limpieza de Recursos
-
-Para eliminar todos los recursos creados:
+## Verification
 
 ```bash
-# ADVERTENCIA: Esto eliminará TODOS los recursos y datos
-az resource list --resource-group rg-BCAgentPrototype-app-dev --query "[].id" -o tsv | xargs -I {} az resource delete --ids {}
-az resource list --resource-group rg-BCAgentPrototype-data-dev --query "[].id" -o tsv | xargs -I {} az resource delete --ids {}
-az resource list --resource-group rg-BCAgentPrototype-sec-dev --query "[].id" -o tsv | xargs -I {} az resource delete --ids {}
+# 1. Preview (no changes)
+ENVIRONMENT=dev bash infrastructure/scripts/deploy.sh --what-if
+
+# 2. After deploy — verify Key Vault secrets
+az keyvault secret list --vault-name kv-bcagent-dev -o table
+
+# 3. Run diagnostics
+bash infrastructure/diagnostics/verify-azure-config.sh
+
+# 4. Deploy via CI/CD and test the app
 ```
-
-## Next Steps
-
-Después de crear la infraestructura:
-
-1. ✅ Inicializar el database schema (`backend/scripts/init-db.sql`)
-2. ✅ Configurar el proyecto backend
-3. ✅ Configurar el proyecto frontend
-4. ✅ Build y deploy de las aplicaciones
-
-Ver el [Development Setup Guide](../docs/12-development/01-setup-guide.md) para más detalles.

@@ -1,0 +1,1933 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.37.4.10188",
+      "templateHash": "1257389784090272801"
+    }
+  },
+  "parameters": {
+    "environment": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "prod"
+      ],
+      "metadata": {
+        "description": "Deployment environment (dev or prod)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "westeurope",
+      "metadata": {
+        "description": "Primary Azure region for most resources."
+      }
+    },
+    "projectName": {
+      "type": "string",
+      "defaultValue": "bcagent",
+      "metadata": {
+        "description": "Short project token used in resource names."
+      }
+    },
+    "rgPrefix": {
+      "type": "string",
+      "defaultValue": "rg-BCAgentPrototype",
+      "metadata": {
+        "description": "Prefix for all resource group names."
+      }
+    },
+    "sqlAdminUser": {
+      "type": "string",
+      "metadata": {
+        "description": "SQL Server administrator username."
+      }
+    },
+    "sqlAdminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "SQL Server administrator password."
+      }
+    },
+    "sqlDbServiceObjective": {
+      "type": "string",
+      "defaultValue": "S0",
+      "metadata": {
+        "description": "Azure SQL Database service objective (SKU)."
+      }
+    },
+    "redisSku": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "Azure Cache for Redis SKU family."
+      }
+    },
+    "storageSku": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "metadata": {
+        "description": "Storage account replication SKU."
+      }
+    },
+    "openAiLocation": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Region for Azure OpenAI (must be an approved OpenAI region)."
+      }
+    },
+    "docIntelligenceLocation": {
+      "type": "string",
+      "defaultValue": "eastus",
+      "metadata": {
+        "description": "Region for Document Intelligence."
+      }
+    },
+    "openAiEmbeddingModel": {
+      "type": "string",
+      "defaultValue": "text-embedding-3-small",
+      "metadata": {
+        "description": "OpenAI embedding model deployment name."
+      }
+    },
+    "openAiEmbeddingCapacity": {
+      "type": "int",
+      "defaultValue": 120,
+      "metadata": {
+        "description": "OpenAI embedding model capacity (thousands of tokens per minute)."
+      }
+    },
+    "computerVisionSku": {
+      "type": "string",
+      "defaultValue": "S1",
+      "metadata": {
+        "description": "Computer Vision pricing tier."
+      }
+    },
+    "aiSearchSku": {
+      "type": "string",
+      "defaultValue": "basic",
+      "metadata": {
+        "description": "Azure AI Search pricing tier."
+      }
+    },
+    "docIntelligenceSku": {
+      "type": "string",
+      "defaultValue": "S0",
+      "metadata": {
+        "description": "Document Intelligence pricing tier."
+      }
+    },
+    "logRetentionDays": {
+      "type": "int",
+      "defaultValue": 365,
+      "metadata": {
+        "description": "Log Analytics workspace retention in days."
+      }
+    },
+    "samplingPercentage": {
+      "type": "int",
+      "defaultValue": 100,
+      "minValue": 0,
+      "maxValue": 100,
+      "metadata": {
+        "description": "Application Insights adaptive sampling percentage (0-100)."
+      }
+    },
+    "acrSku": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "Azure Container Registry SKU."
+      }
+    },
+    "claudeApiKey": {
+      "type": "securestring"
+    },
+    "bcTenantId": {
+      "type": "securestring"
+    },
+    "bcClientId": {
+      "type": "securestring"
+    },
+    "bcClientSecret": {
+      "type": "securestring"
+    },
+    "sessionSecret": {
+      "type": "securestring"
+    },
+    "encryptionKey": {
+      "type": "securestring"
+    },
+    "microsoftClientId": {
+      "type": "securestring"
+    },
+    "microsoftClientSecret": {
+      "type": "securestring"
+    },
+    "microsoftTenantId": {
+      "type": "securestring"
+    },
+    "azureAudioEndpoint": {
+      "type": "securestring"
+    },
+    "azureAudioKey": {
+      "type": "securestring"
+    }
+  },
+  "variables": {
+    "rgSec": "[format('{0}-sec-{1}', parameters('rgPrefix'), parameters('environment'))]",
+    "rgData": "[format('{0}-data-{1}', parameters('rgPrefix'), parameters('environment'))]",
+    "rgApp": "[format('{0}-app-{1}', parameters('rgPrefix'), parameters('environment'))]",
+    "kvName": "[format('kv-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "sqlServerName": "[format('sqlsrv-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "sqlDbName": "[format('sqldb-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "redisName": "[format('redis-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "storageName": "[format('sa{0}{1}', parameters('projectName'), parameters('environment'))]",
+    "acrName": "[format('cr{0}{1}', parameters('projectName'), parameters('environment'))]",
+    "caeName": "[format('cae-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "searchName": "[format('search-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "openAiName": "[format('openai-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "cvName": "[format('cv-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "diName": "[format('di-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "lawName": "[format('law-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "aiName": "[format('ai-{0}-{1}', parameters('projectName'), parameters('environment'))]",
+    "commonTags": {
+      "project": "[parameters('projectName')]",
+      "environment": "[parameters('environment')]"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('rgSec')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]"
+    },
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('rgData')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]"
+    },
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('rgApp')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]"
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "security",
+      "resourceGroup": "[variables('rgSec')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "kvName": {
+            "value": "[variables('kvName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "11896872845505367450"
+            }
+          },
+          "parameters": {
+            "kvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Key Vault resource."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the Key Vault."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('kvName')]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "security"
+              },
+              "properties": {
+                "tenantId": "[tenant().tenantId]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "enabledForDeployment": true,
+                "enabledForTemplateDeployment": true,
+                "enabledForDiskEncryption": false,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 90,
+                "enablePurgeProtection": true,
+                "accessPolicies": []
+              }
+            }
+          ],
+          "outputs": {
+            "keyVaultName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the provisioned Key Vault."
+              },
+              "value": "[parameters('kvName')]"
+            },
+            "keyVaultUri": {
+              "type": "string",
+              "metadata": {
+                "description": "URI of the provisioned Key Vault (used by apps and secret modules)."
+              },
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', parameters('kvName')), '2023-07-01').vaultUri]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('rgSec'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "monitoring",
+      "resourceGroup": "[variables('rgApp')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "lawName": {
+            "value": "[variables('lawName')]"
+          },
+          "aiName": {
+            "value": "[variables('aiName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "logRetentionDays": {
+            "value": "[parameters('logRetentionDays')]"
+          },
+          "samplingPercentage": {
+            "value": "[parameters('samplingPercentage')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "2307769172314378823"
+            }
+          },
+          "parameters": {
+            "lawName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Log Analytics workspace."
+              }
+            },
+            "aiName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Application Insights component."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for both monitoring resources."
+              }
+            },
+            "logRetentionDays": {
+              "type": "int",
+              "defaultValue": 365,
+              "metadata": {
+                "description": "Log Analytics workspace data retention in days."
+              }
+            },
+            "samplingPercentage": {
+              "type": "int",
+              "defaultValue": 100,
+              "minValue": 0,
+              "maxValue": 100,
+              "metadata": {
+                "description": "Application Insights adaptive sampling percentage (0-100)."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2022-10-01",
+              "name": "[parameters('lawName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": "[parameters('logRetentionDays')]"
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "monitoring"
+              }
+            },
+            {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[parameters('aiName')]",
+              "location": "[parameters('location')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('lawName'))]",
+                "SamplingPercentage": "[parameters('samplingPercentage')]"
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "monitoring"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('lawName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace (consumed by Container Apps Environment)."
+              },
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('lawName'))]"
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights connection string."
+              },
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('aiName')), '2020-02-02').ConnectionString]"
+            },
+            "appInsightsInstrumentationKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Application Insights instrumentation key."
+              },
+              "value": "[reference(resourceId('Microsoft.Insights/components', parameters('aiName')), '2020-02-02').InstrumentationKey]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('rgApp'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "data",
+      "resourceGroup": "[variables('rgData')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "sqlServerName": {
+            "value": "[variables('sqlServerName')]"
+          },
+          "sqlDbName": {
+            "value": "[variables('sqlDbName')]"
+          },
+          "sqlAdminUser": {
+            "value": "[parameters('sqlAdminUser')]"
+          },
+          "sqlAdminPassword": {
+            "value": "[parameters('sqlAdminPassword')]"
+          },
+          "sqlDbServiceObjective": {
+            "value": "[parameters('sqlDbServiceObjective')]"
+          },
+          "redisName": {
+            "value": "[variables('redisName')]"
+          },
+          "redisSku": {
+            "value": "[parameters('redisSku')]"
+          },
+          "storageName": {
+            "value": "[variables('storageName')]"
+          },
+          "storageSku": {
+            "value": "[parameters('storageSku')]"
+          },
+          "searchName": {
+            "value": "[variables('searchName')]"
+          },
+          "aiSearchSku": {
+            "value": "[parameters('aiSearchSku')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "8812890636561334563"
+            }
+          },
+          "parameters": {
+            "sqlServerName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Azure SQL logical server."
+              }
+            },
+            "sqlDbName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the SQL database."
+              }
+            },
+            "sqlAdminUser": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL Server administrator login username."
+              }
+            },
+            "sqlAdminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "SQL Server administrator login password."
+              }
+            },
+            "sqlDbServiceObjective": {
+              "type": "string",
+              "defaultValue": "S0",
+              "metadata": {
+                "description": "Azure SQL Database service objective (SKU name), e.g. S0, S1."
+              }
+            },
+            "redisName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Azure Cache for Redis resource."
+              }
+            },
+            "redisSku": {
+              "type": "string",
+              "defaultValue": "Basic",
+              "allowedValues": [
+                "Basic",
+                "Standard",
+                "Premium"
+              ],
+              "metadata": {
+                "description": "Redis SKU tier: Basic, Standard, or Premium."
+              }
+            },
+            "redisFamily": {
+              "type": "string",
+              "defaultValue": "C",
+              "metadata": {
+                "description": "Redis SKU family: C for Basic/Standard, P for Premium."
+              }
+            },
+            "redisCapacity": {
+              "type": "int",
+              "defaultValue": 0,
+              "metadata": {
+                "description": "Redis cache capacity (0-6 for C family, 1-5 for P family)."
+              }
+            },
+            "storageName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the storage account (must be globally unique, lowercase, 3-24 chars)."
+              }
+            },
+            "storageSku": {
+              "type": "string",
+              "defaultValue": "Standard_LRS",
+              "metadata": {
+                "description": "Storage account replication SKU, e.g. Standard_LRS."
+              }
+            },
+            "searchName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Azure AI Search service."
+              }
+            },
+            "aiSearchSku": {
+              "type": "string",
+              "defaultValue": "basic",
+              "metadata": {
+                "description": "Azure AI Search pricing tier."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all data-tier resources."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Sql/servers",
+              "apiVersion": "2023-05-01-preview",
+              "name": "[parameters('sqlServerName')]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "data"
+              },
+              "properties": {
+                "administratorLogin": "[parameters('sqlAdminUser')]",
+                "administratorLoginPassword": "[parameters('sqlAdminPassword')]",
+                "version": "12.0",
+                "minimalTlsVersion": "1.2",
+                "publicNetworkAccess": "Enabled"
+              }
+            },
+            {
+              "type": "Microsoft.Sql/servers/firewallRules",
+              "apiVersion": "2023-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('sqlServerName'), 'AllowAzureServices')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases",
+              "apiVersion": "2023-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('sqlServerName'), parameters('sqlDbName'))]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "data"
+              },
+              "sku": {
+                "name": "[parameters('sqlDbServiceObjective')]",
+                "tier": "Standard"
+              },
+              "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "maxSizeBytes": 268435456000,
+                "requestedBackupStorageRedundancy": "Local"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Cache/redis",
+              "apiVersion": "2023-08-01",
+              "name": "[parameters('redisName')]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "data"
+              },
+              "properties": {
+                "sku": {
+                  "name": "[parameters('redisSku')]",
+                  "family": "[parameters('redisFamily')]",
+                  "capacity": "[parameters('redisCapacity')]"
+                },
+                "enableNonSslPort": false,
+                "minimumTlsVersion": "1.2"
+              }
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('storageName')]",
+              "location": "[parameters('location')]",
+              "kind": "StorageV2",
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "data"
+              },
+              "sku": {
+                "name": "[parameters('storageSku')]"
+              },
+              "properties": {
+                "accessTier": "Hot",
+                "supportsHttpsTrafficOnly": true,
+                "minimumTlsVersion": "TLS1_2",
+                "allowBlobPublicAccess": false
+              }
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('storageName'), 'default')]",
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}/{2}', parameters('storageName'), 'default', 'user-files')]",
+              "properties": {
+                "publicAccess": "None"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', parameters('storageName'), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/managementPolicies",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('storageName'), 'default')]",
+              "properties": {
+                "policy": {
+                  "rules": [
+                    {
+                      "enabled": true,
+                      "name": "optimize-file-storage-costs",
+                      "type": "Lifecycle",
+                      "definition": {
+                        "filters": {
+                          "blobTypes": [
+                            "blockBlob"
+                          ],
+                          "prefixMatch": [
+                            "users/"
+                          ]
+                        },
+                        "actions": {
+                          "baseBlob": {
+                            "tierToCool": {
+                              "daysAfterModificationGreaterThan": 30
+                            },
+                            "tierToArchive": {
+                              "daysAfterModificationGreaterThan": 90
+                            },
+                            "delete": {
+                              "daysAfterModificationGreaterThan": 730
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Search/searchServices",
+              "apiVersion": "2023-11-01",
+              "name": "[parameters('searchName')]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "data"
+              },
+              "sku": {
+                "name": "[parameters('aiSearchSku')]"
+              },
+              "properties": {
+                "replicaCount": 1,
+                "partitionCount": 1,
+                "hostingMode": "default"
+              }
+            }
+          ],
+          "outputs": {
+            "sqlServerFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "Fully-qualified domain name of the SQL logical server."
+              },
+              "value": "[reference(resourceId('Microsoft.Sql/servers', parameters('sqlServerName')), '2023-05-01-preview').fullyQualifiedDomainName]"
+            },
+            "sqlConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "ADO.NET connection string for the SQL database."
+              },
+              "value": "[format('Server=tcp:{0},1433;Initial Catalog={1};Persist Security Info=False;User ID={2};Password={3};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;', reference(resourceId('Microsoft.Sql/servers', parameters('sqlServerName')), '2023-05-01-preview').fullyQualifiedDomainName, parameters('sqlDbName'), parameters('sqlAdminUser'), parameters('sqlAdminPassword'))]"
+            },
+            "redisHostName": {
+              "type": "string",
+              "metadata": {
+                "description": "Hostname of the Redis cache (without port)."
+              },
+              "value": "[reference(resourceId('Microsoft.Cache/redis', parameters('redisName')), '2023-08-01').hostName]"
+            },
+            "redisPrimaryKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Primary access key for the Redis cache."
+              },
+              "value": "[listKeys(resourceId('Microsoft.Cache/redis', parameters('redisName')), '2023-08-01').primaryKey]"
+            },
+            "redisConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "StackExchange.Redis compatible connection string (SSL)."
+              },
+              "value": "[format('{0}:{1},password={2},ssl=True,abortConnect=False', reference(resourceId('Microsoft.Cache/redis', parameters('redisName')), '2023-08-01').hostName, reference(resourceId('Microsoft.Cache/redis', parameters('redisName')), '2023-08-01').sslPort, listKeys(resourceId('Microsoft.Cache/redis', parameters('redisName')), '2023-08-01').primaryKey)]"
+            },
+            "storageAccountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the storage account."
+              },
+              "value": "[parameters('storageName')]"
+            },
+            "storageConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Full connection string for the storage account."
+              },
+              "value": "[format('DefaultEndpointsProtocol=https;AccountName={0};AccountKey={1};EndpointSuffix={2}', parameters('storageName'), listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageName')), '2023-05-01').keys[0].value, environment().suffixes.storage)]"
+            },
+            "searchEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "HTTPS endpoint for the Azure AI Search service."
+              },
+              "value": "[format('https://{0}.search.windows.net', parameters('searchName'))]"
+            },
+            "searchAdminKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Primary admin key for the Azure AI Search service."
+              },
+              "value": "[listAdminKeys(resourceId('Microsoft.Search/searchServices', parameters('searchName')), '2023-11-01').primaryKey]"
+            },
+            "databaseServer": {
+              "type": "string",
+              "metadata": {
+                "description": "Fully-qualified domain name of the SQL logical server (alias for sqlServerFqdn)."
+              },
+              "value": "[reference(resourceId('Microsoft.Sql/servers', parameters('sqlServerName')), '2023-05-01-preview').fullyQualifiedDomainName]"
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the SQL database."
+              },
+              "value": "[parameters('sqlDbName')]"
+            },
+            "databaseUser": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL administrator login username."
+              },
+              "value": "[parameters('sqlAdminUser')]"
+            },
+            "databasePassword": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL administrator login password (propagated to Key Vault within the same deployment)."
+              },
+              "value": "[parameters('sqlAdminPassword')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('rgData'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "cognitive",
+      "resourceGroup": "[variables('rgApp')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "openAiName": {
+            "value": "[variables('openAiName')]"
+          },
+          "openAiLocation": {
+            "value": "[parameters('openAiLocation')]"
+          },
+          "openAiEmbeddingModel": {
+            "value": "[parameters('openAiEmbeddingModel')]"
+          },
+          "openAiEmbeddingCapacity": {
+            "value": "[parameters('openAiEmbeddingCapacity')]"
+          },
+          "cvName": {
+            "value": "[variables('cvName')]"
+          },
+          "computerVisionSku": {
+            "value": "[parameters('computerVisionSku')]"
+          },
+          "diName": {
+            "value": "[variables('diName')]"
+          },
+          "docIntelligenceSku": {
+            "value": "[parameters('docIntelligenceSku')]"
+          },
+          "docIntelligenceLocation": {
+            "value": "[parameters('docIntelligenceLocation')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "14642146572303443110"
+            }
+          },
+          "parameters": {
+            "openAiName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Azure OpenAI account."
+              }
+            },
+            "openAiLocation": {
+              "type": "string",
+              "defaultValue": "eastus",
+              "metadata": {
+                "description": "Region for Azure OpenAI (must be an approved OpenAI region)."
+              }
+            },
+            "openAiEmbeddingModel": {
+              "type": "string",
+              "defaultValue": "text-embedding-3-small",
+              "metadata": {
+                "description": "OpenAI embedding model deployment name (also used as the deployment identifier)."
+              }
+            },
+            "openAiEmbeddingCapacity": {
+              "type": "int",
+              "defaultValue": 120,
+              "metadata": {
+                "description": "OpenAI embedding model capacity in thousands of tokens per minute."
+              }
+            },
+            "cvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Computer Vision account."
+              }
+            },
+            "computerVisionSku": {
+              "type": "string",
+              "defaultValue": "S1",
+              "metadata": {
+                "description": "Computer Vision pricing tier."
+              }
+            },
+            "diName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Document Intelligence account."
+              }
+            },
+            "docIntelligenceSku": {
+              "type": "string",
+              "defaultValue": "S0",
+              "metadata": {
+                "description": "Document Intelligence pricing tier."
+              }
+            },
+            "docIntelligenceLocation": {
+              "type": "string",
+              "defaultValue": "eastus",
+              "metadata": {
+                "description": "Region for Document Intelligence."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Primary Azure region used for Computer Vision (e.g. westeurope)."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('openAiName')]",
+              "location": "[parameters('openAiLocation')]",
+              "kind": "OpenAI",
+              "sku": {
+                "name": "S0"
+              },
+              "properties": {
+                "customSubDomainName": "[parameters('openAiName')]",
+                "publicNetworkAccess": "Enabled"
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "cognitive"
+              }
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2023-05-01",
+              "name": "[format('{0}/{1}', parameters('openAiName'), parameters('openAiEmbeddingModel'))]",
+              "sku": {
+                "name": "Standard",
+                "capacity": "[parameters('openAiEmbeddingCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "[parameters('openAiEmbeddingModel')]",
+                  "version": "1"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('cvName')]",
+              "location": "[parameters('location')]",
+              "kind": "ComputerVision",
+              "sku": {
+                "name": "[parameters('computerVisionSku')]"
+              },
+              "properties": {
+                "customSubDomainName": "[parameters('cvName')]",
+                "publicNetworkAccess": "Enabled"
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "cognitive"
+              }
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('diName')]",
+              "location": "[parameters('docIntelligenceLocation')]",
+              "kind": "FormRecognizer",
+              "sku": {
+                "name": "[parameters('docIntelligenceSku')]"
+              },
+              "properties": {
+                "customSubDomainName": "[parameters('diName')]",
+                "publicNetworkAccess": "Enabled"
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "cognitive"
+              }
+            }
+          ],
+          "outputs": {
+            "openAiEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Azure OpenAI account."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName')), '2023-05-01').endpoint]"
+            },
+            "openAiKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Primary access key for the Azure OpenAI account."
+              },
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('openAiName')), '2023-05-01').key1]"
+            },
+            "openAiEmbeddingDeployment": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the OpenAI embedding deployment (equals the model name)."
+              },
+              "value": "[parameters('openAiEmbeddingModel')]"
+            },
+            "computerVisionEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Computer Vision account."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('cvName')), '2023-05-01').endpoint]"
+            },
+            "computerVisionKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Primary access key for the Computer Vision account."
+              },
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('cvName')), '2023-05-01').key1]"
+            },
+            "docIntelligenceEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Document Intelligence account."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('diName')), '2023-05-01').endpoint]"
+            },
+            "docIntelligenceKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Primary access key for the Document Intelligence account."
+              },
+              "value": "[listKeys(resourceId('Microsoft.CognitiveServices/accounts', parameters('diName')), '2023-05-01').key1]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('rgApp'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "containerEnvironment",
+      "resourceGroup": "[variables('rgApp')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "acrName": {
+            "value": "[variables('acrName')]"
+          },
+          "acrSku": {
+            "value": "[parameters('acrSku')]"
+          },
+          "caeName": {
+            "value": "[variables('caeName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').outputs.logAnalyticsWorkspaceId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "9955882856507739484"
+            }
+          },
+          "parameters": {
+            "acrName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Azure Container Registry."
+              }
+            },
+            "acrSku": {
+              "type": "string",
+              "defaultValue": "Basic",
+              "allowedValues": [
+                "Basic",
+                "Standard",
+                "Premium"
+              ],
+              "metadata": {
+                "description": "Azure Container Registry SKU."
+              }
+            },
+            "caeName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the Container Apps Environment."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for all resources in this module."
+              }
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace for container log routing."
+              }
+            }
+          },
+          "variables": {
+            "lawResourceIdSegments": "[split(parameters('logAnalyticsWorkspaceId'), '/')]",
+            "lawResourceName": "[variables('lawResourceIdSegments')[8]]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-07-01",
+              "name": "[parameters('acrName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "[parameters('acrSku')]"
+              },
+              "properties": {
+                "adminUserEnabled": true
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "container"
+              }
+            },
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('caeName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "appLogsConfiguration": {
+                  "destination": "log-analytics",
+                  "logAnalyticsConfiguration": {
+                    "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', variables('lawResourceName')), '2023-09-01').customerId]",
+                    "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', variables('lawResourceName')), '2023-09-01').primarySharedKey]"
+                  }
+                }
+              },
+              "tags": {
+                "project": "MyWorkMate",
+                "module": "container"
+              }
+            }
+          ],
+          "outputs": {
+            "acrLoginServer": {
+              "type": "string",
+              "metadata": {
+                "description": "Login server URL of the Azure Container Registry."
+              },
+              "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').loginServer]"
+            },
+            "acrName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the provisioned Azure Container Registry."
+              },
+              "value": "[parameters('acrName')]"
+            },
+            "caeName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the provisioned Container Apps Environment."
+              },
+              "value": "[parameters('caeName')]"
+            },
+            "caeId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the provisioned Container Apps Environment."
+              },
+              "value": "[resourceId('Microsoft.App/managedEnvironments', parameters('caeName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'monitoring')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('rgApp'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "keyvaultSecrets",
+      "resourceGroup": "[variables('rgSec')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "kvName": {
+            "value": "[variables('kvName')]"
+          },
+          "sqlConnectionString": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.sqlConnectionString.value]"
+          },
+          "sqlServerFqdn": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.sqlServerFqdn.value]"
+          },
+          "sqlDbName": {
+            "value": "[variables('sqlDbName')]"
+          },
+          "sqlAdminUser": {
+            "value": "[parameters('sqlAdminUser')]"
+          },
+          "sqlAdminPassword": {
+            "value": "[parameters('sqlAdminPassword')]"
+          },
+          "redisHostName": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.redisHostName.value]"
+          },
+          "redisPrimaryKey": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.redisPrimaryKey.value]"
+          },
+          "storageConnectionString": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.storageConnectionString.value]"
+          },
+          "searchEndpoint": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.searchEndpoint.value]"
+          },
+          "searchAdminKey": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.searchAdminKey.value]"
+          },
+          "openAiEndpoint": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.openAiEndpoint.value]"
+          },
+          "openAiKey": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.openAiKey.value]"
+          },
+          "openAiEmbeddingModel": {
+            "value": "[parameters('openAiEmbeddingModel')]"
+          },
+          "computerVisionEndpoint": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.computerVisionEndpoint.value]"
+          },
+          "computerVisionKey": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.computerVisionKey.value]"
+          },
+          "docIntelligenceEndpoint": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.docIntelligenceEndpoint.value]"
+          },
+          "docIntelligenceKey": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.docIntelligenceKey.value]"
+          },
+          "appInsightsConnectionString": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').outputs.appInsightsConnectionString.value]"
+          },
+          "appInsightsInstrumentationKey": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').outputs.appInsightsInstrumentationKey.value]"
+          },
+          "claudeApiKey": {
+            "value": "[parameters('claudeApiKey')]"
+          },
+          "bcTenantId": {
+            "value": "[parameters('bcTenantId')]"
+          },
+          "bcClientId": {
+            "value": "[parameters('bcClientId')]"
+          },
+          "bcClientSecret": {
+            "value": "[parameters('bcClientSecret')]"
+          },
+          "sessionSecret": {
+            "value": "[parameters('sessionSecret')]"
+          },
+          "encryptionKey": {
+            "value": "[parameters('encryptionKey')]"
+          },
+          "microsoftClientId": {
+            "value": "[parameters('microsoftClientId')]"
+          },
+          "microsoftClientSecret": {
+            "value": "[parameters('microsoftClientSecret')]"
+          },
+          "microsoftTenantId": {
+            "value": "[parameters('microsoftTenantId')]"
+          },
+          "azureAudioEndpoint": {
+            "value": "[parameters('azureAudioEndpoint')]"
+          },
+          "azureAudioKey": {
+            "value": "[parameters('azureAudioKey')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.37.4.10188",
+              "templateHash": "9289596529619906551"
+            }
+          },
+          "parameters": {
+            "kvName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the existing Key Vault to write secrets into."
+              }
+            },
+            "sqlConnectionString": {
+              "type": "securestring",
+              "metadata": {
+                "description": "ADO.NET connection string for the SQL database."
+              }
+            },
+            "sqlServerFqdn": {
+              "type": "string",
+              "metadata": {
+                "description": "Fully-qualified domain name of the SQL Server."
+              }
+            },
+            "sqlDbName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the SQL database."
+              }
+            },
+            "sqlAdminUser": {
+              "type": "string",
+              "metadata": {
+                "description": "SQL Server administrator login username."
+              }
+            },
+            "sqlAdminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "SQL Server administrator login password."
+              }
+            },
+            "redisHostName": {
+              "type": "string",
+              "metadata": {
+                "description": "Hostname of the Azure Cache for Redis instance."
+              }
+            },
+            "redisPrimaryKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Primary access key for the Redis cache."
+              }
+            },
+            "storageConnectionString": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Full connection string for the Azure Storage account."
+              }
+            },
+            "searchEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Azure AI Search service."
+              }
+            },
+            "searchAdminKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Admin key for the Azure AI Search service."
+              }
+            },
+            "openAiEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Azure OpenAI account."
+              }
+            },
+            "openAiKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Primary access key for the Azure OpenAI account."
+              }
+            },
+            "openAiEmbeddingModel": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the OpenAI embedding model deployment."
+              }
+            },
+            "computerVisionEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Computer Vision account."
+              }
+            },
+            "computerVisionKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Primary access key for the Computer Vision account."
+              }
+            },
+            "docIntelligenceEndpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the Document Intelligence account."
+              }
+            },
+            "docIntelligenceKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Primary access key for the Document Intelligence account."
+              }
+            },
+            "appInsightsConnectionString": {
+              "type": "string",
+              "metadata": {
+                "description": "Connection string for Application Insights."
+              }
+            },
+            "appInsightsInstrumentationKey": {
+              "type": "string",
+              "metadata": {
+                "description": "Instrumentation key for Application Insights."
+              }
+            },
+            "claudeApiKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Anthropic Claude API key."
+              }
+            },
+            "bcTenantId": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Business Central tenant ID."
+              }
+            },
+            "bcClientId": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Business Central client (app) ID."
+              }
+            },
+            "bcClientSecret": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Business Central client secret."
+              }
+            },
+            "sessionSecret": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Express session signing secret."
+              }
+            },
+            "encryptionKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "AES encryption key for sensitive data at rest."
+              }
+            },
+            "microsoftClientId": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Microsoft Entra app client ID (for OAuth)."
+              }
+            },
+            "microsoftClientSecret": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Microsoft Entra app client secret (for OAuth)."
+              }
+            },
+            "microsoftTenantId": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Microsoft Entra tenant ID (for OAuth)."
+              }
+            },
+            "azureAudioEndpoint": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Azure Cognitive Services Speech / Audio endpoint."
+              }
+            },
+            "azureAudioKey": {
+              "type": "securestring",
+              "metadata": {
+                "description": "Azure Cognitive Services Speech / Audio key."
+              }
+            }
+          },
+          "variables": {
+            "redisConnectionString": "[format('{0}:6380,password={1},ssl=True,abortConnect=False', parameters('redisHostName'), parameters('redisPrimaryKey'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'SqlDb-ConnectionString')]",
+              "properties": {
+                "value": "[parameters('sqlConnectionString')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Redis-ConnectionString')]",
+              "properties": {
+                "value": "[variables('redisConnectionString')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Storage-ConnectionString')]",
+              "properties": {
+                "value": "[parameters('storageConnectionString')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Database-Server')]",
+              "properties": {
+                "value": "[parameters('sqlServerFqdn')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Database-Name')]",
+              "properties": {
+                "value": "[parameters('sqlDbName')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Database-User')]",
+              "properties": {
+                "value": "[parameters('sqlAdminUser')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Database-Password')]",
+              "properties": {
+                "value": "[parameters('sqlAdminPassword')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-SEARCH-ENDPOINT')]",
+              "properties": {
+                "value": "[parameters('searchEndpoint')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-SEARCH-KEY')]",
+              "properties": {
+                "value": "[parameters('searchAdminKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-OPENAI-ENDPOINT')]",
+              "properties": {
+                "value": "[parameters('openAiEndpoint')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-OPENAI-KEY')]",
+              "properties": {
+                "value": "[parameters('openAiKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-OPENAI-EMBEDDING-DEPLOYMENT')]",
+              "properties": {
+                "value": "[parameters('openAiEmbeddingModel')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-VISION-ENDPOINT')]",
+              "properties": {
+                "value": "[parameters('computerVisionEndpoint')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-VISION-KEY')]",
+              "properties": {
+                "value": "[parameters('computerVisionKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'DocumentIntelligence-Endpoint')]",
+              "properties": {
+                "value": "[parameters('docIntelligenceEndpoint')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'DocumentIntelligence-Key')]",
+              "properties": {
+                "value": "[parameters('docIntelligenceKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'ApplicationInsights-ConnectionString')]",
+              "properties": {
+                "value": "[parameters('appInsightsConnectionString')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'ApplicationInsights-InstrumentationKey')]",
+              "properties": {
+                "value": "[parameters('appInsightsInstrumentationKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Claude-ApiKey')]",
+              "properties": {
+                "value": "[parameters('claudeApiKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'BC-TenantId')]",
+              "properties": {
+                "value": "[parameters('bcTenantId')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'BC-ClientId')]",
+              "properties": {
+                "value": "[parameters('bcClientId')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'BC-ClientSecret')]",
+              "properties": {
+                "value": "[parameters('bcClientSecret')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'SESSION-SECRET')]",
+              "properties": {
+                "value": "[parameters('sessionSecret')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'ENCRYPTION-KEY')]",
+              "properties": {
+                "value": "[parameters('encryptionKey')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Microsoft-ClientId')]",
+              "properties": {
+                "value": "[parameters('microsoftClientId')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Microsoft-ClientSecret')]",
+              "properties": {
+                "value": "[parameters('microsoftClientSecret')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'Microsoft-TenantId')]",
+              "properties": {
+                "value": "[parameters('microsoftTenantId')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-AUDIO-ENDPOINT')]",
+              "properties": {
+                "value": "[parameters('azureAudioEndpoint')]"
+              }
+            },
+            {
+              "type": "Microsoft.KeyVault/vaults/secrets",
+              "apiVersion": "2023-07-01",
+              "name": "[format('{0}/{1}', parameters('kvName'), 'AZURE-AUDIO-KEY')]",
+              "properties": {
+                "value": "[parameters('azureAudioKey')]"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'monitoring')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', variables('rgSec'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgSec')), 'Microsoft.Resources/deployments', 'security')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "securityResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the security resource group."
+      },
+      "value": "[variables('rgSec')]"
+    },
+    "dataResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the data resource group."
+      },
+      "value": "[variables('rgData')]"
+    },
+    "appResourceGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the application resource group."
+      },
+      "value": "[variables('rgApp')]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Key Vault."
+      },
+      "value": "[variables('kvName')]"
+    },
+    "sqlServerFqdn": {
+      "type": "string",
+      "metadata": {
+        "description": "Fully-qualified domain name of the SQL Server."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.sqlServerFqdn.value]"
+    },
+    "redisHostName": {
+      "type": "string",
+      "metadata": {
+        "description": "Hostname of the Redis cache."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.redisHostName.value]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the storage account."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.storageAccountName.value]"
+    },
+    "acrLoginServer": {
+      "type": "string",
+      "metadata": {
+        "description": "Login server URL of the Azure Container Registry."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'containerEnvironment'), '2022-09-01').outputs.acrLoginServer.value]"
+    },
+    "containerAppsEnvironmentName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Container Apps Environment."
+      },
+      "value": "[variables('caeName')]"
+    },
+    "openAiEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Endpoint URL of the Azure OpenAI account."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'cognitive'), '2022-09-01').outputs.openAiEndpoint.value]"
+    },
+    "searchEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Endpoint URL of the Azure AI Search service."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgData')), 'Microsoft.Resources/deployments', 'data'), '2022-09-01').outputs.searchEndpoint.value]"
+    },
+    "appInsightsConnectionString": {
+      "type": "string",
+      "metadata": {
+        "description": "Application Insights connection string."
+      },
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('rgApp')), 'Microsoft.Resources/deployments', 'monitoring'), '2022-09-01').outputs.appInsightsConnectionString.value]"
+    }
+  }
+}

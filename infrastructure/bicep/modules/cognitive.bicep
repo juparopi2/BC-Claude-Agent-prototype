@@ -1,0 +1,131 @@
+// ============================================================
+// MODULE: cognitive
+// Deploys Azure OpenAI, Computer Vision, and Document Intelligence
+// Scope: app resource group
+// ============================================================
+
+@description('Name of the Azure OpenAI account.')
+param openAiName string
+
+@description('Region for Azure OpenAI (must be an approved OpenAI region).')
+param openAiLocation string = 'eastus'
+
+@description('OpenAI embedding model deployment name (also used as the deployment identifier).')
+param openAiEmbeddingModel string = 'text-embedding-3-small'
+
+@description('OpenAI embedding model capacity in thousands of tokens per minute.')
+param openAiEmbeddingCapacity int = 120
+
+@description('Name of the Computer Vision account.')
+param cvName string
+
+@description('Computer Vision pricing tier.')
+param computerVisionSku string = 'S1'
+
+@description('Name of the Document Intelligence account.')
+param diName string
+
+@description('Document Intelligence pricing tier.')
+param docIntelligenceSku string = 'S0'
+
+@description('Region for Document Intelligence.')
+param docIntelligenceLocation string = 'eastus'
+
+@description('Primary Azure region used for Computer Vision (e.g. westeurope).')
+param location string
+
+// ============================================================
+// RESOURCES
+// ============================================================
+
+resource openAi 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+  name: openAiName
+  location: openAiLocation
+  kind: 'OpenAI'
+  sku: {
+    name: 'S0'
+  }
+  properties: {
+    customSubDomainName: openAiName
+    publicNetworkAccess: 'Enabled'
+  }
+  tags: {
+    project: 'MyWorkMate'
+    module: 'cognitive'
+  }
+}
+
+resource openAiEmbeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  name: openAiEmbeddingModel
+  parent: openAi
+  sku: {
+    name: 'Standard'
+    capacity: openAiEmbeddingCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: openAiEmbeddingModel
+      version: '1'
+    }
+  }
+}
+
+resource computerVision 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+  name: cvName
+  location: location
+  kind: 'ComputerVision'
+  sku: {
+    name: computerVisionSku
+  }
+  properties: {
+    customSubDomainName: cvName
+    publicNetworkAccess: 'Enabled'
+  }
+  tags: {
+    project: 'MyWorkMate'
+    module: 'cognitive'
+  }
+}
+
+resource docIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+  name: diName
+  location: docIntelligenceLocation
+  kind: 'FormRecognizer'
+  sku: {
+    name: docIntelligenceSku
+  }
+  properties: {
+    customSubDomainName: diName
+    publicNetworkAccess: 'Enabled'
+  }
+  tags: {
+    project: 'MyWorkMate'
+    module: 'cognitive'
+  }
+}
+
+// ============================================================
+// OUTPUTS
+// ============================================================
+
+@description('Endpoint URL of the Azure OpenAI account.')
+output openAiEndpoint string = openAi.properties.endpoint
+
+@description('Primary access key for the Azure OpenAI account.')
+output openAiKey string = openAi.listKeys().key1
+
+@description('Name of the OpenAI embedding deployment (equals the model name).')
+output openAiEmbeddingDeployment string = openAiEmbeddingModel
+
+@description('Endpoint URL of the Computer Vision account.')
+output computerVisionEndpoint string = computerVision.properties.endpoint
+
+@description('Primary access key for the Computer Vision account.')
+output computerVisionKey string = computerVision.listKeys().key1
+
+@description('Endpoint URL of the Document Intelligence account.')
+output docIntelligenceEndpoint string = docIntelligence.properties.endpoint
+
+@description('Primary access key for the Document Intelligence account.')
+output docIntelligenceKey string = docIntelligence.listKeys().key1

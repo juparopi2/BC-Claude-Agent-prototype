@@ -274,14 +274,24 @@ describe('classifyLlmError', () => {
   // 9. DOMException TimeoutError → LLM_TIMEOUT (AbortSignal.timeout())
   // -------------------------------------------------------------------------
   describe('DOMException TimeoutError', () => {
-    it('returns LLM_TIMEOUT for DOMException with name=TimeoutError', () => {
+    it('returns LLM_TIMEOUT for DOMException with name=TimeoutError (non-retryable)', () => {
       const error = new DOMException('timeout', 'TimeoutError');
 
       const result = classifyLlmError(error);
 
       expect(result.code).toBe(ErrorCode.LLM_TIMEOUT);
-      expect(result.retryable).toBe(true);
-      expect(result.retryAfterMs).toBe(5000);
+      expect(result.retryable).toBe(false);
+      expect(result.retryAfterMs).toBeUndefined();
+    });
+
+    it('returns LLM_TIMEOUT for AbortError (non-retryable)', () => {
+      const error = new DOMException('The operation was aborted', 'AbortError');
+
+      const result = classifyLlmError(error);
+
+      expect(result.code).toBe(ErrorCode.LLM_TIMEOUT);
+      expect(result.retryable).toBe(false);
+      expect(result.retryAfterMs).toBeUndefined();
     });
   });
 
@@ -341,13 +351,13 @@ describe('classifyLlmError', () => {
   // 12. Plain Error → AGENT_EXECUTION_FAILED
   // -------------------------------------------------------------------------
   describe('generic Error fallback', () => {
-    it('returns AGENT_EXECUTION_FAILED for an unrecognised Error', () => {
+    it('returns AGENT_EXECUTION_FAILED for an unrecognised Error (non-retryable)', () => {
       const error = new Error('something unexpected happened');
 
       const result = classifyLlmError(error);
 
       expect(result.code).toBe(ErrorCode.AGENT_EXECUTION_FAILED);
-      expect(result.retryable).toBe(true);
+      expect(result.retryable).toBe(false);
     });
   });
 
@@ -355,11 +365,11 @@ describe('classifyLlmError', () => {
   // 13. Thrown string → AGENT_EXECUTION_FAILED
   // -------------------------------------------------------------------------
   describe('thrown string fallback', () => {
-    it('returns AGENT_EXECUTION_FAILED when a string is thrown', () => {
+    it('returns AGENT_EXECUTION_FAILED when a string is thrown (non-retryable)', () => {
       const result = classifyLlmError('some string error');
 
       expect(result.code).toBe(ErrorCode.AGENT_EXECUTION_FAILED);
-      expect(result.retryable).toBe(true);
+      expect(result.retryable).toBe(false);
     });
   });
 
@@ -499,10 +509,10 @@ describe('isRetryableLlmError', () => {
     expect(isRetryableLlmError(error)).toBe(true);
   });
 
-  it('returns true for generic unknown Error', () => {
+  it('returns false for generic unknown Error', () => {
     const error = new Error('something unexpected');
 
-    expect(isRetryableLlmError(error)).toBe(true);
+    expect(isRetryableLlmError(error)).toBe(false);
   });
 
   it('returns false for AuthenticationError', () => {

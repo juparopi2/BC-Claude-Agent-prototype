@@ -334,7 +334,7 @@ describe('ErrorHandling', () => {
       );
     });
 
-    it('should use default timeout of 300000ms (5 minutes)', async () => {
+    it('should use default timeout of 600000ms (10 minutes)', async () => {
       vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue({
         messages: [
           { content: 'User', _getType: () => 'human' },

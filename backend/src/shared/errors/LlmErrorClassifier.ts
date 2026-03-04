@@ -75,24 +75,26 @@ export function classifyLlmError(error: unknown): ClassifiedLlmError {
   const errorMessage = error instanceof Error ? error.message : String(error);
 
   // 1. AbortSignal TimeoutError (DOMException with name "TimeoutError")
+  // This is OUR pipeline timeout (AbortSignal.timeout()) — the agent was actively working.
+  // NOT retryable: retrying restarts the entire agent execution (e.g., file analysis).
+  // Different from APIConnectionTimeoutError which is a network-level timeout (retryable).
   if (error instanceof DOMException && error.name === 'TimeoutError') {
     return {
       code: ErrorCode.LLM_TIMEOUT,
       userMessage: ERROR_MESSAGES[ErrorCode.LLM_TIMEOUT],
       technicalMessage: `Request aborted: ${errorMessage}`,
-      retryable: true,
-      retryAfterMs: 5000,
+      retryable: false,
     };
   }
 
-  // Also catch AbortError from AbortSignal.timeout()
+  // Also catch AbortError from AbortSignal.abort() — pipeline cancellation.
+  // Same rationale: this is our pipeline signal, not a transient network issue.
   if (error instanceof Error && error.name === 'AbortError') {
     return {
       code: ErrorCode.LLM_TIMEOUT,
       userMessage: ERROR_MESSAGES[ErrorCode.LLM_TIMEOUT],
       technicalMessage: `Request aborted: ${errorMessage}`,
-      retryable: true,
-      retryAfterMs: 5000,
+      retryable: false,
     };
   }
 
@@ -120,7 +122,7 @@ export function classifyLlmError(error: unknown): ClassifiedLlmError {
 
   // 4. RateLimitError (must check before generic APIError — it's a subclass)
   if (error instanceof RateLimitError) {
-    const retryAfterMs = parseRetryAfterMs(error.headers as Record<string, string | undefined>) ?? 30000;
+    const retryAfterMs = parseRetryAfterMs(error.headers as unknown as Record<string, string | undefined>) ?? 30000;
     return {
       code: ErrorCode.LLM_RATE_LIMITED,
       userMessage: ERROR_MESSAGES[ErrorCode.LLM_RATE_LIMITED],
@@ -200,12 +202,14 @@ export function classifyLlmError(error: unknown): ClassifiedLlmError {
     };
   }
 
-  // 10. Generic fallback
+  // 10. Generic fallback — not retryable by default.
+  // Unknown errors should not trigger graph-level retries that re-execute entire agent pipelines.
+  // The Anthropic SDK already retries transient API errors internally.
   return {
     code: ErrorCode.AGENT_EXECUTION_FAILED,
     userMessage: ERROR_MESSAGES[ErrorCode.AGENT_EXECUTION_FAILED],
     technicalMessage: errorMessage,
-    retryable: true,
+    retryable: false,
   };
 }
 

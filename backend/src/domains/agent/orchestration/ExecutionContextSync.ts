@@ -21,6 +21,7 @@
 
 import { randomUUID } from 'crypto';
 import type { AgentEvent, CitedFile, FileMention } from '@bc-agent/shared';
+import { env } from 'process';
 import {
   createToolLifecycleManager,
   type ToolLifecycleManager,
@@ -49,7 +50,7 @@ export interface ExecuteSyncOptions {
 
   /**
    * Timeout in milliseconds for the entire execution.
-   * @default 300000 (5 minutes)
+   * @default 600000 (10 minutes)
    */
   timeoutMs?: number;
 
@@ -259,7 +260,7 @@ export interface ExecutionContextSync {
 
   /**
    * Timeout in milliseconds for the entire execution.
-   * @default 300000 (5 minutes)
+   * @default 600000 (10 minutes)
    */
   readonly timeoutMs: number;
 }
@@ -321,8 +322,30 @@ export function createExecutionContextSync(
     // Options
     enableThinking: options?.enableThinking ?? true,
     thinkingBudget: options?.thinkingBudget ?? 10000,
-    timeoutMs: options?.timeoutMs ?? 300000,
+    timeoutMs: options?.timeoutMs ?? getDefaultExecutionTimeoutMs(),
   };
+}
+
+// ============================================================================
+// Configuration Helpers
+// ============================================================================
+
+const DEFAULT_EXECUTION_TIMEOUT_MS = 600_000; // 10 minutes
+
+/**
+ * Get the default execution timeout from the environment variable or fallback.
+ * Reads `AGENT_EXECUTION_TIMEOUT_MS` from the environment.
+ * @returns Timeout in milliseconds (default: 600000 = 10 minutes)
+ */
+function getDefaultExecutionTimeoutMs(): number {
+  const envValue = env.AGENT_EXECUTION_TIMEOUT_MS;
+  if (envValue) {
+    const parsed = Number(envValue);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_EXECUTION_TIMEOUT_MS;
 }
 
 // ============================================================================

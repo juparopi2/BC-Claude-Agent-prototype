@@ -76,7 +76,7 @@ export async function executeGraph(
         signal: AbortSignal.timeout(timeoutMs),
       }),
       {
-        maxRetries: 2,
+        maxRetries: 0,
         baseDelay: 1500,
         maxDelay: 10000,
         factor: 2,

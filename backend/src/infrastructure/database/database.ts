@@ -75,10 +75,11 @@ const PARAMETER_TYPE_MAP: Record<string, ISqlType | (() => ISqlType)> = {
   'parent_folder_id': sql.UniqueIdentifier,
   'chat_attachment_id': sql.UniqueIdentifier,
 
-  // NVARCHAR columns that end in 'Id' but are NOT UUIDs (Microsoft OAuth IDs, Anthropic IDs)
+  // NVARCHAR columns that end in 'Id'/'_id' but are NOT UUIDs (Microsoft OAuth IDs, Anthropic IDs)
   'microsoftId': sql.NVarChar(255),
   'microsoft_id': sql.NVarChar(255),
   'messageId': sql.NVarChar(255),  // camelCase variant for Anthropic message IDs (msg_01...)
+  'anthropic_file_id': sql.NVarChar(255),  // Anthropic Files API file ID (file_011...)
 
   // INT columns
   'chunk_index': sql.Int,

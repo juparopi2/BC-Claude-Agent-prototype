@@ -3,31 +3,8 @@ import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { FileTypeNotAllowedError } from '@/services/files/batch/errors';
+import { ALLOWED_MIME_TYPES } from '@bc-agent/shared';
 import type { Logger } from 'pino';
-
-// File type whitelist
-const ALLOWED_MIME_TYPES = [
-  // Documents
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',       // XLSX
-  'text/plain',
-  'text/csv',
-  'text/markdown',
-
-  // Images
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-
-  // Code
-  'application/json',
-  'text/javascript',
-  'text/html',
-  'text/css',
-];
 
 // Size limits (bytes)
 const MAX_FILE_SIZE_GENERAL = 100 * 1024 * 1024;  // 100 MB
@@ -128,7 +105,7 @@ export class FileUploadService {
    * @throws Error if MIME type is not allowed
    */
   public validateFileType(mimeType: string): void {
-    if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
+    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
       this.logger.warn({ mimeType }, 'File type not allowed');
       throw new FileTypeNotAllowedError(mimeType, ALLOWED_MIME_TYPES.join(', '));
     }

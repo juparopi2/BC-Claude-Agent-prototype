@@ -321,7 +321,7 @@ export function processAgentEventSync(
     }
 
     case 'error': {
-      const errorEvent = event as { error: string; code?: string };
+      const errorEvent = event as { error: string; code?: string; retryable?: boolean; retryAfterMs?: number };
       agentStateStore.getState().setAgentBusy(false);
       callbacks?.onAgentBusyChange?.(false);
       callbacks?.onError?.(errorEvent.error);

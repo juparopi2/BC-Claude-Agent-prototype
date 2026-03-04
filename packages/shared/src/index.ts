@@ -213,15 +213,20 @@ export type {
   AnthropicImageBlock,
   AnthropicFileDocumentBlock,
   AnthropicFileImageBlock,
+  AnthropicContainerUploadBlock,
   AnthropicAttachmentContentBlock,
+  SessionFileReference,
   LangChainImageBlock,
   LangChainTextBlock,
   LangChainDocumentBlock,
+  LangChainContainerUploadBlock,
   LangChainContentBlock,
   UploadChatAttachmentRequest,
   UploadChatAttachmentResponse,
   ListChatAttachmentsResponse,
   ResolvedChatAttachment,
+  AttachmentRoutingCategory,
+  AttachmentRoutingMetadata,
   ChatAttachmentCleanupJobData,
 
   // Upload Session types (Folder-Based Batch Processing)
@@ -377,11 +382,14 @@ export { JOB_QUEUE_DISPLAY_NAMES, getQueueDisplayName } from './types';
 export {
   CHAT_ATTACHMENT_ALLOWED_MIME_TYPES,
   CHAT_ATTACHMENT_CONFIG,
+  MIME_ROUTING_MAP,
   isAllowedChatAttachmentMimeType,
   parseChatAttachment,
   isImageMimeType,
   getContentBlockType,
   getMaxSizeForMimeType,
+  getAttachmentRoutingCategory,
+  isAnthropicNativeMimeType,
 } from './types';
 
 // Duplicate Detection schemas (PRD-02)

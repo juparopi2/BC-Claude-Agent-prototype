@@ -12,7 +12,7 @@ import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
 import { HumanMessage, SystemMessage, type BaseMessage, type MessageContent } from '@langchain/core/messages';
 import type { LanguageModelLike } from '@langchain/core/language_models/base';
-import { AGENT_ID, type AgentId } from '@bc-agent/shared';
+import { AGENT_ID, type AgentId, type SessionFileReference } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { getModelConfig } from '@/infrastructure/config/models';
 import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/GraphExecutor';
@@ -58,6 +58,61 @@ interface CompiledSupervisorGraph {
 let compiledSupervisor: CompiledSupervisorGraph | null = null;
 let agentMap: Map<AgentId, BuiltAgent> = new Map();
 let initialized = false;
+
+/**
+ * Strip `container_upload` blocks from messages before the supervisor LLM sees them.
+ *
+ * The Anthropic API rejects `container_upload` blocks when `code_execution` is not
+ * in the tools list. The supervisor only has transfer/routing tools, so it would fail.
+ * Worker agents (research-agent) that DO have code_execution receive the original
+ * messages from graph state — this only affects what the supervisor LLM sees.
+ *
+ * Replaced blocks are substituted with a text hint so the supervisor knows files
+ * were attached and can route to research-agent accordingly.
+ */
+function stripContainerUploads(messages: BaseMessage[]): BaseMessage[] {
+  // Find the last HumanMessage index — only this message gets the routing hint.
+  // Historical messages: silently strip container_upload blocks (no hint) to avoid
+  // biasing the supervisor toward research-agent for unrelated follow-up requests.
+  let lastHumanIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m && m._getType() === 'human') { lastHumanIdx = i; break; }
+  }
+
+  return messages.map((msg, idx) => {
+    if (msg._getType() !== 'human' || !Array.isArray(msg.content)) return msg;
+
+    const contentBlocks = msg.content as Array<{ type: string; [key: string]: unknown }>;
+    const filtered = contentBlocks.filter(block => block.type !== 'container_upload');
+
+    if (filtered.length === contentBlocks.length) return msg; // nothing stripped
+
+    const containerCount = contentBlocks.length - filtered.length;
+
+    if (idx === lastHumanIdx) {
+      // Current turn: add routing hint for supervisor
+      logger.info(
+        { containerCount, totalBlocks: contentBlocks.length, remainingBlocks: filtered.length },
+        'Stripped container_upload blocks from supervisor LLM input (current turn — hint added)'
+      );
+      const hint = {
+        type: 'text' as const,
+        text: `[FILE PROCESSING REQUIRED: ${containerCount} file(s) uploaded for sandbox processing via code_execution]`,
+      };
+      return new HumanMessage({ content: [hint, ...filtered] });
+    } else {
+      // Historical turn: silently strip to avoid routing bias
+      logger.debug(
+        { containerCount, messageIndex: idx },
+        'Stripped container_upload blocks from historical message (no hint)'
+      );
+      return filtered.length > 0
+        ? new HumanMessage({ content: filtered })
+        : msg;
+    }
+  });
+}
 
 /**
  * Initialize the supervisor graph.
@@ -111,7 +166,15 @@ export async function initializeSupervisorGraph(): Promise<void> {
     prompt,
     addHandoffBackMessages: true,
     outputMode: 'full_history',
-  });
+    // Strip container_upload blocks before the supervisor LLM processes them.
+    // The original messages (with container_upload) remain in graph state and
+    // propagate to worker agents like research-agent which has code_execution.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    preModelHook: (state: Record<string, any>) => {
+      const messages = (state.messages ?? []) as BaseMessage[];
+      return { llmInputMessages: stripContainerUploads(messages) };
+    },
+  } as Parameters<typeof createSupervisor>[0]);
 
   compiledSupervisor = workflow.compile({ checkpointer }) as unknown as CompiledSupervisorGraph;
 
@@ -178,6 +241,9 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const chatImageEmbeddings = typedInputs.context?.options?.chatImageEmbeddings as
       | Array<{ attachmentId: string; name: string; embedding: number[] }>
       | undefined;
+    const sessionFileReferences = typedInputs.context?.options?.sessionFileReferences as
+      | SessionFileReference[]
+      | undefined;
 
     if (targetAgentId && targetAgentId !== 'auto' && targetAgentId !== 'supervisor') {
       // When web search is enabled with a non-research target, fall through to supervisor
@@ -207,6 +273,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
                 invocationId: `inv-${Date.now()}`,
                 scopeFileIds,
                 chatImageEmbeddings,
+                sessionFileReferences,
               },
               recursionLimit: options?.recursionLimit ?? 100,
               signal: options?.signal,
@@ -223,6 +290,9 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     }
 
     // 2. Normal flow → supervisor LLM routes (auto mode)
+    // Note: container_upload blocks are stripped by preModelHook before the supervisor
+    // LLM sees them. Worker agents (research-agent) receive the original messages
+    // from graph state with container_upload blocks intact.
 
     // Augment prompt with web search hint when enableWebSearch is true.
     // This guides the supervisor to prefer the research-agent for the current request.
@@ -242,8 +312,9 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       'Invoking supervisor with scope'
     );
 
-    logger.debug(
-      { sessionId, userId, messageCount: messages.length },
+    const invocationId = `inv-${Date.now()}`;
+    logger.info(
+      { sessionId, userId, messageCount: messages.length, invocationId },
       'Invoking supervisor graph'
     );
 
@@ -251,44 +322,72 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const startTime = Date.now();
 
     let result: SupervisorState = { messages: [] };
+    let stepCount = 0;
     try {
-      const invocationId = `inv-${Date.now()}`;
       const stream = await compiledSupervisor.stream(
         { messages: [new HumanMessage({ content: supervisorContent })] },
         {
-          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, chatImageEmbeddings },
+          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, chatImageEmbeddings, sessionFileReferences },
           recursionLimit: options?.recursionLimit ?? 100,
           signal: options?.signal,
           streamMode: 'values',
         }
       );
-
-      let stepCount = 0;
+      let lastStepTime = startTime;
       for await (const state of stream) {
         stepCount++;
+        const now = Date.now();
         const lastMsg = state.messages?.at(-1);
-        logger.debug(
+
+        // Check if current state messages contain container_upload blocks
+        const stateMessages = (state.messages ?? []) as BaseMessage[];
+        const hasContainerUploads = stateMessages.some(m => {
+          if (!Array.isArray(m.content)) return false;
+          return (m.content as Array<{ type?: string }>).some(b => b.type === 'container_upload');
+        });
+
+        logger.info(
           {
             sessionId,
+            invocationId,
             step: stepCount,
+            stepDurationMs: now - lastStepTime,
+            totalElapsedMs: now - startTime,
             messageCount: state.messages?.length ?? 0,
             lastMessageType: lastMsg?.constructor?.name ?? 'unknown',
             lastMessageName: (lastMsg as { name?: string })?.name,
+            hasContainerUploads,
           },
-          'Graph step'
+          'Graph step completed'
         );
+        lastStepTime = now;
         result = state;
       }
 
       logger.info({ sessionId, totalSteps: stepCount }, 'Supervisor graph completed');
     } catch (error) {
+      const totalElapsedMs = Date.now() - startTime;
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name, code: (error as unknown as Record<string, unknown>).code }
+        : { value: String(error) };
+      logger.error(
+        {
+          sessionId,
+          invocationId,
+          totalSteps: stepCount,
+          totalElapsedMs,
+          error: errorInfo,
+        },
+        'Supervisor graph execution failed'
+      );
+
       // Record failed invocation analytics (fire-and-forget)
       getAgentAnalyticsService().recordInvocation({
         agentId: AGENT_ID.SUPERVISOR,
         success: false,
         inputTokens: 0,
         outputTokens: 0,
-        latencyMs: Date.now() - startTime,
+        latencyMs: totalElapsedMs,
       });
       throw error;
     }

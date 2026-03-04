@@ -50,6 +50,17 @@ function detectImageFormat(buffer: Buffer): string {
   ) {
     return 'webp';
   }
+  // BMP: 42 4D
+  if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
+    return 'bmp';
+  }
+  // TIFF: 49 49 2A 00 (little-endian) or 4D 4D 00 2A (big-endian)
+  if (
+    (buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) ||
+    (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a)
+  ) {
+    return 'tiff';
+  }
   return 'unknown';
 }
 

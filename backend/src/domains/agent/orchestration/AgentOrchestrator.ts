@@ -61,6 +61,7 @@ import { createGraphExecutor, type GraphExecutor } from './execution/GraphExecut
 import type { ICompiledGraph } from './execution/GraphExecutor';
 import { createExecutionPipeline, type ExecutionPipeline } from './execution/ExecutionPipeline';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
+import { classifyLlmError } from '@/shared/errors/LlmErrorClassifier';
 
 /**
  * Dependencies for AgentOrchestrator (for testing).
@@ -266,16 +267,24 @@ export class AgentOrchestrator implements IAgentOrchestrator {
 
       return pipelineResult.result;
     } catch (error) {
+      const classified = classifyLlmError(error);
       const errorInfo = error instanceof Error
         ? { message: error.message, stack: error.stack, name: error.name, cause: error.cause }
         : { value: String(error) };
-      this.logger.error({ error: errorInfo, sessionId, executionId: ctx.executionId }, 'Synchronous execution failed');
+      this.logger.error({
+        error: errorInfo,
+        classified: { code: classified.code, retryable: classified.retryable, technicalMessage: classified.technicalMessage },
+        sessionId,
+        executionId: ctx.executionId,
+      }, 'Synchronous execution failed');
 
       this.emitEventSync(ctx, {
         type: 'error',
         sessionId,
-        error: error instanceof Error ? error.message : String(error),
-        code: 'EXECUTION_FAILED',
+        error: classified.userMessage,
+        code: classified.code,
+        retryable: classified.retryable,
+        retryAfterMs: classified.retryAfterMs,
         timestamp: new Date().toISOString(),
         eventId: randomUUID(),
         persistenceState: 'transient',

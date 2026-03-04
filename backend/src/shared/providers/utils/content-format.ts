@@ -34,6 +34,16 @@ export function convertToLangChainFormat(
   contentBlocks: AnthropicAttachmentContentBlock[]
 ): LangChainContentBlock[] {
   return contentBlocks.map((block): LangChainContentBlock => {
+    // Container upload blocks: pass through as-is
+    // LangChain @langchain/anthropic has explicit support for container_upload
+    // content blocks in _formatContentBlocks() — no transformation needed.
+    if (block.type === 'container_upload') {
+      return {
+        type: 'container_upload',
+        file_id: block.file_id,
+      };
+    }
+
     // Files API references: pass through as-is (Anthropic native format)
     // LangChain ChatAnthropic forwards these directly to the Anthropic API
     if (block.source.type === 'file') {

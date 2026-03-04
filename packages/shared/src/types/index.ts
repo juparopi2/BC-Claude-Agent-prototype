@@ -279,23 +279,34 @@ export type {
   UploadChatAttachmentResponse,
   ListChatAttachmentsResponse,
   ResolvedChatAttachment,
+  AttachmentRoutingMetadata,
   ChatAttachmentCleanupJobData,
+  // Session-level file reference (cross-turn persistence)
+  SessionFileReference,
+  // Anthropic content block types
+  AnthropicContainerUploadBlock,
   // LangChain-compatible content block types
   LangChainImageBlock,
   LangChainTextBlock,
   LangChainDocumentBlock,
+  LangChainContainerUploadBlock,
   LangChainContentBlock,
+  // Attachment routing classification
+  AttachmentRoutingCategory,
 } from './chat-attachments.types';
 
 // Chat Attachments constants and utilities
 export {
   CHAT_ATTACHMENT_ALLOWED_MIME_TYPES,
   CHAT_ATTACHMENT_CONFIG,
+  MIME_ROUTING_MAP,
   isAllowedChatAttachmentMimeType,
   parseChatAttachment,
   isImageMimeType,
   getContentBlockType,
   getMaxSizeForMimeType,
+  getAttachmentRoutingCategory,
+  isAnthropicNativeMimeType,
 } from './chat-attachments.types';
 
 // Upload Session types (Folder-Based Batch Processing)

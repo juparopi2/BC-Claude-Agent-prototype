@@ -70,5 +70,40 @@ describe('supervisor-prompt', () => {
       const prompt = buildSupervisorPrompt();
       expect(prompt).not.toContain('You are a ROUTER');
     });
+
+    it('should contain FILE PROCESSING RULES section', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('FILE PROCESSING RULES');
+    });
+
+    it('should mention container_upload in file processing rules', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('[FILE PROCESSING REQUIRED');
+    });
+
+    it('should contain WEB SEARCH RULES section', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('WEB SEARCH RULES');
+    });
+
+    it('should contain research-agent routing for web search', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('research-agent');
+    });
+
+    it('should include graphing-agent for data visualization', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('graphing-agent');
+    });
+
+    it('should include IMPORTANT DISTINCTIONS section', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('IMPORTANT DISTINCTIONS');
+    });
+
+    it('should include CRITICAL RULES section', () => {
+      const prompt = buildSupervisorPrompt();
+      expect(prompt).toContain('CRITICAL RULES');
+    });
   });
 });

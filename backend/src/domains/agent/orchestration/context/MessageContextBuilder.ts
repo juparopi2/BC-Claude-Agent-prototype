@@ -21,7 +21,7 @@
  */
 
 import { HumanMessage, type MessageContent as LCMessageContent } from '@langchain/core/messages';
-import type { LangChainContentBlock, AnthropicAttachmentContentBlock } from '@bc-agent/shared';
+import type { LangChainContentBlock, AnthropicAttachmentContentBlock, AttachmentRoutingMetadata, SessionFileReference } from '@bc-agent/shared';
 import type { IFileContextPreparer, FileContextPreparationResult, MentionScope } from '@domains/agent/context';
 import type { AttachmentContentResolver } from '@/domains/chat-attachments';
 import { convertToLangChainFormat } from '@shared/providers/utils/content-format';
@@ -89,6 +89,12 @@ export interface MessageContextBuildResult {
         enableWebSearch?: boolean;
         scopeFileIds?: string[];
         chatImageEmbeddings?: ChatImageEmbedding[];
+        /** Whether any chat attachment requires sandbox file processing */
+        requiresFileProcessing?: boolean;
+        /** MIME types of non-native attachments (for supervisor routing hints) */
+        nonNativeFileTypes?: string[];
+        /** Session-level file references for cross-turn container_upload persistence */
+        sessionFileReferences?: SessionFileReference[];
       };
     };
   };
@@ -180,7 +186,9 @@ export function buildGraphInputs(
   sessionId: string,
   contextResult: FileContextPreparationResult,
   options?: MessageContextOptions,
-  chatImageEmbeddings?: ChatImageEmbedding[]
+  chatImageEmbeddings?: ChatImageEmbedding[],
+  routingMetadata?: AttachmentRoutingMetadata,
+  sessionFileReferences?: SessionFileReference[]
 ): MessageContextBuildResult['inputs'] {
   return {
     messages: [
@@ -201,6 +209,11 @@ export function buildGraphInputs(
         enableWebSearch: options?.enableWebSearch,
         scopeFileIds: contextResult.mentionScope?.scopeFileIds,
         chatImageEmbeddings: chatImageEmbeddings?.length ? chatImageEmbeddings : undefined,
+        requiresFileProcessing: routingMetadata?.hasContainerUploads,
+        nonNativeFileTypes: routingMetadata?.nonNativeTypes?.length
+          ? routingMetadata.nonNativeTypes
+          : undefined,
+        sessionFileReferences: sessionFileReferences?.length ? sessionFileReferences : undefined,
       },
     },
   };
@@ -237,18 +250,26 @@ export class MessageContextBuilder {
       scopeFileIds: options?.mentionedFileIds,
     });
 
-    // Step 2: Resolve chat attachments to content blocks
+    // Step 2: Resolve chat attachments to content blocks (with routing classification)
     const anthropicBlocks: AnthropicAttachmentContentBlock[] = [];
+    let routingMetadata: AttachmentRoutingMetadata | undefined;
     if (options?.chatAttachments?.length) {
-      const resolvedAttachments = await this.attachmentContentResolver.resolve(
+      const resolveResult = await this.attachmentContentResolver.resolve(
         userId,
-        options.chatAttachments
+        options.chatAttachments,
+        { includeRoutingMetadata: true }
       );
-      for (const resolved of resolvedAttachments) {
+      for (const resolved of resolveResult.attachments) {
         anthropicBlocks.push(resolved.contentBlock);
       }
+      routingMetadata = resolveResult.routingMetadata;
       logger.debug(
-        { sessionId, resolvedCount: resolvedAttachments.length },
+        {
+          sessionId,
+          resolvedCount: resolveResult.attachments.length,
+          hasContainerUploads: routingMetadata.hasContainerUploads,
+          nonNativeTypes: routingMetadata.nonNativeTypes,
+        },
         'Resolved chat attachments for message'
       );
     }
@@ -277,6 +298,28 @@ export class MessageContextBuilder {
       );
     }
 
+    // Step 2d: Fetch session-level file references for cross-turn container_upload persistence
+    let sessionFileReferences: SessionFileReference[] | undefined;
+    try {
+      const { getChatAttachmentService } = await import('@/domains/chat-attachments');
+      const attachmentService = getChatAttachmentService();
+      sessionFileReferences = await attachmentService.getSessionFileReferences(userId, sessionId);
+      if (sessionFileReferences.length > 0) {
+        logger.info(
+          { sessionId, count: sessionFileReferences.length },
+          'Fetched session file references for cross-turn persistence'
+        );
+      }
+    } catch (err) {
+      const errorInfo = err instanceof Error
+        ? { message: err.message }
+        : { value: String(err) };
+      logger.warn(
+        { sessionId, error: errorInfo },
+        'Failed to fetch session file references, skipping'
+      );
+    }
+
     // Step 3: Convert to LangChain format
     // Separate mention text blocks from binary blocks (images/PDFs)
     const mentionTextBlocks = mentionBlocks.filter(
@@ -298,14 +341,16 @@ export class MessageContextBuilder {
     // Step 4: Build message content
     const messageContent = buildMessageContent(prompt, contextResult, allLangChainBlocks);
 
-    // Step 5: Build graph inputs
+    // Step 5: Build graph inputs (includes routing metadata for supervisor hints)
     const inputs = buildGraphInputs(
       messageContent,
       userId,
       sessionId,
       contextResult,
       options,
-      chatImageEmbeddings
+      chatImageEmbeddings,
+      routingMetadata,
+      sessionFileReferences
     );
 
     return { inputs, contextResult };

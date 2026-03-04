@@ -679,4 +679,98 @@ describe('ChatAttachmentService', () => {
       expect(mockExecuteQuery).not.toHaveBeenCalled();
     });
   });
+
+  // ========== SUITE 9: ensureAnthropicFileUpload ==========
+  describe('ensureAnthropicFileUpload()', () => {
+    it('should return existing anthropic_file_id when already uploaded', async () => {
+      const mockRecord = ChatAttachmentFixture.createDbRecord({
+        id: testAttachmentId,
+        user_id: testUserId,
+        anthropic_file_id: 'file_existing123',
+      });
+
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [mockRecord],
+        rowsAffected: [1],
+      });
+
+      const result = await service.ensureAnthropicFileUpload(testAttachmentId, testUserId);
+
+      expect(result).toBe('file_existing123');
+      // Should NOT call blob download or Anthropic upload
+      expect(mockDownloadFromBlob).not.toHaveBeenCalled();
+      expect(mockAnthropicUploadFile).not.toHaveBeenCalled();
+    });
+
+    it('should upload to Anthropic when no file_id exists', async () => {
+      const mockRecord = ChatAttachmentFixture.createDbRecord({
+        id: testAttachmentId,
+        user_id: testUserId,
+        anthropic_file_id: null,
+        blob_path: 'chat-attachments/user/session/report.docx',
+        name: 'report.docx',
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+
+      // First call: getAttachmentRecord
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [mockRecord],
+        rowsAffected: [1],
+      });
+      // Second call: updateAnthropicFileId
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        rowsAffected: [1],
+      });
+
+      mockAnthropicUploadFile.mockResolvedValueOnce('file_new456');
+
+      const result = await service.ensureAnthropicFileUpload(testAttachmentId, testUserId);
+
+      expect(result).toBe('file_new456');
+      expect(mockDownloadFromBlob).toHaveBeenCalledWith('chat-attachments/user/session/report.docx');
+      expect(mockAnthropicUploadFile).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'report.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      );
+    });
+
+    it('should throw when attachment not found', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        rowsAffected: [0],
+      });
+
+      await expect(
+        service.ensureAnthropicFileUpload('NON-EXISTENT-ID', testUserId)
+      ).rejects.toThrow(/not found/);
+    });
+
+    it('should persist the Anthropic file ID after upload', async () => {
+      const mockRecord = ChatAttachmentFixture.createDbRecord({
+        id: testAttachmentId,
+        user_id: testUserId,
+        anthropic_file_id: null,
+      });
+
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [mockRecord],
+        rowsAffected: [1],
+      });
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [],
+        rowsAffected: [1],
+      });
+
+      mockAnthropicUploadFile.mockResolvedValueOnce('file_persist789');
+
+      await service.ensureAnthropicFileUpload(testAttachmentId, testUserId);
+
+      // Second call should be the UPDATE to persist the file ID
+      expect(mockExecuteQuery).toHaveBeenCalledTimes(2);
+      const secondCallArgs = mockExecuteQuery.mock.calls[1];
+      expect(secondCallArgs[0]).toContain('anthropic_file_id');
+    });
+  });
 });

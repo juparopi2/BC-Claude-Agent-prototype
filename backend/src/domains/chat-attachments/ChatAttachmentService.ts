@@ -33,6 +33,7 @@ import type {
   ChatAttachmentMediaType,
   ChatAttachmentSummary,
   ChatAttachmentStatus,
+  SessionFileReference,
 } from '@bc-agent/shared';
 import type { Logger } from 'pino';
 
@@ -384,6 +385,49 @@ export class ChatAttachmentService {
     });
   }
 
+  /**
+   * Get session-level file references for cross-turn file persistence.
+   *
+   * Returns only attachments that have been uploaded to Anthropic Files API
+   * (anthropic_file_id IS NOT NULL), which are needed for re-injecting
+   * container_upload blocks in subsequent turns.
+   *
+   * @param userId - User ID for ownership check
+   * @param sessionId - Session ID
+   * @returns Array of session file references with Anthropic file IDs
+   */
+  async getSessionFileReferences(
+    userId: string,
+    sessionId: string
+  ): Promise<SessionFileReference[]> {
+    const query = `
+      SELECT id, anthropic_file_id, name, mime_type
+      FROM chat_attachments
+      WHERE user_id = @user_id
+        AND session_id = @session_id
+        AND is_deleted = 0
+        AND expires_at > GETUTCDATE()
+        AND anthropic_file_id IS NOT NULL
+    `;
+
+    const result = await executeQuery<{
+      id: string;
+      anthropic_file_id: string;
+      name: string;
+      mime_type: string;
+    }>(query, {
+      user_id: userId,
+      session_id: sessionId,
+    });
+
+    return result.recordset.map((record) => ({
+      attachmentId: record.id,
+      anthropicFileId: record.anthropic_file_id,
+      name: record.name,
+      mimeType: record.mime_type,
+    }));
+  }
+
   // ========================================
   // Delete Operations
   // ========================================
@@ -553,6 +597,56 @@ export class ChatAttachmentService {
           'Anthropic Files API upload failed — will use base64 fallback'
         );
       });
+  }
+
+  /**
+   * Ensure a chat attachment is uploaded to Anthropic Files API.
+   *
+   * Unlike the fire-and-forget uploadToAnthropicFilesApi(), this method
+   * blocks until the upload completes and returns the Anthropic file ID.
+   * Used by AttachmentContentResolver for container_upload attachments
+   * where the file MUST be on Anthropic's servers before sending.
+   *
+   * @param attachmentId - Attachment ID
+   * @param userId - User ID for ownership validation
+   * @returns Anthropic file ID
+   * @throws Error if upload fails or attachment not found
+   */
+  async ensureAnthropicFileUpload(
+    attachmentId: string,
+    userId: string
+  ): Promise<string> {
+    // Get the attachment record
+    const record = await this.getAttachmentRecord(userId, attachmentId);
+    if (!record) {
+      throw new Error(`Attachment ${attachmentId} not found or expired`);
+    }
+
+    // If already uploaded, return existing file ID
+    if (record.anthropic_file_id) {
+      return record.anthropic_file_id;
+    }
+
+    // Download from blob and upload to Anthropic
+    const fileUploadService = getFileUploadService();
+    const buffer = await fileUploadService.downloadFromBlob(record.blob_path);
+
+    const anthropicFilesService = getAnthropicFilesService();
+    const anthropicFileId = await anthropicFilesService.uploadFile(
+      buffer,
+      record.name,
+      record.mime_type
+    );
+
+    // Persist the file ID for future use
+    await this.updateAnthropicFileId(attachmentId, anthropicFileId);
+
+    this.logger.info(
+      { attachmentId, anthropicFileId, mimeType: record.mime_type },
+      'Ensured Anthropic Files API upload for container_upload'
+    );
+
+    return anthropicFileId;
   }
 
   /**

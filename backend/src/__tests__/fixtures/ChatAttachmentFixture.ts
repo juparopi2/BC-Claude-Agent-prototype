@@ -292,6 +292,18 @@ export class ChatAttachmentFixture {
       }),
 
     /**
+     * A PowerPoint presentation attachment
+     */
+    pptxAttachment: (userId = 'USER-TEST-123', sessionId = 'SESSION-TEST-123') =>
+      ChatAttachmentFixture.createDbRecord({
+        user_id: userId,
+        session_id: sessionId,
+        name: 'presentation.pptx',
+        mime_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        size_bytes: 2048000, // ~2 MB
+      }),
+
+    /**
      * An expired attachment (TTL exceeded)
      */
     expiredAttachment: (userId = 'USER-TEST-123', sessionId = 'SESSION-TEST-123') =>

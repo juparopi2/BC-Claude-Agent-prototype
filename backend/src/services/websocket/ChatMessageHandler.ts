@@ -27,6 +27,7 @@ import type {
 } from '@/types';
 import type { ChatMessageData } from '@/types/websocket.types';
 import { getAgentOrchestrator } from '@domains/agent/orchestration';
+import { classifyLlmError } from '@/shared/errors/LlmErrorClassifier';
 import type { AgentChangedEvent } from '@bc-agent/shared';
 import { createChildLogger } from '@/shared/utils/logger';
 import { validateSessionOwnership } from '@/shared/utils/session-ownership';
@@ -178,27 +179,28 @@ export class ChatMessageHandler {
 
       this.logger.info('✅ Chat message processed successfully (executeAgentSync completed)', { sessionId, userId });
     } catch (error) {
+      const classified = classifyLlmError(error);
+
       // Type for Node.js system errors with additional properties
       type NodeSystemError = Error & { code?: string; errno?: number; syscall?: string };
       const systemError = error as NodeSystemError;
 
-      this.logger.error('❌ Chat message handler error (DETAILED)', {
+      this.logger.error('Chat message handler error', {
         error: error instanceof Error ? error.message : String(error),
         errorType: error instanceof Error ? error.constructor.name : typeof error,
         errorCode: systemError?.code,
-        errorErrno: systemError?.errno,
-        errorSyscall: systemError?.syscall,
-        stack: error instanceof Error ? error.stack : undefined,
+        classified: { code: classified.code, retryable: classified.retryable, technicalMessage: classified.technicalMessage },
         sessionId,
         userId,
       });
 
-      // ⭐ Emit error to frontend (error must be string per type definition)
-      // NOTE: Removed duplicate agent:error emission - using single agent:event format
+      // Emit user-friendly error to frontend (defense-in-depth — orchestrator may have already emitted)
       socket.emit('agent:event', {
         type: 'error',
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
-        code: systemError?.code || 'HANDLER_ERROR',
+        error: classified.userMessage,
+        code: classified.code,
+        retryable: classified.retryable,
+        retryAfterMs: classified.retryAfterMs,
         sessionId,
       });
     }

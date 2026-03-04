@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PdfProcessor } from '@services/files/processors/PdfProcessor';
+import { AzureDocIntelligenceProcessor } from '@services/files/processors/AzureDocIntelligenceProcessor';
 import type { AnalyzeResult } from '@azure/ai-form-recognizer';
 import { DocumentAnalysisClient } from '@azure/ai-form-recognizer';
 
@@ -64,7 +64,7 @@ function createAzureAnalyzeResult(overrides?: Partial<AnalyzeResult>): AnalyzeRe
   return {
     modelId: 'prebuilt-read',
     apiVersion: '2023-07-31',
-    content: 'This is extracted text from a PDF document.',
+    content: 'This is extracted text from a document.',
     pages: [
       {
         pageNumber: 1,
@@ -83,14 +83,14 @@ function createAzureAnalyzeResult(overrides?: Partial<AnalyzeResult>): AnalyzeRe
             spans: [{ offset: 0, length: 22 }],
           },
         ],
-        spans: [{ offset: 0, length: 43 }],
+        spans: [{ offset: 0, length: 40 }],
       },
     ],
     languages: [
       {
         locale: 'en-US',
         confidence: 0.95,
-        spans: [{ offset: 0, length: 43 }],
+        spans: [{ offset: 0, length: 40 }],
       },
     ],
     styles: [],
@@ -107,7 +107,7 @@ function createAzureAnalyzeResultWithOCR(): AnalyzeResult {
       {
         isHandwritten: true,
         confidence: 0.92,
-        spans: [{ offset: 0, length: 43 }],
+        spans: [{ offset: 0, length: 40 }],
       },
     ],
   });
@@ -164,7 +164,7 @@ function createAzureAnalyzeResultMultiPage(): AnalyzeResult {
 // Test Suite
 // =============================================================================
 
-describe('PdfProcessor', () => {
+describe('AzureDocIntelligenceProcessor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -179,21 +179,20 @@ describe('PdfProcessor', () => {
 
   describe('Configuration validation', () => {
     it('should throw error when AZURE_DI_ENDPOINT is not configured', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
-      // Environment is undefined by default in beforeEach
       mockEnv.AZURE_DI_ENDPOINT = undefined;
       mockEnv.AZURE_DI_KEY = 'test-key';
 
-      await expect(processor.extractText(buffer, 'test.pdf')).rejects.toThrow(
+      await expect(processor.extractText(buffer, 'test.pptx')).rejects.toThrow(
         'Azure Document Intelligence credentials not configured. ' +
           'Please set AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.'
       );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'test.pdf',
+          fileName: 'test.pptx',
           error: expect.stringContaining('Azure Document Intelligence credentials not configured'),
         }),
         'Azure DI extraction failed'
@@ -201,34 +200,34 @@ describe('PdfProcessor', () => {
     });
 
     it('should throw error when AZURE_DI_KEY is not configured', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       mockEnv.AZURE_DI_ENDPOINT = 'https://test.cognitiveservices.azure.com/';
       mockEnv.AZURE_DI_KEY = undefined;
 
-      await expect(processor.extractText(buffer, 'test.pdf')).rejects.toThrow(
+      await expect(processor.extractText(buffer, 'test.pptx')).rejects.toThrow(
         'Azure Document Intelligence credentials not configured. ' +
           'Please set AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.'
       );
     });
 
     it('should throw error when both AZURE_DI_ENDPOINT and AZURE_DI_KEY are not configured', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       mockEnv.AZURE_DI_ENDPOINT = undefined;
       mockEnv.AZURE_DI_KEY = undefined;
 
-      await expect(processor.extractText(buffer, 'test.pdf')).rejects.toThrow(
+      await expect(processor.extractText(buffer, 'test.pptx')).rejects.toThrow(
         'Azure Document Intelligence credentials not configured. ' +
           'Please set AZURE_DI_ENDPOINT and AZURE_DI_KEY environment variables.'
       );
     });
 
     it('should create Azure client only once (lazy initialization)', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       mockEnv.AZURE_DI_ENDPOINT = 'https://test.cognitiveservices.azure.com/';
       mockEnv.AZURE_DI_KEY = 'test-key-123';
@@ -238,8 +237,8 @@ describe('PdfProcessor', () => {
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
       // Call extractText twice
-      await processor.extractText(buffer, 'test1.pdf');
-      await processor.extractText(buffer, 'test2.pdf');
+      await processor.extractText(buffer, 'slide1.pptx');
+      await processor.extractText(buffer, 'slide2.pptx');
 
       // DocumentAnalysisClient constructor should be called only once
       expect(MockedDocumentAnalysisClient).toHaveBeenCalledTimes(1);
@@ -257,17 +256,17 @@ describe('PdfProcessor', () => {
       mockEnv.AZURE_DI_KEY = 'test-key-123';
     });
 
-    it('should extract text from valid PDF buffer', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+    it('should extract text from valid document buffer', async () => {
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult();
 
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'invoice.pdf');
+      const result = await processor.extractText(buffer, 'presentation.pptx');
 
-      expect(result.text).toBe('This is extracted text from a PDF document.');
+      expect(result.text).toBe('This is extracted text from a document.');
       expect(result.metadata.pageCount).toBe(1);
       expect(result.metadata.fileSize).toBe(buffer.length);
       expect(result.metadata.azureApiVersion).toBe('2023-07-31');
@@ -278,14 +277,14 @@ describe('PdfProcessor', () => {
     });
 
     it('should return correct metadata from Azure response', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResultMultiPage();
 
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'multi-page.pdf');
+      const result = await processor.extractText(buffer, 'multi-slide.pptx');
 
       expect(result.text).toBe('Page 1 content.\n\nPage 2 content.');
       expect(result.metadata.pageCount).toBe(2);
@@ -320,19 +319,19 @@ describe('PdfProcessor', () => {
     });
 
     it('should detect OCR usage via styles (isHandwritten)', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResultWithOCR();
 
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'handwritten.pdf');
+      const result = await processor.extractText(buffer, 'handwritten.pptx');
 
       expect(result.metadata.ocrUsed).toBe(true);
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'handwritten.pdf',
+          fileName: 'handwritten.pptx',
           ocrUsed: true,
         }),
         'Azure DI extraction completed successfully'
@@ -340,14 +339,14 @@ describe('PdfProcessor', () => {
     });
 
     it('should set ocrUsed to false when no handwritten content detected', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult({
         styles: [
           {
             isHandwritten: false,
             confidence: 0.99,
-            spans: [{ offset: 0, length: 43 }],
+            spans: [{ offset: 0, length: 40 }],
           },
         ],
       });
@@ -355,14 +354,14 @@ describe('PdfProcessor', () => {
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'typed.pdf');
+      const result = await processor.extractText(buffer, 'typed-doc.pptx');
 
       expect(result.metadata.ocrUsed).toBe(false);
     });
 
     it('should set ocrUsed to false when styles array is empty', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult({
         styles: [],
       });
@@ -370,24 +369,24 @@ describe('PdfProcessor', () => {
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'no-styles.pdf');
+      const result = await processor.extractText(buffer, 'no-styles.pptx');
 
       expect(result.metadata.ocrUsed).toBe(false);
     });
 
     it('should log extraction metrics on successful extraction', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult();
 
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      await processor.extractText(buffer, 'metrics.pdf');
+      await processor.extractText(buffer, 'metrics.pptx');
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         {
-          fileName: 'metrics.pdf',
+          fileName: 'metrics.pptx',
           fileSize: buffer.length,
         },
         'Starting Azure DI extraction'
@@ -395,7 +394,7 @@ describe('PdfProcessor', () => {
 
       expect(mockLogger.debug).toHaveBeenCalledWith(
         {
-          fileName: 'metrics.pdf',
+          fileName: 'metrics.pptx',
           modelId: 'prebuilt-read',
           apiVersion: '2023-07-31',
           pageCount: 1,
@@ -405,9 +404,9 @@ describe('PdfProcessor', () => {
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         {
-          fileName: 'metrics.pdf',
+          fileName: 'metrics.pptx',
           pageCount: 1,
-          textLength: 43,
+          textLength: 39,
           ocrUsed: false,
           languagesDetected: 1,
           fileSize: buffer.length,
@@ -425,16 +424,16 @@ describe('PdfProcessor', () => {
     });
 
     it('should throw error when buffer is empty', async () => {
-      const processor = new PdfProcessor();
+      const processor = new AzureDocIntelligenceProcessor();
       const emptyBuffer = Buffer.from('');
 
-      await expect(processor.extractText(emptyBuffer, 'empty.pdf')).rejects.toThrow(
-        'Failed to extract text from empty.pdf: Buffer is empty or undefined'
+      await expect(processor.extractText(emptyBuffer, 'empty.pptx')).rejects.toThrow(
+        'Failed to extract text from empty.pptx: Buffer is empty or undefined'
       );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'empty.pdf',
+          fileName: 'empty.pptx',
           error: 'Buffer is empty or undefined',
         }),
         'Azure DI extraction failed'
@@ -442,19 +441,19 @@ describe('PdfProcessor', () => {
     });
 
     it('should throw error when Azure API fails', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       const azureError = new Error('Azure Document Intelligence service unavailable');
       mockBeginAnalyzeDocument.mockRejectedValue(azureError);
 
-      await expect(processor.extractText(buffer, 'api-error.pdf')).rejects.toThrow(
-        'Failed to extract text from api-error.pdf: Azure Document Intelligence service unavailable'
+      await expect(processor.extractText(buffer, 'api-error.pptx')).rejects.toThrow(
+        'Failed to extract text from api-error.pptx: Azure Document Intelligence service unavailable'
       );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'api-error.pdf',
+          fileName: 'api-error.pptx',
           error: 'Azure Document Intelligence service unavailable',
           stack: expect.any(String),
         }),
@@ -462,20 +461,20 @@ describe('PdfProcessor', () => {
       );
     });
 
-    it('should throw error when polling fails', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+    it('should throw error when polling fails (timeout)', async () => {
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
       mockPollUntilDone.mockRejectedValue(new Error('Polling timeout'));
 
-      await expect(processor.extractText(buffer, 'polling-error.pdf')).rejects.toThrow(
-        'Failed to extract text from polling-error.pdf: Polling timeout'
+      await expect(processor.extractText(buffer, 'polling-error.pptx')).rejects.toThrow(
+        'Failed to extract text from polling-error.pptx: Polling timeout'
       );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'polling-error.pdf',
+          fileName: 'polling-error.pptx',
           error: 'Polling timeout',
         }),
         'Azure DI extraction failed'
@@ -483,19 +482,19 @@ describe('PdfProcessor', () => {
     });
 
     it('should handle non-Error exceptions gracefully', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       // Throw a non-Error object (e.g., string)
       mockBeginAnalyzeDocument.mockRejectedValue('String error');
 
-      await expect(processor.extractText(buffer, 'string-error.pdf')).rejects.toThrow(
-        'Failed to extract text from string-error.pdf: String error'
+      await expect(processor.extractText(buffer, 'string-error.pptx')).rejects.toThrow(
+        'Failed to extract text from string-error.pptx: String error'
       );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'string-error.pdf',
+          fileName: 'string-error.pptx',
           error: 'String error',
           stack: undefined,
         }),
@@ -503,20 +502,21 @@ describe('PdfProcessor', () => {
       );
     });
 
-    it('should enhance error message with filename context', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+    it('should enhance error message with filename context (no PDF prefix)', async () => {
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
 
       mockBeginAnalyzeDocument.mockRejectedValue(new Error('Invalid API key'));
 
-      await expect(processor.extractText(buffer, 'invoice-2023.pdf')).rejects.toThrow(
-        'Failed to extract text from invoice-2023.pdf: Invalid API key'
+      // Error message uses generic "Failed to extract text from {fileName}"
+      // (NOT "Failed to extract text from PDF {fileName}" as in PdfProcessor)
+      await expect(processor.extractText(buffer, 'slides-2023.pptx')).rejects.toThrow(
+        'Failed to extract text from slides-2023.pptx: Invalid API key'
       );
 
-      // Verify the error message includes the filename for better debugging
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'invoice-2023.pdf',
+          fileName: 'slides-2023.pptx',
           error: 'Invalid API key',
         }),
         'Azure DI extraction failed'
@@ -532,8 +532,8 @@ describe('PdfProcessor', () => {
     });
 
     it('should handle Azure result with no languages detected', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult({
         languages: undefined,
       });
@@ -541,7 +541,7 @@ describe('PdfProcessor', () => {
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'no-language.pdf');
+      const result = await processor.extractText(buffer, 'no-language.pptx');
 
       expect(result.metadata.languages).toBeUndefined();
       expect(mockLogger.info).toHaveBeenCalledWith(
@@ -553,8 +553,8 @@ describe('PdfProcessor', () => {
     });
 
     it('should handle Azure result with no pages (edge case)', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult({
         pages: undefined,
       });
@@ -562,37 +562,37 @@ describe('PdfProcessor', () => {
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'no-pages.pdf');
+      const result = await processor.extractText(buffer, 'no-pages.pptx');
 
       expect(result.metadata.pageCount).toBeUndefined();
       expect(result.metadata.pages).toBeUndefined();
     });
 
-    it('should handle very large PDF buffers', async () => {
-      const processor = new PdfProcessor();
+    it('should handle very large document buffers', async () => {
+      const processor = new AzureDocIntelligenceProcessor();
       const largeBuffer = Buffer.alloc(50 * 1024 * 1024); // 50 MB
       const azureResult = createAzureAnalyzeResultMultiPage();
 
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(largeBuffer, 'large.pdf');
+      const result = await processor.extractText(largeBuffer, 'large.pptx');
 
       expect(result.text).toBe('Page 1 content.\n\nPage 2 content.');
       expect(result.metadata.fileSize).toBe(50 * 1024 * 1024);
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.objectContaining({
-          fileName: 'large.pdf',
+          fileName: 'large.pptx',
           fileSize: 50 * 1024 * 1024,
         }),
         'Starting Azure DI extraction'
       );
     });
 
-    it('should handle PDF with empty text content', async () => {
-      const processor = new PdfProcessor();
-      const buffer = Buffer.from('fake-pdf-content');
+    it('should handle document with empty text content', async () => {
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-document-content');
       const azureResult = createAzureAnalyzeResult({
         content: '',
       });
@@ -600,7 +600,7 @@ describe('PdfProcessor', () => {
       mockPollUntilDone.mockResolvedValue(azureResult);
       mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
 
-      const result = await processor.extractText(buffer, 'empty-content.pdf');
+      const result = await processor.extractText(buffer, 'empty-content.pptx');
 
       expect(result.text).toBe('');
       expect(result.metadata.pageCount).toBe(1);
@@ -609,6 +609,25 @@ describe('PdfProcessor', () => {
           textLength: 0,
         }),
         'Azure DI extraction completed successfully'
+      );
+    });
+
+    it('should work with PDF files (not only PPTX) since it is format-agnostic', async () => {
+      const processor = new AzureDocIntelligenceProcessor();
+      const buffer = Buffer.from('fake-pdf-content');
+      const azureResult = createAzureAnalyzeResult();
+
+      mockPollUntilDone.mockResolvedValue(azureResult);
+      mockBeginAnalyzeDocument.mockResolvedValue({ pollUntilDone: mockPollUntilDone });
+
+      // AzureDocIntelligenceProcessor is generic — it works with any Azure DI-supported format
+      const result = await processor.extractText(buffer, 'document.pdf');
+
+      expect(result.text).toBe('This is extracted text from a document.');
+      expect(result.metadata.pageCount).toBe(1);
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ fileName: 'document.pdf' }),
+        'Starting Azure DI extraction'
       );
     });
   });

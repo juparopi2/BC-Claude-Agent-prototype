@@ -15,12 +15,17 @@ export const FILE_TYPE_CATEGORIES = {
     'image/gif',
     'image/webp',
     'image/svg+xml',
+    'image/bmp',
+    'image/tiff',
   ],
   documents: [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'text/plain',
     'text/markdown',
+  ],
+  presentations: [
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   ],
   spreadsheets: [
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -48,11 +53,12 @@ export function getValidCategories(): FileTypeCategory[] {
 
 /** Human-readable descriptions of supported file types by category */
 export const FILE_TYPE_DISPLAY = {
-  images: { label: 'Images', extensions: '.jpg, .png, .gif, .webp, .svg' },
+  images: { label: 'Images', extensions: '.jpg, .png, .gif, .webp, .svg, .bmp, .tiff' },
   documents: { label: 'Documents', extensions: '.pdf, .docx, .txt, .md' },
+  presentations: { label: 'Presentations', extensions: '.pptx' },
   spreadsheets: { label: 'Spreadsheets', extensions: '.xlsx, .csv' },
   code: { label: 'Code', extensions: '.json, .js, .html, .css' },
 } as const;
 
 /** All supported extensions as a flat string for UX display */
-export const SUPPORTED_EXTENSIONS_DISPLAY = 'PDF, DOCX, XLSX, CSV, TXT, MD, JPG, PNG, GIF, WebP, SVG, JSON, JS, HTML, CSS';
+export const SUPPORTED_EXTENSIONS_DISPLAY = 'PDF, DOCX, XLSX, PPTX, CSV, TXT, MD, JPG, PNG, GIF, WebP, SVG, BMP, TIFF, JSON, JS, HTML, CSS';

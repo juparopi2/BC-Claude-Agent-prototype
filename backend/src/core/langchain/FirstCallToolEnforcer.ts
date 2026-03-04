@@ -122,14 +122,14 @@ export function createFirstCallEnforcer(
 
     if (count === 1) {
       logger.info(
-        { threadId, callCount: count },
+        { invocationId, threadId, key, callCount: count },
         'ENFORCING tool_choice: any (first call)'
       );
       return originalForcedInvoke(input, options);
     }
 
     logger.info(
-      { threadId, callCount: count },
+      { invocationId, threadId, key, callCount: count },
       'Using tool_choice: auto (subsequent call)'
     );
     return autoInvoke(input, options);

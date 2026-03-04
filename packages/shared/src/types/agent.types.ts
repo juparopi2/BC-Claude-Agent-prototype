@@ -282,6 +282,10 @@ export interface ErrorEvent extends BaseAgentEvent {
   code?: string;
   /** Stack trace (in development only) */
   stack?: string;
+  /** Whether the user can retry the request */
+  retryable?: boolean;
+  /** Suggested delay in ms before retrying (hint for future UI retry button) */
+  retryAfterMs?: number;
 }
 
 /**

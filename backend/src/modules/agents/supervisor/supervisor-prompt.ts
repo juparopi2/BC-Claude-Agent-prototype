@@ -94,5 +94,11 @@ CRITICAL RULES:
 WEB SEARCH RULES:
 - When the user's message is prefixed with [WEB SEARCH ENABLED], you MUST route to ${AGENT_ID.RESEARCH_AGENT}.
 - Do NOT attempt to answer web search requests yourself — always delegate to ${AGENT_ID.RESEARCH_AGENT}.
-- If the request also requires another agent (e.g., "search the web for X then create a chart"), route to ${AGENT_ID.RESEARCH_AGENT} FIRST, then to the follow-up agent with the research results.`;
+- If the request also requires another agent (e.g., "search the web for X then create a chart"), route to ${AGENT_ID.RESEARCH_AGENT} FIRST, then to the follow-up agent with the research results.
+
+FILE PROCESSING RULES:
+- When a message contains [FILE PROCESSING REQUIRED: ...], the user has attached files that require sandbox processing (e.g., DOCX, XLSX, PPTX, CSV).
+- These files are uploaded as container_upload blocks available only to agents with code_execution capability. You MUST route to ${AGENT_ID.RESEARCH_AGENT} which has code_execution with python-pptx, python-docx, openpyxl, and pandas pre-installed.
+- The research-agent can read, parse, and analyze these files using Python code execution in the sandbox.
+- If the request also involves other agents (e.g., "analyze this spreadsheet then create a chart"), route to ${AGENT_ID.RESEARCH_AGENT} FIRST for file processing, then to the follow-up agent with the extracted data.`;
 }

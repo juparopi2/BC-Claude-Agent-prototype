@@ -453,12 +453,17 @@ export const ALLOWED_MIME_TYPES = [
   'text/csv',
   'text/markdown',
 
+  // Presentations
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+
   // Images
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
   'image/svg+xml',
+  'image/bmp',
+  'image/tiff',
 
   // Code
   'application/json',

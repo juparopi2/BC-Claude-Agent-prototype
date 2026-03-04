@@ -54,6 +54,8 @@ export type ChatAttachmentMediaType =
   | 'text/markdown'
   | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  // Presentations
+  | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
   // Images
   | 'image/jpeg'
   | 'image/png'
@@ -73,6 +75,8 @@ export const CHAT_ATTACHMENT_ALLOWED_MIME_TYPES: readonly ChatAttachmentMediaTyp
   'text/markdown',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  // Presentations
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   // Images
   'image/jpeg',
   'image/png',
@@ -116,6 +120,23 @@ export const CHAT_ATTACHMENT_CONFIG = {
   /** Grace period after expiration before hard delete (24 hours) */
   GRACE_PERIOD_HOURS: 24,
 } as const;
+
+// ============================================
+// Session-Level File Reference (cross-turn persistence)
+// ============================================
+
+/**
+ * File reference for session-level file context (passed via configurable metadata).
+ *
+ * Used to re-inject container_upload blocks into worker agents on subsequent turns
+ * so that files uploaded in message 1 remain accessible in message 2+.
+ */
+export interface SessionFileReference {
+  attachmentId: string;
+  anthropicFileId: string;
+  name: string;
+  mimeType: string;
+}
 
 // ============================================
 // Database Record Types (snake_case)
@@ -379,6 +400,21 @@ export interface AnthropicFileImageBlock {
 }
 
 /**
+ * Anthropic container_upload content block.
+ *
+ * Used for files that need sandbox processing (code_execution).
+ * The file must be pre-uploaded to Anthropic's Files API.
+ * The sandbox (research-agent) has python-pptx, python-docx, openpyxl
+ * pre-installed and can read/process these files.
+ *
+ * @see https://docs.anthropic.com/en/docs/build-with-claude/files
+ */
+export interface AnthropicContainerUploadBlock {
+  type: 'container_upload';
+  file_id: string;
+}
+
+/**
  * Union of content blocks that can be created from chat attachments
  */
 export type AnthropicAttachmentContentBlock =
@@ -387,7 +423,8 @@ export type AnthropicAttachmentContentBlock =
   | AnthropicUrlDocumentBlock
   | AnthropicUrlImageBlock
   | AnthropicFileDocumentBlock
-  | AnthropicFileImageBlock;
+  | AnthropicFileImageBlock
+  | AnthropicContainerUploadBlock;
 
 /**
  * Check if a MIME type should be treated as an image
@@ -450,12 +487,23 @@ export interface LangChainDocumentBlock {
 }
 
 /**
+ * LangChain container_upload content block (Anthropic passthrough)
+ *
+ * Passed through directly to the Anthropic API for sandbox file access.
+ */
+export interface LangChainContainerUploadBlock {
+  type: 'container_upload';
+  file_id: string;
+}
+
+/**
  * Union of content blocks compatible with LangChain @langchain/anthropic
  */
 export type LangChainContentBlock =
   | LangChainImageBlock
   | LangChainTextBlock
-  | LangChainDocumentBlock;
+  | LangChainDocumentBlock
+  | LangChainContainerUploadBlock;
 
 /**
  * Get the appropriate content block type for a MIME type
@@ -471,6 +519,64 @@ export function getMaxSizeForMimeType(mimeType: string): number {
   return isImageMimeType(mimeType)
     ? CHAT_ATTACHMENT_CONFIG.MAX_IMAGE_SIZE_BYTES
     : CHAT_ATTACHMENT_CONFIG.MAX_DOCUMENT_SIZE_BYTES;
+}
+
+// ============================================
+// Attachment Routing Classification
+// ============================================
+
+/**
+ * How a MIME type should be routed when used as a chat attachment.
+ *
+ * - `anthropic_native`: Sent directly as document/image content block.
+ *   Only PDF, text/plain, and images are truly supported by Anthropic natively.
+ * - `container_upload`: Uploaded to Anthropic Files API and sent as container_upload
+ *   block for sandbox processing (research-agent with code_execution).
+ */
+export type AttachmentRoutingCategory = 'anthropic_native' | 'container_upload';
+
+/**
+ * Maps each allowed chat attachment MIME type to its routing category.
+ *
+ * Anthropic natively supports:
+ * - Documents: application/pdf, text/plain
+ * - Images: image/jpeg, image/png, image/gif, image/webp
+ *
+ * All other types (DOCX, XLSX, PPTX, CSV, HTML, Markdown) must be routed
+ * through container_upload for sandbox processing.
+ */
+export const MIME_ROUTING_MAP: Record<ChatAttachmentMediaType, AttachmentRoutingCategory> = {
+  // Anthropic native document blocks
+  'application/pdf': 'anthropic_native',
+  'text/plain': 'anthropic_native',
+  // Anthropic native image blocks
+  'image/jpeg': 'anthropic_native',
+  'image/png': 'anthropic_native',
+  'image/gif': 'anthropic_native',
+  'image/webp': 'anthropic_native',
+  // Non-native: require sandbox processing via container_upload
+  'text/csv': 'container_upload',
+  'text/html': 'container_upload',
+  'text/markdown': 'container_upload',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'container_upload',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'container_upload',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'container_upload',
+};
+
+/**
+ * Get the routing category for a MIME type.
+ * Unknown MIME types default to 'container_upload' for safety.
+ */
+export function getAttachmentRoutingCategory(mimeType: string): AttachmentRoutingCategory {
+  return MIME_ROUTING_MAP[mimeType as ChatAttachmentMediaType] ?? 'container_upload';
+}
+
+/**
+ * Check if a MIME type is natively supported by Anthropic API.
+ * Only PDF, text/plain, and image types are truly native.
+ */
+export function isAnthropicNativeMimeType(mimeType: string): boolean {
+  return getAttachmentRoutingCategory(mimeType) === 'anthropic_native';
 }
 
 // ============================================
@@ -522,6 +628,21 @@ export interface ResolvedChatAttachment {
 
   /** Generated content block */
   contentBlock: AnthropicAttachmentContentBlock;
+
+  /** Routing category for this attachment */
+  routingCategory: AttachmentRoutingCategory;
+}
+
+/**
+ * Metadata about resolved attachments for routing decisions.
+ * Computed by AttachmentContentResolver.resolve().
+ */
+export interface AttachmentRoutingMetadata {
+  /** Whether any attachment requires container_upload (sandbox processing) */
+  hasContainerUploads: boolean;
+
+  /** MIME types of non-native attachments (for supervisor routing hints) */
+  nonNativeTypes: string[];
 }
 
 // ============================================

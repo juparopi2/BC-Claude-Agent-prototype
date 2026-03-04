@@ -29,6 +29,7 @@ export {
 } from './types';
 
 // Processors
+export { AzureDocIntelligenceProcessor } from './AzureDocIntelligenceProcessor';
 export { TextProcessor } from './TextProcessor';
 export { PdfProcessor } from './PdfProcessor';
 export { DocxProcessor } from './DocxProcessor';

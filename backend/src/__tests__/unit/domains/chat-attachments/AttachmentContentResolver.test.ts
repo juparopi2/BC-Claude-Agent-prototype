@@ -50,10 +50,12 @@ vi.mock('@/services/files/FileUploadService', () => ({
 
 // ===== MOCK CHAT ATTACHMENT SERVICE =====
 const mockGetAttachmentRecord = vi.hoisted(() => vi.fn());
+const mockEnsureAnthropicFileUpload = vi.hoisted(() => vi.fn());
 
 vi.mock('@/domains/chat-attachments/ChatAttachmentService', () => ({
   getChatAttachmentService: vi.fn(() => ({
     getAttachmentRecord: mockGetAttachmentRecord,
+    ensureAnthropicFileUpload: mockEnsureAnthropicFileUpload,
   })),
 }));
 
@@ -79,6 +81,7 @@ describe('AttachmentContentResolver', () => {
 
     // Default mock implementations
     mockDownloadFromBlob.mockResolvedValue(Buffer.from('test file content'));
+    mockEnsureAnthropicFileUpload.mockResolvedValue('anthropic-file-id-123');
   });
 
   // ========== SUITE 0: Singleton Pattern ==========
@@ -144,15 +147,16 @@ describe('AttachmentContentResolver', () => {
       expect(results[0]!.contentBlock.source.media_type).toBe('text/plain');
     });
 
-    it('should resolve CSV files to document content blocks', async () => {
+    it('should resolve CSV files to container_upload blocks', async () => {
       const csvRecord = ChatAttachmentFixture.Presets.csvAttachment(testUserId);
+      csvRecord.anthropic_file_id = 'file-csv-789';
       mockGetAttachmentRecord.mockResolvedValueOnce(csvRecord);
 
       const results = await resolver.resolve(testUserId, [csvRecord.id]);
 
       expect(results).toHaveLength(1);
-      expect(results[0]!.contentBlock.type).toBe('document');
-      expect(results[0]!.contentBlock.source.media_type).toBe('text/csv');
+      expect(results[0]!.contentBlock.type).toBe('container_upload');
+      expect(results[0]!.routingCategory).toBe('container_upload');
     });
 
     it('should encode file content as base64', async () => {
@@ -312,32 +316,210 @@ describe('AttachmentContentResolver', () => {
     });
   });
 
-  // ========== SUITE 5: resolve() - Word/Excel documents ==========
-  describe('resolve() - Word/Excel documents', () => {
-    it('should resolve Word documents to document content blocks', async () => {
+  // ========== SUITE 5: resolve() - Container upload routing (DOCX, XLSX, PPTX) ==========
+  describe('resolve() - Container upload routing', () => {
+    it('should route DOCX to container_upload block', async () => {
       const wordRecord = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      wordRecord.anthropic_file_id = 'file-docx-123';
       mockGetAttachmentRecord.mockResolvedValueOnce(wordRecord);
 
       const results = await resolver.resolve(testUserId, [wordRecord.id]);
 
       expect(results).toHaveLength(1);
-      expect(results[0]!.contentBlock.type).toBe('document');
-      expect(results[0]!.contentBlock.source.media_type).toBe(
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      );
+      expect(results[0]!.contentBlock).toEqual({
+        type: 'container_upload',
+        file_id: 'file-docx-123',
+      });
+      expect(results[0]!.routingCategory).toBe('container_upload');
+      // Should NOT download blob for container_upload
+      expect(mockDownloadFromBlob).not.toHaveBeenCalled();
     });
 
-    it('should resolve Excel spreadsheets to document content blocks', async () => {
+    it('should route XLSX to container_upload block', async () => {
       const excelRecord = ChatAttachmentFixture.Presets.excelAttachment(testUserId);
+      excelRecord.anthropic_file_id = 'file-xlsx-456';
       mockGetAttachmentRecord.mockResolvedValueOnce(excelRecord);
 
       const results = await resolver.resolve(testUserId, [excelRecord.id]);
 
       expect(results).toHaveLength(1);
-      expect(results[0]!.contentBlock.type).toBe('document');
-      expect(results[0]!.contentBlock.source.media_type).toBe(
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      expect(results[0]!.contentBlock).toEqual({
+        type: 'container_upload',
+        file_id: 'file-xlsx-456',
+      });
+      expect(results[0]!.routingCategory).toBe('container_upload');
+    });
+
+    it('should trigger ensureAnthropicFileUpload when file not yet uploaded', async () => {
+      const wordRecord = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      wordRecord.anthropic_file_id = null; // Not yet uploaded
+      mockGetAttachmentRecord.mockResolvedValueOnce(wordRecord);
+      mockEnsureAnthropicFileUpload.mockResolvedValueOnce('file-new-upload-789');
+
+      const results = await resolver.resolve(testUserId, [wordRecord.id]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.contentBlock).toEqual({
+        type: 'container_upload',
+        file_id: 'file-new-upload-789',
+      });
+      expect(mockEnsureAnthropicFileUpload).toHaveBeenCalledWith(
+        wordRecord.id,
+        testUserId
       );
+    });
+
+    it('should skip container_upload attachment when upload fails', async () => {
+      const wordRecord = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      wordRecord.anthropic_file_id = null;
+      mockGetAttachmentRecord.mockResolvedValueOnce(wordRecord);
+      mockEnsureAnthropicFileUpload.mockRejectedValueOnce(new Error('Upload failed'));
+
+      const results = await resolver.resolve(testUserId, [wordRecord.id]);
+
+      expect(results).toHaveLength(0);
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ attachmentId: wordRecord.id }),
+        expect.stringContaining('Failed to upload to Anthropic Files API')
+      );
+    });
+
+    it('should skip container_upload when ensureAnthropicFileUpload returns null', async () => {
+      const wordRecord = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      wordRecord.anthropic_file_id = null;
+      mockGetAttachmentRecord.mockResolvedValueOnce(wordRecord);
+      mockEnsureAnthropicFileUpload.mockResolvedValueOnce(null);
+
+      const results = await resolver.resolve(testUserId, [wordRecord.id]);
+
+      expect(results).toHaveLength(0);
+    });
+  });
+
+  // ========== SUITE 6: resolve() - Routing metadata ==========
+  describe('resolve() - Routing metadata', () => {
+    it('should return routing metadata when includeRoutingMetadata is true', async () => {
+      const pdfRecord = ChatAttachmentFixture.Presets.pdfAttachment(testUserId);
+      mockGetAttachmentRecord.mockResolvedValueOnce(pdfRecord);
+
+      const result = await resolver.resolve(testUserId, [pdfRecord.id], { includeRoutingMetadata: true });
+
+      expect(result).toHaveProperty('attachments');
+      expect(result).toHaveProperty('routingMetadata');
+      expect(result.routingMetadata).toEqual({
+        hasContainerUploads: false,
+        nonNativeTypes: [],
+      });
+      expect(result.attachments).toHaveLength(1);
+    });
+
+    it('should set hasContainerUploads when non-native types present', async () => {
+      const wordRecord = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      wordRecord.anthropic_file_id = 'file-word-123';
+      mockGetAttachmentRecord.mockResolvedValueOnce(wordRecord);
+
+      const result = await resolver.resolve(testUserId, [wordRecord.id], { includeRoutingMetadata: true });
+
+      expect(result.routingMetadata.hasContainerUploads).toBe(true);
+      expect(result.routingMetadata.nonNativeTypes).toContain(
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      );
+    });
+
+    it('should deduplicate nonNativeTypes', async () => {
+      const word1 = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      word1.anthropic_file_id = 'file-word-1';
+      const word2 = ChatAttachmentFixture.createDbRecord({
+        user_id: testUserId,
+        name: 'report2.docx',
+        mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        anthropic_file_id: 'file-word-2',
+      });
+
+      mockGetAttachmentRecord
+        .mockResolvedValueOnce(word1)
+        .mockResolvedValueOnce(word2);
+
+      const result = await resolver.resolve(
+        testUserId,
+        [word1.id, word2.id],
+        { includeRoutingMetadata: true }
+      );
+
+      expect(result.routingMetadata.nonNativeTypes).toHaveLength(1);
+    });
+
+    it('should return empty metadata for empty input with includeRoutingMetadata', async () => {
+      const result = await resolver.resolve(testUserId, [], { includeRoutingMetadata: true });
+
+      expect(result).toEqual({
+        attachments: [],
+        routingMetadata: { hasContainerUploads: false, nonNativeTypes: [] },
+      });
+    });
+
+    it('should handle mixed native and container_upload attachments', async () => {
+      const pdf = ChatAttachmentFixture.Presets.pdfAttachment(testUserId);
+      const word = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      word.anthropic_file_id = 'file-word-789';
+      const image = ChatAttachmentFixture.Presets.imageAttachment(testUserId);
+
+      mockGetAttachmentRecord
+        .mockResolvedValueOnce(pdf)
+        .mockResolvedValueOnce(word)
+        .mockResolvedValueOnce(image);
+
+      const result = await resolver.resolve(
+        testUserId,
+        [pdf.id, word.id, image.id],
+        { includeRoutingMetadata: true }
+      );
+
+      expect(result.attachments).toHaveLength(3);
+      expect(result.routingMetadata.hasContainerUploads).toBe(true);
+      expect(result.routingMetadata.nonNativeTypes).toContain(
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      );
+
+      // Verify routing categories on each attachment
+      const pdfResult = result.attachments.find(a => a.name === 'document.pdf');
+      const wordResult = result.attachments.find(a => a.name === 'report.docx');
+      const imageResult = result.attachments.find(a => a.name === 'screenshot.jpeg');
+
+      expect(pdfResult?.routingCategory).toBe('anthropic_native');
+      expect(wordResult?.routingCategory).toBe('container_upload');
+      expect(imageResult?.routingCategory).toBe('anthropic_native');
+    });
+  });
+
+  // ========== SUITE 7: resolve() - routingCategory on results ==========
+  describe('resolve() - routingCategory on results', () => {
+    it('should set routingCategory to anthropic_native for PDF', async () => {
+      const pdfRecord = ChatAttachmentFixture.Presets.pdfAttachment(testUserId);
+      mockGetAttachmentRecord.mockResolvedValueOnce(pdfRecord);
+
+      const results = await resolver.resolve(testUserId, [pdfRecord.id]);
+
+      expect(results[0]!.routingCategory).toBe('anthropic_native');
+    });
+
+    it('should set routingCategory to anthropic_native for images', async () => {
+      const imageRecord = ChatAttachmentFixture.Presets.imageAttachment(testUserId);
+      mockGetAttachmentRecord.mockResolvedValueOnce(imageRecord);
+
+      const results = await resolver.resolve(testUserId, [imageRecord.id]);
+
+      expect(results[0]!.routingCategory).toBe('anthropic_native');
+    });
+
+    it('should set routingCategory to container_upload for DOCX', async () => {
+      const wordRecord = ChatAttachmentFixture.Presets.wordAttachment(testUserId);
+      wordRecord.anthropic_file_id = 'file-123';
+      mockGetAttachmentRecord.mockResolvedValueOnce(wordRecord);
+
+      const results = await resolver.resolve(testUserId, [wordRecord.id]);
+
+      expect(results[0]!.routingCategory).toBe('container_upload');
     });
   });
 });

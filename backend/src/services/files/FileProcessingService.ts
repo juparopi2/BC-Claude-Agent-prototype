@@ -35,6 +35,7 @@ import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackin
 import { getFileEventEmitter } from '@/domains/files/emission';
 import { TextProcessor } from './processors/TextProcessor';
 import { PdfProcessor } from './processors/PdfProcessor';
+import { AzureDocIntelligenceProcessor } from './processors/AzureDocIntelligenceProcessor';
 import { DocxProcessor } from './processors/DocxProcessor';
 import { ExcelProcessor } from './processors/ExcelProcessor';
 import { ImageProcessor, trackImageUsage, type ImageMetadata } from './processors/ImageProcessor';
@@ -79,18 +80,25 @@ export class FileProcessingService {
    * Supports multiple MIME types per processor (e.g., plain text variants).
    */
   private registerProcessors(): void {
-    // PDF Processor
+    // PDF Processor (Azure Document Intelligence)
     const pdfProcessor = new PdfProcessor();
     this.processors.set('application/pdf', pdfProcessor);
 
-    // DOCX Processor
+    // PPTX Processor (Azure Document Intelligence — each slide = 1 page unit)
+    const pptxProcessor = new AzureDocIntelligenceProcessor();
+    this.processors.set(
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      pptxProcessor
+    );
+
+    // DOCX Processor (mammoth.js — fast and free)
     const docxProcessor = new DocxProcessor();
     this.processors.set(
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       docxProcessor
     );
 
-    // XLSX Processor
+    // XLSX Processor (xlsx library — structured markdown tables)
     const excelProcessor = new ExcelProcessor();
     this.processors.set(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -107,19 +115,22 @@ export class FileProcessingService {
       'text/html',
       'text/css',
       'application/json',
+      'image/svg+xml', // SVG is XML text — extract as text content
     ];
 
     textMimeTypes.forEach((mimeType) => {
       this.processors.set(mimeType, textProcessor);
     });
 
-    // Image Processor (Azure Computer Vision for embeddings)
+    // Image Processor (Azure Computer Vision for embeddings + captions)
     const imageProcessor = new ImageProcessor();
     const imageMimeTypes = [
       'image/jpeg',
       'image/png',
       'image/gif',
       'image/webp',
+      'image/bmp',   // Azure Computer Vision accepts BMP
+      'image/tiff',  // Azure Computer Vision accepts TIFF
     ];
 
     imageMimeTypes.forEach((mimeType) => {
@@ -390,10 +401,12 @@ export class FileProcessingService {
    * @param mimeType - File MIME type
    * @returns Processor type: 'pdf' | 'docx' | 'excel' | 'text'
    */
-  private getProcessorTypeFromMimeType(mimeType: string): 'pdf' | 'docx' | 'excel' | 'text' {
+  private getProcessorTypeFromMimeType(mimeType: string): 'pdf' | 'pptx' | 'docx' | 'excel' | 'text' {
     switch (mimeType) {
       case 'application/pdf':
         return 'pdf';
+      case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+        return 'pptx';
       case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
         return 'docx';
       case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':

@@ -139,6 +139,26 @@ export enum ErrorCode {
   APPROVAL_NOT_READY = 'APPROVAL_NOT_READY',
   /** MCP service not available */
   MCP_UNAVAILABLE = 'MCP_UNAVAILABLE',
+
+  // ============================================
+  // LLM Provider Errors - AI service issues
+  // ============================================
+  /** LLM rate limit exceeded (429) */
+  LLM_RATE_LIMITED = 'LLM_RATE_LIMITED',
+  /** LLM service overloaded (529) */
+  LLM_OVERLOADED = 'LLM_OVERLOADED',
+  /** LLM authentication/configuration error */
+  LLM_AUTH_ERROR = 'LLM_AUTH_ERROR',
+  /** LLM bad request (invalid parameters) */
+  LLM_BAD_REQUEST = 'LLM_BAD_REQUEST',
+  /** LLM server error (5xx) */
+  LLM_SERVER_ERROR = 'LLM_SERVER_ERROR',
+  /** LLM connection error */
+  LLM_CONNECTION_ERROR = 'LLM_CONNECTION_ERROR',
+  /** LLM request timeout */
+  LLM_TIMEOUT = 'LLM_TIMEOUT',
+  /** Agent execution failed (generic) */
+  AGENT_EXECUTION_FAILED = 'AGENT_EXECUTION_FAILED',
 }
 
 /**
@@ -157,6 +177,7 @@ export const HTTP_STATUS_NAMES: Readonly<Record<number, string>> = {
   429: 'Too Many Requests',
   500: 'Internal Server Error',
   503: 'Service Unavailable',
+  504: 'Gateway Timeout',
 } as const;
 
 /**
@@ -229,6 +250,16 @@ export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   [ErrorCode.BC_UNAVAILABLE]: 'Business Central is temporarily unavailable',
   [ErrorCode.APPROVAL_NOT_READY]: 'Approval system is not ready',
   [ErrorCode.MCP_UNAVAILABLE]: 'MCP service is temporarily unavailable',
+
+  // LLM Provider Errors
+  [ErrorCode.LLM_RATE_LIMITED]: 'Our AI service is receiving too many requests right now. Please wait a moment and try again',
+  [ErrorCode.LLM_OVERLOADED]: 'Our AI service is experiencing high demand. Please try again in a moment',
+  [ErrorCode.LLM_AUTH_ERROR]: 'There is a configuration issue with our AI service. Our team has been notified',
+  [ErrorCode.LLM_BAD_REQUEST]: 'Something went wrong processing your request. Please try again or contact support',
+  [ErrorCode.LLM_SERVER_ERROR]: 'Our AI service encountered a temporary issue. Please try again in a moment',
+  [ErrorCode.LLM_CONNECTION_ERROR]: 'Unable to reach our AI service. Please check your connection and try again',
+  [ErrorCode.LLM_TIMEOUT]: 'The request took too long to process. Please try again with a shorter message',
+  [ErrorCode.AGENT_EXECUTION_FAILED]: 'Something went wrong processing your request. Please try again',
 } as const;
 
 /**
@@ -295,6 +326,16 @@ export const ERROR_STATUS_CODES: Readonly<Record<ErrorCode, number>> = {
   [ErrorCode.BC_UNAVAILABLE]: 503,
   [ErrorCode.APPROVAL_NOT_READY]: 503,
   [ErrorCode.MCP_UNAVAILABLE]: 503,
+
+  // LLM Provider Errors
+  [ErrorCode.LLM_RATE_LIMITED]: 429,
+  [ErrorCode.LLM_OVERLOADED]: 503,
+  [ErrorCode.LLM_AUTH_ERROR]: 500,
+  [ErrorCode.LLM_BAD_REQUEST]: 500,
+  [ErrorCode.LLM_SERVER_ERROR]: 503,
+  [ErrorCode.LLM_CONNECTION_ERROR]: 503,
+  [ErrorCode.LLM_TIMEOUT]: 504,
+  [ErrorCode.AGENT_EXECUTION_FAILED]: 500,
 } as const;
 
 /**

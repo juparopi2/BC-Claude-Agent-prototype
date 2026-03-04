@@ -14,8 +14,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { AnthropicAttachmentContentBlock, LangChainContentBlock } from '@bc-agent/shared';
+import type { AnthropicAttachmentContentBlock, LangChainContentBlock, AttachmentRoutingMetadata } from '@bc-agent/shared';
 import type { FileContextPreparationResult } from '@domains/agent/context/types';
+import { buildGraphInputs as actualBuildGraphInputs } from '@/domains/agent/orchestration/context/MessageContextBuilder';
 
 // Mock logger - must come before other mocks that might import it
 vi.mock('@/shared/utils/logger', () => ({
@@ -420,5 +421,98 @@ describe('MessageContextBuilder', () => {
 
       expect(Array.isArray(result)).toBe(true);
     });
+  });
+});
+
+describe('buildGraphInputs routing metadata', () => {
+  const emptyContextResult: FileContextPreparationResult = {
+    contextText: '',
+    attachedFileIds: [],
+    attachedFileNames: [],
+  };
+
+  it('should include requiresFileProcessing when routing metadata has container uploads', () => {
+    const routingMetadata: AttachmentRoutingMetadata = {
+      hasContainerUploads: true,
+      nonNativeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    };
+
+    const inputs = actualBuildGraphInputs(
+      'Test prompt',
+      'user-123',
+      'session-456',
+      emptyContextResult,
+      undefined,
+      undefined,
+      routingMetadata
+    );
+
+    expect(inputs.context.options.requiresFileProcessing).toBe(true);
+    expect(inputs.context.options.nonNativeFileTypes).toEqual([
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ]);
+  });
+
+  it('should not include requiresFileProcessing when no container uploads', () => {
+    const routingMetadata: AttachmentRoutingMetadata = {
+      hasContainerUploads: false,
+      nonNativeTypes: [],
+    };
+
+    const inputs = actualBuildGraphInputs(
+      'Test prompt',
+      'user-123',
+      'session-456',
+      emptyContextResult,
+      undefined,
+      undefined,
+      routingMetadata
+    );
+
+    expect(inputs.context.options.requiresFileProcessing).toBe(false);
+    expect(inputs.context.options.nonNativeFileTypes).toBeUndefined();
+  });
+
+  it('should not include routing fields when routingMetadata is undefined', () => {
+    const inputs = actualBuildGraphInputs(
+      'Test prompt',
+      'user-123',
+      'session-456',
+      emptyContextResult,
+      undefined,
+      undefined,
+      undefined
+    );
+
+    expect(inputs.context.options.requiresFileProcessing).toBeUndefined();
+    expect(inputs.context.options.nonNativeFileTypes).toBeUndefined();
+  });
+
+  it('should include multiple non-native types', () => {
+    const routingMetadata: AttachmentRoutingMetadata = {
+      hasContainerUploads: true,
+      nonNativeTypes: [
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ],
+    };
+
+    const inputs = actualBuildGraphInputs(
+      'Analyze files',
+      'user-123',
+      'session-456',
+      emptyContextResult,
+      undefined,
+      undefined,
+      routingMetadata
+    );
+
+    expect(inputs.context.options.nonNativeFileTypes).toHaveLength(2);
+    expect(inputs.context.options.nonNativeFileTypes).toContain(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    expect(inputs.context.options.nonNativeFileTypes).toContain(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
   });
 });

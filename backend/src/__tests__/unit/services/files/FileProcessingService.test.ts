@@ -18,8 +18,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileProcessingService, getFileProcessingService, __resetFileProcessingService } from '@/services/files/FileProcessingService';
-import type { FileProcessingJob } from '@/infrastructure/queue/MessageQueue';
+import type { FileProcessingJob } from '@/infrastructure/queue/types';
 import type { ExtractionResult } from '@/services/files/processors/types';
+import { ALLOWED_MIME_TYPES } from '@bc-agent/shared';
 
 // ===== MOCK DEPENDENCIES (vi.hoisted pattern) =====
 
@@ -153,6 +154,42 @@ vi.mock('@/services/files/processors/ExcelProcessor', () => ({
   })),
 }));
 
+const mockAzureDocIntelligenceProcessorExtractText = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    text: 'Extracted PPTX content via Azure Document Intelligence',
+    metadata: {
+      pageCount: 10,
+      ocrUsed: false,
+      fileSize: 1024000,
+    },
+  } as ExtractionResult)
+);
+
+vi.mock('@/services/files/processors/AzureDocIntelligenceProcessor', () => ({
+  AzureDocIntelligenceProcessor: vi.fn().mockImplementation(() => ({
+    extractText: mockAzureDocIntelligenceProcessorExtractText,
+  })),
+}));
+
+const mockImageProcessorExtractText = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    text: '[Image: test.jpg]',
+    metadata: {
+      fileSize: 50000,
+      ocrUsed: false,
+      imageFormat: 'jpeg',
+      embeddingGenerated: false,
+    },
+  } as ExtractionResult)
+);
+
+vi.mock('@/services/files/processors/ImageProcessor', () => ({
+  ImageProcessor: vi.fn().mockImplementation(() => ({
+    extractText: mockImageProcessorExtractText,
+  })),
+  trackImageUsage: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Mock Logger
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),
@@ -226,6 +263,16 @@ describe('FileProcessingService', () => {
     mockExcelProcessorExtractText.mockResolvedValue({
       text: '| Column A | Column B |\n|----------|----------|\n| Value 1  | Value 2  |',
       metadata: { pageCount: 2, ocrUsed: false, fileSize: 204800 },
+    } as ExtractionResult);
+
+    mockAzureDocIntelligenceProcessorExtractText.mockResolvedValue({
+      text: 'Extracted PPTX content via Azure Document Intelligence',
+      metadata: { pageCount: 10, ocrUsed: false, fileSize: 1024000 },
+    } as ExtractionResult);
+
+    mockImageProcessorExtractText.mockResolvedValue({
+      text: '[Image: test.jpg]',
+      metadata: { fileSize: 50000, ocrUsed: false, imageFormat: 'jpeg', embeddingGenerated: false },
     } as ExtractionResult);
 
     // Reset singleton instance
@@ -689,5 +736,161 @@ describe('FileProcessingService', () => {
         'File processing completed successfully'
       );
     });
+  });
+
+  // ========== SUITE 9: PPTX AND IMAGE PROCESSOR ROUTING ==========
+  describe('PPTX and Image Processor Routing', () => {
+    it('should route PPTX to AzureDocIntelligenceProcessor', async () => {
+      const job = createMockJob({
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        fileName: 'slides.pptx',
+      });
+
+      await service.processFile(job);
+
+      expect(mockAzureDocIntelligenceProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'slides.pptx'
+      );
+      expect(mockPdfProcessorExtractText).not.toHaveBeenCalled();
+      expect(mockTextProcessorExtractText).not.toHaveBeenCalled();
+      expect(mockDocxProcessorExtractText).not.toHaveBeenCalled();
+      expect(mockExcelProcessorExtractText).not.toHaveBeenCalled();
+      expect(mockImageProcessorExtractText).not.toHaveBeenCalled();
+    });
+
+    it('should route image/svg+xml to TextProcessor', async () => {
+      const job = createMockJob({ mimeType: 'image/svg+xml', fileName: 'logo.svg' });
+
+      await service.processFile(job);
+
+      expect(mockTextProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'logo.svg'
+      );
+      expect(mockImageProcessorExtractText).not.toHaveBeenCalled();
+    });
+
+    it('should route image/bmp to ImageProcessor', async () => {
+      const job = createMockJob({ mimeType: 'image/bmp', fileName: 'bitmap.bmp' });
+
+      await service.processFile(job);
+
+      expect(mockImageProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'bitmap.bmp'
+      );
+      expect(mockTextProcessorExtractText).not.toHaveBeenCalled();
+      expect(mockPdfProcessorExtractText).not.toHaveBeenCalled();
+    });
+
+    it('should route image/tiff to ImageProcessor', async () => {
+      const job = createMockJob({ mimeType: 'image/tiff', fileName: 'scan.tiff' });
+
+      await service.processFile(job);
+
+      expect(mockImageProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'scan.tiff'
+      );
+      expect(mockTextProcessorExtractText).not.toHaveBeenCalled();
+      expect(mockPdfProcessorExtractText).not.toHaveBeenCalled();
+    });
+
+    it('should route image/jpeg to ImageProcessor', async () => {
+      const job = createMockJob({ mimeType: 'image/jpeg', fileName: 'photo.jpg' });
+
+      await service.processFile(job);
+
+      expect(mockImageProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'photo.jpg'
+      );
+    });
+
+    it('should route image/png to ImageProcessor', async () => {
+      const job = createMockJob({ mimeType: 'image/png', fileName: 'screenshot.png' });
+
+      await service.processFile(job);
+
+      expect(mockImageProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'screenshot.png'
+      );
+    });
+  });
+
+  // ========== SUITE 10: BILLING TYPE FROM MIME TYPE ==========
+  describe('Billing Processor Type Mapping', () => {
+    it('should route PPTX through AzureDocIntelligenceProcessor for billing type "pptx"', async () => {
+      // getProcessorTypeFromMimeType is private; we verify the "pptx" path is exercised
+      // by confirming end-to-end processing succeeds and the right processor is called.
+      // The billing type mapping is an implementation detail validated by the processor selection.
+      const job = createMockJob({
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        fileName: 'deck.pptx',
+      });
+
+      await service.processFile(job);
+
+      // AzureDocIntelligenceProcessor (not PdfProcessor) handles PPTX
+      expect(mockAzureDocIntelligenceProcessorExtractText).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'deck.pptx'
+      );
+      // Confirm correct processor was selected (not the PDF one)
+      expect(mockPdfProcessorExtractText).not.toHaveBeenCalled();
+    });
+
+    it('should route PPTX and save its extracted text', async () => {
+      const job = createMockJob({
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        fileName: 'quarterly.pptx',
+      });
+
+      await service.processFile(job);
+
+      // Verify PPTX text was saved
+      expect(mockSaveExtractedText).toHaveBeenCalledWith(
+        'test-user-456',
+        'test-file-123',
+        'Extracted PPTX content via Azure Document Intelligence'
+      );
+    });
+
+    it('should complete PPTX processing and emit completion event with PPTX metadata', async () => {
+      const job = createMockJob({
+        mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        fileName: 'annual-review.pptx',
+      });
+
+      await service.processFile(job);
+
+      // Verify completion event contains PPTX metadata (10 pages per mock)
+      expect(mockEmitCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileId: 'test-file-123',
+          userId: 'test-user-456',
+        }),
+        expect.objectContaining({
+          pageCount: 10,
+          ocrUsed: false,
+        })
+      );
+    });
+  });
+
+  // ========== SUITE 11: PARAMETRIC — ALL ALLOWED_MIME_TYPES HAVE A PROCESSOR ==========
+  describe('Processor Coverage — every ALLOWED_MIME_TYPE has a registered processor', () => {
+    it.each(ALLOWED_MIME_TYPES as readonly string[])(
+      'should have a processor registered for MIME type: %s',
+      async (mimeType) => {
+        const job = createMockJob({ mimeType, fileName: `test-file.${mimeType.split('/')[1]}` });
+
+        // Every ALLOWED_MIME_TYPE must resolve to a processor without throwing
+        // "No processor found for MIME type: ..."
+        await expect(service.processFile(job)).resolves.not.toThrow();
+      }
+    );
   });
 });

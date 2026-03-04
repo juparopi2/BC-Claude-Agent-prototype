@@ -12,6 +12,8 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import type { Session } from '@/src/infrastructure/api';
 import { getApiClient } from '@/src/infrastructure/api';
 
+const MAX_PINNED_SESSIONS = 5;
+
 /**
  * Session store state
  */
@@ -48,6 +50,7 @@ export interface SessionActions {
   updateSession: (sessionId: string, title: string) => Promise<void>;
   setSessionTitle: (sessionId: string, title: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
+  togglePin: (sessionId: string) => Promise<{ success: boolean; error?: string }>;
 
   // Current session
   setCurrentSession: (session: Session | null) => void;
@@ -226,6 +229,54 @@ export const useSessionStore = create<SessionStore>()(
       }
     },
 
+    togglePin: async (sessionId) => {
+      const { sessions } = get();
+      const session = sessions.find((s) => s.id === sessionId);
+      if (!session) return { success: false, error: 'Session not found' };
+
+      const newPinned = !session.is_pinned;
+
+      // Client-side guard: reject before optimistic update if limit would be exceeded
+      if (newPinned) {
+        const pinnedCount = sessions.filter((s) => s.is_pinned).length;
+        if (pinnedCount >= MAX_PINNED_SESSIONS) {
+          return { success: false, error: `Maximum number of pinned sessions reached (${MAX_PINNED_SESSIONS})` };
+        }
+      }
+
+      // Optimistic update (safe: limit already checked above)
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId
+            ? { ...s, is_pinned: newPinned, pinned_at: newPinned ? new Date().toISOString() : null }
+            : s
+        ),
+      }));
+
+      const api = getApiClient();
+      const result = await api.toggleSessionPin(sessionId, newPinned);
+
+      if (result.success) {
+        // Reconcile with server data
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === sessionId ? { ...s, ...result.data } : s
+          ),
+        }));
+        return { success: true };
+      } else {
+        // Revert optimistic update
+        set((state) => ({
+          sessions: state.sessions.map((s) =>
+            s.id === sessionId
+              ? { ...s, is_pinned: session.is_pinned, pinned_at: session.pinned_at }
+              : s
+          ),
+        }));
+        return { success: false, error: result.error.message };
+      }
+    },
+
     // ========================================
     // Current session
     // ========================================
@@ -271,6 +322,22 @@ export const selectSortedSessions = (state: SessionStore): Session[] => {
 export const selectActiveSessions = (state: SessionStore): Session[] => {
   return state.sessions.filter((s) => s.is_active);
 };
+
+/**
+ * Selector for pinned sessions (sorted by pinned_at DESC)
+ */
+export const selectPinnedSessions = (state: SessionStore): Session[] =>
+  state.sessions
+    .filter((s) => s.is_pinned)
+    .sort((a, b) => new Date(b.pinned_at!).getTime() - new Date(a.pinned_at!).getTime());
+
+/**
+ * Selector for unpinned sessions (sorted by updated_at DESC)
+ */
+export const selectUnpinnedSessions = (state: SessionStore): Session[] =>
+  [...state.sessions]
+    .filter((s) => !s.is_pinned)
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
 /**
  * Reset session store for testing

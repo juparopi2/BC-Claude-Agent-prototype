@@ -22,6 +22,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
       create: vi.fn(),
       updateMany: vi.fn(),
       deleteMany: vi.fn(),
+      count: vi.fn(),
     },
     messages: {
       findMany: vi.fn(),
@@ -688,6 +689,137 @@ describe('Sessions Routes', () => {
 
       // Assert
       expect(response.body.error).toBe('Not Found');
+    });
+  });
+
+  describe('PATCH /api/chat/sessions/:sessionId/pin', () => {
+    // Valid UUIDs for pin tests
+    const PIN_SESSION_UUID = 'f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1';
+    const UNPIN_SESSION_UUID = 'f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2';
+    const PIN_LIMIT_UUID = 'f3f3f3f3-f3f3-f3f3-f3f3-f3f3f3f3f3f3';
+    const PIN_NOTFOUND_UUID = 'f4f4f4f4-f4f4-f4f4-f4f4-f4f4f4f4f4f4';
+    const PIN_VALIDATION_UUID = 'f5f5f5f5-f5f5-f5f5-f5f5-f5f5f5f5f5f5';
+
+    it('should pin session successfully when below limit', async () => {
+      // Arrange
+      // count: 2 pinned sessions (below limit of 5)
+      mockSessions.count.mockResolvedValueOnce(2 as never);
+
+      // updateMany: 1 row affected
+      mockSessions.updateMany.mockResolvedValueOnce({ count: 1 } as never);
+
+      // findFirst: return the updated pinned session
+      const pinnedAt = new Date('2024-02-01T10:00:00Z');
+      const mockPinnedSession = {
+        id: PIN_SESSION_UUID,
+        user_id: 'test-user-123',
+        title: 'Pinned Session',
+        is_active: true,
+        created_at: new Date('2024-01-01'),
+        updated_at: new Date('2024-02-01'),
+        is_pinned: true,
+        pinned_at: pinnedAt,
+      };
+      mockSessions.findFirst.mockResolvedValueOnce(mockPinnedSession as never);
+
+      // Act
+      const response = await request(app)
+        .patch(`/api/chat/sessions/${PIN_SESSION_UUID}/pin`)
+        .send({ pinned: true })
+        .expect(200);
+
+      // Assert
+      expect(response.body.is_pinned).toBe(true);
+      expect(response.body.pinned_at).toBeDefined();
+      expect(mockSessions.count).toHaveBeenCalledWith({
+        where: { user_id: 'test-user-123', is_pinned: true },
+      });
+      expect(mockSessions.updateMany).toHaveBeenCalledWith({
+        where: { id: PIN_SESSION_UUID, user_id: 'test-user-123' },
+        data: expect.objectContaining({ is_pinned: true }),
+      });
+    });
+
+    it('should unpin session successfully', async () => {
+      // Arrange - No count check needed when unpinning
+      // updateMany: 1 row affected
+      mockSessions.updateMany.mockResolvedValueOnce({ count: 1 } as never);
+
+      // findFirst: return the unpinned session
+      const mockUnpinnedSession = {
+        id: UNPIN_SESSION_UUID,
+        user_id: 'test-user-123',
+        title: 'Unpinned Session',
+        is_active: true,
+        created_at: new Date('2024-01-01'),
+        updated_at: new Date('2024-02-02'),
+        is_pinned: false,
+        pinned_at: null,
+      };
+      mockSessions.findFirst.mockResolvedValueOnce(mockUnpinnedSession as never);
+
+      // Act
+      const response = await request(app)
+        .patch(`/api/chat/sessions/${UNPIN_SESSION_UUID}/pin`)
+        .send({ pinned: false })
+        .expect(200);
+
+      // Assert
+      expect(response.body.is_pinned).toBe(false);
+      expect(response.body.pinned_at).toBeNull();
+      // count should NOT be called when unpinning
+      expect(mockSessions.count).not.toHaveBeenCalled();
+      expect(mockSessions.updateMany).toHaveBeenCalledWith({
+        where: { id: UNPIN_SESSION_UUID, user_id: 'test-user-123' },
+        data: expect.objectContaining({ is_pinned: false }),
+      });
+    });
+
+    it('should return 409 when pin limit is exceeded', async () => {
+      // Arrange - Already 5 pinned sessions (at limit)
+      mockSessions.count.mockResolvedValueOnce(5 as never);
+
+      // Act
+      const response = await request(app)
+        .patch(`/api/chat/sessions/${PIN_LIMIT_UUID}/pin`)
+        .send({ pinned: true })
+        .expect(409);
+
+      // Assert
+      expect(response.body.code).toBe('PIN_LIMIT_EXCEEDED');
+      // updateMany should NOT be called when limit exceeded
+      expect(mockSessions.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 when session is not found or access denied', async () => {
+      // Arrange - count below limit, but updateMany returns 0 rows affected
+      mockSessions.count.mockResolvedValueOnce(0 as never);
+      mockSessions.updateMany.mockResolvedValueOnce({ count: 0 } as never);
+
+      // Act
+      const response = await request(app)
+        .patch(`/api/chat/sessions/${PIN_NOTFOUND_UUID}/pin`)
+        .send({ pinned: true })
+        .expect(404);
+
+      // Assert
+      expect(response.body.error).toBe('Not Found');
+      expect(response.body.message).toBe('Session not found or access denied');
+    });
+
+    it('should return 400 when pinned field is missing from request body', async () => {
+      // Act - Send empty body (missing required `pinned` boolean)
+      const response = await request(app)
+        .patch(`/api/chat/sessions/${PIN_VALIDATION_UUID}/pin`)
+        .send({})
+        .expect(400);
+
+      // Assert
+      expect(response.body.error).toBe('Bad Request');
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      // Neither count nor updateMany should be called
+      expect(mockSessions.count).not.toHaveBeenCalled();
+      expect(mockSessions.updateMany).not.toHaveBeenCalled();
     });
   });
 

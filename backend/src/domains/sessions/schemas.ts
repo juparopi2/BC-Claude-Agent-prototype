@@ -42,8 +42,16 @@ export const getMessagesSchema = z.object({
   before: z.coerce.number().int().positive().optional(), // sequence_number cursor
 });
 
+/**
+ * Schema for toggling session pin state
+ */
+export const togglePinSchema = z.object({
+  pinned: z.boolean(),
+});
+
 // Type exports for inferred types
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 export type UpdateSessionInput = z.infer<typeof updateSessionSchema>;
 export type GetSessionsInput = z.infer<typeof getSessionsSchema>;
 export type GetMessagesInput = z.infer<typeof getMessagesSchema>;
+export type TogglePinInput = z.infer<typeof togglePinSchema>;

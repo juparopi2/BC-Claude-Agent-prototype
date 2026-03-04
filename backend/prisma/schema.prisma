@@ -465,6 +465,8 @@ model sessions {
   created_at               DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__create__7F2BE32F")
   updated_at               DateTime              @default(dbgenerated("getutcdate()"), map: "DF__sessions__update__00200768")
   checkpoint_message_count Int                   @default(0)
+  is_pinned                Boolean               @default(false)
+  pinned_at                DateTime?
   agent_executions         agent_executions[]
   approvals                approvals[]
   chat_attachments         chat_attachments[]
@@ -479,6 +481,7 @@ model sessions {
   @@index([is_active], map: "idx_sessions_is_active")
   @@index([updated_at], map: "idx_sessions_updated_at")
   @@index([user_id], map: "idx_sessions_user_id")
+  @@index([user_id, is_pinned], map: "idx_sessions_user_pinned")
 }
 
 model todos {

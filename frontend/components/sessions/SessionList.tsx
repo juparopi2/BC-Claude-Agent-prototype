@@ -24,18 +24,25 @@ export default function SessionList() {
   const fetchMoreSessions = useSessionStore((s) => s.fetchMoreSessions);
   const setSessionTitle = useSessionStore((s) => s.setSessionTitle);
 
-  // Sort sessions by updated_at descending (newest first)
-  const sortedSessions = useMemo(
-    () => [...rawSessions].sort((a, b) =>
-      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    ),
+  // Separate pinned and unpinned sessions (derived via useMemo to avoid infinite loops)
+  const pinnedSessions = useMemo(
+    () => rawSessions
+      .filter((s) => s.is_pinned)
+      .sort((a, b) => new Date(b.pinned_at!).getTime() - new Date(a.pinned_at!).getTime()),
     [rawSessions]
   );
 
-  // Group sessions by date
+  const unpinnedSessions = useMemo(
+    () => [...rawSessions]
+      .filter((s) => !s.is_pinned)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    [rawSessions]
+  );
+
+  // Group unpinned sessions by date
   const groupedSessions = useMemo(
-    () => groupSessionsByDate(sortedSessions),
-    [sortedSessions]
+    () => groupSessionsByDate(unpinnedSessions),
+    [unpinnedSessions]
   );
 
   // Extract current sessionId from pathname (/chat/xxx)
@@ -102,7 +109,7 @@ export default function SessionList() {
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-4">
           {/* Loading State (initial load) */}
-          {isLoading && sortedSessions.length === 0 && (
+          {isLoading && rawSessions.length === 0 && (
             <>
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="px-3 py-2 space-y-2">
@@ -130,7 +137,7 @@ export default function SessionList() {
           )}
 
           {/* Empty State */}
-          {!isLoading && !error && sortedSessions.length === 0 && (
+          {!isLoading && !error && rawSessions.length === 0 && (
             <div className="px-3 py-12 text-center space-y-3">
               <div className="flex justify-center">
                 <MessageSquare className="size-12 text-muted-foreground/50" />
@@ -142,6 +149,14 @@ export default function SessionList() {
                 </p>
               </div>
             </div>
+          )}
+
+          {/* Pinned Sessions */}
+          {pinnedSessions.length > 0 && (
+            <SessionGroup
+              group={{ key: 'pinned', label: 'Pinned', sessions: pinnedSessions }}
+              currentSessionId={currentSessionId}
+            />
           )}
 
           {/* Session Groups */}

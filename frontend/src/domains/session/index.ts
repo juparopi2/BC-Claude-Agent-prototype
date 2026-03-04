@@ -12,6 +12,8 @@ export {
   resetSessionStore,
   selectSortedSessions,
   selectActiveSessions,
+  selectPinnedSessions,
+  selectUnpinnedSessions,
   type SessionState,
   type SessionActions,
   type SessionStore,

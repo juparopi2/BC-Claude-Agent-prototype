@@ -56,6 +56,8 @@ export interface Session {
   updated_at: string;
   is_active: boolean;
   message_count?: number;
+  is_pinned: boolean;
+  pinned_at: string | null;
 }
 
 /**
@@ -350,6 +352,13 @@ export class ApiClient {
     // Backend returns session directly (not wrapped in { session: ... })
     const result = await this.request<Session>('PATCH', `/api/chat/sessions/${sessionId}`, data);
     return result;
+  }
+
+  /**
+   * Toggle session pin state
+   */
+  async toggleSessionPin(sessionId: string, pinned: boolean): Promise<ApiResponse<Session>> {
+    return this.request<Session>('PATCH', `/api/chat/sessions/${sessionId}/pin`, { pinned });
   }
 
   /**

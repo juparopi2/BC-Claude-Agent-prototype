@@ -29,5 +29,7 @@ export function transformSession(row: DbSessionRow): SessionResponse {
     last_activity_at: row.updated_at.toISOString(), // Use updated_at as last_activity_at
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
+    is_pinned: row.is_pinned,
+    pinned_at: row.pinned_at ? row.pinned_at.toISOString() : null,
   };
 }

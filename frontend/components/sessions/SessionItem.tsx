@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface SessionItemProps {
@@ -24,6 +25,7 @@ export default function SessionItem({ session, isActive }: SessionItemProps) {
 
   const updateSession = useSessionStore((s) => s.updateSession);
   const deleteSession = useSessionStore((s) => s.deleteSession);
+  const togglePin = useSessionStore((s) => s.togglePin);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -117,6 +119,21 @@ export default function SessionItem({ session, isActive }: SessionItemProps) {
             >
               <Pencil className="size-3.5 mr-2" />
               Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async (e) => {
+                e.stopPropagation();
+                const result = await togglePin(session.id);
+                if (!result.success) {
+                  toast.error(result.error ?? 'Failed to update pin');
+                }
+              }}
+            >
+              {session.is_pinned ? (
+                <><PinOff className="size-3.5 mr-2" /> Unpin</>
+              ) : (
+                <><Pin className="size-3.5 mr-2" /> Pin</>
+              )}
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {

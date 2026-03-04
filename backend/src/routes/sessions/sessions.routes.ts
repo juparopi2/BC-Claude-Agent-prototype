@@ -23,6 +23,7 @@ import {
   createSessionSchema,
   updateSessionSchema,
   getSessionsSchema,
+  togglePinSchema,
 } from '@/domains/sessions';
 import { getSessionService, getSessionTitleGenerator } from '@/services/sessions';
 
@@ -201,6 +202,58 @@ router.get('/:sessionId', authenticateMicrosoft, async (req: Request, res: Respo
     }
 
     sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to get session');
+  }
+});
+
+// ============================================
+// PATCH /api/chat/sessions/:sessionId/pin
+// Toggle session pin state
+// ============================================
+router.patch('/:sessionId/pin', authenticateMicrosoft, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const { sessionId } = req.params;
+
+    if (!userId) {
+      sendError(res, ErrorCode.USER_ID_NOT_IN_SESSION);
+      return;
+    }
+
+    if (!sessionId || !isValidUUID(sessionId)) {
+      sendError(res, ErrorCode.INVALID_PARAMETER, 'Invalid session ID format');
+      return;
+    }
+
+    // Validate request body
+    const validation = togglePinSchema.safeParse(req.body);
+    if (!validation.success) {
+      sendError(res, ErrorCode.VALIDATION_ERROR, validation.error.errors[0]?.message || 'Invalid request body');
+      return;
+    }
+
+    const { pinned } = validation.data;
+
+    logger.info({ sessionId, pinned }, 'Toggling session pin');
+
+    const sessionService = getSessionService();
+    const result = await sessionService.toggleSessionPin(sessionId, userId, pinned);
+
+    if (result === 'limit_exceeded') {
+      sendError(res, ErrorCode.PIN_LIMIT_EXCEEDED);
+      return;
+    }
+
+    if (!result) {
+      sendError(res, ErrorCode.SESSION_NOT_FOUND, 'Session not found or access denied');
+      return;
+    }
+
+    logger.info({ sessionId, pinned }, 'Session pin toggled successfully');
+
+    res.json(result);
+  } catch (error) {
+    logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Toggle pin error');
+    sendError(res, ErrorCode.INTERNAL_ERROR, 'Failed to toggle session pin');
   }
 });
 

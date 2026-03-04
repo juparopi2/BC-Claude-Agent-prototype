@@ -17,6 +17,8 @@ function transformSession(row: {
   user_id: string;
   title: string;
   is_active: boolean;
+  is_pinned: boolean;
+  pinned_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }) {
@@ -31,6 +33,8 @@ function transformSession(row: {
     user_id: row.user_id,
     title: row.title || 'New Chat',
     status,
+    is_pinned: row.is_pinned,
+    pinned_at: row.pinned_at ? row.pinned_at.toISOString() : null,
     last_activity_at: row.updated_at.toISOString(), // Use updated_at as last_activity_at
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
@@ -119,6 +123,8 @@ describe('sessions transformers', () => {
         user_id: 'user-456',
         title: 'Test Session',
         is_active: true,
+        is_pinned: false,
+        pinned_at: null,
         created_at: now,
         updated_at: now,
       };
@@ -132,6 +138,8 @@ describe('sessions transformers', () => {
         user_id: 'user-456',
         title: 'Test Session',
         status: 'active',
+        is_pinned: false,
+        pinned_at: null,
         last_activity_at: now.toISOString(),
         created_at: now.toISOString(),
         updated_at: now.toISOString(),
@@ -146,6 +154,8 @@ describe('sessions transformers', () => {
         user_id: 'user-789',
         title: 'Completed Session',
         is_active: false,
+        is_pinned: false,
+        pinned_at: null,
         created_at: now,
         updated_at: now,
       };
@@ -166,6 +176,8 @@ describe('sessions transformers', () => {
         user_id: 'user-123',
         title: '',
         is_active: true,
+        is_pinned: false,
+        pinned_at: null,
         created_at: now,
         updated_at: now,
       };
@@ -186,6 +198,8 @@ describe('sessions transformers', () => {
         user_id: 'user-456',
         title: 'Active Session',
         is_active: true,
+        is_pinned: false,
+        pinned_at: null,
         created_at: createdAt,
         updated_at: updatedAt,
       };
@@ -196,6 +210,51 @@ describe('sessions transformers', () => {
       // Assert
       expect(result.last_activity_at).toBe(updatedAt.toISOString());
       expect(result.created_at).toBe(createdAt.toISOString());
+    });
+
+    it('should transform pinned session correctly', () => {
+      // Arrange
+      const now = new Date('2025-11-15T10:00:00Z');
+      const pinnedAt = new Date('2025-12-01T10:00:00Z');
+      const dbRow = {
+        id: 'session-pinned',
+        user_id: 'user-456',
+        title: 'Pinned Session',
+        is_active: true,
+        is_pinned: true,
+        pinned_at: pinnedAt,
+        created_at: now,
+        updated_at: now,
+      };
+
+      // Act
+      const result = transformSession(dbRow);
+
+      // Assert
+      expect(result.is_pinned).toBe(true);
+      expect(result.pinned_at).toBe('2025-12-01T10:00:00.000Z');
+    });
+
+    it('should transform unpinned session with null pinned_at', () => {
+      // Arrange
+      const now = new Date('2025-11-15T10:00:00Z');
+      const dbRow = {
+        id: 'session-unpinned',
+        user_id: 'user-456',
+        title: 'Unpinned Session',
+        is_active: true,
+        is_pinned: false,
+        pinned_at: null,
+        created_at: now,
+        updated_at: now,
+      };
+
+      // Act
+      const result = transformSession(dbRow);
+
+      // Assert
+      expect(result.is_pinned).toBe(false);
+      expect(result.pinned_at).toBeNull();
     });
   });
 

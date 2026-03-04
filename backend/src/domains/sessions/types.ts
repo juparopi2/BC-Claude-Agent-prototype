@@ -24,6 +24,8 @@ export interface DbSessionRow {
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
+  is_pinned: boolean;
+  pinned_at: Date | null;
 }
 
 /**
@@ -63,6 +65,8 @@ export interface SessionResponse {
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+  is_pinned: boolean;
+  pinned_at: string | null;
 }
 
 /**

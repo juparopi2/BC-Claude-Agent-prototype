@@ -95,6 +95,8 @@ export enum ErrorCode {
   ALREADY_RESOLVED = 'ALREADY_RESOLVED',
   /** Operation conflicts with current state */
   STATE_CONFLICT = 'STATE_CONFLICT',
+  /** Maximum number of pinned sessions reached */
+  PIN_LIMIT_EXCEEDED = 'PIN_LIMIT_EXCEEDED',
 
   // ============================================
   // 410 Gone - Resource no longer available
@@ -228,6 +230,7 @@ export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   [ErrorCode.ALREADY_EXISTS]: 'Resource already exists',
   [ErrorCode.ALREADY_RESOLVED]: 'This approval has already been processed',
   [ErrorCode.STATE_CONFLICT]: 'Operation conflicts with current state',
+  [ErrorCode.PIN_LIMIT_EXCEEDED]: 'Maximum number of pinned sessions reached (5)',
 
   // 410 Gone
   [ErrorCode.EXPIRED]: 'This resource has expired',
@@ -304,6 +307,7 @@ export const ERROR_STATUS_CODES: Readonly<Record<ErrorCode, number>> = {
   [ErrorCode.ALREADY_EXISTS]: 409,
   [ErrorCode.ALREADY_RESOLVED]: 409,
   [ErrorCode.STATE_CONFLICT]: 409,
+  [ErrorCode.PIN_LIMIT_EXCEEDED]: 409,
 
   // 410 Gone
   [ErrorCode.EXPIRED]: 410,

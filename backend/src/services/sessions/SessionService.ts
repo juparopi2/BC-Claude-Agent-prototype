@@ -194,6 +194,55 @@ export class SessionService {
     return row !== null;
   }
 
+  /**
+   * Toggle pin state for a session
+   *
+   * @param sessionId - Session ID
+   * @param userId - User ID (for ownership verification)
+   * @param pinned - Whether to pin or unpin
+   * @returns Updated session, null if not found, or 'limit_exceeded' if pin limit reached
+   */
+  async toggleSessionPin(
+    sessionId: string,
+    userId: string,
+    pinned: boolean
+  ): Promise<SessionResponse | null | 'limit_exceeded'> {
+    // Check pin limit when pinning
+    if (pinned) {
+      const pinnedCount = await prisma.sessions.count({
+        where: { user_id: userId, is_pinned: true },
+      });
+
+      if (pinnedCount >= 5) {
+        return 'limit_exceeded';
+      }
+    }
+
+    const updateResult = await prisma.sessions.updateMany({
+      where: { id: sessionId, user_id: userId },
+      data: {
+        is_pinned: pinned,
+        pinned_at: pinned ? new Date() : null,
+      },
+    });
+
+    if (updateResult.count === 0) {
+      return null;
+    }
+
+    // Fetch updated session
+    const row = await prisma.sessions.findFirst({
+      where: { id: sessionId },
+    }) as unknown as DbSessionRow | null;
+
+    if (!row) {
+      return null;
+    }
+
+    logger.info({ sessionId, pinned }, 'Session pin toggled');
+    return transformSession(row);
+  }
+
   // ============================================
   // Message Operations
   // ============================================

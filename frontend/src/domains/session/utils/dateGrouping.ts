@@ -11,7 +11,7 @@ import type { Session } from '@/src/infrastructure/api';
 /**
  * Date group keys in display order
  */
-export type DateGroupKey = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'older';
+export type DateGroupKey = 'pinned' | 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'older';
 
 /**
  * A group of sessions with a label
@@ -44,6 +44,7 @@ function subDays(date: Date, days: number): Date {
  * Labels for each date group
  */
 const GROUP_LABELS: Record<DateGroupKey, string> = {
+  pinned: 'Pinned',
   today: 'Today',
   yesterday: 'Yesterday',
   thisWeek: 'This Week',

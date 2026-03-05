@@ -54,6 +54,11 @@ vi.mock('@/infrastructure/config/models', async (importOriginal) => {
 vi.mock('@langchain/langgraph/prebuilt', () => ({
   createReactAgent: vi.fn().mockReturnValue({
     invoke: vi.fn().mockResolvedValue({ messages: [] }),
+    stream: vi.fn().mockResolvedValue(
+      (async function* () {
+        yield { messages: [] };
+      })()
+    ),
   }),
 }));
 

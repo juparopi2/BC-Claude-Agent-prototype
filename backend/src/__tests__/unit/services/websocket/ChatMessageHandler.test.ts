@@ -211,12 +211,17 @@ describe('ChatMessageHandler', () => {
 
       await handler.handle(data, mockSocket as Socket, mockIo as SocketIOServer);
 
-      // Error should be logged with the detailed format
+      // Error should be logged with message, sessionId, userId, and classified error info
       expect(mockLogger.error).toHaveBeenCalledWith(
-        '❌ Chat message handler error (DETAILED)',
+        'Chat message handler error',
         expect.objectContaining({
           sessionId: testSessionId,
+          userId: testUserId,
           error: 'Orchestrator failed',
+          classified: expect.objectContaining({
+            code: expect.any(String),
+            retryable: expect.any(Boolean),
+          }),
         })
       );
     });

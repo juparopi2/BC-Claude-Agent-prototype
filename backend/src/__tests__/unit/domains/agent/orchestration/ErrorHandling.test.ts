@@ -216,8 +216,8 @@ describe('ErrorHandling', () => {
 
       const errorEvent = events.find(e => e.type === 'error');
       expect(errorEvent).toBeDefined();
-      expect((errorEvent as { error: string }).error).toBe('Graph execution failed: rate limit exceeded');
-      expect((errorEvent as { code: string }).code).toBe('EXECUTION_FAILED');
+      expect((errorEvent as { error: string }).error).toBe('Our AI service is receiving too many requests right now. Please wait a moment and try again');
+      expect((errorEvent as { code: string }).code).toBe('LLM_RATE_LIMITED');
     });
 
     it('should include original error message in error event', async () => {
@@ -234,7 +234,7 @@ describe('ErrorHandling', () => {
       }
 
       const errorEvent = events.find(e => e.type === 'error') as { error: string; code: string } | undefined;
-      expect(errorEvent?.error).toContain('Connection timeout');
+      expect(errorEvent?.error).toBe('Something went wrong processing your request. Please try again');
     });
 
     it('should handle non-Error thrown values', async () => {
@@ -251,7 +251,7 @@ describe('ErrorHandling', () => {
       }
 
       const errorEvent = events.find(e => e.type === 'error') as { error: string } | undefined;
-      expect(errorEvent?.error).toBe('String error');
+      expect(errorEvent?.error).toBe('Something went wrong processing your request. Please try again');
     });
 
     it('should re-throw the original error after emitting', async () => {
@@ -283,7 +283,7 @@ describe('ErrorHandling', () => {
       expect(errorEvent).toMatchObject({
         type: 'error',
         sessionId,
-        code: 'EXECUTION_FAILED',
+        code: 'AGENT_EXECUTION_FAILED',
         persistenceState: 'transient',
       });
       expect(errorEvent?.eventId).toBeDefined();
@@ -427,7 +427,7 @@ describe('ErrorHandling', () => {
       }
 
       const errorEvent = events.find(e => e.type === 'error') as { code: string } | undefined;
-      expect(errorEvent?.code).toBe('EXECUTION_FAILED');
+      expect(errorEvent?.code).toBe('AGENT_EXECUTION_FAILED');
     });
   });
 

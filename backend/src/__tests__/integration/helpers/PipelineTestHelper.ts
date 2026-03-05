@@ -131,7 +131,7 @@ export class PipelineTestHelper {
         mimeType,
         sizeBytes,
         blobPath,
-        sourceType: 'blob_storage',
+        sourceType: 'local',
         isFolder: false,
         isFavorite: false,
         processingRetryCount: 0,

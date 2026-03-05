@@ -50,6 +50,7 @@ import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import connectionsRoutes from './routes/connections';
+import onedriveAuthRoutes from './routes/onedrive-auth';
 import uploadHealthRoutes from '@/routes/uploads/health.routes';
 import duplicateDetectionRoutes from '@/routes/uploads/duplicate-detection.routes';
 import folderDuplicateDetectionRoutes from '@/routes/uploads/folder-duplicate-detection.routes';
@@ -839,6 +840,8 @@ function configureRoutes(): void {
     app.use('/api/audio', audioRoutes);
     // Connections endpoints (PRD-100)
     app.use('/api/connections', connectionsRoutes);
+    // OneDrive OAuth flow (PRD-101)
+    app.use('/api', onedriveAuthRoutes);
   }
 
   // Agent registry endpoint (PRD-011)

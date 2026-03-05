@@ -11,6 +11,7 @@
 import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getBlobContentProvider } from './BlobContentProvider';
+import { getGraphApiContentProvider } from './GraphApiContentProvider';
 import type { IFileContentProvider } from './IFileContentProvider';
 
 const logger = createChildLogger({ service: 'ContentProviderFactory' });
@@ -30,7 +31,7 @@ export class ContentProviderFactory {
         return getBlobContentProvider();
 
       case FILE_SOURCE_TYPE.ONEDRIVE:
-        throw new Error(`Provider not implemented: ${sourceType} (PRD-101/PRD-103)`);
+        return getGraphApiContentProvider();
 
       case FILE_SOURCE_TYPE.SHAREPOINT:
         throw new Error(`Provider not implemented: ${sourceType} (PRD-101/PRD-103)`);

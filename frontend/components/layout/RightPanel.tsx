@@ -7,10 +7,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileExplorer } from '@/components/files';
 import { PROVIDER_ID, PROVIDER_UI_ORDER, type ProviderId } from '@bc-agent/shared';
 import { useIntegrations, ConnectionCard } from '@/src/domains/integrations';
+import { ConnectionWizard } from '@/components/connections/ConnectionWizard';
 
 // Providers that are not yet implemented (show as "Coming soon")
 const DISABLED_PROVIDERS = new Set<ProviderId>([
-  PROVIDER_ID.ONEDRIVE,
   PROVIDER_ID.SHAREPOINT,
   PROVIDER_ID.POWER_BI,
 ]);
@@ -18,7 +18,7 @@ const DISABLED_PROVIDERS = new Set<ProviderId>([
 export default function RightPanel() {
   const [panelWidth, setPanelWidth] = useState<number>(Infinity);
   const panelRef = useRef<HTMLDivElement>(null);
-  const { connections } = useIntegrations();
+  const { connections, openWizard, wizardOpen, closeWizard, wizardProviderId } = useIntegrations();
 
   useEffect(() => {
     if (!panelRef.current) return;
@@ -83,6 +83,7 @@ export default function RightPanel() {
                     providerId={providerId}
                     connection={match ?? null}
                     disabled={DISABLED_PROVIDERS.has(providerId)}
+                    onClick={!DISABLED_PROVIDERS.has(providerId) ? () => openWizard(providerId) : undefined}
                   />
                 );
               })}
@@ -90,6 +91,10 @@ export default function RightPanel() {
           </ScrollArea>
         </TabsContent>
       </Tabs>
+
+      {wizardOpen && wizardProviderId === PROVIDER_ID.ONEDRIVE && (
+        <ConnectionWizard isOpen={wizardOpen} onClose={closeWizard} />
+      )}
     </div>
   );
 }

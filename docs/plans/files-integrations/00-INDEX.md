@@ -43,7 +43,7 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | PRD | Phase | Title | Backend Deliverables | UI Deliverables |
 |---|---|---|---|---|
 | [PRD-100](./PRD-100-foundation.md) | Foundation | Infrastructure & Abstraction Layer (COMPLETED) | Schema, `IFileContentProvider`, pipeline refactor, connections API, shared constants | Connections tab activated with real status, provider icons |
-| [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive | OneDrive Connection & Initial Sync | OAuth flow, `OneDriveService`, `GraphApiContentProvider`, initial delta sync, pipeline integration | Connection wizard, OneDrive folder tree root, browse + file list, sync progress |
+| [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive | OneDrive Connection & Initial Sync (IMPLEMENTED) | OAuth flow, `OneDriveService`, `GraphApiContentProvider`, initial delta sync, pipeline integration | Connection wizard, OneDrive folder tree root, browse + file list, sync progress |
 | [PRD-102](./PRD-102-webhook-sync-engine.md) | Webhooks | Real-Time Sync Engine | Webhook endpoint, `SubscriptionManager`, `DeltaSyncService`, lifecycle handling, polling fallback | Sync status badges, last-synced timestamps, real-time file appearance, sync error states |
 | [PRD-103](./PRD-103-sharepoint-connection.md) | SharePoint | SharePoint Connection | `SharePointService`, multi-site discovery, library browsing, SP-specific delta, reuse webhook infra | SP connection wizard (multi-step site/library picker), SP folder tree root, SP visual theme |
 
@@ -60,6 +60,19 @@ PRD-101 (OneDrive) -------> PRD-102 (Webhooks)
 ```
 
 PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequential (need files to exist before syncing changes). PRD-103 reuses all infrastructure from 100-102.
+
+### PRD-101 Implementation Summary
+
+**Status**: Implemented (2026-03-05). All 12 steps complete. See [PRD-101 Section 9](./PRD-101-onedrive-connection.md#9-implementation-status) for details.
+
+**Key deliverables**:
+- 7 new backend services (GraphHttpClient, GraphRateLimiter, OneDriveService, GraphApiContentProvider, GraphTokenManager refresh, InitialSyncService, OAuth routes)
+- 7 new API endpoints (OAuth initiate/callback, browse root/folder, create scopes, trigger sync, sync-status)
+- Frontend ConnectionWizard (3-step: connect → browse → sync), FolderTree OneDrive root, FileContextMenu external file handling
+- Schema updates: `microsoft_drive_id`, `scopes_granted`, `scope_path`, nullable `blob_path`
+- 94+ unit tests across 8 test files, all passing
+
+**Known gaps** (deferred): "Open in OneDrive" context menu action, file content proxy for external file preview, breadcrumb OneDrive icon. See [PRD-101 Section 10.4](./PRD-101-onedrive-connection.md#104-success-criteria-checklist).
 
 ---
 
@@ -126,6 +139,13 @@ PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequentia
 - FolderTree with lazy loading, FileDataTable with TanStack Table
 - FileIcon mapped by MIME type (lucide-react icons)
 - Connections tab: BC="Configure", SP/OD/PBI="Coming soon" (placeholder)
+
+### Schema Columns Deferred to PRD-101
+The following columns were planned in PRD-100 but deferred to PRD-101 implementation:
+- `connections.microsoft_drive_id` (NVarChar(200)) — stores the Graph API drive ID
+- `connections.scopes_granted` (NVarChar(Max)) — tracks consented OAuth scopes
+- `connection_scopes.scope_path` (NVarChar(1000)) — breadcrumb path for scope display
+- `files.blob_path` made nullable — supports external files with no local blob
 
 ### 4.4 Source Type vs Fetch Strategy (Two Distinct Concepts)
 

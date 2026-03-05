@@ -27,7 +27,7 @@ export interface FileFlowParams {
   batchId: string;
   userId: string;
   mimeType: string;
-  blobPath: string;
+  blobPath?: string;
   fileName: string;
 }
 
@@ -51,7 +51,8 @@ export class ProcessingFlowFactory {
    * namespacing). We use `--` as the separator instead.
    */
   static createFileFlow(params: FileFlowParams): FlowJob {
-    const { fileId, batchId, userId, mimeType, blobPath, fileName } = params;
+    const { fileId, batchId, userId, mimeType, fileName } = params;
+    const blobPath = params.blobPath ?? '';
 
     return {
       name: `pipeline-complete--${fileId}`,

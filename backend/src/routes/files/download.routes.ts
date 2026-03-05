@@ -10,6 +10,8 @@ import { Router, Request, Response } from 'express';
 import { ZodError } from 'zod';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getFileService, getFileUploadService } from '@services/files';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
+import { getContentProviderFactory } from '@/services/connectors/ContentProviderFactory';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -53,6 +55,25 @@ router.get('/:id/download', authenticateMicrosoft, async (req: Request, res: Res
     if (file.isFolder) {
       logger.warn({ userId, fileId: id }, 'Cannot download folder');
       sendError(res, ErrorCode.VALIDATION_ERROR, 'Cannot download a folder');
+      return;
+    }
+
+    // For external files (no blobPath), try to redirect to a pre-authenticated URL
+    if (!file.blobPath) {
+      try {
+        const sourceType = await getFileService().getFileSourceType(userId, id);
+        if (sourceType && sourceType !== FILE_SOURCE_TYPE.LOCAL) {
+          const provider = getContentProviderFactory().getProvider(sourceType);
+          if (provider.getDownloadUrl) {
+            const downloadUrl = await provider.getDownloadUrl(id, userId);
+            res.redirect(downloadUrl);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to error below
+      }
+      sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
       return;
     }
 
@@ -140,6 +161,25 @@ router.get('/:id/content', authenticateMicrosoft, async (req: Request, res: Resp
     if (file.isFolder) {
       logger.warn({ userId, fileId: id }, 'Cannot preview folder');
       sendError(res, ErrorCode.VALIDATION_ERROR, 'Cannot preview a folder');
+      return;
+    }
+
+    // For external files (no blobPath), redirect to pre-authenticated URL
+    if (!file.blobPath) {
+      try {
+        const sourceType = await getFileService().getFileSourceType(userId, id);
+        if (sourceType && sourceType !== FILE_SOURCE_TYPE.LOCAL) {
+          const provider = getContentProviderFactory().getProvider(sourceType);
+          if (provider.getDownloadUrl) {
+            const downloadUrl = await provider.getDownloadUrl(id, userId);
+            res.redirect(downloadUrl);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to error below
+      }
+      sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
       return;
     }
 

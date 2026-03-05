@@ -39,13 +39,14 @@ interface ConnectionCardProps {
   providerId: ProviderId;
   connection: ConnectionSummary | null;
   disabled?: boolean;
+  onClick?: () => void;
 }
 
 // ============================================
 // Component
 // ============================================
 
-export function ConnectionCard({ providerId, connection, disabled = false }: ConnectionCardProps) {
+export function ConnectionCard({ providerId, connection, disabled = false, onClick }: ConnectionCardProps) {
   const displayName = PROVIDER_DISPLAY_NAME[providerId];
   const iconName = PROVIDER_ICON[providerId];
   const IconComponent = ICON_MAP[iconName] ?? Cloud;
@@ -61,9 +62,10 @@ export function ConnectionCard({ providerId, connection, disabled = false }: Con
 
   return (
     <div
-      className={`flex items-center justify-between p-3 rounded-lg border bg-card ${
-        isInactive ? 'opacity-60' : ''
+      className={`flex items-center justify-between p-3 rounded-lg border bg-card transition-colors ${
+        isInactive ? 'opacity-60' : 'cursor-pointer hover:border-primary/50'
       }`}
+      onClick={!disabled ? onClick : undefined}
     >
       <div className="flex items-center gap-2">
         <IconComponent

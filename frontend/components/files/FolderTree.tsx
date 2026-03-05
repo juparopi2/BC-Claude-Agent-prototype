@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import { Home, Star } from 'lucide-react';
+import { Home, Star, Cloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
+import { useIntegrationListStore } from '@/src/domains/integrations';
 import { FolderTreeItem } from './FolderTreeItem';
 import type { ParsedFile } from '@bc-agent/shared';
+import { PROVIDER_ID } from '@bc-agent/shared';
 
 interface FolderTreeProps {
   className?: string;
@@ -18,6 +20,10 @@ export function FolderTree({ className }: FolderTreeProps) {
   const { currentFolderId, rootFolders, navigateToFolder, initFolderTree } = useFolderNavigation();
   const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
   const isRootLoading = useFolderTreeStore((s) => s.loadingFolderIds.has('root'));
+  const connections = useIntegrationListStore((s) => s.connections);
+  const hasOneDrive = connections.some(
+    (c) => c.provider === PROVIDER_ID.ONEDRIVE && c.status === 'connected'
+  );
 
   // Load root folders on mount and when favorites mode changes
   useEffect(() => {
@@ -64,6 +70,21 @@ export function FolderTree({ className }: FolderTreeProps) {
             ))
           )}
         </div>
+
+        {/* OneDrive root (when connected) */}
+        {hasOneDrive && (
+          <div className="mt-3 pt-3 border-t">
+            <div className="flex items-center gap-2 py-1.5 px-2 opacity-60">
+              <Cloud className="size-4" style={{ color: '#0078D4' }} />
+              <span className="text-sm font-medium text-muted-foreground">
+                OneDrive
+              </span>
+              <span className="text-xs text-muted-foreground ml-auto">
+                Synced
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     </ScrollArea>
   );

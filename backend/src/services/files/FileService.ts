@@ -77,6 +77,13 @@ export class FileService {
   }
 
   /**
+   * Get the source_type of a file (e.g. 'local', 'onedrive', 'sharepoint').
+   */
+  public async getFileSourceType(userId: string, fileId: string): Promise<string> {
+    return this.repository.getSourceType(userId, fileId);
+  }
+
+  /**
    * Verify ownership of multiple files
    */
   public async verifyOwnership(userId: string, fileIds: string[]): Promise<string[]> {

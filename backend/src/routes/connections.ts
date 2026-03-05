@@ -17,6 +17,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getConnectionService, ConnectionNotFoundError, ConnectionForbiddenError } from '@/domains/connections';
+import { getConnectionRepository } from '@/domains/connections';
 import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import {
@@ -29,7 +30,11 @@ import {
   createConnectionSchema,
   updateConnectionSchema,
   connectionIdParamSchema,
+  createScopesSchema,
+  browseFolderQuerySchema,
 } from '@bc-agent/shared';
+import { getOneDriveService } from '@/services/connectors/onedrive';
+import { getInitialSyncService } from '@/services/sync/InitialSyncService';
 
 const logger = createChildLogger({ service: 'ConnectionsRoutes' });
 const router = Router();
@@ -292,6 +297,263 @@ router.get(
           connectionId: req.params.id,
         },
         'Failed to list connection scopes'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/connections/:id/browse
+ * Browse the root folder of a OneDrive connection.
+ */
+router.get(
+  '/:id/browse',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+
+      // Verify ownership
+      const service = getConnectionService();
+      await service.getConnection(userId, connectionId);
+
+      const queryResult = validateSafe(browseFolderQuerySchema, req.query);
+      if (!queryResult.success) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, queryResult.error.errors[0]?.message ?? 'Invalid query parameters');
+        return;
+      }
+
+      const { pageToken } = queryResult.data;
+      const result = await getOneDriveService().listFolder(connectionId, undefined, pageToken);
+
+      logger.info({ userId: userId.toUpperCase(), connectionId }, 'Root folder browsed');
+      res.json(result);
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to browse root folder'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/connections/:id/browse/:folderId
+ * Browse a specific folder of a OneDrive connection.
+ */
+router.get(
+  '/:id/browse/:folderId',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const folderId = req.params.folderId;
+      const userId = req.userId!;
+
+      // Verify ownership
+      const service = getConnectionService();
+      await service.getConnection(userId, connectionId);
+
+      const queryResult = validateSafe(browseFolderQuerySchema, req.query);
+      if (!queryResult.success) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, queryResult.error.errors[0]?.message ?? 'Invalid query parameters');
+        return;
+      }
+
+      const { pageToken } = queryResult.data;
+      const result = await getOneDriveService().listFolder(connectionId, folderId, pageToken);
+
+      logger.info({ userId: userId.toUpperCase(), connectionId, folderId }, 'Folder browsed');
+      res.json(result);
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+          folderId: req.params.folderId,
+        },
+        'Failed to browse folder'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/connections/:id/scopes
+ * Create sync scopes (selected folders) for a connection.
+ */
+router.post(
+  '/:id/scopes',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+
+      // Verify ownership
+      const service = getConnectionService();
+      await service.getConnection(userId, connectionId);
+
+      const bodyResult = validateSafe(createScopesSchema, req.body);
+      if (!bodyResult.success) {
+        sendError(
+          res,
+          ErrorCode.VALIDATION_ERROR,
+          bodyResult.error.errors[0]?.message ?? 'Invalid request body'
+        );
+        return;
+      }
+
+      const repo = getConnectionRepository();
+      const createdScopes = await Promise.all(
+        bodyResult.data.scopes.map(async (scope) => {
+          const scopeId = await repo.createScope(connectionId, {
+            scopeType: scope.scopeType,
+            scopeResourceId: scope.scopeResourceId,
+            scopeDisplayName: scope.scopeDisplayName,
+            scopePath: scope.scopePath,
+          });
+          return repo.findScopeById(scopeId);
+        })
+      );
+
+      logger.info(
+        { userId: userId.toUpperCase(), connectionId, scopeCount: createdScopes.length },
+        'Connection scopes created'
+      );
+      res.status(201).json({ scopes: createdScopes });
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to create connection scopes'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/connections/:id/scopes/:scopeId/sync
+ * Trigger initial sync for a specific scope.
+ */
+router.post(
+  '/:id/scopes/:scopeId/sync',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const scopeId = req.params.scopeId?.toUpperCase();
+      if (!scopeId) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Invalid scope ID');
+        return;
+      }
+
+      const userId = req.userId!;
+
+      // Verify connection ownership
+      const service = getConnectionService();
+      await service.getConnection(userId, connectionId);
+
+      // Verify scope belongs to this connection
+      const repo = getConnectionRepository();
+      const scope = await repo.findScopeById(scopeId);
+      if (!scope) {
+        sendNotFound(res, ErrorCode.NOT_FOUND);
+        return;
+      }
+      if (scope.connection_id !== connectionId) {
+        sendForbidden(res, ErrorCode.FORBIDDEN);
+        return;
+      }
+
+      // Fire and forget — do not await
+      getInitialSyncService().syncScope(connectionId, scopeId, userId);
+
+      logger.info(
+        { userId: userId.toUpperCase(), connectionId, scopeId },
+        'Initial sync triggered'
+      );
+      res.status(202).json({ status: 'started' });
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+          scopeId: req.params.scopeId,
+        },
+        'Failed to trigger initial sync'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/connections/:id/sync-status
+ * Get sync status for all scopes of a connection.
+ */
+router.get(
+  '/:id/sync-status',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+      const service = getConnectionService();
+      const scopes = await service.listScopes(userId, connectionId);
+
+      logger.info(
+        { userId: userId.toUpperCase(), connectionId, scopeCount: scopes.length },
+        'Sync status retrieved'
+      );
+      res.json({ scopes });
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to get sync status'
       );
       next(error);
     }

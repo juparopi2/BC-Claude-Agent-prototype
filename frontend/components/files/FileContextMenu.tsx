@@ -119,6 +119,7 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   }, [file, deleteFiles, actionError]);
 
   const isAlreadyMentioned = mentions.some((m) => m.fileId === file.id);
+  const isExternalFile = !file.isFolder && file.blobPath === null;
 
   const handleUseAsContext = useCallback(() => {
     if (isAlreadyMentioned) return;
@@ -158,13 +159,12 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
             </ContextMenuItem>
           )}
 
-          <ContextMenuItem onClick={() => {
-            setNewName(file.name);
-            setRenameOpen(true);
-          }}>
-            <Pencil className="size-4 mr-2" />
-            Rename
-          </ContextMenuItem>
+          {!isExternalFile && (
+            <ContextMenuItem onClick={() => { setNewName(file.name); setRenameOpen(true); }}>
+              <Pencil className="size-4 mr-2" />
+              Rename
+            </ContextMenuItem>
+          )}
 
           <ContextMenuItem onClick={handleToggleFavorite}>
             {file.isFavorite ? (
@@ -198,15 +198,18 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
             )}
           </ContextMenuItem>
 
-          <ContextMenuSeparator />
-
-          <ContextMenuItem
-            onClick={() => setDeleteOpen(true)}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 className="size-4 mr-2" />
-            Delete
-          </ContextMenuItem>
+          {!isExternalFile && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                onClick={() => setDeleteOpen(true)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="size-4 mr-2" />
+                Delete
+              </ContextMenuItem>
+            </>
+          )}
         </ContextMenuContent>
       </ContextMenu>
 

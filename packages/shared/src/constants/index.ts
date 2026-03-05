@@ -103,6 +103,18 @@ export {
   type FileSourceType,
 } from './connection-status';
 
+// Sync Events (PRD-101)
+export {
+  SYNC_WS_EVENTS,
+  type SyncWsEventType,
+} from './sync-events';
+
+// Graph Scopes (PRD-101)
+export {
+  GRAPH_SCOPES,
+  type GraphScope,
+} from './graph-scopes';
+
 // Pipeline Status (PRD-01)
 export {
   PIPELINE_STATUS,

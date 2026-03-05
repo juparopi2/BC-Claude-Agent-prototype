@@ -344,3 +344,16 @@ Route registered in `backend/src/server.ts`: `app.use('/api/connections', connec
 - Webhook infrastructure (PRD-102)
 - SharePoint multi-site discovery (PRD-103)
 - BC token migration from `users` to `connections` table (future)
+
+---
+
+## Deviations (Resolved in PRD-101)
+
+The following schema columns were planned in PRD-100 but not applied to the live database during PRD-100 execution. They were added in PRD-101 Step 1.
+
+| Column | Table | PRD-100 Status | Resolution |
+|---|---|---|---|
+| `microsoft_drive_id` | `connections` | Planned but not created | Added in PRD-101 Step 1 |
+| `scopes_granted` | `connections` | Planned but not created | Added in PRD-101 Step 1 |
+| `scope_path` | `connection_scopes` | Planned but not created | Added in PRD-101 Step 1 |
+| `blob_path` nullable | `files` | Left as required String | Made nullable (`String?`) in PRD-101 Step 1 |

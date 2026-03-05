@@ -7,7 +7,7 @@
  */
 
 import { create } from 'zustand';
-import type { ConnectionSummary, ConnectionListResponse } from '@bc-agent/shared';
+import type { ConnectionSummary, ConnectionListResponse, ProviderId } from '@bc-agent/shared';
 import { CONNECTIONS_API } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
 
@@ -20,6 +20,8 @@ interface IntegrationListState {
   isLoading: boolean;
   error: string | null;
   hasFetched: boolean;
+  wizardOpen: boolean;
+  wizardProviderId: ProviderId | null;
 }
 
 // ============================================
@@ -29,6 +31,8 @@ interface IntegrationListState {
 interface IntegrationListActions {
   fetchConnections: () => Promise<void>;
   reset: () => void;
+  openWizard: (providerId: ProviderId) => void;
+  closeWizard: () => void;
 }
 
 type IntegrationListStore = IntegrationListState & IntegrationListActions;
@@ -42,6 +46,8 @@ const initialState: IntegrationListState = {
   isLoading: false,
   error: null,
   hasFetched: false,
+  wizardOpen: false,
+  wizardProviderId: null,
 };
 
 // ============================================
@@ -84,4 +90,7 @@ export const useIntegrationListStore = create<IntegrationListStore>((set, get) =
   },
 
   reset: () => set(initialState),
+
+  openWizard: (providerId) => set({ wizardOpen: true, wizardProviderId: providerId }),
+  closeWizard: () => set({ wizardOpen: false, wizardProviderId: null }),
 }));

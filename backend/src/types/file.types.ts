@@ -76,8 +76,8 @@ export interface FileDbRecord {
   /** Size in bytes (0 for folders). Prisma returns bigint, raw SQL returns number. */
   size_bytes: number | bigint;
 
-  /** Azure Blob Storage path (empty string for folders) */
-  blob_path: string;
+  /** Azure Blob Storage path (empty string for folders, null for external files) */
+  blob_path: string | null;
 
   /** True if this is a folder, false if it's a file */
   is_folder: boolean;
@@ -320,7 +320,7 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     name: record.name,
     mimeType: record.mime_type,
     sizeBytes: Number(record.size_bytes),
-    blobPath: record.blob_path,
+    blobPath: record.blob_path ?? null,
     isFolder: record.is_folder,
     isFavorite: record.is_favorite,
     pipelineStatus: record.pipeline_status,

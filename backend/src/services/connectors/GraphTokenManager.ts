@@ -13,8 +13,10 @@
  */
 
 import crypto from 'crypto';
+import { ConfidentialClientApplication } from '@azure/msal-node';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
+import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -53,7 +55,13 @@ export class GraphTokenManager {
 
   /**
    * Get a valid access token for a connection.
-   * Checks expiration and throws ConnectionTokenExpiredError if token is stale.
+   *
+   * If the stored token is expired (within the 5-minute buffer), the method
+   * first attempts an MSAL silent refresh using `msal_home_account_id` and
+   * the `scopes_granted` stored on the connection.  If silent refresh
+   * succeeds the new token is persisted and returned.  If it fails (or the
+   * connection has no MSAL account ID), ConnectionTokenExpiredError is thrown
+   * so the caller can trigger the full OAuth re-consent flow.
    */
   async getValidToken(connectionId: string): Promise<string> {
     const connection = await prisma.connections.findUnique({
@@ -62,6 +70,8 @@ export class GraphTokenManager {
         access_token_encrypted: true,
         token_expires_at: true,
         status: true,
+        msal_home_account_id: true,
+        scopes_granted: true,
       },
     });
 
@@ -74,12 +84,49 @@ export class GraphTokenManager {
     }
 
     // Check if token is expired (with 5-minute buffer)
-    if (connection.token_expires_at) {
-      const expiresAt = new Date(connection.token_expires_at);
-      const bufferMs = 5 * 60 * 1000;
-      if (Date.now() > expiresAt.getTime() - bufferMs) {
-        throw new ConnectionTokenExpiredError(connectionId);
+    const bufferMs = 5 * 60 * 1000;
+    const isExpired = connection.token_expires_at
+      ? Date.now() > new Date(connection.token_expires_at).getTime() - bufferMs
+      : false;
+
+    if (isExpired) {
+      // Attempt MSAL silent refresh before giving up
+      if (connection.msal_home_account_id) {
+        const scopes = connection.scopes_granted
+          ? connection.scopes_granted.split(' ').filter(Boolean)
+          : ['Files.Read.All'];
+
+        try {
+          logger.info(
+            { connectionId, homeAccountId: connection.msal_home_account_id },
+            'Token expired; attempting MSAL silent refresh'
+          );
+
+          const freshToken = await this.refreshViaMsal(
+            connectionId,
+            connection.msal_home_account_id,
+            scopes,
+            // Use homeAccountId as the MSAL cache partition key.
+            // The OneDrive OAuth callback stores tokens under this key.
+            connection.msal_home_account_id
+          );
+
+          logger.info({ connectionId }, 'MSAL silent refresh succeeded; returning fresh token');
+          return freshToken;
+        } catch (msalError) {
+          const errorInfo =
+            msalError instanceof Error
+              ? { message: msalError.message, name: msalError.name }
+              : { value: String(msalError) };
+          logger.warn(
+            { connectionId, error: errorInfo },
+            'MSAL silent refresh failed; connection requires re-authentication'
+          );
+          // Fall through to throw ConnectionTokenExpiredError
+        }
       }
+
+      throw new ConnectionTokenExpiredError(connectionId);
     }
 
     return this.decryptToken(connection.access_token_encrypted);
@@ -134,6 +181,70 @@ export class GraphTokenManager {
     });
 
     logger.info({ connectionId }, 'Revoked Graph tokens');
+  }
+
+  // ==========================================================================
+  // Private MSAL refresh helper
+  // ==========================================================================
+
+  /**
+   * Attempt to silently acquire a fresh access token via MSAL and persist it.
+   *
+   * Creates a short-lived MSAL ConfidentialClientApplication backed by a Redis
+   * cache partition, looks up the account by homeAccountId, and calls
+   * acquireTokenSilent.  On success the new token is encrypted and stored on
+   * the connection record before being returned to the caller.
+   *
+   * @param connectionId     - Connection ID used for DB update.
+   * @param homeAccountId    - MSAL homeAccountId stored on the connection.
+   * @param scopes           - Scopes to request (e.g. ['Files.Read.All']).
+   * @param msalPartitionKey - Redis cache partition key; we reuse homeAccountId
+   *                           since the OneDrive OAuth callback stores tokens
+   *                           under this same key.
+   * @returns Fresh access token string.
+   * @throws Error if MSAL cannot find the account or silent acquisition fails.
+   */
+  private async refreshViaMsal(
+    connectionId: string,
+    homeAccountId: string,
+    scopes: string[],
+    msalPartitionKey: string
+  ): Promise<string> {
+    const clientId = process.env.MICROSOFT_CLIENT_ID;
+    const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+    const authority =
+      process.env.MICROSOFT_AUTHORITY ??
+      `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID ?? 'common'}`;
+
+    if (!clientId || !clientSecret) {
+      throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be configured');
+    }
+
+    const cachePlugin = new MsalRedisCachePlugin(msalPartitionKey);
+
+    const msalClient = new ConfidentialClientApplication({
+      auth: { clientId, clientSecret, authority },
+      cache: { cachePlugin },
+    });
+
+    const tokenCache = msalClient.getTokenCache();
+    const account = await tokenCache.getAccountByHomeId(homeAccountId);
+
+    if (!account) {
+      throw new Error(`Account ${homeAccountId} not found in MSAL cache`);
+    }
+
+    const result = await msalClient.acquireTokenSilent({ account, scopes });
+
+    if (!result?.accessToken) {
+      throw new Error('acquireTokenSilent returned no access token');
+    }
+
+    // Persist the refreshed token so subsequent calls use the new value
+    const expiresAt = result.expiresOn ?? new Date(Date.now() + 3600 * 1000);
+    await this.storeTokens(connectionId, { accessToken: result.accessToken, expiresAt });
+
+    return result.accessToken;
   }
 
   // ==========================================================================

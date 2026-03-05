@@ -127,8 +127,8 @@ export interface ParsedFile {
   /** Size in bytes (0 for folders) */
   sizeBytes: number;
 
-  /** Azure Blob Storage path (empty string for folders) */
-  blobPath: string;
+  /** Azure Blob Storage path (empty string for folders, null for external files) */
+  blobPath: string | null;
 
   /** True if this is a folder */
   isFolder: boolean;

@@ -47,9 +47,11 @@ export interface ScopeRow {
   scope_type: string;
   scope_resource_id: string | null;
   scope_display_name: string | null;
+  scope_path: string | null;
   sync_status: string;
   last_sync_at: Date | null;
   last_sync_error: string | null;
+  last_sync_cursor: string | null;
   item_count: number;
   created_at: Date;
 }
@@ -201,9 +203,11 @@ export class ConnectionRepository {
         scope_type: true,
         scope_resource_id: true,
         scope_display_name: true,
+        scope_path: true,
         sync_status: true,
         last_sync_at: true,
         last_sync_error: true,
+        last_sync_cursor: true,
         item_count: true,
         created_at: true,
       },
@@ -215,6 +219,103 @@ export class ConnectionRepository {
       id: row.id.toUpperCase(),
       connection_id: row.connection_id.toUpperCase(),
     }));
+  }
+
+  /**
+   * Create a new connection_scope record.
+   * Returns the new scope ID (UPPERCASE).
+   */
+  async createScope(
+    connectionId: string,
+    data: {
+      scopeType: string;
+      scopeResourceId: string;
+      scopeDisplayName: string;
+      scopePath?: string;
+    }
+  ): Promise<string> {
+    const id = randomUUID().toUpperCase();
+
+    logger.debug({ connectionId, scopeType: data.scopeType }, 'Creating connection scope');
+
+    await prisma.connection_scopes.create({
+      data: {
+        id,
+        connection_id: connectionId,
+        scope_type: data.scopeType,
+        scope_resource_id: data.scopeResourceId,
+        scope_display_name: data.scopeDisplayName,
+        scope_path: data.scopePath ?? null,
+        sync_status: 'idle',
+        item_count: 0,
+      },
+    });
+
+    return id;
+  }
+
+  /**
+   * Update a scope's sync state fields.
+   */
+  async updateScope(
+    scopeId: string,
+    data: Partial<{
+      syncStatus: string;
+      lastSyncAt: Date;
+      lastSyncError: string | null;
+      lastSyncCursor: string | null;
+      itemCount: number;
+    }>
+  ): Promise<void> {
+    logger.debug({ scopeId, fields: Object.keys(data) }, 'Updating connection scope');
+
+    await prisma.connection_scopes.update({
+      where: { id: scopeId },
+      data: {
+        ...(data.syncStatus !== undefined && { sync_status: data.syncStatus }),
+        ...(data.lastSyncAt !== undefined && { last_sync_at: data.lastSyncAt }),
+        ...(data.lastSyncError !== undefined && { last_sync_error: data.lastSyncError }),
+        ...(data.lastSyncCursor !== undefined && { last_sync_cursor: data.lastSyncCursor }),
+        ...(data.itemCount !== undefined && { item_count: data.itemCount }),
+        updated_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Find a single scope by ID.
+   * Returns null if not found.
+   */
+  async findScopeById(scopeId: string): Promise<ScopeRow | null> {
+    logger.debug({ scopeId }, 'Fetching scope by ID');
+
+    const row = await prisma.connection_scopes.findUnique({
+      where: { id: scopeId },
+      select: {
+        id: true,
+        connection_id: true,
+        scope_type: true,
+        scope_resource_id: true,
+        scope_display_name: true,
+        scope_path: true,
+        sync_status: true,
+        last_sync_at: true,
+        last_sync_error: true,
+        last_sync_cursor: true,
+        item_count: true,
+        created_at: true,
+      },
+    });
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      ...row,
+      id: row.id.toUpperCase(),
+      connection_id: row.connection_id.toUpperCase(),
+    };
   }
 
   /**

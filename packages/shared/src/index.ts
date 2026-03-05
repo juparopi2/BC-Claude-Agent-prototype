@@ -286,6 +286,14 @@ export type {
   BatchStatusResponse,
   CancelBatchResponse,
 
+  // OneDrive types (PRD-101)
+  DriveInfo,
+  ExternalFileItem,
+  FolderListResult,
+  DeltaChange,
+  DeltaQueryResult,
+  SyncProgress,
+
   // Connection types (PRD-100)
   ConnectionSummary,
   ConnectionScopeDetail,
@@ -496,6 +504,14 @@ export {
   type FolderWsChannel,
   type FolderWsEventType,
 
+  // Sync Events (PRD-101)
+  SYNC_WS_EVENTS,
+  type SyncWsEventType,
+
+  // Graph Scopes (PRD-101)
+  GRAPH_SCOPES,
+  type GraphScope,
+
   // Provider Constants (PRD-100)
   PROVIDER_ID,
   PROVIDER_DISPLAY_NAME,
@@ -572,6 +588,10 @@ export {
   listChatAttachmentsSchema,
   validateChatAttachmentMimeType,
   validateChatAttachmentSize,
+  // OneDrive schemas (PRD-101)
+  createScopesSchema,
+  browseFolderQuerySchema,
+
   // Connection schemas (PRD-100)
   createConnectionSchema,
   updateConnectionSchema,

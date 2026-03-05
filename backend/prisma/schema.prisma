@@ -134,7 +134,9 @@ model connections {
   token_expires_at          DateTime?
   microsoft_tenant_id       String?            @db.NVarChar(255)
   microsoft_resource_id     String?            @db.NVarChar(255)
+  microsoft_drive_id        String?            @db.NVarChar(200)
   msal_home_account_id      String?            @db.NVarChar(512)
+  scopes_granted            String?            @db.NVarChar(Max)
   last_error                String?            @db.NVarChar(Max)
   last_error_at             DateTime?
   created_at                DateTime           @default(dbgenerated("getutcdate()"))
@@ -156,6 +158,7 @@ model connection_scopes {
   scope_type                String       @db.NVarChar(50)
   scope_resource_id         String?      @db.NVarChar(512)
   scope_display_name        String?      @db.NVarChar(255)
+  scope_path                String?      @db.NVarChar(1000)
   sync_status               String       @default("idle") @db.NVarChar(20)
   last_sync_at              DateTime?
   last_sync_error           String?      @db.NVarChar(Max)
@@ -267,7 +270,7 @@ model files {
   name                     String                     @db.NVarChar(500)
   mime_type                String                     @db.NVarChar(255)
   size_bytes               BigInt
-  blob_path                String
+  blob_path                String?
   is_folder                Boolean                    @default(false, map: "DF__files__is_folder__3B0BC30C")
   is_favorite              Boolean                    @default(false, map: "DF__files__is_favori__3BFFE745")
   extracted_text           String?                    @db.NVarChar(Max)

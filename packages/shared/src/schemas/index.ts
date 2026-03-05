@@ -379,6 +379,20 @@ export {
 } from './chart-config.schemas';
 
 // ============================================
+// OneDrive Schemas (PRD-101)
+// ============================================
+
+export {
+  createScopesSchema,
+  browseFolderQuerySchema,
+} from './onedrive.schemas';
+
+export type {
+  CreateScopesInput,
+  BrowseFolderQuery,
+} from './onedrive.schemas';
+
+// ============================================
 // Connection Schemas (PRD-100)
 // ============================================
 

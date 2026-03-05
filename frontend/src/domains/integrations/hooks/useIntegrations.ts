@@ -15,6 +15,10 @@ export function useIntegrations() {
   const error = useIntegrationListStore((s) => s.error);
   const hasFetched = useIntegrationListStore((s) => s.hasFetched);
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections);
+  const wizardOpen = useIntegrationListStore((s) => s.wizardOpen);
+  const wizardProviderId = useIntegrationListStore((s) => s.wizardProviderId);
+  const openWizard = useIntegrationListStore((s) => s.openWizard);
+  const closeWizard = useIntegrationListStore((s) => s.closeWizard);
 
   useEffect(() => {
     if (!hasFetched) {
@@ -22,5 +26,5 @@ export function useIntegrations() {
     }
   }, [hasFetched, fetchConnections]);
 
-  return { connections, isLoading, error };
+  return { connections, isLoading, error, wizardOpen, wizardProviderId, openWizard, closeWizard };
 }

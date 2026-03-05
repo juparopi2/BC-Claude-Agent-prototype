@@ -380,6 +380,16 @@ export {
   createBatchRequestSchema,
 } from './upload-batch.types';
 
+// OneDrive types (PRD-101)
+export type {
+  DriveInfo,
+  ExternalFileItem,
+  FolderListResult,
+  DeltaChange,
+  DeltaQueryResult,
+  SyncProgress,
+} from './onedrive.types';
+
 // Connection types (PRD-100)
 export type {
   ConnectionSummary,

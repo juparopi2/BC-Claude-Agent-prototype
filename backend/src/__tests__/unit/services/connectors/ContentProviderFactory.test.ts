@@ -1,12 +1,12 @@
 /**
- * ContentProviderFactory Unit Tests (PRD-100)
+ * ContentProviderFactory Unit Tests (PRD-100 + PRD-101)
  *
  * Tests the factory that resolves IFileContentProvider implementations
  * based on file source type.
  *
  * Covers:
  * - 'local' → BlobContentProvider (via getBlobContentProvider)
- * - 'onedrive' → throws not-implemented error (PRD-101)
+ * - 'onedrive' → GraphApiContentProvider (PRD-101)
  * - 'sharepoint' → throws not-implemented error (PRD-103)
  * - unknown → throws unknown source type error
  */
@@ -22,8 +22,18 @@ const mockBlobProvider = vi.hoisted(() => ({
   isAccessible: vi.fn(),
 }));
 
+const mockGraphApiProvider = vi.hoisted(() => ({
+  getContent: vi.fn(),
+  isAccessible: vi.fn(),
+  getDownloadUrl: vi.fn(),
+}));
+
 vi.mock('@/services/connectors/BlobContentProvider', () => ({
   getBlobContentProvider: vi.fn(() => mockBlobProvider),
+}));
+
+vi.mock('@/services/connectors/GraphApiContentProvider', () => ({
+  getGraphApiContentProvider: vi.fn(() => mockGraphApiProvider),
 }));
 
 vi.mock('@/shared/utils/logger', () => ({
@@ -61,12 +71,10 @@ describe('ContentProviderFactory', () => {
       expect(provider).toBe(mockBlobProvider);
     });
 
-    it("throws 'not implemented' for 'onedrive' source type", () => {
-      expect(() => factory.getProvider('onedrive')).toThrow(
-        expect.objectContaining({
-          message: expect.stringContaining('PRD-101'),
-        })
-      );
+    it("returns GraphApiContentProvider for 'onedrive' source type", () => {
+      const provider = factory.getProvider('onedrive');
+
+      expect(provider).toBe(mockGraphApiProvider);
     });
 
     it("throws 'not implemented' for 'sharepoint' source type", () => {

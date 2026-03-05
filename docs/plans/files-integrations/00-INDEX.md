@@ -127,9 +127,22 @@ PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequentia
 - FileIcon mapped by MIME type (lucide-react icons)
 - Connections tab: BC="Configure", SP/OD/PBI="Coming soon" (placeholder)
 
-### 4.4 Coding Standards (Mandatory)
+### 4.4 Source Type vs Fetch Strategy (Two Distinct Concepts)
 
-1. **No magic strings**: All provider IDs, status enums, event names as constants in `@bc-agent/shared`
+The codebase has two different "source type" systems that must NOT be confused:
+
+| Concept | Location | Values | Purpose |
+|---|---|---|---|
+| **`FILE_SOURCE_TYPE`** | `@bc-agent/shared` constants, DB column `files.source_type` | `local`, `onedrive`, `sharepoint` | Where the file **originated** from. Used by `ContentProviderFactory` to route download logic. |
+| **`SourceType`** | `@bc-agent/shared` types (`source.types.ts`), DB column `message_citations.source_type`, RAG tool output | `blob_storage`, `chat_attachment`, `sharepoint`, `onedrive`, `email`, `web` | How the **frontend fetches** the file for preview. Maps to `FetchStrategy` via `getFetchStrategy()`. |
+
+**Key rule**: When writing to `files.source_type` (DB), always use `FILE_SOURCE_TYPE.LOCAL` (the constant). When writing citation/RAG `sourceType`, use `'blob_storage'` (the fetch strategy) because all KB files are stored in Azure Blob Storage regardless of origin.
+
+A file uploaded locally has `files.source_type = 'local'` AND `citation.sourceType = 'blob_storage'`. A future OneDrive file will have `files.source_type = 'onedrive'` AND `citation.sourceType = 'onedrive'` (fetched via Graph API proxy).
+
+### 4.5 Coding Standards (Mandatory)
+
+1. **No magic strings**: All provider IDs, status enums, file source types as constants in `@bc-agent/shared`. Use `FILE_SOURCE_TYPE.LOCAL` not `'local'`, `PROVIDER_ID.ONEDRIVE` not `'onedrive'`, etc.
 2. **Strict typing**: No `any`. Use Zod for runtime validation at system boundaries.
 3. **UPPERCASE IDs**: All UUIDs/GUIDs must be UPPERCASE throughout the system.
 4. **Stateless singletons**: All services receive `ExecutionContext` or per-request params. No mutable instance state.
@@ -138,7 +151,7 @@ PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequentia
 7. **Tests before refactors**: Write tests covering existing behavior BEFORE modifying code.
 8. **Shared package as source of truth**: Cross-cutting types, constants, and classification logic in `@bc-agent/shared`.
 
-### 4.5 Risks & Mitigations
+### 4.6 Risks & Mitigations
 
 | Risk | Probability | Impact | Mitigation |
 |---|---|---|---|

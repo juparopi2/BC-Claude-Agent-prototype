@@ -161,7 +161,7 @@ describe('BatchUploadOrchestrator', () => {
       mime_type: 'inode/directory',
       size_bytes: BigInt(0),
       blob_path: '',
-      source_type: 'blob_storage',
+      source_type: 'local',
       is_folder: true,
       parent_folder_id: null,
       batch_id: TEST_BATCH_ID,

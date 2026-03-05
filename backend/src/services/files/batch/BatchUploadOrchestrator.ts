@@ -18,7 +18,7 @@ import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
 import { getFileUploadService } from '@/services/files/FileUploadService';
 import { getMessageQueue } from '@/infrastructure/queue';
 import { DuplicateDetectionService } from '@/services/files/DuplicateDetectionService';
-import { BATCH_STATUS, PIPELINE_STATUS } from '@bc-agent/shared';
+import { BATCH_STATUS, FILE_SOURCE_TYPE, PIPELINE_STATUS } from '@bc-agent/shared';
 import type {
   CreateBatchRequest,
   ManifestFolderItem,
@@ -218,7 +218,7 @@ export class BatchUploadOrchestrator {
               mime_type: 'inode/directory',
               size_bytes: BigInt(0),
               blob_path: '',
-              source_type: 'blob_storage',
+              source_type: FILE_SOURCE_TYPE.LOCAL,
               processing_retry_count: 0,
               embedding_retry_count: 0,
               is_favorite: false,
@@ -262,7 +262,7 @@ export class BatchUploadOrchestrator {
             mime_type: file.mimeType,
             size_bytes: BigInt(file.sizeBytes),
             blob_path: sasData.blobPath,
-            source_type: 'blob_storage',
+            source_type: FILE_SOURCE_TYPE.LOCAL,
             is_folder: false,
             is_favorite: false,
             processing_retry_count: 0,

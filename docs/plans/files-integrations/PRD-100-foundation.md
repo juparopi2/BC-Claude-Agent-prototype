@@ -62,6 +62,7 @@ The following table documents where the actual implementation differs from what 
 | `IFileContentProvider.getDownloadUrl` | Required method | Optional method (`getDownloadUrl?()`) | Not all providers support direct download URLs |
 | `blobPath` on job | Not specified | Made optional (`blobPath?: string`) | External files won't have a blob path |
 | Test file for safety net | `FileExtractWorker.test.ts` | `FileProcessingService.blobDownload.test.ts` + updated existing `FileProcessingService.test.ts` | Refactor was in the service, so tests target the service |
+| `source_type` magic strings | Not addressed | `BatchUploadOrchestrator` now uses `FILE_SOURCE_TYPE.LOCAL` constant | Production code must use shared constants, not string literals. See 00-INDEX.md section 4.4 for the `FILE_SOURCE_TYPE` vs `SourceType` distinction. |
 
 ---
 

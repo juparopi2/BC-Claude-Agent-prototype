@@ -11,7 +11,7 @@
 
 import { useCallback, useState } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
-import { Trash2, Download } from 'lucide-react';
+import { Trash2, AtSign, Check } from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -28,6 +28,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useFileActions } from '@/src/domains/files';
+import { useFileMentionStore } from '@/src/domains/chat/stores/fileMentionStore';
+import { dispatchAddMentionEvent } from '@/src/domains/chat/utils/mentionEvent';
 import { toast } from 'sonner';
 
 interface MultiFileContextMenuProps {
@@ -61,6 +63,7 @@ export function MultiFileContextMenu({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { deleteFiles, error: actionError } = useFileActions();
+  const mentions = useFileMentionStore((s) => s.mentions);
 
   // Count folders in selection
   const folderCount = files.filter((f) => f.isFolder).length;
@@ -81,6 +84,27 @@ export function MultiFileContextMenu({
     }
   }, [files, deleteFiles, actionError]);
 
+  const allAlreadyAdded = files.every((f) => mentions.some((m) => m.fileId === f.id));
+
+  const handleUseAsContext = useCallback(() => {
+    const newMentions = files
+      .filter((f) => !mentions.some((m) => m.fileId === f.id))
+      .map((f) => ({
+        fileId: f.id,
+        name: f.name,
+        isFolder: f.isFolder,
+        mimeType: f.mimeType ?? '',
+      }));
+
+    if (newMentions.length > 0) {
+      dispatchAddMentionEvent(newMentions);
+
+      toast.success('Added as context', {
+        description: `${newMentions.length} file${newMentions.length > 1 ? 's' : ''} will be included in your next message`,
+      });
+    }
+  }, [files, mentions]);
+
   // Format the item count description
   const getItemCountDescription = () => {
     const parts: string[] = [];
@@ -97,7 +121,24 @@ export function MultiFileContextMenu({
     <>
       <ContextMenu onOpenChange={onOpenChange}>
         <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-        <ContextMenuContent className="w-48">
+        <ContextMenuContent className="w-56">
+          <ContextMenuItem
+            onClick={handleUseAsContext}
+            disabled={allAlreadyAdded}
+            className="text-emerald-700 dark:text-emerald-300 focus:text-emerald-700 dark:focus:text-emerald-300"
+          >
+            {allAlreadyAdded ? (
+              <>
+                <Check className="size-4 mr-2 text-emerald-600 dark:text-emerald-400" />
+                Added as context
+              </>
+            ) : (
+              <>
+                <AtSign className="size-4 mr-2 text-emerald-600 dark:text-emerald-400" />
+                Use as Context ({files.length} items)
+              </>
+            )}
+          </ContextMenuItem>
           <ContextMenuItem
             onClick={() => setDeleteOpen(true)}
             className="text-destructive focus:text-destructive"

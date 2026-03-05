@@ -14,6 +14,7 @@ import { AtSign, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useFileMentionStore } from '@/src/domains/chat/stores/fileMentionStore';
+import { dispatchAddMentionEvent } from '@/src/domains/chat/utils/mentionEvent';
 
 interface UseAsContextButtonProps {
   fileId: string;
@@ -23,14 +24,13 @@ interface UseAsContextButtonProps {
 
 export function UseAsContextButton({ fileId, fileName, mimeType }: UseAsContextButtonProps) {
   const mentions = useFileMentionStore((s) => s.mentions);
-  const addMention = useFileMentionStore((s) => s.addMention);
 
   const isAlreadyAdded = mentions.some((m) => m.fileId === fileId);
 
   const handleClick = useCallback(() => {
     if (isAlreadyAdded) return;
 
-    addMention({
+    dispatchAddMentionEvent({
       fileId,
       name: fileName,
       isFolder: false,
@@ -40,7 +40,7 @@ export function UseAsContextButton({ fileId, fileName, mimeType }: UseAsContextB
     toast.success('Added as context', {
       description: `${fileName} will be included in your next message`,
     });
-  }, [fileId, fileName, mimeType, isAlreadyAdded, addMention]);
+  }, [fileId, fileName, mimeType, isAlreadyAdded]);
 
   if (isAlreadyAdded) {
     return (

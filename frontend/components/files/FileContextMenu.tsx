@@ -8,8 +8,9 @@ import {
   Star,
   StarOff,
   Trash2,
-  Copy,
+  AtSign,
   RefreshCw,
+  Check,
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -30,6 +31,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileActions, useFiles, useFileRetry } from '@/src/domains/files';
+import { useFileMentionStore } from '@/src/domains/chat/stores/fileMentionStore';
+import { dispatchAddMentionEvent } from '@/src/domains/chat/utils/mentionEvent';
 import { cn } from '@/lib/utils';
 import { validateFolderName, validateFileName } from '@/lib/utils/validation';
 import { toast } from 'sonner';
@@ -51,6 +54,7 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   const { downloadFile, renameFile, deleteFiles, error: actionError } = useFileActions();
   const { toggleFavorite } = useFiles();
   const { retryFile, isRetrying } = useFileRetry();
+  const mentions = useFileMentionStore((s) => s.mentions);
 
   const handleRetry = useCallback(async () => {
     const success = await retryFile(file.id);
@@ -114,10 +118,24 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
     }
   }, [file, deleteFiles, actionError]);
 
-  const handleCopyPath = useCallback(() => {
-    navigator.clipboard.writeText(file.blobPath);
-    toast.success('Path copied to clipboard');
-  }, [file.blobPath]);
+  const isAlreadyMentioned = mentions.some((m) => m.fileId === file.id);
+
+  const handleUseAsContext = useCallback(() => {
+    if (isAlreadyMentioned) return;
+
+    const mention = {
+      fileId: file.id,
+      name: file.name,
+      isFolder: file.isFolder,
+      mimeType: file.mimeType ?? '',
+    };
+
+    dispatchAddMentionEvent(mention);
+
+    toast.success('Added as context', {
+      description: `${file.name} will be included in your next message`,
+    });
+  }, [file.id, file.name, file.isFolder, file.mimeType, isAlreadyMentioned]);
 
   return (
     <>
@@ -162,9 +180,22 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
             )}
           </ContextMenuItem>
 
-          <ContextMenuItem onClick={handleCopyPath}>
-            <Copy className="size-4 mr-2" />
-            Copy path
+          <ContextMenuItem
+            onClick={handleUseAsContext}
+            disabled={isAlreadyMentioned}
+            className="text-emerald-700 dark:text-emerald-300 focus:text-emerald-700 dark:focus:text-emerald-300"
+          >
+            {isAlreadyMentioned ? (
+              <>
+                <Check className="size-4 mr-2 text-emerald-600 dark:text-emerald-400" />
+                Added as context
+              </>
+            ) : (
+              <>
+                <AtSign className="size-4 mr-2 text-emerald-600 dark:text-emerald-400" />
+                Use as Context
+              </>
+            )}
           </ContextMenuItem>
 
           <ContextMenuSeparator />

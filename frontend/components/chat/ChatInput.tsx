@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
 import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton, MentionHighlightOverlay } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
+import { FILE_MENTION_ADD_EVENT } from '@/src/domains/chat/utils/mentionEvent';
 import { buildChatAttachmentAcceptString } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
 import { validateChatAttachmentFiles, buildAttachmentTooltipText } from '@/src/domains/chat/utils/chatAttachmentValidation';
@@ -163,6 +164,19 @@ export default function ChatInput({
 
   // Drag and drop state
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // Listen for programmatic file-mention:add events (from context menus, buttons, etc.)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<FileMention | FileMention[]>).detail;
+      const items = Array.isArray(detail) ? detail : [detail];
+      for (const mention of items) {
+        addMention(mention);
+      }
+    };
+    window.addEventListener(FILE_MENTION_ADD_EVENT, handler);
+    return () => window.removeEventListener(FILE_MENTION_ADD_EVENT, handler);
+  }, [addMention]);
 
   /**
    * Detect @ trigger in textarea and manage autocomplete

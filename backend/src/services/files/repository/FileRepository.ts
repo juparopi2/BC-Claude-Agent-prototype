@@ -67,7 +67,7 @@ export interface IFileRepository {
   findById(userId: string, fileId: string): Promise<ParsedFile | null>;
   findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null>;
   findMany(options: GetFilesOptions): Promise<ParsedFile[]>;
-  count(userId: string, folderId?: string | null, options?: { favoritesFirst?: boolean }): Promise<number>;
+  count(userId: string, folderId?: string | null, options?: { favoritesOnly?: boolean }): Promise<number>;
   create(options: CreateFileOptions): Promise<string>;
   createFolder(userId: string, name: string, parentId?: string): Promise<string>;
   findIdsByOwner(userId: string, fileIds: string[]): Promise<string[]>;
@@ -169,8 +169,8 @@ export class FileRepository implements IFileRepository {
    * - undefined/null: root-level only (parent_folder_id IS NULL)
    * - string: files in that specific folder
    *
-   * favoritesFirst at root: includes favorites from all folders + all root items
-   * favoritesFirst in folder: includes all folder contents, favorites sorted first
+   * favoritesOnly at root: returns ONLY favorited items from anywhere in the hierarchy
+   * favoritesOnly in folder: returns ALL items in that folder (normal contents)
    *
    * @param options - Query options
    * @returns Array of parsed files
@@ -180,7 +180,7 @@ export class FileRepository implements IFileRepository {
       userId,
       folderId,
       sortBy = 'date',
-      favoritesFirst = false,
+      favoritesOnly = false,
       limit = 50,
       offset = 0,
     } = options;
@@ -191,25 +191,19 @@ export class FileRepository implements IFileRepository {
       deletion_status: null,
     };
 
-    if (folderId === undefined || folderId === null) {
-      // Root level (undefined treated same as null — defensive)
-      if (favoritesFirst) {
-        // Favorites from any folder + all root items
-        where['OR'] = [
-          { is_favorite: true },
-          { parent_folder_id: null },
-        ];
-      } else {
-        where['parent_folder_id'] = null;
-      }
+    if (favoritesOnly && (folderId === undefined || folderId === null)) {
+      // Favorites mode at root: flat list of ALL favorites
+      where['is_favorite'] = true;
+    } else if (folderId === undefined || folderId === null) {
+      // Normal root: only root-level items
+      where['parent_folder_id'] = null;
     } else {
-      // Specific folder
+      // Inside a folder: all contents (regardless of favoritesOnly)
       where['parent_folder_id'] = folderId;
     }
 
     // Build ORDER BY clause
     const orderBy: Array<Record<string, 'asc' | 'desc'>> = [];
-    if (favoritesFirst) orderBy.push({ is_favorite: 'desc' });
     orderBy.push({ is_folder: 'desc' });
     switch (sortBy) {
       case 'name':
@@ -244,32 +238,29 @@ export class FileRepository implements IFileRepository {
    *
    * @param userId        - Owner UUID (UPPERCASE)
    * @param folderId      - Folder filter (undefined = all, null = root, string = folder)
-   * @param options       - Optional favoritesFirst flag
+   * @param options       - Optional favoritesOnly flag
    * @returns File count
    */
   async count(
     userId: string,
     folderId?: string | null,
-    options?: { favoritesFirst?: boolean },
+    options?: { favoritesOnly?: boolean },
   ): Promise<number> {
-    const favoritesFirst = options?.favoritesFirst ?? false;
+    const favoritesOnly = options?.favoritesOnly ?? false;
 
     const where: Record<string, unknown> = {
       user_id: userId,
       deletion_status: null,
     };
 
-    if (folderId === undefined || folderId === null) {
-      // Root level (undefined treated same as null — defensive)
-      if (favoritesFirst) {
-        where['OR'] = [
-          { is_favorite: true },
-          { parent_folder_id: null },
-        ];
-      } else {
-        where['parent_folder_id'] = null;
-      }
+    if (favoritesOnly && (folderId === undefined || folderId === null)) {
+      // Favorites mode at root: flat list of ALL favorites
+      where['is_favorite'] = true;
+    } else if (folderId === undefined || folderId === null) {
+      // Normal root: only root-level items
+      where['parent_folder_id'] = null;
     } else {
+      // Inside a folder: all contents (regardless of favoritesOnly)
       where['parent_folder_id'] = folderId;
     }
 

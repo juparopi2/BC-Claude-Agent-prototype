@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback } from 'react';
-import { Home, ChevronRight } from 'lucide-react';
+import { Home, ChevronRight, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFolderNavigation } from '@/src/domains/files';
+import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 
 /**
  * FileBreadcrumb Component
@@ -27,6 +28,7 @@ import { useFolderNavigation } from '@/src/domains/files';
  */
 export function FileBreadcrumb() {
   const { folderPath, currentFolderId, setCurrentFolder } = useFolderNavigation();
+  const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
 
   const handleNavigate = useCallback((folderId: string | null, index: number) => {
     if (folderId === null) {
@@ -53,8 +55,14 @@ export function FileBreadcrumb() {
         )}
         aria-current={currentFolderId === null ? 'page' : undefined}
       >
-        <Home className="size-4" />
-        <span className="sr-only sm:not-sr-only">Files</span>
+        {showFavoritesOnly ? (
+          <Star className="size-4 fill-amber-400 text-amber-400" />
+        ) : (
+          <Home className="size-4" />
+        )}
+        <span className="sr-only sm:not-sr-only">
+          {showFavoritesOnly ? 'Favorites' : 'Files'}
+        </span>
       </button>
 
       {/* Path segments */}

@@ -246,7 +246,7 @@ describe('FileService Contract Tests', () => {
           userId: testUserId,
           folderId: 'folder-123',
           sortBy: 'name',
-          favoritesFirst: true,
+          favoritesOnly: true,
           limit: 50,
           offset: 10,
         });
@@ -406,7 +406,7 @@ describe('FileService Contract Tests', () => {
         mockRepo.count.mockResolvedValueOnce(10);
 
         const result = await fileService.getFileCount(testUserId, 'folder-123', {
-          favoritesFirst: true,
+          favoritesOnly: true,
         });
 
         expect(result).toBe(10);

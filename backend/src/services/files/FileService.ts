@@ -89,7 +89,7 @@ export class FileService {
   public async getFileCount(
     userId: string,
     folderId?: string | null,
-    options?: { favoritesFirst?: boolean }
+    options?: { favoritesOnly?: boolean }
   ): Promise<number> {
     return this.repository.count(userId, folderId, options);
   }

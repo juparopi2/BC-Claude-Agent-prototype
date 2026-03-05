@@ -200,14 +200,14 @@ describe('useFiles', () => {
       expect(result.current.sortOrder).toBe('asc');
     });
 
-    it('should expose showFavoritesFirst', () => {
+    it('should expose showFavoritesOnly', () => {
       act(() => {
-        useSortFilterStore.getState().toggleFavoritesFirst();
+        useSortFilterStore.getState().toggleFavoritesOnly();
       });
 
       const { result } = renderHook(() => useFiles());
 
-      expect(result.current.showFavoritesFirst).toBe(true);
+      expect(result.current.showFavoritesOnly).toBe(true);
     });
   });
 
@@ -237,14 +237,14 @@ describe('useFiles', () => {
       expect(useSortFilterStore.getState().sortOrder).toBe('desc');
     });
 
-    it('should provide toggleFavoritesFirst action', () => {
+    it('should provide toggleFavoritesOnly action', () => {
       const { result } = renderHook(() => useFiles());
 
       act(() => {
-        result.current.toggleFavoritesFirst();
+        result.current.toggleFavoritesOnly();
       });
 
-      expect(useSortFilterStore.getState().showFavoritesFirst).toBe(true);
+      expect(useSortFilterStore.getState().showFavoritesOnly).toBe(true);
     });
   });
 });

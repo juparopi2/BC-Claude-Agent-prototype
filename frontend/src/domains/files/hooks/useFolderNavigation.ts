@@ -9,9 +9,12 @@
 
 import { useCallback } from 'react';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
+import { useSortFilterStore } from '../stores/sortFilterStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { buildPathToFolder } from '../utils/folderPathBuilder';
 import type { ParsedFile } from '@bc-agent/shared';
+
+const EMPTY_FOLDERS: ParsedFile[] = [];
 
 /**
  * useFolderNavigation return type
@@ -97,7 +100,7 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   const toggleFolderExpandedAction = useFolderTreeStore((state) => state.toggleFolderExpanded);
   const setTreeFoldersAction = useFolderTreeStore((state) => state.setTreeFolders);
   const setLoadingFolderAction = useFolderTreeStore((state) => state.setLoadingFolder);
-  const getRootFolders = useFolderTreeStore((state) => state.getRootFolders);
+  const rootFolders = useFolderTreeStore((state) => state.treeFolders['root'] ?? EMPTY_FOLDERS);
   const isFolderExpandedFn = useFolderTreeStore((state) => state.isFolderExpanded);
   const isFolderLoadingFn = useFolderTreeStore((state) => state.isFolderLoading);
   const getChildFoldersFn = useFolderTreeStore((state) => state.getChildFolders);
@@ -185,11 +188,12 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     setLoadingFolderAction('root', true);
     try {
       const fileApi = getFileApiClient();
+      const showFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
       const result = await fileApi.getFiles({
-        folderId: null, // root level
+        folderId: null,
+        ...(showFavoritesOnly ? { favoritesOnly: true } : {}),
       });
       if (result.success) {
-        // Filter only folders for the tree
         const folders = result.data.files.filter((f) => f.isFolder);
         setTreeFoldersAction('root', folders);
       }
@@ -236,7 +240,7 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   return {
     currentFolderId,
     folderPath,
-    rootFolders: getRootFolders(),
+    rootFolders,
     expandedFolderIds,
     setCurrentFolder,
     navigateUp,

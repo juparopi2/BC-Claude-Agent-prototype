@@ -424,16 +424,16 @@ describe('Files Routes', () => {
       );
     });
 
-    it('should support favoritesFirst sorting', async () => {
+    it('should support favoritesOnly sorting', async () => {
       // Act
       await request(app)
         .get('/api/files')
-        .query({ favoritesFirst: 'true' })
+        .query({ favoritesOnly: 'true' })
         .expect(200);
 
       // Assert
       expect(mockFileService.getFiles).toHaveBeenCalledWith(
-        expect.objectContaining({ favoritesFirst: true })
+        expect.objectContaining({ favoritesOnly: true })
       );
     });
 

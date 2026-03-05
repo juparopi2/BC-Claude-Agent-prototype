@@ -215,11 +215,11 @@ export function BatchUploadProgressPanel({ onCancel }: BatchUploadProgressPanelP
     refreshTimerRef.current = setTimeout(async () => {
       try {
         const folderId = useFolderTreeStore.getState().currentFolderId;
-        const favFirst = useSortFilterStore.getState().showFavoritesFirst;
+        const favOnly = useSortFilterStore.getState().showFavoritesOnly;
         const fileApi = getFileApiClient();
         const result = await fileApi.getFiles({
           folderId: folderId ?? undefined,
-          ...(favFirst ? { favoritesFirst: true } : {}),
+          ...(favOnly ? { favoritesOnly: true } : {}),
         });
         if (result.success) {
           const { files: fetched, pagination } = result.data;

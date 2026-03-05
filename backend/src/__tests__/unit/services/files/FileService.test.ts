@@ -192,13 +192,13 @@ describe('FileService', () => {
       );
     });
 
-    it('should pass favoritesFirst option to findMany', async () => {
+    it('should pass favoritesOnly option to findMany', async () => {
       mockRepo.findMany.mockResolvedValueOnce([]);
 
-      await fileService.getFiles({ userId: testUserId, favoritesFirst: true });
+      await fileService.getFiles({ userId: testUserId, favoritesOnly: true });
 
       expect(mockRepo.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: testUserId, favoritesFirst: true })
+        expect.objectContaining({ userId: testUserId, favoritesOnly: true })
       );
     });
 

@@ -212,7 +212,7 @@ export class FileApiClient {
   /**
    * Get files with optional filtering and pagination
    *
-   * @param options - Query options (folderId, sortBy, favoritesFirst, limit, offset)
+   * @param options - Query options (folderId, sortBy, favoritesOnly, limit, offset)
    * @returns File list with pagination metadata
    *
    * @example
@@ -223,9 +223,9 @@ export class FileApiClient {
    * // List folder contents
    * const result = await fileApi.getFiles({ folderId: 'folder-123' });
    *
-   * // List with favorites first (at root: favorites from any folder + root items)
+   * // List favorites only (shows only favorited files)
    * const result = await fileApi.getFiles({
-   *   favoritesFirst: true,
+   *   favoritesOnly: true,
    *   sortBy: 'date',
    *   limit: 20,
    * });
@@ -242,8 +242,8 @@ export class FileApiClient {
     if (options?.sortBy) {
       params.set('sortBy', options.sortBy);
     }
-    if (options?.favoritesFirst !== undefined) {
-      params.set('favoritesFirst', options.favoritesFirst.toString());
+    if (options?.favoritesOnly !== undefined) {
+      params.set('favoritesOnly', options.favoritesOnly.toString());
     }
     if (options?.limit !== undefined) {
       params.set('limit', options.limit.toString());

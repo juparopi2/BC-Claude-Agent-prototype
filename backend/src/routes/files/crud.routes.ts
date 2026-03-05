@@ -36,7 +36,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    const { folderId, sortBy, favoritesFirst, limit, offset, search } = validation.data;
+    const { folderId, sortBy, favoritesOnly, limit, offset, search } = validation.data;
 
     // If search parameter provided, use search endpoint
     if (search) {
@@ -47,7 +47,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    logger.info({ userId, folderId, sortBy, favoritesFirst, limit, offset }, 'Getting files');
+    logger.info({ userId, folderId, sortBy, favoritesOnly, limit, offset }, 'Getting files');
 
     // Get files with FileService
     const fileService = getFileService();
@@ -55,13 +55,13 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       userId,
       folderId,
       sortBy,
-      favoritesFirst,
+      favoritesOnly,
       limit,
       offset,
     });
 
     // Get total count for pagination
-    const total = await fileService.getFileCount(userId, folderId, { favoritesFirst });
+    const total = await fileService.getFileCount(userId, folderId, { favoritesOnly });
 
     logger.info({ userId, fileCount: files.length, total }, 'Files retrieved successfully');
 

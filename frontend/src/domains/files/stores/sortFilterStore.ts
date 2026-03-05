@@ -20,8 +20,8 @@ export interface SortFilterState {
   sortBy: FileSortBy;
   /** Sort order (ascending or descending) */
   sortOrder: SortOrder;
-  /** Show favorites first (sort preference, not a filter) */
-  showFavoritesFirst: boolean;
+  /** Show favorites only (filter preference) */
+  showFavoritesOnly: boolean;
   /** TanStack Table column visibility state */
   columnVisibility: VisibilityState;
   /** TanStack Table column order */
@@ -38,10 +38,10 @@ export interface SortFilterActions {
   setSort: (sortBy: FileSortBy, sortOrder?: SortOrder) => void;
   /** Toggle sort order between asc and desc */
   toggleSortOrder: () => void;
-  /** Toggle favorites first sorting */
-  toggleFavoritesFirst: () => void;
-  /** Set favorites first explicitly */
-  setShowFavoritesFirst: (show: boolean) => void;
+  /** Toggle favorites only filter */
+  toggleFavoritesOnly: () => void;
+  /** Set favorites only explicitly */
+  setShowFavoritesOnly: (show: boolean) => void;
   /** Set column visibility */
   setColumnVisibility: (visibility: VisibilityState) => void;
   /** Set column order */
@@ -72,7 +72,7 @@ const DEFAULT_COLUMN_ORDER: string[] = [
 const initialState: SortFilterState = {
   sortBy: 'date',
   sortOrder: 'desc',
-  showFavoritesFirst: false,
+  showFavoritesOnly: false,
   columnVisibility: DEFAULT_COLUMN_VISIBILITY,
   columnOrder: DEFAULT_COLUMN_ORDER,
   columnSizing: {},
@@ -114,14 +114,14 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
         }));
       },
 
-      toggleFavoritesFirst: () => {
+      toggleFavoritesOnly: () => {
         set((state) => ({
-          showFavoritesFirst: !state.showFavoritesFirst,
+          showFavoritesOnly: !state.showFavoritesOnly,
         }));
       },
 
-      setShowFavoritesFirst: (show) => {
-        set({ showFavoritesFirst: show });
+      setShowFavoritesOnly: (show) => {
+        set({ showFavoritesOnly: show });
       },
 
       setColumnVisibility: (visibility) => {
@@ -149,7 +149,7 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
       partialize: (state) => ({
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
-        showFavoritesFirst: state.showFavoritesFirst,
+        showFavoritesOnly: state.showFavoritesOnly,
         columnVisibility: state.columnVisibility,
         columnOrder: state.columnOrder,
         columnSizing: state.columnSizing,

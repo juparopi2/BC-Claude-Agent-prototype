@@ -34,7 +34,7 @@ interface FileToolbarProps {
 
 export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const { openFilePicker, isUploading } = useFileUploadTrigger();
-  const { showFavoritesFirst, toggleFavoritesFirst, columnVisibility, setColumnVisibility } = useSortFilterStore();
+  const { showFavoritesOnly, toggleFavoritesOnly, columnVisibility, setColumnVisibility } = useSortFilterStore();
   const { isFileSidebarVisible: isSidebarVisible, toggleFileSidebar: toggleSidebar } = useUIPreferencesStore();
   const { isLoading, refreshCurrentFolder } = useFiles();
 
@@ -121,24 +121,24 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
 
       </div>
       <div className="flex items-center gap-0">
-        {/* Favorites first toggle */}
+        {/* Favorites only toggle */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Toggle
               size="sm"
-              pressed={showFavoritesFirst}
-              onPressedChange={toggleFavoritesFirst}
+              pressed={showFavoritesOnly}
+              onPressedChange={toggleFavoritesOnly}
               className="h-8"
-              aria-label="Show favorites first"
+              aria-label={showFavoritesOnly ? 'Show all files' : 'Show favorites only'}
             >
               <Star className={cn(
                 'size-4',
-                showFavoritesFirst && 'fill-amber-400 text-amber-400'
+                showFavoritesOnly && 'fill-amber-400 text-amber-400'
               )} />
             </Toggle>
           </TooltipTrigger>
           <TooltipContent>
-            Show favorites first
+            {showFavoritesOnly ? 'Show All' : 'Favorites'}
           </TooltipContent>
         </Tooltip>
 

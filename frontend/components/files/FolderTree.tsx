@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useCallback } from 'react';
-import { Home } from 'lucide-react';
+import { Home, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useFolderNavigation } from '@/src/domains/files';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
+import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { FolderTreeItem } from './FolderTreeItem';
 import type { ParsedFile } from '@bc-agent/shared';
 
@@ -14,18 +16,17 @@ interface FolderTreeProps {
 
 export function FolderTree({ className }: FolderTreeProps) {
   const { currentFolderId, rootFolders, navigateToFolder, initFolderTree } = useFolderNavigation();
+  const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
+  const isRootLoading = useFolderTreeStore((s) => s.loadingFolderIds.has('root'));
 
-  // Load root folders on mount
+  // Load root folders on mount and when favorites mode changes
   useEffect(() => {
     initFolderTree();
-  }, [initFolderTree]);
+  }, [initFolderTree, showFavoritesOnly]);
 
   const handleSelect = useCallback((folderId: string | null, folder?: ParsedFile) => {
     navigateToFolder(folderId, folder);
   }, [navigateToFolder]);
-
-  // We rely on the store's treeFolders['root'] to know if we have data
-  const hasData = rootFolders.length > 0;
 
   return (
     <ScrollArea className={cn('h-full', className)}>
@@ -38,33 +39,47 @@ export function FolderTree({ className }: FolderTreeProps) {
             currentFolderId === null && 'bg-accent'
           )}
         >
-          <Home className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">All Files</span>
+          {showFavoritesOnly ? (
+            <Star className="size-4 fill-amber-400 text-amber-400" />
+          ) : (
+            <Home className="size-4 text-muted-foreground" />
+          )}
+          <span className="text-sm font-medium">
+            {showFavoritesOnly ? 'Favorites' : 'All Files'}
+          </span>
         </button>
 
-        {/* Folder tree */}
+        {/* Folder tree — skeleton while loading, items when ready */}
         <div className="mt-1">
-          {rootFolders.map(folder => (
-            <FolderTreeItem
-              key={folder.id}
-              folder={folder}
-              level={0}
-              onSelect={handleSelect}
-            />
-          ))}
+          {isRootLoading ? (
+            <FolderTreeSkeleton />
+          ) : (
+            rootFolders.map(folder => (
+              <FolderTreeItem
+                key={folder.id}
+                folder={folder}
+                level={0}
+                onSelect={handleSelect}
+              />
+            ))
+          )}
         </div>
-
-        {/* Empty state (implied by no children if loaded) */}
-        {!hasData && (
-           /* Only show empty if we've ostensibly loaded? 
-              Actually store doesn't track specific 'loading' for tree init separate from global isLoading.
-              For now just show nothing if empty to avoid flash. 
-           */
-          <div className="py-4 text-center text-sm text-muted-foreground opacity-50">
-            {/* Optional: Add loading indicator here if needed, or rely on skeletons */}
-          </div>
-        )}
       </div>
     </ScrollArea>
+  );
+}
+
+/** Skeleton that mirrors FolderTreeItem layout: chevron + folder icon + name */
+function FolderTreeSkeleton() {
+  return (
+    <div className="space-y-1">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-1.5 py-1.5 px-2">
+          <Skeleton className="size-4 rounded" />
+          <Skeleton className="size-4 rounded" />
+          <Skeleton className="h-3.5 flex-1 rounded" />
+        </div>
+      ))}
+    </div>
   );
 }

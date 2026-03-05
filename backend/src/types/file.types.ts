@@ -202,7 +202,7 @@ export interface MessageFileAttachmentDbRecord {
  * - List all user's files: `{ userId: 'user-123' }`
  * - List root-level files: `{ userId: 'user-123', folderId: null }`
  * - List folder contents: `{ userId: 'user-123', folderId: 'folder-456' }`
- * - List with favorites first: `{ userId: 'user-123', favoritesFirst: true }`
+ * - List only favorites: `{ userId: 'user-123', favoritesOnly: true }`
  */
 export interface GetFilesOptions {
   /** Owner user ID (required) */
@@ -215,11 +215,11 @@ export interface GetFilesOptions {
   sortBy?: FileSortBy;
 
   /**
-   * Sort favorites first (not a filter).
-   * - At root (folderId=null): Returns favorites from ALL folders + all root items, favorites sorted first
-   * - In folder: Returns all items in folder, with favorites sorted first
+   * Show only favorited items (filter, not sort).
+   * - At root (folderId=null): Returns ONLY favorites from anywhere in hierarchy
+   * - In folder (folderId=<id>): Returns ALL items in that folder (normal contents)
    */
-  favoritesFirst?: boolean;
+  favoritesOnly?: boolean;
 
   /** Maximum number of results */
   limit?: number;

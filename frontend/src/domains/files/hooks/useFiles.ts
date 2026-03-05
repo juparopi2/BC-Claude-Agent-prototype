@@ -15,7 +15,7 @@ import { getFileApiClient } from '@/src/infrastructure/api';
 import type { ParsedFile, FileSortBy, SortOrder, GetFilesOptions } from '@bc-agent/shared';
 
 // Module-level state to coordinate filter change fetches across all hook instances
-// This ensures only ONE instance fetches when showFavoritesFirst changes
+// This ensures only ONE instance fetches when showFavoritesOnly changes
 let lastFetchedFilterValue: boolean | null = null;
 let filterFetchInProgress = false;
 
@@ -37,14 +37,14 @@ export interface UseFilesReturn {
   sortBy: FileSortBy;
   /** Current sort order */
   sortOrder: SortOrder;
-  /** Whether showing favorites first */
-  showFavoritesFirst: boolean;
+  /** Whether showing favorites only */
+  showFavoritesOnly: boolean;
   /** Set sort field and optionally order */
   setSort: (sortBy: FileSortBy, sortOrder?: SortOrder) => void;
   /** Toggle sort order */
   toggleSortOrder: () => void;
-  /** Toggle favorites first sorting */
-  toggleFavoritesFirst: () => void;
+  /** Toggle favorites only filter */
+  toggleFavoritesOnly: () => void;
   /** Fetch files from API for a folder */
   fetchFiles: (folderId?: string | null) => Promise<void>;
   /** Refresh current folder */
@@ -140,10 +140,10 @@ export function useFiles(): UseFilesReturn {
   // Get sort/filter state and actions
   const sortBy = useSortFilterStore((state) => state.sortBy);
   const sortOrder = useSortFilterStore((state) => state.sortOrder);
-  const showFavoritesFirst = useSortFilterStore((state) => state.showFavoritesFirst);
+  const showFavoritesOnly = useSortFilterStore((state) => state.showFavoritesOnly);
   const setSort = useSortFilterStore((state) => state.setSort);
   const toggleSortOrder = useSortFilterStore((state) => state.toggleSortOrder);
-  const toggleFavoritesFirst = useSortFilterStore((state) => state.toggleFavoritesFirst);
+  const toggleFavoritesOnly = useSortFilterStore((state) => state.toggleFavoritesOnly);
 
   // Memoize sorted files
   const sortedFiles = useMemo(
@@ -160,18 +160,16 @@ export function useFiles(): UseFilesReturn {
         const fileApi = getFileApiClient();
 
         // Get current favorites setting from store
-        const currentShowFavoritesFirst = useSortFilterStore.getState().showFavoritesFirst;
+        const currentShowFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
 
         // Build fetch options - backend handles the root vs folder logic
         const fetchOptions: GetFilesOptions = {
           folderId: folderId ?? null,
         };
 
-        // Add favoritesFirst if enabled - backend handles:
-        // - At root: favorites from any folder + all root items
-        // - In folder: all items in folder, sorted with favorites first
-        if (currentShowFavoritesFirst) {
-          fetchOptions.favoritesFirst = true;
+        // Add favoritesOnly if enabled - shows only favorited files
+        if (currentShowFavoritesOnly) {
+          fetchOptions.favoritesOnly = true;
         }
 
         const result = await fileApi.getFiles(fetchOptions);
@@ -225,7 +223,7 @@ export function useFiles(): UseFilesReturn {
   // Uses module-level coordination to ensure only ONE hook instance fetches
   useEffect(() => {
     // Check if this filter value was already fetched (by any hook instance)
-    if (lastFetchedFilterValue === showFavoritesFirst) {
+    if (lastFetchedFilterValue === showFavoritesOnly) {
       return;
     }
 
@@ -236,21 +234,26 @@ export function useFiles(): UseFilesReturn {
 
     // This instance will handle the fetch
     filterFetchInProgress = true;
-    lastFetchedFilterValue = showFavoritesFirst;
+    lastFetchedFilterValue = showFavoritesOnly;
+
+    // When entering favorites mode, reset to root for flat favorites view
+    const currentShowFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
+    if (currentShowFavoritesOnly) {
+      useFolderTreeStore.getState().setCurrentFolder(null, []);
+    }
 
     // Re-fetch with current folder when favorites setting changes
     // Use the store directly to avoid stale closures
-    const folderId = useFolderTreeStore.getState().currentFolderId;
     const fileApi = getFileApiClient();
-    const currentShowFavoritesFirst = useSortFilterStore.getState().showFavoritesFirst;
+    const folderId = currentShowFavoritesOnly ? null : useFolderTreeStore.getState().currentFolderId;
 
     // Build fetch options - backend handles root vs folder logic
     const fetchOptions: GetFilesOptions = {
       folderId: folderId ?? null,
     };
 
-    if (currentShowFavoritesFirst) {
-      fetchOptions.favoritesFirst = true;
+    if (currentShowFavoritesOnly) {
+      fetchOptions.favoritesOnly = true;
     }
 
     setLoading(true);
@@ -271,7 +274,7 @@ export function useFiles(): UseFilesReturn {
         setLoading(false);
         filterFetchInProgress = false;
       });
-  }, [showFavoritesFirst, setFiles, setLoading, setError]);
+  }, [showFavoritesOnly, setFiles, setLoading, setError]);
 
   return {
     sortedFiles,
@@ -281,10 +284,10 @@ export function useFiles(): UseFilesReturn {
     totalFiles,
     sortBy,
     sortOrder,
-    showFavoritesFirst,
+    showFavoritesOnly,
     setSort,
     toggleSortOrder,
-    toggleFavoritesFirst,
+    toggleFavoritesOnly,
     fetchFiles,
     refreshCurrentFolder,
     toggleFavorite,

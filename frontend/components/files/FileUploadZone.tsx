@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useDropzone, FileRejection } from 'react-dropzone';
-import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES } from '@bc-agent/shared';
+import { FILE_UPLOAD_LIMITS, ALLOWED_MIME_TYPES, FILE_TYPE_DISPLAY } from '@bc-agent/shared';
 import { Upload, FolderUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
@@ -39,12 +39,29 @@ export function FileUploadZone({
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
 
   /**
-   * Handle drag events to detect folder vs files
+   * Handle drag events to detect folder vs files.
+   * Uses webkitGetAsEntry() when available, with a fallback heuristic:
+   * items with empty MIME type (item.type === '') are likely folders.
    */
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     setIsDragActive(true);
     const dropType = detectDropType(e.dataTransfer);
-    setIsDraggingFolder(dropType === 'folder' || dropType === 'mixed');
+    if (dropType === 'folder' || dropType === 'mixed') {
+      setIsDraggingFolder(true);
+      return;
+    }
+    // Fallback: webkitGetAsEntry() may return null during dragenter on some browsers.
+    // Items with empty MIME type are typically folders.
+    const items = e.dataTransfer?.items;
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file' && items[i].type === '') {
+          setIsDraggingFolder(true);
+          return;
+        }
+      }
+    }
+    setIsDraggingFolder(false);
   }, []);
 
   /**
@@ -154,7 +171,7 @@ export function FileUploadZone({
         'relative h-full min-h-0 transition-colors',
         isDragActive && 'ring-2 ring-primary ring-inset',
         isDragAccept && 'bg-primary/5',
-        isDragReject && 'bg-destructive/5 ring-destructive',
+        isDragReject && !isDraggingFolder && 'bg-destructive/5 ring-destructive',
         className
       )}
     >
@@ -177,13 +194,15 @@ export function FileUploadZone({
             <>
               <Upload className={cn(
                 'size-12 mb-2',
-                isDragReject ? 'text-destructive' : 'text-primary'
+                isDragReject && !isDraggingFolder ? 'text-destructive' : 'text-primary'
               )} />
               <p className="text-sm font-medium">
-                {isDragReject ? 'Invalid file type' : 'Drop files to upload'}
+                {isDragReject && !isDraggingFolder ? 'Unsupported file type' : 'Drop files to upload'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                PDF, Word, Excel, images, and more — max {FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB per file
+                {isDragReject && !isDraggingFolder
+                  ? `Supported: ${Object.values(FILE_TYPE_DISPLAY).map(c => c.label).join(', ')}`
+                  : `PDF, Word, Excel, images, and more — max ${FILE_UPLOAD_LIMITS.MAX_FILE_SIZE / 1024 / 1024}MB per file`}
               </p>
             </>
           )}

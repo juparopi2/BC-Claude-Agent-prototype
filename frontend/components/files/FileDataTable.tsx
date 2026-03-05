@@ -359,14 +359,16 @@ export function FileDataTable() {
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-        <Folder className="size-16 text-muted-foreground/30 mb-4" />
-        <h3 className="text-lg font-medium text-muted-foreground mb-1">No files yet</h3>
-        <p className="text-sm text-muted-foreground/70 mb-4">
-          Drop files here or click upload to get started
-        </p>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground/50">
-          <Upload className="size-4" />
-          <span>Drag and drop to upload</span>
+        <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg px-8 py-12 w-full max-w-md flex flex-col items-center">
+          <Folder className="size-16 text-muted-foreground/50 mb-4" />
+          <h3 className="text-lg font-medium text-foreground/80 mb-1">No files yet</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Drop files here or click upload to get started
+          </p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Upload className="size-4" />
+            <span>Drag and drop to upload</span>
+          </div>
         </div>
       </div>
     );

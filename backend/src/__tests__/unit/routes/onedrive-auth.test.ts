@@ -372,7 +372,7 @@ describe('GET /auth/callback/onedrive', () => {
       .expect(302);
 
     const location = response.headers['location'] as string;
-    expect(location).toContain(`${FRONTEND_URL}/files`);
+    expect(location).toContain(`${FRONTEND_URL}/new`);
     expect(location).toContain('connected=onedrive');
     expect(location).toContain(encodeURIComponent(CONNECTION_ID));
   });
@@ -385,7 +385,7 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ state: `onedrive:${CONNECTION_ID}` })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=missing_code');
+    expect(response.headers['location']).toContain('onedrive_error=missing_code');
   });
 
   it('invalid state prefix: redirects with error=invalid_state', async () => {
@@ -396,7 +396,7 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ code: 'abc', state: 'badprefix:123' })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=invalid_state');
+    expect(response.headers['location']).toContain('onedrive_error=invalid_state');
   });
 
   it('missing state: redirects with error=invalid_state', async () => {
@@ -407,7 +407,7 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ code: 'abc' })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=invalid_state');
+    expect(response.headers['location']).toContain('onedrive_error=invalid_state');
   });
 
   it('OAuth error from Microsoft: redirects with the error', async () => {
@@ -418,7 +418,7 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ error: 'access_denied', error_description: 'User denied' })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=access_denied');
+    expect(response.headers['location']).toContain('onedrive_error=access_denied');
   });
 
   it('unauthenticated session: redirects with error=unauthenticated', async () => {
@@ -430,7 +430,7 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ code: 'abc', state: `onedrive:${CONNECTION_ID}` })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=unauthenticated');
+    expect(response.headers['location']).toContain('onedrive_error=unauthenticated');
   });
 
   it('connection not found: redirects with error=connection_not_found', async () => {
@@ -443,7 +443,7 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ code: 'abc', state: `onedrive:${CONNECTION_ID}` })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=connection_not_found');
+    expect(response.headers['location']).toContain('onedrive_error=connection_not_found');
   });
 
   it('no access token from code exchange: redirects with error=token_exchange_failed', async () => {
@@ -457,6 +457,6 @@ describe('GET /auth/callback/onedrive', () => {
       .query({ code: 'abc', state: `onedrive:${CONNECTION_ID}` })
       .expect(302);
 
-    expect(response.headers['location']).toContain('error=token_exchange_failed');
+    expect(response.headers['location']).toContain('onedrive_error=token_exchange_failed');
   });
 });

@@ -79,6 +79,12 @@ export interface FileDbRecord {
   /** Azure Blob Storage path (empty string for folders, null for external files) */
   blob_path: string | null;
 
+  /** File origin: 'local', 'onedrive', 'sharepoint' */
+  source_type: string;
+
+  /** URL to open file in its native app (e.g., OneDrive web). Null for local files. */
+  external_url: string | null;
+
   /** True if this is a folder, false if it's a file */
   is_folder: boolean;
 
@@ -221,6 +227,9 @@ export interface GetFilesOptions {
    */
   favoritesOnly?: boolean;
 
+  /** Filter by source type (e.g., 'local', 'onedrive', 'sharepoint') */
+  sourceType?: string;
+
   /** Maximum number of results */
   limit?: number;
 
@@ -321,6 +330,8 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     mimeType: record.mime_type,
     sizeBytes: Number(record.size_bytes),
     blobPath: record.blob_path ?? null,
+    sourceType: record.source_type ?? 'local',
+    externalUrl: record.external_url ?? null,
     isFolder: record.is_folder,
     isFavorite: record.is_favorite,
     pipelineStatus: record.pipeline_status,

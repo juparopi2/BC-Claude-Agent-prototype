@@ -518,13 +518,15 @@ Event constants defined in `@bc-agent/shared` (`constants/sync-events.ts`).
 
 ### Frontend
 - [x] Connection wizard guides user through OAuth -> browse -> select -> sync
-- [x] OneDrive root node appears in folder tree after connection
+- [x] OneDrive root node appears in folder tree after connection (interactive, filters file list)
 - [x] OneDrive folders/files display with blue accent color
 - [x] Sync progress shows during initial synchronization
-- [x] External files show in file list with correct sync status
-- [ ] "Open in OneDrive" context menu action opens correct webUrl *(deferred — see Section 10.4)*
-- [ ] File preview works for external files (proxy through backend) *(deferred — see Section 10.4)*
+- [x] External files show in file list with correct sync status and cloud badge overlay
+- [x] "Open in OneDrive" context menu action opens correct webUrl
+- [x] File download/content works for external files (proxy through backend, no CORS)
 - [x] "Add to Chat" works with external files (existing @mention flow)
+- [x] Post-OAuth redirect auto-opens wizard at browse step
+- [x] Business Central card shows as disabled with "Coming soon" badge
 
 ### E2E Verification
 *See Section 10.2 for the full manual E2E verification guide.*
@@ -532,11 +534,14 @@ Event constants defined in `@bc-agent/shared` (`constants/sync-events.ts`).
 1. New user -> Connect OneDrive -> Select "Documents" folder -> Start sync
 2. Verify files appear in file list with "syncing" status
 3. Wait for pipeline completion -> files show "ready" status
-4. Navigate to OneDrive > Documents in folder tree -> see synced files
-5. Open file preview -> content loads from Graph API *(requires Step 10 backend change)*
-6. Use @mention to reference external file in chat
-7. RAG agent can find and cite content from synced OneDrive files
-8. Upload a LOCAL file -> verify existing flow still works (regression)
+4. Click "OneDrive" in sidebar FolderTree -> file list filters to only OneDrive files
+5. Click "All Files" -> filter clears, all files visible
+6. Right-click OneDrive file -> "Open in OneDrive" opens correct webUrl in new tab
+7. Download OneDrive file -> downloads through backend proxy (no CORS error)
+8. Use @mention to reference external file in chat
+9. RAG agent can find and cite content from synced OneDrive files
+10. Upload a LOCAL file -> verify existing flow still works (regression)
+11. Business Central card shows disabled with "Coming soon" badge
 
 ---
 
@@ -585,6 +590,7 @@ Schema pushed to DB via `prisma db push`. No data migration needed (all new colu
 | `packages/shared/src/constants/graph-scopes.ts` | `GRAPH_SCOPES` — Microsoft Graph permission scope constants |
 | `packages/shared/src/types/onedrive.types.ts` | DTOs: `DriveInfo`, `ExternalFileItem`, `FolderListResult`, `DeltaQueryResult`, `DeltaChange`, `SyncProgress` |
 | `packages/shared/src/schemas/onedrive.schemas.ts` | Zod schemas: `createScopesSchema`, `browseFolderQuerySchema` |
+| `packages/shared/src/types/file.types.ts` | Added `sourceType: string` and `externalUrl: string \| null` to `ParsedFile`; added `sourceType?: string` to `GetFilesOptions` |
 
 All re-exported from barrel files and `index.ts`.
 
@@ -614,17 +620,23 @@ All re-exported from barrel files and `index.ts`.
 
 Routes registered in `backend/src/server.ts`.
 
+OAuth callback redirects to `/new?connected=onedrive&connectionId=...` (success) or `/new?onedrive_error=...` (failure). Error query params use `onedrive_error` prefix to avoid collision with generic error params.
+
 ### 9.5 Frontend (Steps 11–12)
 
 | Component / File | What was built |
 |---|---|
-| `ConnectionWizard.tsx` | 3-step dialog: Connect → Browse (recursive folder tree with checkboxes) → Sync (progress bar via polling) |
+| `ConnectionWizard.tsx` | 3-step dialog: Connect → Browse → Sync. Accepts `initialConnectionId` prop to skip to browse step post-OAuth. |
 | `integrationListStore.ts` | Added `wizardOpen`, `wizardProviderId`, `openWizard()`, `closeWizard()` state/actions |
 | `useIntegrations.ts` | Added selectors for wizard state |
-| `ConnectionCard.tsx` | Added `onClick` prop, cursor-pointer hover styling for active providers |
-| `RightPanel.tsx` | Removed OneDrive from `DISABLED_PROVIDERS`, wired `ConnectionWizard` rendering |
-| `FolderTree.tsx` | Added OneDrive root node (Cloud icon, `#0078D4` accent) when connected |
-| `FileContextMenu.tsx` | External files: disabled Rename and Delete context menu items |
+| `ConnectionCard.tsx` | `onClick` prop, cursor-pointer hover for active providers. `isInactive = disabled` (not `disabled \|\| !connection`). |
+| `RightPanel.tsx` | Controlled tab state. Reads `?connected=onedrive&connectionId=X` or `?onedrive_error=...` post-OAuth to auto-open wizard or show toast. Business Central added to `DISABLED_PROVIDERS`. |
+| `FolderTree.tsx` | Interactive OneDrive node: click filters file list to `sourceType='onedrive'`. "All Files" clears filter. |
+| `FileContextMenu.tsx` | External files: hides Rename/Delete. Added "Open in OneDrive" action via `ExternalLink` icon when `externalUrl` is present. Uses `sourceType !== 'local'` for detection. |
+| `FileIcon.tsx` | Cloud badge overlay (`#0078D4`) for files with `sourceType === 'onedrive'`. |
+| `sortFilterStore.ts` | Added `sourceTypeFilter: string \| null` and `setSourceTypeFilter()` to Zustand store (persisted). |
+| `useFiles.ts` | Passes `sourceType` filter to API. Refetches when `sourceTypeFilter` changes. Resets to root when filtering. |
+| `fileApiClient.ts` | Added `sourceType` param handling in `getFiles()`. |
 
 ### 9.6 Unit Tests
 
@@ -636,16 +648,34 @@ Routes registered in `backend/src/server.ts`.
 | `GraphApiContentProvider.test.ts` | 10 | getContent, isAccessible, getDownloadUrl |
 | `ContentProviderFactory.test.ts` | 4 | Updated: OneDrive returns GraphApiContentProvider |
 | `InitialSyncService.test.ts` | 21 | Fire-and-forget sync, pagination, field mapping, error resilience |
-| `onedrive-auth.test.ts` | TBD | OAuth initiate + callback routes |
+| `onedrive-auth.test.ts` | 12 | OAuth initiate (fast-path, consent, create, reuse, error) + callback (success, missing code, invalid state, OAuth error, unauthenticated, connection not found, token exchange failed) |
 | `connections-browse.test.ts` | TBD | Browse, scopes, sync trigger routes |
-| **Total** | **94+** | |
+| **Total** | **106+** | |
 
-All tests pass: `npm run -w backend test:unit` → **166 files, 3601 tests, 0 failures**.
+All tests pass: `npm run -w backend test:unit` → **168 files, 3650 tests, 0 failures**.
+Frontend tests pass: `npm run -w bc-agent-frontend test` → **53 files, 810 tests, 0 failures**.
 
 ### 9.7 Documentation Updates
 
 - `docs/plans/files-integrations/PRD-100-foundation.md` — Added "Deviations (Resolved in PRD-101)" section documenting 4 schema columns deferred from PRD-100.
 - `docs/plans/files-integrations/00-INDEX.md` — Added "Schema Columns Deferred to PRD-101" subsection.
+
+### 9.8 E2E Verification Fixes (Post-Implementation)
+
+After the initial implementation, an E2E analysis identified **3 blockers, 1 user-reported UI bug, and 5 deferred items**. All were resolved in a follow-up session:
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | ConnectionCard looked disabled when no connection existed (user-reported: cursor-pointer missing) | Changed `isInactive = disabled \|\| !connection` → `isInactive = disabled` in `ConnectionCard.tsx` |
+| 2 | OAuth callback redirected to `/files` (doesn't exist) | Changed to `/new?connected=onedrive&connectionId=...` and `/new?onedrive_error=...` in `onedrive-auth.ts` |
+| 3 | No query param reading post-OAuth to resume wizard | `RightPanel.tsx`: controlled tabs, reads URL params, auto-opens wizard. `ConnectionWizard.tsx`: accepts `initialConnectionId` to skip to browse step. |
+| 4 | `ParsedFile` missing `sourceType` and `externalUrl` | Added to `ParsedFile` interface in shared package and `parseFile()` in backend types. Updated all test fixtures. |
+| 5 | FolderTree OneDrive node was static, non-interactive | Replaced with clickable button that sets `sourceTypeFilter` in `sortFilterStore`. "All Files" clears filter. `useFiles` passes filter to API. |
+| 6 | "Open in OneDrive" context menu action not implemented | Added `ExternalLink` menu item in `FileContextMenu.tsx` when `externalUrl` is present. |
+| 7 | Download/content for external files had CORS issues (redirect to Microsoft domain) | Backend now proxies content via `provider.getContent()` instead of `res.redirect()` in `download.routes.ts`. |
+| 8 | OneDrive files lacked visual distinction in file list | Added Cloud badge overlay in `FileIcon.tsx` for `sourceType === 'onedrive'`. |
+| 9 | `sourceType` filter missing from file list API | Added Zod schema, route handler, repository WHERE clause, and frontend API client param. |
+| 10 | Business Central card not marked as "Coming soon" | Added `PROVIDER_ID.BUSINESS_CENTRAL` to `DISABLED_PROVIDERS` in `RightPanel.tsx`. |
 
 ---
 
@@ -668,8 +698,9 @@ All tests pass: `npm run -w backend test:unit` → **166 files, 3601 tests, 0 fa
 3. The `ConnectionWizard` dialog opens at Step 1 ("Connect")
 4. Click **"Connect with Microsoft"**
 5. **Fast-path**: If `Files.Read.All` was already consented, the wizard auto-advances to Step 2 (no redirect needed)
-6. **Consent path**: Browser redirects to Microsoft login → consent to `Files.Read.All` → redirects back to `/files?connected=onedrive&connectionId=...`
-7. **Verify**: `GET /api/connections` shows the OneDrive connection with `status: 'connected'` and a `microsoft_drive_id`
+6. **Consent path**: Browser redirects to Microsoft login → consent to `Files.Read.All` → redirects back to `/new?connected=onedrive&connectionId=...`
+7. **Post-redirect**: Frontend reads query params, switches to Connections tab, auto-opens wizard at Step 2 (browse), cleans URL
+8. **Verify**: `GET /api/connections` shows the OneDrive connection with `status: 'connected'` and a `microsoft_drive_id`
 
 **Flow 2: Browse & Select Folders**
 8. In the wizard Step 2, the user's OneDrive root folder loads automatically
@@ -687,12 +718,14 @@ All tests pass: `npm run -w backend test:unit` → **166 files, 3601 tests, 0 fa
 
 **Flow 4: OneDrive in Folder Tree**
 18. After closing the wizard, the **Folder Tree** shows an "OneDrive" root node with a blue Cloud icon
-19. **Note**: The OneDrive root node is a visual indicator only — folder navigation for synced files uses the same local file tree
+19. Click **"OneDrive"** → file list filters to `sourceType='onedrive'` (shows all OneDrive files regardless of folder nesting)
+20. Click **"All Files"** → `sourceTypeFilter` clears, all files visible again
+21. OneDrive files display with a small blue cloud badge overlay on their file icon
 
 **Flow 5: External File Context Menu**
-20. Right-click an external file in the file list
-21. **Available**: Download, Add to favorites, Use as Context
-22. **Disabled/Hidden**: Rename, Delete (external files are read-only)
+22. Right-click an external file in the file list
+23. **Available**: Download, Add to favorites, Use as Context, **Open in OneDrive** (opens `externalUrl` in new tab)
+24. **Hidden**: Rename, Delete (external files are read-only, detected via `sourceType !== 'local'`)
 
 **Flow 6: RAG with External Files**
 23. Use `@mention` to reference a synced OneDrive file in chat
@@ -753,17 +786,19 @@ curl http://localhost:3002/api/connections/<CONNECTION_ID>/sync-status \
 
 #### Frontend
 - [x] Connection wizard guides user through OAuth → browse → select → sync
-- [x] OneDrive root node appears in folder tree after connection
-- [x] OneDrive folders/files display with blue accent color (#0078D4)
+- [x] OneDrive root node appears in folder tree after connection (interactive — filters file list by `sourceType`)
+- [x] OneDrive folders/files display with blue accent color (#0078D4) and cloud badge overlay
 - [x] Sync progress shows during initial synchronization (polling-based progress bar)
 - [x] External files show in file list with correct sync status
-- [ ] "Open in OneDrive" context menu action opens correct webUrl *(not implemented — context menu only hides Rename/Delete for external files)*
-- [ ] File preview works for external files (proxy through backend) *(backend content endpoint redirect not yet modified)*
+- [x] "Open in OneDrive" context menu action opens correct webUrl (via `ExternalLink` icon, `window.open(externalUrl)`)
+- [x] File download/content works for external files (backend proxies content instead of redirect — no CORS)
 - [x] "Add to Chat" works with external files (existing @mention flow)
+- [x] Post-OAuth redirect auto-opens wizard at browse step (reads `?connected=onedrive&connectionId=X`, cleans URL)
+- [x] Error OAuth redirect shows toast error (reads `?onedrive_error=...`)
+- [x] Business Central card shows disabled with "Coming soon" badge
+- [x] ConnectionCard without connection looks active and clickable (not faded)
 
 #### Known Gaps (deferred or pending real-tenant testing)
-1. **"Open in OneDrive"** context menu action — requires adding `ExternalLink` icon + handler for `external_url` in `FileContextMenu.tsx`
-2. **File content proxy** — The `GET /api/files/:id/content` endpoint needs modification to redirect external files to Graph API download URL (Step 10 from plan)
-3. **Breadcrumb updates** — OneDrive icon in breadcrumb when navigating external folders (cosmetic)
-4. **GraphTokenManager MSAL refresh** — Token refresh via `acquireTokenSilent` was added but depends on production MSAL cache configuration; manual verification needed with a real tenant
-5. **`sync:started` event** — Not emitted (only `sync:progress` and `sync:completed`); trivial to add if needed
+1. **Breadcrumb updates** — OneDrive icon in breadcrumb when navigating external folders (cosmetic)
+2. **GraphTokenManager MSAL refresh** — Token refresh via `acquireTokenSilent` was added but depends on production MSAL cache configuration; manual verification needed with a real tenant
+3. **`sync:started` event** — Not emitted (only `sync:progress` and `sync:completed`); trivial to add if needed

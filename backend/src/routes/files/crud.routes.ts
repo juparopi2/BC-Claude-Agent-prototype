@@ -36,7 +36,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    const { folderId, sortBy, favoritesOnly, limit, offset, search } = validation.data;
+    const { folderId, sortBy, favoritesOnly, limit, offset, search, sourceType } = validation.data;
 
     // If search parameter provided, use search endpoint
     if (search) {
@@ -56,12 +56,13 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       folderId,
       sortBy,
       favoritesOnly,
+      sourceType,
       limit,
       offset,
     });
 
     // Get total count for pagination
-    const total = await fileService.getFileCount(userId, folderId, { favoritesOnly });
+    const total = await fileService.getFileCount(userId, folderId, { favoritesOnly, sourceType });
 
     logger.info({ userId, fileCount: files.length, total }, 'Files retrieved successfully');
 

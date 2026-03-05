@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import {
   Download,
+  ExternalLink,
   Pencil,
   Star,
   StarOff,
@@ -119,7 +120,7 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   }, [file, deleteFiles, actionError]);
 
   const isAlreadyMentioned = mentions.some((m) => m.fileId === file.id);
-  const isExternalFile = !file.isFolder && file.blobPath === null;
+  const isExternalFile = !file.isFolder && file.sourceType !== 'local';
 
   const handleUseAsContext = useCallback(() => {
     if (isAlreadyMentioned) return;
@@ -149,6 +150,13 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
             <ContextMenuItem onClick={handleDownload}>
               <Download className="size-4 mr-2" />
               Download
+            </ContextMenuItem>
+          )}
+
+          {file.externalUrl && (
+            <ContextMenuItem onClick={() => window.open(file.externalUrl!, '_blank')}>
+              <ExternalLink className="size-4 mr-2" />
+              Open in OneDrive
             </ContextMenuItem>
           )}
 

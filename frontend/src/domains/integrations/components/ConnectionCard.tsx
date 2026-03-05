@@ -58,7 +58,7 @@ export function ConnectionCard({ providerId, connection, disabled = false, onCli
       : 'disconnected';
   const badge = STATUS_BADGE[status] ?? STATUS_BADGE.coming_soon;
 
-  const isInactive = disabled || !connection;
+  const isInactive = disabled;
 
   return (
     <div

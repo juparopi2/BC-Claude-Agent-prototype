@@ -38,6 +38,8 @@ describe('File Types', () => {
         mimeType: 'application/pdf',
         sizeBytes: 1024,
         blobPath: dbRecord.blob_path,
+        sourceType: 'local',
+        externalUrl: null,
         isFolder: false,
         isFavorite: true,
         pipelineStatus: 'ready', // from pipeline_status

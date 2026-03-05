@@ -21,6 +21,8 @@ export const createMockParsedFile = (overrides: Partial<ParsedFile> = {}): Parse
   mimeType: 'text/plain',
   sizeBytes: 1024,
   blobPath: 'users/user-1/files/test-file.txt',
+  sourceType: 'local',
+  externalUrl: null,
   isFolder: false,
   isFavorite: false,
   pipelineStatus: 'ready',

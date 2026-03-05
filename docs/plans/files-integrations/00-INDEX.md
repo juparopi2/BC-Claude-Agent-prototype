@@ -63,16 +63,20 @@ PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequentia
 
 ### PRD-101 Implementation Summary
 
-**Status**: Implemented (2026-03-05). All 12 steps complete. See [PRD-101 Section 9](./PRD-101-onedrive-connection.md#9-implementation-status) for details.
+**Status**: Implemented + E2E Verified (2026-03-05). All 12 implementation steps + 10 E2E verification fixes complete. See [PRD-101 Section 9](./PRD-101-onedrive-connection.md#9-implementation-status) for details.
 
 **Key deliverables**:
 - 7 new backend services (GraphHttpClient, GraphRateLimiter, OneDriveService, GraphApiContentProvider, GraphTokenManager refresh, InitialSyncService, OAuth routes)
 - 7 new API endpoints (OAuth initiate/callback, browse root/folder, create scopes, trigger sync, sync-status)
-- Frontend ConnectionWizard (3-step: connect → browse → sync), FolderTree OneDrive root, FileContextMenu external file handling
+- Frontend ConnectionWizard (3-step: connect → browse → sync) with post-OAuth auto-resume via URL query params
+- FolderTree interactive OneDrive node (filters by `sourceType`), Cloud badge overlay on file icons
+- "Open in OneDrive" context menu action, backend content proxy (no CORS), `sourceType` API filter
 - Schema updates: `microsoft_drive_id`, `scopes_granted`, `scope_path`, nullable `blob_path`
-- 94+ unit tests across 8 test files, all passing
+- `ParsedFile` extended: `sourceType`, `externalUrl` fields in shared + backend types
+- Business Central card shows disabled with "Coming soon" badge
+- 106+ unit tests across 9 test files; 168 backend test files (3650 tests), 53 frontend test files (810 tests), all passing
 
-**Known gaps** (deferred): "Open in OneDrive" context menu action, file content proxy for external file preview, breadcrumb OneDrive icon. See [PRD-101 Section 10.4](./PRD-101-onedrive-connection.md#104-success-criteria-checklist).
+**Remaining gaps** (cosmetic/minor): Breadcrumb OneDrive icon, `sync:started` event. See [PRD-101 Section 10.4](./PRD-101-onedrive-connection.md#104-success-criteria-checklist).
 
 ---
 
@@ -138,7 +142,7 @@ PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequentia
 **Frontend file explorer** (`frontend/components/files/`):
 - FolderTree with lazy loading, FileDataTable with TanStack Table
 - FileIcon mapped by MIME type (lucide-react icons)
-- Connections tab: BC="Configure", SP/OD/PBI="Coming soon" (placeholder)
+- Connections tab: OD=active (ConnectionWizard), BC/SP/PBI="Coming soon" (disabled)
 
 ### Schema Columns Deferred to PRD-101
 The following columns were planned in PRD-100 but deferred to PRD-101 implementation:

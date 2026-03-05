@@ -19,6 +19,8 @@ interface FolderTreeProps {
 export function FolderTree({ className }: FolderTreeProps) {
   const { currentFolderId, rootFolders, navigateToFolder, initFolderTree } = useFolderNavigation();
   const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
+  const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
+  const setSourceTypeFilter = useSortFilterStore((s) => s.setSourceTypeFilter);
   const isRootLoading = useFolderTreeStore((s) => s.loadingFolderIds.has('root'));
   const connections = useIntegrationListStore((s) => s.connections);
   const hasOneDrive = connections.some(
@@ -31,18 +33,32 @@ export function FolderTree({ className }: FolderTreeProps) {
   }, [initFolderTree, showFavoritesOnly]);
 
   const handleSelect = useCallback((folderId: string | null, folder?: ParsedFile) => {
+    // Clear source type filter when navigating to a local folder
+    if (sourceTypeFilter) {
+      setSourceTypeFilter(null);
+    }
     navigateToFolder(folderId, folder);
-  }, [navigateToFolder]);
+  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter]);
+
+  const handleAllFiles = useCallback(() => {
+    setSourceTypeFilter(null);
+    navigateToFolder(null);
+  }, [setSourceTypeFilter, navigateToFolder]);
+
+  const handleOneDriveClick = useCallback(() => {
+    setSourceTypeFilter('onedrive');
+    navigateToFolder(null);
+  }, [setSourceTypeFilter, navigateToFolder]);
 
   return (
     <ScrollArea className={cn('h-full', className)}>
       <div className="p-2">
         {/* Root item */}
         <button
-          onClick={() => handleSelect(null)}
+          onClick={handleAllFiles}
           className={cn(
             'flex items-center gap-2 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors',
-            currentFolderId === null && 'bg-accent'
+            currentFolderId === null && !sourceTypeFilter && 'bg-accent'
           )}
         >
           {showFavoritesOnly ? (
@@ -74,15 +90,16 @@ export function FolderTree({ className }: FolderTreeProps) {
         {/* OneDrive root (when connected) */}
         {hasOneDrive && (
           <div className="mt-3 pt-3 border-t">
-            <div className="flex items-center gap-2 py-1.5 px-2 opacity-60">
+            <button
+              onClick={handleOneDriveClick}
+              className={cn(
+                'flex items-center gap-2 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors',
+                sourceTypeFilter === 'onedrive' && 'bg-accent'
+              )}
+            >
               <Cloud className="size-4" style={{ color: '#0078D4' }} />
-              <span className="text-sm font-medium text-muted-foreground">
-                OneDrive
-              </span>
-              <span className="text-xs text-muted-foreground ml-auto">
-                Synced
-              </span>
-            </div>
+              <span className="text-sm font-medium">OneDrive</span>
+            </button>
           </div>
         )}
       </div>

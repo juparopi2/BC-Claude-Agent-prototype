@@ -17,6 +17,7 @@ import type { ParsedFile, FileSortBy, SortOrder, GetFilesOptions } from '@bc-age
 // Module-level state to coordinate filter change fetches across all hook instances
 // This ensures only ONE instance fetches when showFavoritesOnly changes
 let lastFetchedFilterValue: boolean | null = null;
+let lastFetchedSourceType: string | null | undefined = undefined;
 let filterFetchInProgress = false;
 
 /**
@@ -141,6 +142,7 @@ export function useFiles(): UseFilesReturn {
   const sortBy = useSortFilterStore((state) => state.sortBy);
   const sortOrder = useSortFilterStore((state) => state.sortOrder);
   const showFavoritesOnly = useSortFilterStore((state) => state.showFavoritesOnly);
+  const sourceTypeFilter = useSortFilterStore((state) => state.sourceTypeFilter);
   const setSort = useSortFilterStore((state) => state.setSort);
   const toggleSortOrder = useSortFilterStore((state) => state.toggleSortOrder);
   const toggleFavoritesOnly = useSortFilterStore((state) => state.toggleFavoritesOnly);
@@ -159,8 +161,9 @@ export function useFiles(): UseFilesReturn {
       try {
         const fileApi = getFileApiClient();
 
-        // Get current favorites setting from store
+        // Get current filter settings from store
         const currentShowFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
+        const currentSourceTypeFilter = useSortFilterStore.getState().sourceTypeFilter;
 
         // Build fetch options - backend handles the root vs folder logic
         const fetchOptions: GetFilesOptions = {
@@ -170,6 +173,11 @@ export function useFiles(): UseFilesReturn {
         // Add favoritesOnly if enabled - shows only favorited files
         if (currentShowFavoritesOnly) {
           fetchOptions.favoritesOnly = true;
+        }
+
+        // Add sourceType filter (e.g., 'onedrive')
+        if (currentSourceTypeFilter) {
+          fetchOptions.sourceType = currentSourceTypeFilter;
         }
 
         const result = await fileApi.getFiles(fetchOptions);
@@ -219,11 +227,11 @@ export function useFiles(): UseFilesReturn {
     [files, updateFile]
   );
 
-  // Re-fetch files when favorites filter changes
+  // Re-fetch files when favorites filter or sourceType filter changes
   // Uses module-level coordination to ensure only ONE hook instance fetches
   useEffect(() => {
-    // Check if this filter value was already fetched (by any hook instance)
-    if (lastFetchedFilterValue === showFavoritesOnly) {
+    // Check if these filter values were already fetched (by any hook instance)
+    if (lastFetchedFilterValue === showFavoritesOnly && lastFetchedSourceType === sourceTypeFilter) {
       return;
     }
 
@@ -235,17 +243,19 @@ export function useFiles(): UseFilesReturn {
     // This instance will handle the fetch
     filterFetchInProgress = true;
     lastFetchedFilterValue = showFavoritesOnly;
+    lastFetchedSourceType = sourceTypeFilter;
 
     // When entering favorites mode, reset to root for flat favorites view
     const currentShowFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
-    if (currentShowFavoritesOnly) {
+    const currentSourceTypeFilter = useSortFilterStore.getState().sourceTypeFilter;
+    if (currentShowFavoritesOnly || currentSourceTypeFilter) {
       useFolderTreeStore.getState().setCurrentFolder(null, []);
     }
 
-    // Re-fetch with current folder when favorites setting changes
+    // Re-fetch with current folder when filter settings change
     // Use the store directly to avoid stale closures
     const fileApi = getFileApiClient();
-    const folderId = currentShowFavoritesOnly ? null : useFolderTreeStore.getState().currentFolderId;
+    const folderId = (currentShowFavoritesOnly || currentSourceTypeFilter) ? null : useFolderTreeStore.getState().currentFolderId;
 
     // Build fetch options - backend handles root vs folder logic
     const fetchOptions: GetFilesOptions = {
@@ -254,6 +264,10 @@ export function useFiles(): UseFilesReturn {
 
     if (currentShowFavoritesOnly) {
       fetchOptions.favoritesOnly = true;
+    }
+
+    if (currentSourceTypeFilter) {
+      fetchOptions.sourceType = currentSourceTypeFilter;
     }
 
     setLoading(true);
@@ -274,7 +288,7 @@ export function useFiles(): UseFilesReturn {
         setLoading(false);
         filterFetchInProgress = false;
       });
-  }, [showFavoritesOnly, setFiles, setLoading, setError]);
+  }, [showFavoritesOnly, sourceTypeFilter, setFiles, setLoading, setError]);
 
   return {
     sortedFiles,

@@ -22,6 +22,8 @@ export interface SortFilterState {
   sortOrder: SortOrder;
   /** Show favorites only (filter preference) */
   showFavoritesOnly: boolean;
+  /** Filter by source type (null = all, 'onedrive' = only OneDrive files) */
+  sourceTypeFilter: string | null;
   /** TanStack Table column visibility state */
   columnVisibility: VisibilityState;
   /** TanStack Table column order */
@@ -42,6 +44,8 @@ export interface SortFilterActions {
   toggleFavoritesOnly: () => void;
   /** Set favorites only explicitly */
   setShowFavoritesOnly: (show: boolean) => void;
+  /** Set source type filter */
+  setSourceTypeFilter: (sourceType: string | null) => void;
   /** Set column visibility */
   setColumnVisibility: (visibility: VisibilityState) => void;
   /** Set column order */
@@ -73,6 +77,7 @@ const initialState: SortFilterState = {
   sortBy: 'date',
   sortOrder: 'desc',
   showFavoritesOnly: false,
+  sourceTypeFilter: null,
   columnVisibility: DEFAULT_COLUMN_VISIBILITY,
   columnOrder: DEFAULT_COLUMN_ORDER,
   columnSizing: {},
@@ -124,6 +129,10 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
         set({ showFavoritesOnly: show });
       },
 
+      setSourceTypeFilter: (sourceType) => {
+        set({ sourceTypeFilter: sourceType });
+      },
+
       setColumnVisibility: (visibility) => {
         set({ columnVisibility: visibility });
       },
@@ -150,6 +159,7 @@ export const useSortFilterStore = create<SortFilterState & SortFilterActions>()(
         sortBy: state.sortBy,
         sortOrder: state.sortOrder,
         showFavoritesOnly: state.showFavoritesOnly,
+        sourceTypeFilter: state.sourceTypeFilter,
         columnVisibility: state.columnVisibility,
         columnOrder: state.columnOrder,
         columnSizing: state.columnSizing,

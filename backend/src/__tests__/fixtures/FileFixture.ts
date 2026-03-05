@@ -183,6 +183,8 @@ export class FileFixture {
       mimeType: 'application/pdf',
       sizeBytes: 1024000,
       blobPath: FileFixture.generateBlobPath(userId, name),
+      sourceType: 'local',
+      externalUrl: null,
       isFolder: false,
       isFavorite: false,
       pipelineStatus: 'ready',

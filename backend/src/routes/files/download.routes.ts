@@ -58,28 +58,29 @@ router.get('/:id/download', authenticateMicrosoft, async (req: Request, res: Res
       return;
     }
 
-    // For external files (no blobPath), try to redirect to a pre-authenticated URL
+    let buffer: Buffer;
+
+    // For external files (no blobPath), proxy content through backend
     if (!file.blobPath) {
       try {
         const sourceType = await getFileService().getFileSourceType(userId, id);
         if (sourceType && sourceType !== FILE_SOURCE_TYPE.LOCAL) {
           const provider = getContentProviderFactory().getProvider(sourceType);
-          if (provider.getDownloadUrl) {
-            const downloadUrl = await provider.getDownloadUrl(id, userId);
-            res.redirect(downloadUrl);
-            return;
-          }
+          const content = await provider.getContent(id, userId);
+          buffer = content.buffer;
+        } else {
+          sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
+          return;
         }
       } catch {
-        // Fall through to error below
+        sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
+        return;
       }
-      sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
-      return;
+    } else {
+      // Download blob from local storage
+      const fileUploadService = getFileUploadService();
+      buffer = await fileUploadService.downloadFromBlob(file.blobPath);
     }
-
-    // Download blob from storage
-    const fileUploadService = getFileUploadService();
-    const buffer = await fileUploadService.downloadFromBlob(file.blobPath);
 
     logger.info({ userId, fileId: id, size: buffer.length }, 'File downloaded successfully');
 
@@ -164,28 +165,29 @@ router.get('/:id/content', authenticateMicrosoft, async (req: Request, res: Resp
       return;
     }
 
-    // For external files (no blobPath), redirect to pre-authenticated URL
+    let buffer: Buffer;
+
+    // For external files (no blobPath), proxy content through backend
     if (!file.blobPath) {
       try {
         const sourceType = await getFileService().getFileSourceType(userId, id);
         if (sourceType && sourceType !== FILE_SOURCE_TYPE.LOCAL) {
           const provider = getContentProviderFactory().getProvider(sourceType);
-          if (provider.getDownloadUrl) {
-            const downloadUrl = await provider.getDownloadUrl(id, userId);
-            res.redirect(downloadUrl);
-            return;
-          }
+          const content = await provider.getContent(id, userId);
+          buffer = content.buffer;
+        } else {
+          sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
+          return;
         }
       } catch {
-        // Fall through to error below
+        sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
+        return;
       }
-      sendError(res, ErrorCode.NOT_FOUND, 'File content not available');
-      return;
+    } else {
+      // Download blob from local storage
+      const fileUploadService = getFileUploadService();
+      buffer = await fileUploadService.downloadFromBlob(file.blobPath);
     }
-
-    // Download blob from storage
-    const fileUploadService = getFileUploadService();
-    const buffer = await fileUploadService.downloadFromBlob(file.blobPath);
 
     logger.info({ userId, fileId: id, size: buffer.length }, 'File content served successfully');
 

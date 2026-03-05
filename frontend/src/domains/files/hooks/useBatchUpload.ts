@@ -538,6 +538,8 @@ export function useBatchUpload(): UseBatchUploadReturn {
               mimeType: 'inode/directory',
               sizeBytes: 0,
               blobPath: '',
+              sourceType: 'local',
+              externalUrl: null,
               isFavorite: false,
               pipelineStatus: 'ready',
               readinessState: 'ready',

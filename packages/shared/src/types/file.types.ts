@@ -130,6 +130,12 @@ export interface ParsedFile {
   /** Azure Blob Storage path (empty string for folders, null for external files) */
   blobPath: string | null;
 
+  /** File origin: 'local', 'onedrive', 'sharepoint' */
+  sourceType: string;
+
+  /** URL to open file in its native app (e.g., OneDrive web). Null for local files. */
+  externalUrl: string | null;
+
   /** True if this is a folder */
   isFolder: boolean;
 
@@ -254,6 +260,9 @@ export interface GetFilesOptions {
    * - In folder (folderId=<id>): Returns ALL items in that folder (normal contents)
    */
   favoritesOnly?: boolean;
+
+  /** Filter by file source type (e.g., 'local', 'onedrive', 'sharepoint') */
+  sourceType?: string;
 
   /** Maximum number of results */
   limit?: number;

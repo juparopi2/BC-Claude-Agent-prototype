@@ -96,7 +96,7 @@ export class FileService {
   public async getFileCount(
     userId: string,
     folderId?: string | null,
-    options?: { favoritesOnly?: boolean }
+    options?: { favoritesOnly?: boolean; sourceType?: string }
   ): Promise<number> {
     return this.repository.count(userId, folderId, options);
   }

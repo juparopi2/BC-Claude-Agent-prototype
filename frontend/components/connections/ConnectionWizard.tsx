@@ -35,6 +35,8 @@ import { toast } from 'sonner'
 interface ConnectionWizardProps {
   isOpen: boolean
   onClose: () => void
+  /** When provided, skip step 1 (connect) and go directly to step 2 (browse) */
+  initialConnectionId?: string | null
 }
 
 type WizardStep = 'connect' | 'browse' | 'sync'
@@ -192,7 +194,7 @@ function FolderNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelec
 // ConnectionWizard
 // ============================================
 
-export function ConnectionWizard({ isOpen, onClose }: ConnectionWizardProps) {
+export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: ConnectionWizardProps) {
   // Step state
   const [step, setStep] = useState<WizardStep>('connect')
 
@@ -249,6 +251,14 @@ export function ConnectionWizard({ isOpen, onClose }: ConnectionWizardProps) {
   useEffect(() => {
     return () => stopPolling()
   }, [stopPolling])
+
+  // Skip to browse step if initialConnectionId is provided (post-OAuth)
+  useEffect(() => {
+    if (initialConnectionId) {
+      setConnectionId(initialConnectionId)
+      setStep('browse')
+    }
+  }, [initialConnectionId])
 
   // ============================================
   // Step 1: Initiate Microsoft OAuth

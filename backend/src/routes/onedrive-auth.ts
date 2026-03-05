@@ -328,7 +328,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const frontendUrl = getFrontendUrl();
     const redirectError = (reason: string): void => {
-      res.redirect(`${frontendUrl}/files?error=${encodeURIComponent(reason)}`);
+      res.redirect(`${frontendUrl}/new?onedrive_error=${encodeURIComponent(reason)}`);
     };
 
     try {
@@ -487,7 +487,7 @@ router.get(
       );
 
       res.redirect(
-        `${frontendUrl}/files?connected=onedrive&connectionId=${encodeURIComponent(connectionId)}`
+        `${frontendUrl}/new?connected=onedrive&connectionId=${encodeURIComponent(connectionId)}`
       );
     } catch (error) {
       const errorInfo =

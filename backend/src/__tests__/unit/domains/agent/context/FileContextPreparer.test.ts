@@ -48,6 +48,8 @@ function createMockParsedFile(overrides: Partial<ParsedFile> = {}): ParsedFile {
     mimeType: 'text/plain',
     sizeBytes: 1024,
     blobPath: 'path/to/blob',
+    sourceType: 'local',
+    externalUrl: null,
     hasExtractedText: true,
     pipelineStatus: 'ready',
     readinessState: 'ready',

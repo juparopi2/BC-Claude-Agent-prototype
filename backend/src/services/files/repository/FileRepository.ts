@@ -67,7 +67,7 @@ export interface IFileRepository {
   findById(userId: string, fileId: string): Promise<ParsedFile | null>;
   findByIdIncludingDeleted(userId: string, fileId: string): Promise<ParsedFile | null>;
   findMany(options: GetFilesOptions): Promise<ParsedFile[]>;
-  count(userId: string, folderId?: string | null, options?: { favoritesOnly?: boolean }): Promise<number>;
+  count(userId: string, folderId?: string | null, options?: { favoritesOnly?: boolean; sourceType?: string }): Promise<number>;
   create(options: CreateFileOptions): Promise<string>;
   createFolder(userId: string, name: string, parentId?: string): Promise<string>;
   findIdsByOwner(userId: string, fileIds: string[]): Promise<string[]>;
@@ -182,6 +182,7 @@ export class FileRepository implements IFileRepository {
       folderId,
       sortBy = 'date',
       favoritesOnly = false,
+      sourceType,
       limit = 50,
       offset = 0,
     } = options;
@@ -192,12 +193,18 @@ export class FileRepository implements IFileRepository {
       deletion_status: null,
     };
 
+    if (sourceType) {
+      where['source_type'] = sourceType;
+    }
+
     if (favoritesOnly && (folderId === undefined || folderId === null)) {
       // Favorites mode at root: flat list of ALL favorites
       where['is_favorite'] = true;
     } else if (folderId === undefined || folderId === null) {
-      // Normal root: only root-level items
-      where['parent_folder_id'] = null;
+      // Normal root: only root-level items (unless filtering by sourceType)
+      if (!sourceType) {
+        where['parent_folder_id'] = null;
+      }
     } else {
       // Inside a folder: all contents (regardless of favoritesOnly)
       where['parent_folder_id'] = folderId;
@@ -245,21 +252,28 @@ export class FileRepository implements IFileRepository {
   async count(
     userId: string,
     folderId?: string | null,
-    options?: { favoritesOnly?: boolean },
+    options?: { favoritesOnly?: boolean; sourceType?: string },
   ): Promise<number> {
     const favoritesOnly = options?.favoritesOnly ?? false;
+    const sourceType = options?.sourceType;
 
     const where: Record<string, unknown> = {
       user_id: userId,
       deletion_status: null,
     };
 
+    if (sourceType) {
+      where['source_type'] = sourceType;
+    }
+
     if (favoritesOnly && (folderId === undefined || folderId === null)) {
       // Favorites mode at root: flat list of ALL favorites
       where['is_favorite'] = true;
     } else if (folderId === undefined || folderId === null) {
-      // Normal root: only root-level items
-      where['parent_folder_id'] = null;
+      // Normal root: only root-level items (unless filtering by sourceType)
+      if (!sourceType) {
+        where['parent_folder_id'] = null;
+      }
     } else {
       // Inside a folder: all contents (regardless of favoritesOnly)
       where['parent_folder_id'] = folderId;

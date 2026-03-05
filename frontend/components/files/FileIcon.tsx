@@ -3,6 +3,7 @@
  *
  * Renders the appropriate icon based on file MIME type.
  * Supports folders, images, documents, spreadsheets, code files, and JSON.
+ * Shows a Cloud badge overlay for OneDrive files.
  *
  * @module components/files/FileIcon
  */
@@ -16,6 +17,7 @@ import {
   File,
   FileCode,
   FileJson,
+  Cloud,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,6 +33,25 @@ export function FileIcon({ file, className }: FileIconProps) {
     className
   );
 
+  const icon = getIconForFile(file, iconClassName);
+
+  // Add Cloud badge for external files (OneDrive)
+  if (file.sourceType === 'onedrive') {
+    return (
+      <span className="relative inline-flex flex-shrink-0">
+        {icon}
+        <Cloud
+          className="absolute -bottom-0.5 -right-0.5 size-2.5"
+          style={{ color: '#0078D4' }}
+        />
+      </span>
+    );
+  }
+
+  return icon;
+}
+
+function getIconForFile(file: ParsedFile, iconClassName: string) {
   // Folders
   if (file.isFolder) {
     return <Folder className={iconClassName} />;

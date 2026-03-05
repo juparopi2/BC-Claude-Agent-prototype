@@ -245,6 +245,9 @@ export class FileApiClient {
     if (options?.favoritesOnly !== undefined) {
       params.set('favoritesOnly', options.favoritesOnly.toString());
     }
+    if (options?.sourceType) {
+      params.set('sourceType', options.sourceType);
+    }
     if (options?.limit !== undefined) {
       params.set('limit', options.limit.toString());
     }

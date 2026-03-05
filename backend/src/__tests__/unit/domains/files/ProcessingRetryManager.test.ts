@@ -133,6 +133,8 @@ describe('ProcessingRetryManager', () => {
     mimeType: 'application/pdf',
     sizeBytes: 1024,
     blobPath: 'users/test-user/files/test.pdf',
+    sourceType: 'local',
+    externalUrl: null,
     isFolder: false,
     isFavorite: false,
     pipelineStatus: 'failed',

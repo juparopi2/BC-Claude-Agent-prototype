@@ -315,17 +315,16 @@ Mejoras perceptibles para el usuario final.
 - Actualizar `BatchResultNormalizer` para manejar la nueva secuencia de eventos
 **Estimación:** 3-5 días
 
-### MCP Connector / SharePoint-OneDrive Integration (Alta)
-**Necesidad:** Conectar el sistema con Microsoft Graph API para acceder a documentos de SharePoint y OneDrive directamente desde el chat, sin necesidad de subir archivos manualmente.
-**Contexto:** Actualmente los usuarios deben subir archivos manualmente a la Knowledge Base. Con un MCP server para Microsoft Graph, el sistema podría leer documentos directamente desde SharePoint/OneDrive del tenant del usuario.
-**Specs:**
-- Crear MCP server para Microsoft Graph API (`mcp-server/microsoft-graph/`)
-- Flujo OAuth para autenticación con Microsoft 365 (delegated permissions)
-- Parámetro `mcp_servers` en la Messages API de Anthropic
-- Beta header: `mcp-client-2025-11-20`
-- Tools expuestos: `list_sharepoint_files`, `read_sharepoint_document`, `search_sharepoint`
-- Integración con el sistema de permisos y multi-tenancy existente
-**Estimación:** 10-15 días
+### OneDrive & SharePoint Integration (Alta) — EN PLANIFICACION
+**Necesidad:** Conectar el sistema con Microsoft Graph API para sincronizar documentos de OneDrive y SharePoint al sistema RAG, sin necesidad de subir archivos manualmente.
+**Estado:** Plan completo documentado en [files-integrations/](./files-integrations/00-INDEX.md)
+**Arquitectura:** Pure reference (no blob duplication), IFileContentProvider abstraction, Graph Change Notifications (webhooks), multi-level scope selection.
+**PRDs:**
+- PRD-100: Foundation (schema, abstraction layer, pipeline refactor)
+- PRD-101: OneDrive Connection & Initial Sync
+- PRD-102: Real-Time Sync Engine (webhooks + polling fallback)
+- PRD-103: SharePoint Connection (multi-site, reuses 70% of infra)
+**Estimación:** 23-32 dias (across 4 phases)
 
 ### Tool Search (Baja)
 **Necesidad:** Optimizar el contexto enviado al modelo cuando el sistema cuenta con 50+ tools, reduciendo drásticamente el consumo de tokens.

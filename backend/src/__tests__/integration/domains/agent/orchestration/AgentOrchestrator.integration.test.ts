@@ -272,10 +272,10 @@ describe('AgentOrchestrator Integration', () => {
         )
       ).rejects.toThrow('LangGraph execution failed');
 
-      // Assert: Error event emitted
+      // Assert: Error event emitted with user-friendly message (classifyLlmError)
       const errorEvent = events.find((e): e is ErrorEvent => e.type === 'error');
       expect(errorEvent).toBeDefined();
-      expect(errorEvent?.error).toContain('LangGraph execution failed');
+      expect(errorEvent?.error).toBe('Something went wrong processing your request. Please try again');
     });
 
     it('should propagate persistence errors', async () => {

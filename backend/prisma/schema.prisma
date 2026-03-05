@@ -120,6 +120,58 @@ model chat_attachments {
   @@index([user_id, session_id], map: "IX_chat_attachments_user_session")
 }
 
+/// CHECK constraints (enforced by DB, not representable in Prisma DSL):
+/// - CK_connections_provider: provider IN ('business_central','onedrive','sharepoint','power_bi')
+/// - CK_connections_status: status IN ('disconnected','connected','expired','error')
+model connections {
+  id                        String             @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  user_id                   String             @db.UniqueIdentifier
+  provider                  String             @db.NVarChar(50)
+  status                    String             @default("disconnected") @db.NVarChar(20)
+  display_name              String?            @db.NVarChar(255)
+  access_token_encrypted    String?            @db.NVarChar(Max)
+  refresh_token_encrypted   String?            @db.NVarChar(Max)
+  token_expires_at          DateTime?
+  microsoft_tenant_id       String?            @db.NVarChar(255)
+  microsoft_resource_id     String?            @db.NVarChar(255)
+  msal_home_account_id      String?            @db.NVarChar(512)
+  last_error                String?            @db.NVarChar(Max)
+  last_error_at             DateTime?
+  created_at                DateTime           @default(dbgenerated("getutcdate()"))
+  updated_at                DateTime           @default(dbgenerated("getutcdate()"))
+  users                     users              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_connections_user")
+  connection_scopes         connection_scopes[]
+  files                     files[]
+
+  @@unique([user_id, provider], map: "UQ_connections_user_provider")
+  @@index([user_id, status], map: "IX_connections_user_status")
+}
+
+/// CHECK constraints (enforced by DB, not representable in Prisma DSL):
+/// - CK_connection_scopes_scope_type: scope_type IN ('root','folder','site','library')
+/// - CK_connection_scopes_sync_status: sync_status IN ('idle','syncing','error')
+model connection_scopes {
+  id                        String       @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
+  connection_id             String       @db.UniqueIdentifier
+  scope_type                String       @db.NVarChar(50)
+  scope_resource_id         String?      @db.NVarChar(512)
+  scope_display_name        String?      @db.NVarChar(255)
+  sync_status               String       @default("idle") @db.NVarChar(20)
+  last_sync_at              DateTime?
+  last_sync_error           String?      @db.NVarChar(Max)
+  last_sync_cursor          String?      @db.NVarChar(Max)
+  item_count                Int          @default(0)
+  subscription_id           String?      @db.NVarChar(512)
+  subscription_expires_at   DateTime?
+  created_at                DateTime     @default(dbgenerated("getutcdate()"))
+  updated_at                DateTime     @default(dbgenerated("getutcdate()"))
+  connections               connections  @relation(fields: [connection_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_connection_scopes_connection")
+
+  @@index([connection_id], map: "IX_connection_scopes_connection")
+  @@index([subscription_id], map: "IX_connection_scopes_subscription")
+  @@index([sync_status], map: "IX_connection_scopes_sync_status")
+}
+
 model langgraph_checkpoints {
   thread_id            String   @db.NVarChar(255)
   checkpoint_ns        String   @default("") @db.NVarChar(255)
@@ -221,11 +273,17 @@ model files {
   extracted_text           String?                    @db.NVarChar(Max)
   created_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__created_a__3EDC53F0")
   updated_at               DateTime?                  @default(dbgenerated("getutcdate()"), map: "DF__files__updated_a__3FD07829")
-  source_type              String                     @default("blob_storage", map: "DF__files__source_ty__2AA05119") @db.VarChar(50)
+  source_type              String                     @default("local", map: "DF__files__source_ty__2AA05119") @db.VarChar(50)
   external_id              String?                    @db.VarChar(512)
   external_metadata        String?                    @db.NVarChar(Max)
   last_synced_at           DateTime?
   content_hash             String?                    @db.Char(64)
+  connection_id            String?                    @db.UniqueIdentifier
+  connection_scope_id      String?                    @db.UniqueIdentifier
+  external_drive_id        String?                    @db.VarChar(512)
+  external_url             String?                    @db.NVarChar(2048)
+  external_modified_at     DateTime?
+  content_hash_external    String?                    @db.Char(64)
   processing_retry_count   Int                        @default(0, map: "DF__files__processin__3335971A")
   embedding_retry_count    Int                        @default(0, map: "DF__files__embedding__3429BB53")
   last_processing_error    String?
@@ -240,6 +298,7 @@ model files {
   pipeline_retry_count     Int                        @default(0)
   file_modified_at         DateTime?
   file_chunks              file_chunks[]
+  connections              connections?               @relation(fields: [connection_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_files_connection")
   files                    files?                     @relation("filesTofiles", fields: [parent_folder_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__files__parent_fo__41B8C09B")
   other_files              files[]                    @relation("filesTofiles")
   users                    users                      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK__files__user_id__40C49C62")
@@ -251,6 +310,7 @@ model files {
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
   @@index([user_id, content_hash], map: "IX_files_user_content_hash")
+  @@index([connection_id, external_id], map: "IX_files_connection_external")
   @@index([batch_id])
 }
 
@@ -659,6 +719,7 @@ model users {
   approvals                 approvals[]
   audit_log                 audit_log[]
   billing_records           billing_records[]
+  connections               connections[]
   files                     files[]
   image_embeddings          image_embeddings[]
   quota_alerts              quota_alerts[]

@@ -1,7 +1,7 @@
 # Files Integrations — Master Plan
 
 **Project**: External File Connectors (OneDrive, SharePoint)
-**Status**: Planning
+**Status**: In Progress
 **Created**: 2026-03-05
 **Last Updated**: 2026-03-05
 
@@ -42,7 +42,7 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 
 | PRD | Phase | Title | Backend Deliverables | UI Deliverables |
 |---|---|---|---|---|
-| [PRD-100](./PRD-100-foundation.md) | Foundation | Infrastructure & Abstraction Layer | Schema, `IFileContentProvider`, pipeline refactor, connections API, shared constants | Connections tab activated with real status, provider icons |
+| [PRD-100](./PRD-100-foundation.md) | Foundation | Infrastructure & Abstraction Layer (COMPLETED) | Schema, `IFileContentProvider`, pipeline refactor, connections API, shared constants | Connections tab activated with real status, provider icons |
 | [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive | OneDrive Connection & Initial Sync | OAuth flow, `OneDriveService`, `GraphApiContentProvider`, initial delta sync, pipeline integration | Connection wizard, OneDrive folder tree root, browse + file list, sync progress |
 | [PRD-102](./PRD-102-webhook-sync-engine.md) | Webhooks | Real-Time Sync Engine | Webhook endpoint, `SubscriptionManager`, `DeltaSyncService`, lifecycle handling, polling fallback | Sync status badges, last-synced timestamps, real-time file appearance, sync error states |
 | [PRD-103](./PRD-103-sharepoint-connection.md) | SharePoint | SharePoint Connection | `SharePointService`, multi-site discovery, library browsing, SP-specific delta, reuse webhook infra | SP connection wizard (multi-step site/library picker), SP folder tree root, SP visual theme |
@@ -154,63 +154,41 @@ PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequentia
 
 ---
 
-## 5. Shared Constants & Types (To Be Created in PRD-100)
+## 5. Shared Constants & Types (Created in PRD-100)
+
+See `packages/shared/src/constants/providers.ts` and `packages/shared/src/constants/connection-status.ts` for actual implementations.
 
 ### Provider Constants (`@bc-agent/shared`)
 
 ```typescript
-// constants/providers.ts
+// constants/providers.ts — ACTUAL (no LOCAL provider; that's FILE_SOURCE_TYPE)
 export const PROVIDER_ID = {
-  LOCAL: 'local',
+  BUSINESS_CENTRAL: 'business_central',
   ONEDRIVE: 'onedrive',
   SHAREPOINT: 'sharepoint',
-  BUSINESS_CENTRAL: 'business_central',
   POWER_BI: 'power_bi',
 } as const;
 
-export const PROVIDER_DISPLAY_NAME = {
-  [PROVIDER_ID.LOCAL]: 'My Files',
-  [PROVIDER_ID.ONEDRIVE]: 'OneDrive',
-  [PROVIDER_ID.SHAREPOINT]: 'SharePoint',
-  [PROVIDER_ID.BUSINESS_CENTRAL]: 'Business Central',
-  [PROVIDER_ID.POWER_BI]: 'Power BI',
-} as const;
-
-export const PROVIDER_ACCENT_COLOR = {
-  [PROVIDER_ID.LOCAL]: 'neutral',
-  [PROVIDER_ID.ONEDRIVE]: '#0078D4',
-  [PROVIDER_ID.SHAREPOINT]: '#038387',
-  [PROVIDER_ID.BUSINESS_CENTRAL]: '#00BCF2',
-  [PROVIDER_ID.POWER_BI]: '#F2C811',
-} as const;
-
-export const PROVIDER_ICON = {
-  [PROVIDER_ID.LOCAL]: 'HardDrive',
-  [PROVIDER_ID.ONEDRIVE]: 'Cloud',
-  [PROVIDER_ID.SHAREPOINT]: 'Globe',
-  [PROVIDER_ID.BUSINESS_CENTRAL]: 'Building2',
-  [PROVIDER_ID.POWER_BI]: 'BarChart3',
-} as const;
+// Also exports: PROVIDER_DISPLAY_NAME, PROVIDER_ACCENT_COLOR, PROVIDER_ICON,
+// PROVIDER_UI_ORDER, CONNECTIONS_API
 ```
 
 ### Connection & Sync Status Constants
 
 ```typescript
-// constants/connection-status.ts
+// constants/connection-status.ts — ACTUAL
 export const CONNECTION_STATUS = {
   DISCONNECTED: 'disconnected',
-  CONNECTING: 'connecting',
   CONNECTED: 'connected',
-  ERROR: 'error',
   EXPIRED: 'expired',
-} as const;
+  ERROR: 'error',
+} as const; // Note: no 'connecting' (transient frontend state)
 
 export const SYNC_STATUS = {
-  PENDING: 'pending',
+  IDLE: 'idle',
   SYNCING: 'syncing',
-  SYNCED: 'synced',
   ERROR: 'error',
-} as const;
+} as const; // Note: 'idle' replaces 'pending'+'synced'
 
 export const FILE_SOURCE_TYPE = {
   LOCAL: 'local',

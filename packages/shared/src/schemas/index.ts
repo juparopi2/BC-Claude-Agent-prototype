@@ -378,6 +378,22 @@ export {
   ChartConfigSchema,
 } from './chart-config.schemas';
 
+// ============================================
+// Connection Schemas (PRD-100)
+// ============================================
+
+export {
+  createConnectionSchema,
+  updateConnectionSchema,
+  connectionIdParamSchema,
+} from './connection.schemas';
+
+export type {
+  CreateConnectionInput,
+  UpdateConnectionInput,
+  ConnectionIdParam,
+} from './connection.schemas';
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

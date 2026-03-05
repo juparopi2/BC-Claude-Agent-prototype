@@ -204,14 +204,25 @@ vi.mock('@/shared/utils/logger', () => ({
 
 // Mock FileRepository
 const mockIsFileActiveForProcessing = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+const mockGetSourceType = vi.hoisted(() => vi.fn().mockResolvedValue('local'));
 const mockGetFileRepository = vi.hoisted(() =>
   vi.fn(() => ({
     isFileActiveForProcessing: mockIsFileActiveForProcessing,
+    getSourceType: mockGetSourceType,
   }))
 );
 
 vi.mock('@/services/files/repository/FileRepository', () => ({
   getFileRepository: mockGetFileRepository,
+}));
+
+// Mock ContentProviderFactory (PRD-100)
+const mockProviderGetContent = vi.hoisted(() => vi.fn().mockResolvedValue({ buffer: Buffer.from('mock file content') }));
+const mockGetProvider = vi.hoisted(() => vi.fn(() => ({ getContent: mockProviderGetContent })));
+const mockGetContentProviderFactory = vi.hoisted(() => vi.fn(() => ({ getProvider: mockGetProvider })));
+
+vi.mock('@/services/connectors', () => ({
+  getContentProviderFactory: mockGetContentProviderFactory,
 }));
 
 // ===== TEST SUITE =====
@@ -239,6 +250,8 @@ describe('FileProcessingService', () => {
     mockIsSocketServiceInitialized.mockReturnValue(true);
     mockSocketTo.mockReturnValue({ emit: mockSocketEmit });
     mockIsFileActiveForProcessing.mockResolvedValue(true); // Mock file is active by default
+    mockGetSourceType.mockResolvedValue('local'); // Default source type for local files
+    mockProviderGetContent.mockResolvedValue({ buffer: Buffer.from('mock file content') });
 
     // Re-setup FileEventEmitter mocks (D25 Sprint 3)
     mockEmitProgress.mockImplementation(() => {});
@@ -497,7 +510,7 @@ describe('FileProcessingService', () => {
     it('should emit error event on failure via FileEventEmitter', async () => {
       const job = createMockJob();
       const testError = new Error('Download failed');
-      mockDownloadFromBlob.mockRejectedValueOnce(testError);
+      mockProviderGetContent.mockRejectedValueOnce(testError);
 
       await expect(service.processFile(job)).rejects.toThrow('Download failed');
 
@@ -554,20 +567,22 @@ describe('FileProcessingService', () => {
     });
   });
 
-  // ========== SUITE 5: BLOB DOWNLOAD (2 TESTS) ==========
-  describe('Blob Download', () => {
-    it('should download blob from FileUploadService', async () => {
-      const job = createMockJob({ blobPath: 'users/test/files/report.pdf' });
+  // ========== SUITE 5: CONTENT PROVIDER (2 TESTS) ==========
+  describe('Content Provider', () => {
+    it('should download content via ContentProviderFactory', async () => {
+      const job = createMockJob();
 
       await service.processFile(job);
 
-      // Verify downloadFromBlob was called with correct path
-      expect(mockDownloadFromBlob).toHaveBeenCalledWith('users/test/files/report.pdf');
+      // Verify getSourceType was called and provider was used
+      expect(mockGetSourceType).toHaveBeenCalledWith('test-user-456', 'test-file-123');
+      expect(mockGetProvider).toHaveBeenCalledWith('local');
+      expect(mockProviderGetContent).toHaveBeenCalledWith('test-file-123', 'test-user-456');
     });
 
     it('should pass downloaded buffer to processor', async () => {
       const mockBuffer = Buffer.from('test file content bytes');
-      mockDownloadFromBlob.mockResolvedValueOnce(mockBuffer);
+      mockProviderGetContent.mockResolvedValueOnce({ buffer: mockBuffer });
 
       const job = createMockJob({ mimeType: 'text/plain' });
 
@@ -631,10 +646,10 @@ describe('FileProcessingService', () => {
       );
     });
 
-    it('should handle blob download failure', async () => {
+    it('should handle content provider download failure', async () => {
       const job = createMockJob();
       const testError = new Error('Blob not found');
-      mockDownloadFromBlob.mockRejectedValueOnce(testError);
+      mockProviderGetContent.mockRejectedValueOnce(testError);
 
       await expect(service.processFile(job)).rejects.toThrow('Blob not found');
 

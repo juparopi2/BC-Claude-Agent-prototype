@@ -80,6 +80,7 @@ export interface IFileRepository {
   markForDeletion(userId: string, fileIds: string[]): Promise<MarkForDeletionResult>;
   updateDeletionStatus(userId: string, fileIds: string[], status: 'deleting' | 'failed'): Promise<void>;
   isFileActiveForProcessing(userId: string, fileId: string): Promise<boolean>;
+  getSourceType(userId: string, fileId: string): Promise<string>;
   checkFolderExists(userId: string, name: string, parentId?: string | null): Promise<boolean>;
   findFoldersByNamePattern(userId: string, baseName: string, parentId?: string | null): Promise<string[]>;
   findFolderIdByName(userId: string, name: string, parentId?: string | null): Promise<string | null>;
@@ -698,6 +699,35 @@ export class FileRepository implements IFileRepository {
     });
 
     return record !== null;
+  }
+
+  // --------------------------------------------------------------------------
+  // getSourceType
+  // --------------------------------------------------------------------------
+
+  /**
+   * Retrieve the source_type of a file.
+   *
+   * Used by FileProcessingService to route to the correct IFileContentProvider.
+   *
+   * @param userId - Owner UUID (UPPERCASE)
+   * @param fileId - File UUID (UPPERCASE)
+   * @returns source_type string (e.g. 'local', 'onedrive', 'sharepoint')
+   * @throws Error if the file is not found
+   */
+  async getSourceType(userId: string, fileId: string): Promise<string> {
+    const record = await this.prisma.files.findFirst({
+      where: {
+        id: fileId,
+        user_id: userId,
+        deletion_status: null,
+      },
+      select: { source_type: true },
+    });
+    if (!record) {
+      throw new Error(`File not found: ${fileId}`);
+    }
+    return record.source_type;
   }
 
   // --------------------------------------------------------------------------

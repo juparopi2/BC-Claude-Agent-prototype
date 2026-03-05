@@ -30,7 +30,6 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { FileService } from './FileService';
-import { getFileUploadService } from './FileUploadService';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { getFileEventEmitter } from '@/domains/files/emission';
 import { TextProcessor } from './processors/TextProcessor';
@@ -163,7 +162,6 @@ export class FileProcessingService {
       userId,
       sessionId,
       mimeType,
-      blobPath,
       fileName,
       attemptNumber = 1,
       maxAttempts = 2,
@@ -194,14 +192,11 @@ export class FileProcessingService {
       // Step 1: Emit 0% progress (worker already transitioned to EXTRACTING via CAS)
       this.emitProgress(eventCtx, 0, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
-      // Step 2: Download blob from storage (emit 20% progress)
-      const fileUploadService = getFileUploadService();
-      logger.info({
-        fileId,
-        blobPath,
-        containerName: (fileUploadService as unknown as { containerName: string }).containerName,
-      }, 'Downloading blob for file processing');
-      const buffer = await fileUploadService.downloadFromBlob(blobPath);
+      // Step 2: Download content via provider abstraction (emit 20% progress)
+      const sourceType = await fileRepository.getSourceType(userId, fileId);
+      const { getContentProviderFactory } = await import('@/services/connectors');
+      const provider = getContentProviderFactory().getProvider(sourceType);
+      const { buffer } = await provider.getContent(fileId, userId);
       this.emitProgress(eventCtx, 20, PIPELINE_STATUS.EXTRACTING, attemptNumber, maxAttempts);
 
       logger.info(

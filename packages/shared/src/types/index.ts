@@ -380,6 +380,13 @@ export {
   createBatchRequestSchema,
 } from './upload-batch.types';
 
+// Connection types (PRD-100)
+export type {
+  ConnectionSummary,
+  ConnectionScopeDetail,
+  ConnectionListResponse,
+} from './connection.types';
+
 // Agent Identity types (PRD-020)
 export type { AgentIdentity } from './agent-identity.types';
 

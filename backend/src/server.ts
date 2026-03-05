@@ -49,6 +49,7 @@ import chatAttachmentsRoutes from './routes/chat-attachments';
 import audioRoutes from './routes/audio';
 import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
+import connectionsRoutes from './routes/connections';
 import uploadHealthRoutes from '@/routes/uploads/health.routes';
 import duplicateDetectionRoutes from '@/routes/uploads/duplicate-detection.routes';
 import folderDuplicateDetectionRoutes from '@/routes/uploads/folder-duplicate-detection.routes';
@@ -836,6 +837,8 @@ function configureRoutes(): void {
     app.use('/api/user', settingsRoutes);
     // Audio services endpoints (transcription)
     app.use('/api/audio', audioRoutes);
+    // Connections endpoints (PRD-100)
+    app.use('/api/connections', connectionsRoutes);
   }
 
   // Agent registry endpoint (PRD-011)

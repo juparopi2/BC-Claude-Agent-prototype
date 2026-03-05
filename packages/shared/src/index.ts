@@ -286,6 +286,11 @@ export type {
   BatchStatusResponse,
   CancelBatchResponse,
 
+  // Connection types (PRD-100)
+  ConnectionSummary,
+  ConnectionScopeDetail,
+  ConnectionListResponse,
+
   // Agent Registry types (PRD-011)
   AgentUISummary,
   AgentListResponse,
@@ -491,6 +496,23 @@ export {
   type FolderWsChannel,
   type FolderWsEventType,
 
+  // Provider Constants (PRD-100)
+  PROVIDER_ID,
+  PROVIDER_DISPLAY_NAME,
+  PROVIDER_ACCENT_COLOR,
+  PROVIDER_ICON,
+  PROVIDER_UI_ORDER,
+  CONNECTIONS_API,
+  type ProviderId,
+
+  // Connection Status Constants (PRD-100)
+  CONNECTION_STATUS,
+  SYNC_STATUS,
+  FILE_SOURCE_TYPE,
+  type ConnectionStatus,
+  type SyncStatus,
+  type FileSourceType,
+
   // Agent Registry Constants (PRD-011)
   AGENT_ID,
   AGENT_DISPLAY_NAME,
@@ -550,6 +572,11 @@ export {
   listChatAttachmentsSchema,
   validateChatAttachmentMimeType,
   validateChatAttachmentSize,
+  // Connection schemas (PRD-100)
+  createConnectionSchema,
+  updateConnectionSchema,
+  connectionIdParamSchema,
+
   // Citation Result schemas (PRD-071)
   CitationPassageSchema,
   CitedDocumentSchema,

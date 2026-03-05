@@ -82,6 +82,27 @@ export {
   type ServerToolName,
 } from './agent-registry.constants';
 
+// Provider Constants (PRD-100)
+export {
+  PROVIDER_ID,
+  PROVIDER_DISPLAY_NAME,
+  PROVIDER_ACCENT_COLOR,
+  PROVIDER_ICON,
+  PROVIDER_UI_ORDER,
+  CONNECTIONS_API,
+  type ProviderId,
+} from './providers';
+
+// Connection Status Constants (PRD-100)
+export {
+  CONNECTION_STATUS,
+  SYNC_STATUS,
+  FILE_SOURCE_TYPE,
+  type ConnectionStatus,
+  type SyncStatus,
+  type FileSourceType,
+} from './connection-status';
+
 // Pipeline Status (PRD-01)
 export {
   PIPELINE_STATUS,

@@ -112,8 +112,8 @@ export interface FileProcessingJob {
   sessionId?: string;
   /** MIME type to determine processor */
   mimeType: string;
-  /** Azure Blob path for downloading */
-  blobPath: string;
+  /** Azure Blob path for downloading (local uploads only; external files use content provider) */
+  blobPath?: string;
   /** Original filename for logging */
   fileName: string;
   /** Current retry attempt number (1-based) */

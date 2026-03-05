@@ -1,15 +1,24 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Folder, Database, Link, Cloud } from 'lucide-react';
+import { Folder, Database, Link } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { FileExplorer } from '@/components/files';
+import { PROVIDER_ID, PROVIDER_UI_ORDER, type ProviderId } from '@bc-agent/shared';
+import { useIntegrations, ConnectionCard } from '@/src/domains/integrations';
+
+// Providers that are not yet implemented (show as "Coming soon")
+const DISABLED_PROVIDERS = new Set<ProviderId>([
+  PROVIDER_ID.ONEDRIVE,
+  PROVIDER_ID.SHAREPOINT,
+  PROVIDER_ID.POWER_BI,
+]);
 
 export default function RightPanel() {
   const [panelWidth, setPanelWidth] = useState<number>(Infinity);
   const panelRef = useRef<HTMLDivElement>(null);
+  const { connections } = useIntegrations();
 
   useEffect(() => {
     if (!panelRef.current) return;
@@ -22,7 +31,7 @@ export default function RightPanel() {
 
     observer.observe(panelRef.current);
     return () => observer.disconnect();
-  }, []); 
+  }, []);
 
   const isNarrow = panelWidth < 280;
 
@@ -66,47 +75,17 @@ export default function RightPanel() {
         <TabsContent value="connections" className="flex-1">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-3">
-              {/* Business Central Connection */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
-                <div className="flex items-center gap-2">
-                  <Cloud className="size-5 text-primary" />
-                  <span className="text-sm font-medium">Business Central</span>
-                </div>
-                <Badge variant="outline">Configure</Badge>
-              </div>
-
-              {/* SharePoint Connection */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card opacity-60">
-                <div className="flex items-center gap-2">
-                  <Cloud className="size-5 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">
-                    SharePoint
-                  </span>
-                </div>
-                <Badge variant="secondary">Coming soon</Badge>
-              </div>
-
-              {/* OneDrive Connection */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card opacity-60">
-                <div className="flex items-center gap-2">
-                  <Cloud className="size-5 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">
-                    OneDrive
-                  </span>
-                </div>
-                <Badge variant="secondary">Coming soon</Badge>
-              </div>
-
-              {/* Power BI Connection */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-card opacity-60">
-                <div className="flex items-center gap-2">
-                  <Cloud className="size-5 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Power BI
-                  </span>
-                </div>
-                <Badge variant="secondary">Coming soon</Badge>
-              </div>
+              {PROVIDER_UI_ORDER.map((providerId) => {
+                const match = connections.find((c) => c.provider === providerId);
+                return (
+                  <ConnectionCard
+                    key={providerId}
+                    providerId={providerId}
+                    connection={match ?? null}
+                    disabled={DISABLED_PROVIDERS.has(providerId)}
+                  />
+                );
+              })}
             </div>
           </ScrollArea>
         </TabsContent>

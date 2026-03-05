@@ -85,6 +85,47 @@ export const CHAT_ATTACHMENT_ALLOWED_MIME_TYPES: readonly ChatAttachmentMediaTyp
 ] as const;
 
 /**
+ * Mapping of each allowed MIME type to its file extensions.
+ * Used to build the `accept` attribute for file inputs (cross-browser compatibility).
+ */
+export const CHAT_ATTACHMENT_MIME_TO_EXTENSIONS: Record<ChatAttachmentMediaType, string[]> = {
+  'application/pdf': ['.pdf'],
+  'text/plain': ['.txt'],
+  'text/csv': ['.csv'],
+  'text/html': ['.html', '.htm'],
+  'text/markdown': ['.md', '.markdown'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/gif': ['.gif'],
+  'image/webp': ['.webp'],
+};
+
+/**
+ * Build the `accept` attribute value for file inputs.
+ * Combines MIME types and their extensions for maximum cross-browser compatibility.
+ * Some browsers (especially mobile) work better with extensions, others with MIME types.
+ */
+export function buildChatAttachmentAcceptString(): string {
+  const parts: string[] = [];
+  for (const mimeType of CHAT_ATTACHMENT_ALLOWED_MIME_TYPES) {
+    parts.push(mimeType);
+    parts.push(...CHAT_ATTACHMENT_MIME_TO_EXTENSIONS[mimeType]);
+  }
+  return parts.join(',');
+}
+
+/**
+ * Human-readable list of supported file type labels for display in tooltips/UI.
+ */
+export const CHAT_ATTACHMENT_DISPLAY_TYPES: readonly string[] = [
+  'PDF', 'TXT', 'CSV', 'HTML', 'MD', 'DOCX', 'XLSX', 'PPTX',
+  'JPG', 'PNG', 'GIF', 'WebP',
+] as const;
+
+/**
  * Type guard to check if a MIME type is allowed for chat attachments
  */
 export function isAllowedChatAttachmentMimeType(

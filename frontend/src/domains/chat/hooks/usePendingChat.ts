@@ -10,6 +10,7 @@
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { validateChatAttachmentFile } from '../utils/chatAttachmentValidation';
 import {
   usePendingChatStore,
   getPendingChatStore,
@@ -135,6 +136,13 @@ export function usePendingChat(): UsePendingChatReturn {
    */
   const addFile = useCallback(
     (file: File): string => {
+      // Defense-in-depth: validate even if ChatInput already filters
+      const validation = validateChatAttachmentFile(file);
+      if (!validation.isValid) {
+        toast.error(validation.error!);
+        return '';
+      }
+
       const tempId = crypto.randomUUID().toUpperCase();
 
       // Add to in-memory manager (holds actual File object)

@@ -195,6 +195,8 @@ describe('SessionStore', () => {
           created_at: '2024-01-03T00:00:00Z',
           updated_at: '2024-01-03T00:00:00Z',
           is_active: false,
+          is_pinned: false,
+          pinned_at: null,
         },
       ];
 

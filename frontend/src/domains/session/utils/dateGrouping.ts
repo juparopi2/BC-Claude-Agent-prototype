@@ -78,6 +78,7 @@ export function groupSessionsByDate(sessions: Session[]): DateGroup[] {
   const monthAgo = subDays(today, 30);
 
   const groups: Record<DateGroupKey, Session[]> = {
+    pinned: [],
     today: [],
     yesterday: [],
     thisWeek: [],

@@ -19,7 +19,16 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
 import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton, MentionHighlightOverlay } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
+import { buildChatAttachmentAcceptString } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
+import { validateChatAttachmentFiles, buildAttachmentTooltipText } from '@/src/domains/chat/utils/chatAttachmentValidation';
+import { toast } from 'sonner';
+
+/** Pre-computed accept string for the file input (MIME types + extensions) */
+const CHAT_ACCEPT_STRING = buildChatAttachmentAcceptString();
+
+/** Pre-computed dynamic tooltip text derived from shared config constants */
+const CHAT_ATTACHMENT_TOOLTIP = buildAttachmentTooltipText();
 
 /** Format seconds as MM:SS */
 function formatRecordingDuration(seconds: number): string {
@@ -381,16 +390,27 @@ export default function ChatInput({
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files);
+      const rawFiles = Array.from(e.target.files);
 
-      if (pendingMode && onFileSelect) {
-        // Pending mode: pass raw files to parent handler
-        onFileSelect(newFiles);
-      } else if (sessionId) {
-        // Normal mode: upload each file using the chat attachments hook
-        for (const file of newFiles) {
-          // Upload as ephemeral chat attachment (not KB file)
-          await uploadAttachment(sessionId, file);
+      // Validate all files (type + size) before proceeding
+      const { validFiles, invalidFiles } = validateChatAttachmentFiles(rawFiles);
+
+      // Show toast errors for each invalid file
+      for (const { error } of invalidFiles) {
+        toast.error(error);
+      }
+
+      // Only proceed with valid files
+      if (validFiles.length > 0) {
+        if (pendingMode && onFileSelect) {
+          // Pending mode: pass raw files to parent handler
+          onFileSelect(validFiles);
+        } else if (sessionId) {
+          // Normal mode: upload each file using the chat attachments hook
+          for (const file of validFiles) {
+            // Upload as ephemeral chat attachment (not KB file)
+            await uploadAttachment(sessionId, file);
+          }
         }
       }
 
@@ -537,6 +557,7 @@ export default function ChatInput({
           multiple
           ref={fileInputRef}
           className="hidden"
+          accept={CHAT_ACCEPT_STRING}
           onChange={handleFileSelect}
         />
 
@@ -656,7 +677,7 @@ export default function ChatInput({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Attach files (docs: max 32MB | images: max 20MB)</p>
+                  <p className="text-xs">{CHAT_ATTACHMENT_TOOLTIP}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

@@ -36,6 +36,8 @@ export const mockSessions: Session[] = [
     updated_at: '2024-01-01T10:30:00Z',
     is_active: true,
     message_count: 5,
+    is_pinned: false,
+    pinned_at: null,
   },
   {
     id: 'session-2',
@@ -45,6 +47,8 @@ export const mockSessions: Session[] = [
     updated_at: '2024-01-02T11:00:00Z',
     is_active: true,
     message_count: 10,
+    is_pinned: false,
+    pinned_at: null,
   },
 ];
 
@@ -196,6 +200,8 @@ export const handlers = [
       updated_at: new Date().toISOString(),
       is_active: true,
       message_count: 0,
+      is_pinned: false,
+      pinned_at: null,
     };
     return HttpResponse.json(newSession, { status: 201 });
   }),

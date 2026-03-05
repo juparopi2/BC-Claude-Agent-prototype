@@ -17,6 +17,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { getChatAttachmentApiClient } from '@/src/infrastructure/api';
 import type { ParsedChatAttachment } from '@bc-agent/shared';
 import { toast } from 'sonner';
+import { validateChatAttachmentFile } from '../utils/chatAttachmentValidation';
 
 /**
  * Chat attachment with upload tracking
@@ -95,6 +96,13 @@ export function useChatAttachments(): UseChatAttachmentsResult {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
 
   const uploadAttachment = useCallback(async (sessionId: string, file: File) => {
+    // Defense-in-depth: validate even if ChatInput already filters
+    const validation = validateChatAttachmentFile(file);
+    if (!validation.isValid) {
+      toast.error(validation.error!);
+      return;
+    }
+
     const tempId = crypto.randomUUID();
 
     // Add attachment with uploading status

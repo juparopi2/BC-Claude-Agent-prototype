@@ -299,6 +299,9 @@ export type {
 export {
   CHAT_ATTACHMENT_ALLOWED_MIME_TYPES,
   CHAT_ATTACHMENT_CONFIG,
+  CHAT_ATTACHMENT_MIME_TO_EXTENSIONS,
+  CHAT_ATTACHMENT_DISPLAY_TYPES,
+  buildChatAttachmentAcceptString,
   MIME_ROUTING_MAP,
   isAllowedChatAttachmentMimeType,
   parseChatAttachment,

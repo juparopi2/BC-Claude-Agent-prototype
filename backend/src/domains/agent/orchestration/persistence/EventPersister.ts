@@ -86,6 +86,7 @@ export async function persistSyncEvent(
 
     case 'assistant_message': {
       const msgEvent = event as NormalizedAssistantMessageEvent;
+      logger.info({ model: msgEvent.model, messageId: msgEvent.messageId, sessionId }, 'Persisting assistant message with model');
       const persistResult = await persistenceCoordinator.persistAgentMessage(
         sessionId,
         {

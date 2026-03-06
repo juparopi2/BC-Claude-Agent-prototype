@@ -25,7 +25,7 @@ import {
   getUsageTrackingService,
   __resetUsageTrackingService,
 } from '@/domains/billing/tracking/UsageTrackingService';
-import { UNIT_COSTS } from '@/infrastructure/config/pricing.config';
+import { UNIT_COSTS, getModelPricing, MODEL_PRICING } from '@/infrastructure/config/pricing.config';
 
 describe('UsageTrackingService', () => {
   let service: UsageTrackingService;
@@ -164,20 +164,21 @@ describe('UsageTrackingService', () => {
       // Should insert 2 events (input + output)
       expect(mockPool.request).toHaveBeenCalledTimes(2);
 
-      // Verify input tokens event
+      // Verify input tokens event (Sonnet pricing: $3/1M)
+      const sonnetPricing = getModelPricing(model);
       expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'claude_input_tokens');
       expect(mockRequest.input).toHaveBeenCalledWith('quantity', inputTokens);
       expect(mockRequest.input).toHaveBeenCalledWith(
         'cost',
-        inputTokens * UNIT_COSTS.claude_input_token
+        (inputTokens * sonnetPricing.inputPerMillion) / 1_000_000
       );
 
-      // Verify output tokens event
+      // Verify output tokens event (Sonnet pricing: $15/1M)
       expect(mockRequest.input).toHaveBeenCalledWith('event_type', 'claude_output_tokens');
       expect(mockRequest.input).toHaveBeenCalledWith('quantity', outputTokens);
       expect(mockRequest.input).toHaveBeenCalledWith(
         'cost',
-        outputTokens * UNIT_COSTS.claude_output_token
+        (outputTokens * sonnetPricing.outputPerMillion) / 1_000_000
       );
 
       // Verify Redis counters
@@ -528,29 +529,32 @@ describe('UsageTrackingService', () => {
   });
 
   describe('trackClaudeUsage cost calculations', () => {
-    it('should calculate correct cost for input tokens', async () => {
+    it('should calculate correct cost for Haiku input tokens', async () => {
       const userId = '123E4567-E89B-12D3-A456-426614174000';
       const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+      const haikuPricing = getModelPricing('claude-haiku-4-5-20251001');
 
       await service.trackClaudeUsage(userId, sessionId, 1_000_000, 0, 'claude-haiku-4-5-20251001');
 
-      // Input cost for 1M tokens at $3.00/M = $3.00
-      expect(mockRequest.input).toHaveBeenCalledWith('cost', 1_000_000 * UNIT_COSTS.claude_input_token);
+      // Input cost for 1M tokens at Haiku $1.00/M = $1.00
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', (1_000_000 * haikuPricing.inputPerMillion) / 1_000_000);
     });
 
-    it('should calculate correct cost for output tokens', async () => {
+    it('should calculate correct cost for Haiku output tokens', async () => {
       const userId = '123E4567-E89B-12D3-A456-426614174000';
       const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+      const haikuPricing = getModelPricing('claude-haiku-4-5-20251001');
 
       await service.trackClaudeUsage(userId, sessionId, 0, 1_000_000, 'claude-haiku-4-5-20251001');
 
-      // Output cost for 1M tokens at $15.00/M = $15.00
-      expect(mockRequest.input).toHaveBeenCalledWith('cost', 1_000_000 * UNIT_COSTS.claude_output_token);
+      // Output cost for 1M tokens at Haiku $5.00/M = $5.00
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', (1_000_000 * haikuPricing.outputPerMillion) / 1_000_000);
     });
 
     it('should include cache token costs when provided', async () => {
       const userId = '123E4567-E89B-12D3-A456-426614174000';
       const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+      const haikuPricing = getModelPricing('claude-haiku-4-5-20251001');
 
       await service.trackClaudeUsage(userId, sessionId, 100_000, 50_000, 'claude-haiku-4-5-20251001', {
         cache_write_tokens: 10_000,
@@ -560,10 +564,10 @@ describe('UsageTrackingService', () => {
       // 4 insert calls: input, output, cache_write, cache_read
       expect(mockPool.request).toHaveBeenCalledTimes(4);
 
-      // Verify cache write cost
-      expect(mockRequest.input).toHaveBeenCalledWith('cost', 10_000 * UNIT_COSTS.cache_write_token);
-      // Verify cache read cost
-      expect(mockRequest.input).toHaveBeenCalledWith('cost', 5_000 * UNIT_COSTS.cache_read_token);
+      // Verify cache write cost (Haiku: $1.25/1M)
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', (10_000 * haikuPricing.cacheWritePerMillion) / 1_000_000);
+      // Verify cache read cost (Haiku: $0.10/1M)
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', (5_000 * haikuPricing.cacheReadPerMillion) / 1_000_000);
     });
 
     it('should not track cache events when cache tokens are zero', async () => {
@@ -574,6 +578,36 @@ describe('UsageTrackingService', () => {
 
       // Only 2 calls: input + output (no cache)
       expect(mockPool.request).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use different pricing for Haiku vs Sonnet models', async () => {
+      const userId = '123E4567-E89B-12D3-A456-426614174000';
+      const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+      const tokens = 1_000_000;
+
+      // Track Haiku
+      await service.trackClaudeUsage(userId, sessionId, tokens, 0, 'claude-haiku-4-5-20251001');
+      const haikuCost = (tokens * getModelPricing('claude-haiku-4-5-20251001').inputPerMillion) / 1_000_000;
+
+      // Track Sonnet
+      await service.trackClaudeUsage(userId, sessionId, tokens, 0, 'claude-sonnet-4-5-20250929');
+      const sonnetCost = (tokens * getModelPricing('claude-sonnet-4-5-20250929').inputPerMillion) / 1_000_000;
+
+      // Sonnet should be 3x Haiku
+      expect(sonnetCost).toBe(haikuCost * 3);
+      expect(haikuCost).toBe(1.0);  // $1.00 for 1M Haiku input tokens
+      expect(sonnetCost).toBe(3.0); // $3.00 for 1M Sonnet input tokens
+    });
+
+    it('should default to Haiku pricing for unknown model', async () => {
+      const userId = '123E4567-E89B-12D3-A456-426614174000';
+      const sessionId = '987FCDEB-51A2-43D7-8765-BA9876543210';
+      const haikuPricing = getModelPricing('claude-haiku-4-5-20251001');
+
+      await service.trackClaudeUsage(userId, sessionId, 1_000_000, 0, 'unknown-model-xyz');
+
+      // Should fall back to Haiku pricing
+      expect(mockRequest.input).toHaveBeenCalledWith('cost', (1_000_000 * haikuPricing.inputPerMillion) / 1_000_000);
     });
   });
 

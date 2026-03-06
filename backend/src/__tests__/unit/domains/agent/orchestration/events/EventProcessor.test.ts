@@ -117,6 +117,7 @@ describe('EventProcessor', () => {
         outputTokens: 200,
         cacheCreationTokens: 3000,
         cacheReadTokens: 0,
+        model: 'claude-haiku-4-5-20251001',
       });
 
       const workerUsage = ctx.perAgentUsage.get('bc_agent');
@@ -125,6 +126,7 @@ describe('EventProcessor', () => {
         outputTokens: 300,
         cacheCreationTokens: 0,
         cacheReadTokens: 2500,
+        model: 'claude-haiku-4-5-20251001',
       });
     });
 
@@ -137,7 +139,9 @@ describe('EventProcessor', () => {
       trackAssistantMessageState(event, ctx);
 
       expect(ctx.perAgentUsage.has('unknown')).toBe(true);
-      expect(ctx.perAgentUsage.get('unknown')?.inputTokens).toBe(100);
+      const usage = ctx.perAgentUsage.get('unknown');
+      expect(usage?.inputTokens).toBe(100);
+      expect(usage?.model).toBe('claude-haiku-4-5-20251001');
     });
 
     it('should not track usage for non-assistant_message events', () => {

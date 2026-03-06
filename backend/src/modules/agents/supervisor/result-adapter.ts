@@ -209,7 +209,7 @@ export function adaptSupervisorResult(
   const usedModel = extractUsedModel(messages);
   const handoffs = detectHandoffs(messages);
 
-  logger.debug({
+  logger.info({
     sessionId,
     messageCount: messages.length,
     agentId: identity.agentId,
@@ -217,7 +217,7 @@ export function adaptSupervisorResult(
     handoffCount: handoffs.length,
     usedModel,
     isInterrupted: interrupt?.isInterrupted ?? false,
-  }, 'Adapted supervisor result');
+  }, 'Model extracted from graph result');
 
   return {
     messages,

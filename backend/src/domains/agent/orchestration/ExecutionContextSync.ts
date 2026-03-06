@@ -240,7 +240,7 @@ export interface ExecutionContextSync {
    * Key: agentId, Value: accumulated token usage for that agent.
    * MUTABLE: Updated after each assistant_message.
    */
-  readonly perAgentUsage: Map<string, { inputTokens: number; outputTokens: number; cacheCreationTokens: number; cacheReadTokens: number }>;
+  readonly perAgentUsage: Map<string, { inputTokens: number; outputTokens: number; cacheCreationTokens: number; cacheReadTokens: number; model: string }>;
 
   // ============================================================================
   // Options (Immutable)

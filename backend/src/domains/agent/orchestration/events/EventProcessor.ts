@@ -158,11 +158,12 @@ export function trackAssistantMessageState(
 
   // Accumulate per-agent usage for billing attribution
   const agentId = msgEvent.sourceAgentId ?? 'unknown';
-  const existing = ctx.perAgentUsage.get(agentId) ?? { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+  const existing = ctx.perAgentUsage.get(agentId) ?? { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0, model: msgEvent.model ?? 'unknown' };
   existing.inputTokens += msgEvent.tokenUsage.inputTokens;
   existing.outputTokens += msgEvent.tokenUsage.outputTokens;
   existing.cacheCreationTokens += msgEvent.tokenUsage.cacheCreationTokens ?? 0;
   existing.cacheReadTokens += msgEvent.tokenUsage.cacheReadTokens ?? 0;
+  existing.model = msgEvent.model ?? existing.model;
   ctx.perAgentUsage.set(agentId, existing);
 
   return {

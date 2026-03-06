@@ -19,6 +19,92 @@
  */
 
 import type { PlanTier } from '@/types/usage.types';
+import { AnthropicModels } from './models';
+
+// =============================================================================
+// MODEL-SPECIFIC PRICING (Single Source of Truth)
+// =============================================================================
+
+/**
+ * Claude model pricing per 1M tokens.
+ */
+export interface ClaudeModelPricing {
+  inputPerMillion: number;
+  outputPerMillion: number;
+  cacheWritePerMillion: number;
+  cacheReadPerMillion: number;
+}
+
+/**
+ * Model-specific pricing map.
+ * Keys are official Anthropic model IDs.
+ *
+ * @see https://www.anthropic.com/pricing
+ */
+export const MODEL_PRICING: Record<string, ClaudeModelPricing> = {
+  [AnthropicModels.HAIKU_4_5]: {
+    inputPerMillion: 1.0, outputPerMillion: 5.0,
+    cacheWritePerMillion: 1.25, cacheReadPerMillion: 0.10,
+  },
+  'claude-3-5-sonnet-20241022': {
+    inputPerMillion: 3.0, outputPerMillion: 15.0,
+    cacheWritePerMillion: 3.75, cacheReadPerMillion: 0.30,
+  },
+  'claude-sonnet-4-5-20250929': {
+    inputPerMillion: 3.0, outputPerMillion: 15.0,
+    cacheWritePerMillion: 3.75, cacheReadPerMillion: 0.30,
+  },
+  'claude-opus-4-6-20250514': {
+    inputPerMillion: 15.0, outputPerMillion: 75.0,
+    cacheWritePerMillion: 18.75, cacheReadPerMillion: 1.50,
+  },
+};
+
+/**
+ * Default pricing model used when model is unknown or null.
+ */
+export const DEFAULT_PRICING_MODEL = AnthropicModels.HAIKU_4_5;
+
+/**
+ * Default pricing entry (Haiku). Extracted as a constant to avoid repeated
+ * index lookups and to give TypeScript a non-undefined type.
+ */
+// Safe: HAIKU_4_5 is defined in MODEL_PRICING above
+const DEFAULT_PRICING = MODEL_PRICING[AnthropicModels.HAIKU_4_5] as ClaudeModelPricing;
+
+/**
+ * Get pricing for a specific model, defaulting to Haiku if unknown.
+ */
+export function getModelPricing(model: string | null | undefined): ClaudeModelPricing {
+  if (!model || model === 'unknown') return DEFAULT_PRICING;
+  return MODEL_PRICING[model] ?? DEFAULT_PRICING;
+}
+
+/**
+ * Calculate cost for token usage with model-specific pricing.
+ *
+ * @param model - Model identifier (null defaults to Haiku)
+ * @param inputTokens - Number of input tokens
+ * @param outputTokens - Number of output tokens
+ * @param cacheWriteTokens - Number of cache write tokens
+ * @param cacheReadTokens - Number of cache read tokens
+ * @returns Total cost in USD
+ */
+export function calculateModelTokenCost(
+  model: string | null | undefined,
+  inputTokens: number,
+  outputTokens: number,
+  cacheWriteTokens = 0,
+  cacheReadTokens = 0,
+): number {
+  const p = getModelPricing(model);
+  return (
+    (inputTokens * p.inputPerMillion +
+     outputTokens * p.outputPerMillion +
+     cacheWriteTokens * p.cacheWritePerMillion +
+     cacheReadTokens * p.cacheReadPerMillion) / 1_000_000
+  );
+}
 
 /**
  * Unit Costs (per unit consumed)
@@ -348,28 +434,24 @@ export const PRICING_PLANS: Record<
  */
 export const PAYG_RATES = {
   /**
-   * Overage rate for input tokens
-   * $3.75 per 1M tokens (25% markup over $3.00 cost)
+   * Overage rate for input tokens (25% markup over default model cost)
    */
-  claude_input_token: UNIT_COSTS.claude_input_token * 1.25,
+  claude_input_token: (DEFAULT_PRICING.inputPerMillion / 1_000_000) * 1.25,
 
   /**
-   * Overage rate for output tokens
-   * $18.75 per 1M tokens (25% markup over $15.00 cost)
+   * Overage rate for output tokens (25% markup over default model cost)
    */
-  claude_output_token: UNIT_COSTS.claude_output_token * 1.25,
+  claude_output_token: (DEFAULT_PRICING.outputPerMillion / 1_000_000) * 1.25,
 
   /**
-   * Overage rate for cache write tokens
-   * $4.69 per 1M tokens (25% markup over $3.75 cost)
+   * Overage rate for cache write tokens (25% markup over default model cost)
    */
-  cache_write_token: UNIT_COSTS.cache_write_token * 1.25,
+  cache_write_token: (DEFAULT_PRICING.cacheWritePerMillion / 1_000_000) * 1.25,
 
   /**
-   * Overage rate for cache read tokens
-   * $0.375 per 1M tokens (25% markup over $0.30 cost)
+   * Overage rate for cache read tokens (25% markup over default model cost)
    */
-  cache_read_token: UNIT_COSTS.cache_read_token * 1.25,
+  cache_read_token: (DEFAULT_PRICING.cacheReadPerMillion / 1_000_000) * 1.25,
 
   /**
    * Overage rate for storage
@@ -407,20 +489,16 @@ export const PAYG_RATES = {
 } as const;
 
 /**
- * Calculate cost for token usage
+ * Calculate cost for token usage using flat Sonnet pricing.
+ *
+ * @deprecated Use `calculateModelTokenCost(model, ...)` for model-specific pricing.
+ * This function uses hardcoded UNIT_COSTS which are Sonnet rates, not model-aware.
  *
  * @param inputTokens - Number of input tokens
  * @param outputTokens - Number of output tokens
  * @param cacheWriteTokens - Number of cache write tokens (optional)
  * @param cacheReadTokens - Number of cache read tokens (optional)
  * @returns Total cost in USD
- *
- * @example
- * ```typescript
- * // Example: 506K input, 81K output (from user analysis)
- * const cost = calculateTokenCost(506_000, 81_000);
- * console.log(cost); // $2.73 (506K * $0.000003 + 81K * $0.000015)
- * ```
  */
 export function calculateTokenCost(
   inputTokens: number,

@@ -214,6 +214,7 @@ export class FileUploadService {
    * @param blobPath - Blob path in container
    * @returns File buffer
    */
+  // TODO: Track blob egress costs ($0.087/GB) — requires propagating userId through call chain
   public async downloadFromBlob(blobPath: string): Promise<Buffer> {
     this.logger.info({
       containerName: this.containerName,

@@ -349,6 +349,8 @@ export function normalizeAIMessage(
   const model = extractModel(message);
   const provider = detectProvider(message);
 
+  logger.debug({ model, messageId, messageIndex }, 'Model extracted from AIMessage');
+
   // Handle string content (simple case)
   if (typeof content === 'string') {
     // Tag framework-generated handoff-back messages as internal (PRD-061)

@@ -247,7 +247,7 @@ The system captures critical metrics for billing in the `messages` table. Every 
 -   **`model`**: Model used (e.g., `claude-3-5-sonnet...`).
 -   **`bc_company_id`**: For segmentation by ERP client (if applicable).
 
-**⚠️ Important Note**: Currently there is NO aggregated `usage_events` table. Billing calculation must be done by summing over the `messages` table.
+**Cost Tracking**: Usage is tracked in the `usage_events` table with model-specific pricing. The `messages` table stores raw token counts. Both sources can be cross-referenced via `scripts/costs/verify-costs.ts`.
 
 ---
 

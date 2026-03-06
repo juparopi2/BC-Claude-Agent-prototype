@@ -93,43 +93,10 @@ interface CostTotals {
 }
 
 // ============================================================================
-// Model Pricing (per 1M tokens)
+// Model Pricing — imported from shared module
 // ============================================================================
 
-const MODEL_PRICING: Record<string, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
-  // Haiku 4.5 (current default for all agents)
-  'claude-haiku-4-5-20251001': { input: 1.0, output: 5.0, cacheWrite: 1.25, cacheRead: 0.10 },
-  // Sonnet 3.5
-  'claude-3-5-sonnet-20241022': { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.30 },
-  // Sonnet 4.5
-  'claude-sonnet-4-5-20250929': { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.30 },
-  // Opus 4.6
-  'claude-opus-4-6-20250514': { input: 15.0, output: 75.0, cacheWrite: 18.75, cacheRead: 1.50 },
-};
-
-// Default to Haiku pricing for unknown models
-const DEFAULT_PRICING = MODEL_PRICING['claude-haiku-4-5-20251001'];
-
-function getPricing(model: string | null) {
-  if (!model) return DEFAULT_PRICING;
-  return MODEL_PRICING[model] ?? DEFAULT_PRICING;
-}
-
-function calculateCost(
-  model: string | null,
-  inputTokens: number,
-  outputTokens: number,
-  cacheWriteTokens = 0,
-  cacheReadTokens = 0
-): number {
-  const pricing = getPricing(model);
-  return (
-    (inputTokens * pricing.input) / 1_000_000 +
-    (outputTokens * pricing.output) / 1_000_000 +
-    (cacheWriteTokens * pricing.cacheWrite) / 1_000_000 +
-    (cacheReadTokens * pricing.cacheRead) / 1_000_000
-  );
-}
+import { calculateCost } from '../_shared/pricing';
 
 // ============================================================================
 // Argument Parsing

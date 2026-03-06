@@ -28,7 +28,7 @@ import type { ConnectionPool } from 'mssql';
 import type { Redis } from 'ioredis';
 import { getPool } from '@/infrastructure/database/database';
 import { getRedis } from '@/infrastructure/redis/redis';
-import { UNIT_COSTS, calculateTokenCost } from '@/infrastructure/config/pricing.config';
+import { UNIT_COSTS, calculateModelTokenCost, getModelPricing } from '@/infrastructure/config/pricing.config';
 import type { OperationCategory } from '@/types/usage.types';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { Logger } from 'pino';
@@ -179,8 +179,12 @@ export class UsageTrackingService {
       const cacheWriteTokens = (metadata?.cache_write_tokens as number) || 0;
       const cacheReadTokens = (metadata?.cache_read_tokens as number) || 0;
 
-      // Calculate token cost using pricing config
-      const cost = calculateTokenCost(
+      // Get model-specific pricing (defaults to Haiku if model unknown)
+      const pricing = getModelPricing(model);
+
+      // Calculate token cost using model-specific pricing
+      const cost = calculateModelTokenCost(
+        model,
         inputTokens,
         outputTokens,
         cacheWriteTokens,
@@ -209,7 +213,7 @@ export class UsageTrackingService {
         'claude_input_tokens',
         inputTokens,
         'tokens',
-        inputTokens * UNIT_COSTS.claude_input_token,
+        (inputTokens * pricing.inputPerMillion) / 1_000_000,
         { ...metadata, model, token_type: 'input' }
       );
 
@@ -221,7 +225,7 @@ export class UsageTrackingService {
         'claude_output_tokens',
         outputTokens,
         'tokens',
-        outputTokens * UNIT_COSTS.claude_output_token,
+        (outputTokens * pricing.outputPerMillion) / 1_000_000,
         { ...metadata, model, token_type: 'output' }
       );
 
@@ -234,7 +238,7 @@ export class UsageTrackingService {
           'cache_write_tokens',
           cacheWriteTokens,
           'tokens',
-          cacheWriteTokens * UNIT_COSTS.cache_write_token,
+          (cacheWriteTokens * pricing.cacheWritePerMillion) / 1_000_000,
           { ...metadata, model, token_type: 'cache_write' }
         );
       }
@@ -248,7 +252,7 @@ export class UsageTrackingService {
           'cache_read_tokens',
           cacheReadTokens,
           'tokens',
-          cacheReadTokens * UNIT_COSTS.cache_read_token,
+          (cacheReadTokens * pricing.cacheReadPerMillion) / 1_000_000,
           { ...metadata, model, token_type: 'cache_read' }
         );
       }

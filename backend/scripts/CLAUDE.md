@@ -52,13 +52,6 @@ The system has three complementary cost data sources:
 | **Token Usage** | `token_usage` | Same + `cache_creation_input_tokens`, `cache_read_input_tokens`, `thinking_enabled`, `thinking_budget` | Raw tokens only (most complete source including cache data) |
 | **Usage Events** | `usage_events` | Pre-calculated `cost` by `category` (ai, embeddings, search, processing, storage) | Cost calculated at INSERT time using `pricing.config.ts` |
 
-**IMPORTANT - Known Pricing Issue**: `usage_events` AI costs are calculated using `pricing.config.ts` which uses a fixed Sonnet price ($3/$15 per 1M) for ALL models. This means:
-- Haiku calls ($1/$5) are **overcharged ~3x** in `usage_events`
-- Opus calls ($15/$75) are **undercharged ~5x** in `usage_events`
-- For accurate cost analysis, always use `token_usage` table with model-specific pricing
-
-The scripts in this folder all use **model-specific pricing** from the `MODEL_PRICING` constant (duplicated in each script since scripts can't use `@/` path aliases).
-
 ### Model Pricing Reference (per 1M tokens)
 
 | Model | Input | Output | Cache Write | Cache Read |
@@ -197,6 +190,7 @@ Scripts for test environment setup and validation.
 | `prisma.ts` | `createPrisma()` — standalone Prisma client factory | All DB scripts |
 | `azure.ts` | `createBlobContainerClient()`, `createSearchClient()`, `createSearchIndexClient()`, `CONTAINER_NAME`, `INDEX_NAME` | Storage & database scripts |
 | `args.ts` | `hasFlag()`, `getFlag()`, `getNumericFlag()`, `getPositionalArg()` | Most scripts |
+| `pricing.ts` | `MODEL_PRICING`, `DEFAULT_PRICING`, `getPricing()`, `calculateCost()` | Cost scripts |
 
 Scripts use `../_shared/` relative imports (not `@/` path aliases) because they run outside the main app's tsconfig.
 
@@ -231,13 +225,10 @@ Scripts use `../_shared/` relative imports (not `@/` path aliases) because they 
 
 ### When Updating Pricing
 
-Model pricing is duplicated in cost scripts because they can't use `@/` path aliases. When Anthropic updates pricing:
+When Anthropic updates pricing:
 
-1. Update `backend/src/infrastructure/config/pricing.config.ts` (main app)
-2. Update `MODEL_PRICING` constant in:
-   - `scripts/costs/cost-report.ts`
-   - `scripts/costs/analyze-session-costs.ts`
-   - `scripts/costs/verify-costs.ts`
+1. Update `backend/src/infrastructure/config/pricing.config.ts` (main app — `MODEL_PRICING`)
+2. Update `backend/scripts/_shared/pricing.ts` (scripts mirror — can't use `@/` aliases)
 3. Run `npx tsx scripts/costs/verify-costs.ts --verbose` to validate
 
 ### When Restructuring Folders

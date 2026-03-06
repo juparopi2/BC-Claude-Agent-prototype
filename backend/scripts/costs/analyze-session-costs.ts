@@ -5,15 +5,15 @@
  * and per agent using real data from the `messages` and `token_usage` tables.
  *
  * Usage:
- *   npx tsx scripts/analyze-session-costs.ts "4515496a-..."
- *   npx tsx scripts/analyze-session-costs.ts "http://localhost:3000/chat/4515496a-..."
- *   npx tsx scripts/analyze-session-costs.ts "4515496a-..." --verbose
- *   npx tsx scripts/analyze-session-costs.ts --user "user-id" --days 7
+ *   npx tsx scripts/costs/analyze-session-costs.ts "4515496a-..."
+ *   npx tsx scripts/costs/analyze-session-costs.ts "http://localhost:3000/chat/4515496a-..."
+ *   npx tsx scripts/costs/analyze-session-costs.ts "4515496a-..." --verbose
+ *   npx tsx scripts/costs/analyze-session-costs.ts --user "user-id" --days 7
  */
 
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
-import { getFlag, getNumericFlag, getPositionalArg, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { getFlag, getNumericFlag, getPositionalArg, hasFlag } from '../_shared/args';
 
 // ============================================================================
 // Types
@@ -151,8 +151,8 @@ function parseArgs(): ParsedArgs {
 Session Cost Analyzer
 
 Usage:
-  npx tsx scripts/analyze-session-costs.ts "<session-id-or-url>" [--verbose]
-  npx tsx scripts/analyze-session-costs.ts --user "<user-id>" [--days N] [--verbose]
+  npx tsx scripts/costs/analyze-session-costs.ts "<session-id-or-url>" [--verbose]
+  npx tsx scripts/costs/analyze-session-costs.ts --user "<user-id>" [--days N] [--verbose]
 
 Arguments:
   <session-id-or-url>  Session ID or URL containing session ID
@@ -161,10 +161,10 @@ Arguments:
   --verbose, -v        Show per-message token breakdown within each turn
 
 Examples:
-  npx tsx scripts/analyze-session-costs.ts "4515496a-..."
-  npx tsx scripts/analyze-session-costs.ts "http://localhost:3000/chat/4515496a-..."
-  npx tsx scripts/analyze-session-costs.ts "4515496a-..." --verbose
-  npx tsx scripts/analyze-session-costs.ts --user "ABCD1234-..." --days 7
+  npx tsx scripts/costs/analyze-session-costs.ts "4515496a-..."
+  npx tsx scripts/costs/analyze-session-costs.ts "http://localhost:3000/chat/4515496a-..."
+  npx tsx scripts/costs/analyze-session-costs.ts "4515496a-..." --verbose
+  npx tsx scripts/costs/analyze-session-costs.ts --user "ABCD1234-..." --days 7
 `);
     process.exit(0);
   }

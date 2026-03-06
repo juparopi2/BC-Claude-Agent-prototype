@@ -18,8 +18,8 @@
  */
 
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
-import { getFlag, getNumericFlag, getPositionalArg, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { getFlag, getNumericFlag, getPositionalArg, hasFlag } from '../_shared/args';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const RED = '\x1b[31m';

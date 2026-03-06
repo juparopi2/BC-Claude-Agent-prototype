@@ -32,7 +32,7 @@
  *   npx tsx backend/scripts/migrate-pipeline-status.ts --skip-drop
  */
 
-import { createPrisma } from './_shared/prisma';
+import { createPrisma } from '../_shared/prisma';
 import type { PrismaClient } from '@prisma/client';
 
 // ─── Argument Parsing ─────────────────────────────────────────────────────────

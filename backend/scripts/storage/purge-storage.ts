@@ -20,9 +20,9 @@
  */
 import 'dotenv/config';
 import { createInterface } from 'readline/promises';
-import { createPrisma } from './_shared/prisma';
-import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from './_shared/azure';
-import { getFlag, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from '../_shared/azure';
+import { getFlag, hasFlag } from '../_shared/args';
 
 type PurgeTarget = 'db' | 'blobs' | 'search' | 'all';
 

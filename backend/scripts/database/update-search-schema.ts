@@ -13,8 +13,8 @@
  */
 
 import 'dotenv/config';
-import { createSearchIndexClient, INDEX_NAME } from './_shared/azure';
-import { hasFlag } from './_shared/args';
+import { createSearchIndexClient, INDEX_NAME } from '../_shared/azure';
+import { hasFlag } from '../_shared/args';
 import { indexSchema } from '../src/services/search/schema';
 
 // ============================================================================

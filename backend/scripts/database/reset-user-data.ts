@@ -21,9 +21,9 @@
 import 'dotenv/config';
 import Redis from 'ioredis';
 import { createInterface } from 'readline/promises';
-import { createPrisma } from './_shared/prisma';
-import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from './_shared/azure';
-import { hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from '../_shared/azure';
+import { hasFlag } from '../_shared/args';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const RED = '\x1b[31m';

@@ -5,15 +5,15 @@
  * and financial metrics across all users, time periods, and cost categories.
  *
  * Usage:
- *   npx tsx scripts/cost-report.ts                          # Last 30 days, all users
- *   npx tsx scripts/cost-report.ts --days 90                # Last 90 days
- *   npx tsx scripts/cost-report.ts --domain "company.com"   # Filter by email domain
- *   npx tsx scripts/cost-report.ts --verbose                # Per-user details + per-model breakdown
+ *   npx tsx scripts/costs/cost-report.ts                          # Last 30 days, all users
+ *   npx tsx scripts/costs/cost-report.ts --days 90                # Last 90 days
+ *   npx tsx scripts/costs/cost-report.ts --domain "company.com"   # Filter by email domain
+ *   npx tsx scripts/costs/cost-report.ts --verbose                # Per-user details + per-model breakdown
  */
 
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
-import { getFlag, getNumericFlag, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { getFlag, getNumericFlag, hasFlag } from '../_shared/args';
 
 // ============================================================================
 // Types
@@ -153,10 +153,10 @@ function parseArgs(): ParsedArgs {
 Platform Financial Report
 
 Usage:
-  npx tsx scripts/cost-report.ts                          # Last 30 days
-  npx tsx scripts/cost-report.ts --days 90                # Last 90 days
-  npx tsx scripts/cost-report.ts --domain "company.com"   # Filter by email domain
-  npx tsx scripts/cost-report.ts --verbose                # Per-user + per-model details
+  npx tsx scripts/costs/cost-report.ts                          # Last 30 days
+  npx tsx scripts/costs/cost-report.ts --days 90                # Last 90 days
+  npx tsx scripts/costs/cost-report.ts --domain "company.com"   # Filter by email domain
+  npx tsx scripts/costs/cost-report.ts --verbose                # Per-user + per-model details
 
 Options:
   --days <N>           Report period in days (default: 30)

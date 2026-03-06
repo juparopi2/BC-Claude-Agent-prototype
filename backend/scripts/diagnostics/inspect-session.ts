@@ -12,8 +12,8 @@
  */
 
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
-import { getPositionalArg, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { getPositionalArg, hasFlag } from '../_shared/args';
 
 // ============================================================================
 // Types

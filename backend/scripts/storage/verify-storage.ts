@@ -1,17 +1,17 @@
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
+import { createPrisma } from '../_shared/prisma';
 import {
   createBlobContainerClient,
   createSearchClient,
   createSearchIndexClient,
   CONTAINER_NAME,
   INDEX_NAME,
-} from './_shared/azure';
+} from '../_shared/azure';
 import {
   getFlag,
   hasFlag,
   getPositionalArg,
-} from './_shared/args';
+} from '../_shared/args';
 import type { SearchClient, SearchIndexClient } from '@azure/search-documents';
 import type { ContainerClient } from '@azure/storage-blob';
 

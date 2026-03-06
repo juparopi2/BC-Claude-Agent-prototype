@@ -18,9 +18,9 @@
  *   npx tsx backend/scripts/fix-storage.ts --help
  */
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
-import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from './_shared/azure';
-import { getFlag, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from '../_shared/azure';
+import { getFlag, hasFlag } from '../_shared/args';
 import type { ContainerClient } from '@azure/storage-blob';
 import type { SearchClient } from '@azure/search-documents';
 import type { PrismaClient } from '@prisma/client';

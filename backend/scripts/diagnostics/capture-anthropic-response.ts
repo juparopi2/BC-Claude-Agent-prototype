@@ -6,9 +6,9 @@
  * Saves both streaming events and final responses as JSON fixtures.
  *
  * Usage:
- *   npx tsx scripts/capture-anthropic-response.ts --scenario=thinking-tools
- *   npx tsx scripts/capture-anthropic-response.ts --message="List 5 customers" --thinking
- *   npx tsx scripts/capture-anthropic-response.ts --help
+ *   npx tsx scripts/diagnostics/capture-anthropic-response.ts --scenario=thinking-tools
+ *   npx tsx scripts/diagnostics/capture-anthropic-response.ts --message="List 5 customers" --thinking
+ *   npx tsx scripts/diagnostics/capture-anthropic-response.ts --help
  *
  * Output:
  *   backend/src/__tests__/fixtures/captured/
@@ -363,7 +363,7 @@ function printHelp(): void {
 Anthropic API Response Capture Script
 
 Usage:
-  npx tsx scripts/capture-anthropic-response.ts [options]
+  npx tsx scripts/diagnostics/capture-anthropic-response.ts [options]
 
 Options:
   --scenario=<name>     Use predefined scenario (simple, thinking, thinking-tools, tools-only, multi-tool)
@@ -375,9 +375,9 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  npx tsx scripts/capture-anthropic-response.ts --scenario=thinking-tools
-  npx tsx scripts/capture-anthropic-response.ts --message="Hello" --thinking
-  npx tsx scripts/capture-anthropic-response.ts --message="Get customers" --tools
+  npx tsx scripts/diagnostics/capture-anthropic-response.ts --scenario=thinking-tools
+  npx tsx scripts/diagnostics/capture-anthropic-response.ts --message="Hello" --thinking
+  npx tsx scripts/diagnostics/capture-anthropic-response.ts --message="Get customers" --tools
 
 Predefined Scenarios:
   simple           - Basic text response (no thinking, no tools)

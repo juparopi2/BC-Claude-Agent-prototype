@@ -4,14 +4,14 @@
  * Searches for users by name or email (partial or exact match) in the database.
  *
  * Usage:
- *   npx tsx scripts/find-user.ts "Juan Pablo"
- *   npx tsx scripts/find-user.ts "romero" --exact
- *   npx tsx scripts/find-user.ts "juan" --files
+ *   npx tsx scripts/database/find-user.ts "Juan Pablo"
+ *   npx tsx scripts/database/find-user.ts "romero" --exact
+ *   npx tsx scripts/database/find-user.ts "juan" --files
  */
 
 import 'dotenv/config';
-import { createPrisma } from './_shared/prisma';
-import { getPositionalArg, hasFlag } from './_shared/args';
+import { createPrisma } from '../_shared/prisma';
+import { getPositionalArg, hasFlag } from '../_shared/args';
 
 // ============================================================================
 // Types
@@ -49,7 +49,7 @@ function parseArgs(): { searchTerm: string; exactMatch: boolean; showFiles: bool
 Find User Script
 
 Usage:
-  npx tsx scripts/find-user.ts "<search term>" [--exact] [--files]
+  npx tsx scripts/database/find-user.ts "<search term>" [--exact] [--files]
 
 Arguments:
   <search term>  Name or email to search for (partial match by default)
@@ -57,10 +57,10 @@ Arguments:
   --files        Show detailed file statistics (processing, embeddings, stuck deletions)
 
 Examples:
-  npx tsx scripts/find-user.ts "Juan Pablo"
-  npx tsx scripts/find-user.ts "juan.pablo@example.com" --exact
-  npx tsx scripts/find-user.ts "romero"
-  npx tsx scripts/find-user.ts "juan" --files
+  npx tsx scripts/database/find-user.ts "Juan Pablo"
+  npx tsx scripts/database/find-user.ts "juan.pablo@example.com" --exact
+  npx tsx scripts/database/find-user.ts "romero"
+  npx tsx scripts/database/find-user.ts "juan" --files
 `);
     process.exit(0);
   }
@@ -247,11 +247,11 @@ Folders:      ${stats.total_folders}`);
       const userId = users[0].id;
       console.log('\nQuick commands for this user:\n');
       console.log(`  # Verify storage integrity`);
-      console.log(`  npx tsx scripts/verify-storage.ts --userId ${userId}\n`);
+      console.log(`  npx tsx scripts/storage/verify-storage.ts --userId ${userId}\n`);
       console.log(`  # Check queue status`);
-      console.log(`  npx tsx scripts/queue-status.ts\n`);
+      console.log(`  npx tsx scripts/redis/queue-status.ts\n`);
       console.log(`  # Run storage cleanup`);
-      console.log(`  npx tsx scripts/fix-storage.ts --userId ${userId}\n`);
+      console.log(`  npx tsx scripts/storage/fix-storage.ts --userId ${userId}\n`);
       console.log(`  # Verify blob storage`);
       console.log(`  npx tsx scripts/verify-blob-storage.ts ${userId}\n`);
     }

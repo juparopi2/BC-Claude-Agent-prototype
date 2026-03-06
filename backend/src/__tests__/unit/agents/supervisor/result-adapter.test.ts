@@ -207,6 +207,31 @@ describe('result-adapter', () => {
       expect(model).toBeNull();
     });
 
+    it('should extract model from additional_kwargs (streaming path)', () => {
+      const messages = [
+        new AIMessage({
+          content: 'Response',
+          additional_kwargs: { model: 'claude-haiku-4-5-20251001' },
+        }),
+      ];
+
+      const model = extractUsedModel(messages);
+      expect(model).toBe('claude-haiku-4-5-20251001');
+    });
+
+    it('should prefer response_metadata.model over additional_kwargs.model', () => {
+      const messages = [
+        new AIMessage({
+          content: 'Response',
+          response_metadata: { model: 'claude-3-5-sonnet-20241022' },
+          additional_kwargs: { model: 'claude-haiku-4-5-20251001' },
+        }),
+      ];
+
+      const model = extractUsedModel(messages);
+      expect(model).toBe('claude-3-5-sonnet-20241022');
+    });
+
     it('should return null when messages array is empty', () => {
       const model = extractUsedModel([]);
       expect(model).toBeNull();

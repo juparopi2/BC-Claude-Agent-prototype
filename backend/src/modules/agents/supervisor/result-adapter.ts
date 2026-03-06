@@ -99,6 +99,8 @@ export function extractToolExecutions(messages: BaseMessage[]): ToolExecution[] 
 
 /**
  * Extract the model name from the last AIMessage's response_metadata.
+ * Falls back to additional_kwargs.model for the streaming path
+ * (@langchain/anthropic puts model there instead of response_metadata).
  */
 export function extractUsedModel(messages: BaseMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -108,13 +110,27 @@ export function extractUsedModel(messages: BaseMessage[]): string | null {
     if (msgType === 'ai' || msgType === 'assistant') {
       const metadata = (msg as unknown as { response_metadata?: Record<string, unknown> }).response_metadata;
       if (metadata?.model) {
+        logger.debug({ model: metadata.model, source: 'response_metadata.model', messageIndex: i }, 'extractUsedModel resolved');
         return metadata.model as string;
       }
       if (metadata?.model_name) {
+        logger.debug({ model: metadata.model_name, source: 'response_metadata.model_name', messageIndex: i }, 'extractUsedModel resolved');
         return metadata.model_name as string;
+      }
+      if (metadata?.model_id) {
+        logger.debug({ model: metadata.model_id, source: 'response_metadata.model_id', messageIndex: i }, 'extractUsedModel resolved');
+        return metadata.model_id as string;
+      }
+
+      // Streaming: @langchain/anthropic puts model in additional_kwargs
+      const additionalKwargs = (msg as unknown as { additional_kwargs?: Record<string, unknown> }).additional_kwargs;
+      if (additionalKwargs?.model) {
+        logger.debug({ model: additionalKwargs.model, source: 'additional_kwargs.model', messageIndex: i }, 'extractUsedModel resolved (streaming path)');
+        return additionalKwargs.model as string;
       }
     }
   }
+  logger.warn({ messageCount: messages.length }, 'extractUsedModel: no model found in any AI message');
   return null;
 }
 

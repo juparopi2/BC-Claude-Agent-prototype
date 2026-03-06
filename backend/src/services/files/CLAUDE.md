@@ -174,7 +174,7 @@ The `FileUploadService` enforces this structure. SAS URLs are scoped to the user
 
 4. **Optimized Job Payloads**: Chunking and embedding jobs carry only IDs, not content. Workers read from DB. This prevents Redis OOM during bulk uploads.
 
-5. **Fire-and-Forget Side Effects**: Usage tracking, image embedding persistence, and chunking job enqueuing are all fire-and-forget (`.catch()` logged). Main pipeline never fails due to side effect errors.
+5. **Fire-and-Forget Side Effects**: Usage tracking, image embedding persistence, and chunking job enqueuing are all fire-and-forget (`.catch()` logged). Main pipeline never fails due to side effect errors. Usage tracking for blob storage uploads is triggered in `BatchUploadOrchestrator.confirmFile()` (SAS direct upload path) and `FileUploadService.uploadToBlob()` (server-side upload path).
 
 6. **Singleton + DI**: All services use `getInstance()` with optional dependency injection for testing.
 

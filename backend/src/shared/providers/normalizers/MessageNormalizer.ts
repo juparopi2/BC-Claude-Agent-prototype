@@ -290,13 +290,38 @@ function extractStopReasonFromMessage(message: BaseMessage): NormalizedStopReaso
 
 /**
  * Extract model name from message metadata.
+ * Checks response_metadata first (non-streaming), then additional_kwargs (streaming).
+ * @langchain/anthropic streaming puts model in additional_kwargs, not response_metadata.
  */
 function extractModel(message: BaseMessage): string {
   const responseMeta = (message as {
-    response_metadata?: { model?: string; model_name?: string };
+    response_metadata?: { model?: string; model_name?: string; model_id?: string };
   }).response_metadata;
 
-  return responseMeta?.model ?? responseMeta?.model_name ?? 'unknown';
+  if (responseMeta?.model) {
+    logger.debug({ model: responseMeta.model, source: 'response_metadata.model' }, 'extractModel resolved');
+    return responseMeta.model;
+  }
+  if (responseMeta?.model_name) {
+    logger.debug({ model: responseMeta.model_name, source: 'response_metadata.model_name' }, 'extractModel resolved');
+    return responseMeta.model_name;
+  }
+  if (responseMeta?.model_id) {
+    logger.debug({ model: responseMeta.model_id, source: 'response_metadata.model_id' }, 'extractModel resolved');
+    return responseMeta.model_id;
+  }
+
+  // Streaming path: @langchain/anthropic puts model in additional_kwargs
+  const additionalKwargs = (message as {
+    additional_kwargs?: { model?: string };
+  }).additional_kwargs;
+  if (additionalKwargs?.model) {
+    logger.debug({ model: additionalKwargs.model, source: 'additional_kwargs.model' }, 'extractModel resolved (streaming path)');
+    return additionalKwargs.model;
+  }
+
+  logger.warn('extractModel: no model found in response_metadata or additional_kwargs, returning unknown');
+  return 'unknown';
 }
 
 // =============================================================================

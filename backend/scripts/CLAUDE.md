@@ -41,6 +41,7 @@ Scripts for analyzing platform costs, verifying billing accuracy, and generating
 | `cost-report.ts` | Platform-wide financial report with temporal breakdown, per-user costs, per-domain analysis, and embedding details | `--days N`, `--domain "x.com"`, `--verbose` |
 | `analyze-session-costs.ts` | Per-session or per-user cost analysis with turn-by-turn and agent-by-agent breakdowns | `<session-id>`, `--user <id>`, `--days N`, `--verbose` |
 | `verify-costs.ts` | Cross-source reconciliation report comparing `messages`, `token_usage`, and `usage_events` tables to detect pricing discrepancies | `--from`, `--to`, `--daily`, `--verbose`, `--az` |
+| `inspect-usage.ts` | Usage event inspector with health checks, per-category breakdown, and gap detection | `--days N`, `--from`, `--to`, `--category`, `--event-type`, `--user`, `--detail`, `--health`, `--verbose` |
 
 ### Cost Data Sources
 
@@ -81,6 +82,26 @@ npx tsx scripts/costs/verify-costs.ts --az
 # 5. Generate per-user financial report
 npx tsx scripts/costs/cost-report.ts --verbose
 ```
+
+### Health Check Workflow
+
+```bash
+# Run comprehensive health checks (replaces ad-hoc DB queries)
+npx tsx scripts/costs/inspect-usage.ts --health
+
+# Inspect AI events for a specific date
+npx tsx scripts/costs/inspect-usage.ts --category ai --from 2026-03-06 --to 2026-03-07
+
+# Show individual storage events with metadata
+npx tsx scripts/costs/inspect-usage.ts --category storage --detail
+
+# Filter by user for last 7 days
+npx tsx scripts/costs/inspect-usage.ts --user "USER-UUID" --days 7
+```
+
+**Known limitation**: Supervisor framework-generated messages (routing/handoff) show 0 tokens
+in the `messages` table. The supervisor's actual LLM call tokens are captured in aggregate
+via `usage_events` (trackClaudeUsage). The `--health` flag reports this count as INFO, not error.
 
 ---
 

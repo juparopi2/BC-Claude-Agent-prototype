@@ -17,6 +17,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { prisma as defaultPrisma } from '@/infrastructure/database/prisma';
 import { getFileUploadService } from '@/services/files/FileUploadService';
 import { getMessageQueue } from '@/infrastructure/queue';
+import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { DuplicateDetectionService } from '@/services/files/DuplicateDetectionService';
 import { BATCH_STATUS, FILE_SOURCE_TYPE, PIPELINE_STATUS } from '@bc-agent/shared';
 import type {
@@ -355,9 +356,11 @@ export class BatchUploadOrchestrator {
 
     // 3. Verify blob exists in Azure Storage
     const fileUploadService = getFileUploadService();
-    const blobExists = await fileUploadService.blobExists(file.blob_path);
+    // blob_path is always set for batch files (assigned during createBatch from SAS URL generation)
+    const blobPath = file.blob_path ?? '';
+    const blobExists = await fileUploadService.blobExists(blobPath);
     if (!blobExists) {
-      throw new BlobNotFoundError(fileId, file.blob_path);
+      throw new BlobNotFoundError(fileId, blobPath);
     }
     logger.debug({ fileId }, 'confirmFile: step 3 OK — blob exists');
 
@@ -378,6 +381,25 @@ export class BatchUploadOrchestrator {
       throw new ConcurrentModificationError(fileId);
     }
     logger.debug({ fileId }, 'confirmFile: step 4 OK — CAS transition registered→queued');
+
+    // 4b. Fire-and-forget storage usage tracking
+    getUsageTrackingService().trackFileUpload(
+      userId,
+      fileId,
+      Number(file.size_bytes),
+      {
+        mimeType: file.mime_type,
+        uploadStrategy: 'sas-direct',
+        fileName: file.name,
+        blobPath: blobPath || undefined,
+        batchId,
+      }
+    ).catch((err: unknown) => {
+      logger.warn({
+        error: err instanceof Error ? err.message : String(err),
+        userId, fileId, batchId,
+      }, 'Failed to track file upload (non-blocking)');
+    });
 
     // 5. Atomic counter increment + auto-complete batch
     await this.prisma.$executeRaw`
@@ -410,7 +432,7 @@ export class BatchUploadOrchestrator {
       batchId,
       userId,
       mimeType: file.mime_type,
-      blobPath: file.blob_path,
+      blobPath: blobPath || undefined,
       fileName: file.name,
     });
 

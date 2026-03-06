@@ -247,7 +247,14 @@ The system captures critical metrics for billing in the `messages` table. Every 
 -   **`model`**: Model used (e.g., `claude-3-5-sonnet...`).
 -   **`bc_company_id`**: For segmentation by ERP client (if applicable).
 
-**Cost Tracking**: Usage is tracked in the `usage_events` table with model-specific pricing. The `messages` table stores raw token counts. Both sources can be cross-referenced via `scripts/costs/verify-costs.ts`.
+**Cost tracking tables**: Token usage is tracked in three complementary tables:
+- `messages`: Raw input/output tokens per assistant message
+- `token_usage`: Detailed per-request analytics including cache tokens, thinking budget, and model
+- `usage_events`: Pre-calculated costs by category (ai, embeddings, search, processing, storage)
+
+Use `npx tsx scripts/costs/inspect-usage.ts --health` to verify all tracking pipelines are operational.
+
+**Known limitation**: Supervisor framework-generated messages (routing/handoff) show 0 tokens in the `messages` table. The supervisor's actual LLM call tokens are captured in aggregate via `usage_events` (trackClaudeUsage).
 
 ---
 

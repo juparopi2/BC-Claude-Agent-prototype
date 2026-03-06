@@ -61,6 +61,7 @@ import { createGraphExecutor, type GraphExecutor } from './execution/GraphExecut
 import type { ICompiledGraph } from './execution/GraphExecutor';
 import { createExecutionPipeline, type ExecutionPipeline } from './execution/ExecutionPipeline';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
+import { getTokenUsageService } from '@/services/token-usage';
 import { classifyLlmError } from '@/shared/errors/LlmErrorClassifier';
 
 /**
@@ -243,6 +244,23 @@ export class AgentOrchestrator implements IAgentOrchestrator {
             error: err instanceof Error ? err.message : String(err),
             userId, sessionId,
           }, 'Failed to track Claude usage (non-blocking)');
+        });
+      }
+
+      // Fire-and-forget token_usage persistence (granular per-request analytics)
+      const resultMessageId = pipelineResult.result.messageId;
+      if (userId && resultMessageId && tokenUsage && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)) {
+        getTokenUsageService().recordUsage({
+          userId,
+          sessionId,
+          messageId: resultMessageId,
+          model: pipelineResult.usedModel ?? 'unknown',
+          inputTokens: tokenUsage.inputTokens,
+          outputTokens: tokenUsage.outputTokens,
+          cacheCreationInputTokens: tokenUsage.cacheCreationTokens,
+          cacheReadInputTokens: tokenUsage.cacheReadTokens,
+          thinkingEnabled: ctx.enableThinking,
+          thinkingBudget: ctx.enableThinking ? ctx.thinkingBudget : undefined,
         });
       }
 

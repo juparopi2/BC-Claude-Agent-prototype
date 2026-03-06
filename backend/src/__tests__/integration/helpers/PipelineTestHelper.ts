@@ -308,7 +308,21 @@ export class PipelineTestHelper {
       }
     }
 
-    // 4. Delete users (no FK dependencies at this point)
+    // 5. Delete usage_events and token_usage (FK to users, no cascade)
+    if (this.createdUserIds.length > 0) {
+      for (const userId of this.createdUserIds) {
+        await executeQuery(
+          `DELETE FROM usage_events WHERE user_id = @userId`,
+          { userId }
+        );
+        await executeQuery(
+          `DELETE FROM token_usage WHERE user_id = @userId`,
+          { userId }
+        );
+      }
+    }
+
+    // 6. Delete users (no FK dependencies at this point)
     if (this.createdUserIds.length > 0) {
       for (const userId of this.createdUserIds) {
         await executeQuery(

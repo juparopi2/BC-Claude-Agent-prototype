@@ -74,3 +74,20 @@ export interface SyncProgress {
   totalFiles: number;
   percentage: number;
 }
+
+export interface SyncCompletedPayload {
+  connectionId: string;
+  scopeId: string;
+  totalFiles: number;
+}
+
+export interface SyncErrorPayload {
+  connectionId: string;
+  scopeId: string;
+  error: string;
+}
+
+export type SyncWebSocketEvent =
+  | { type: 'sync:progress' } & SyncProgress
+  | { type: 'sync:completed' } & SyncCompletedPayload
+  | { type: 'sync:error' } & SyncErrorPayload;

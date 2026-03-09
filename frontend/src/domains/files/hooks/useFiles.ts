@@ -12,6 +12,7 @@ import { useFileListStore } from '../stores/fileListStore';
 import { useSortFilterStore } from '../stores/sortFilterStore';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import type { ParsedFile, FileSortBy, SortOrder, GetFilesOptions } from '@bc-agent/shared';
 
 // Module-level state to coordinate filter change fetches across all hook instances
@@ -175,9 +176,11 @@ export function useFiles(): UseFilesReturn {
           fetchOptions.favoritesOnly = true;
         }
 
-        // Add sourceType filter (e.g., 'onedrive')
+        // Default to local files when no explicit filter — OneDrive has its own tree
         if (currentSourceTypeFilter) {
           fetchOptions.sourceType = currentSourceTypeFilter;
+        } else {
+          fetchOptions.sourceType = FILE_SOURCE_TYPE.LOCAL;
         }
 
         const result = await fileApi.getFiles(fetchOptions);
@@ -266,8 +269,11 @@ export function useFiles(): UseFilesReturn {
       fetchOptions.favoritesOnly = true;
     }
 
+    // Default to local files when no explicit filter — OneDrive has its own tree
     if (currentSourceTypeFilter) {
       fetchOptions.sourceType = currentSourceTypeFilter;
+    } else {
+      fetchOptions.sourceType = FILE_SOURCE_TYPE.LOCAL;
     }
 
     setLoading(true);

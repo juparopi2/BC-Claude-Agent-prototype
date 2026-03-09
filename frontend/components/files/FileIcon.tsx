@@ -8,6 +8,7 @@
  * @module components/files/FileIcon
  */
 
+import { FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_ID } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 import {
   Folder,
@@ -36,13 +37,14 @@ export function FileIcon({ file, className }: FileIconProps) {
   const icon = getIconForFile(file, iconClassName);
 
   // Add Cloud badge for external files (OneDrive)
-  if (file.sourceType === 'onedrive') {
+  if (file.sourceType === FILE_SOURCE_TYPE.ONEDRIVE) {
+    const accentColor = PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE];
     return (
       <span className="relative inline-flex flex-shrink-0">
         {icon}
         <Cloud
-          className="absolute -bottom-0.5 -right-0.5 size-2.5"
-          style={{ color: '#0078D4' }}
+          className="absolute -bottom-0.5 -right-1 size-3.5 drop-shadow-sm"
+          style={{ color: accentColor, fill: accentColor, strokeWidth: 1.5 }}
         />
       </span>
     );

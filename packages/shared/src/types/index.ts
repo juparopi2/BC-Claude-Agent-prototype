@@ -388,6 +388,9 @@ export type {
   DeltaChange,
   DeltaQueryResult,
   SyncProgress,
+  SyncCompletedPayload,
+  SyncErrorPayload,
+  SyncWebSocketEvent,
 } from './onedrive.types';
 
 // Connection types (PRD-100)

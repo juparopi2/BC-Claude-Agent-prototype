@@ -1,8 +1,8 @@
 import { useCallback, memo, useEffect } from 'react';
+import { FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_ID } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
-import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Loader2, Cloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useShallow } from 'zustand/react/shallow';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
@@ -116,10 +116,18 @@ export const FolderTreeItem = memo(function FolderTreeItem({
 
           {/* Folder icon and name */}
           <div className="flex items-center gap-2 flex-1 truncate">
-            <Folder className={cn(
-              'size-4 flex-shrink-0',
-              isExpanded ? 'text-amber-600' : 'text-amber-500'
-            )} />
+            <span className="relative inline-flex flex-shrink-0">
+              <Folder className={cn(
+                'size-4 flex-shrink-0',
+                isExpanded ? 'text-amber-600' : 'text-amber-500'
+              )} />
+              {folder.sourceType === FILE_SOURCE_TYPE.ONEDRIVE && (
+                <Cloud
+                  className="absolute -bottom-0.5 -right-1 size-2.5"
+                  style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], fill: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }}
+                />
+              )}
+            </span>
             <Tooltip>
               <TooltipTrigger asChild>
                 <span className="text-sm truncate">{folder.name}</span>

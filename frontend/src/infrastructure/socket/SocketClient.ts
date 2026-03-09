@@ -19,8 +19,12 @@ import type {
   FileWebSocketEvent,
   JobFailedPayload,
   FolderWebSocketEvent,
+  SyncWebSocketEvent,
+  SyncProgress,
+  SyncCompletedPayload,
+  SyncErrorPayload,
 } from '@bc-agent/shared';
-import { FILE_WS_CHANNELS, JOB_WS_CHANNELS, FOLDER_WS_CHANNELS } from '@bc-agent/shared';
+import { FILE_WS_CHANNELS, JOB_WS_CHANNELS, FOLDER_WS_CHANNELS, SYNC_WS_EVENTS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
 import { useAuthStore } from '@/src/domains/auth/stores/authStore';
 import { useConnectionStore } from '@/src/domains/connection';
@@ -67,6 +71,8 @@ export class SocketClient {
   private jobFailureListeners = new Set<EventCallback<JobFailedPayload>>();
   // Folder status event listeners (folder-based batch upload)
   private folderStatusListeners = new Set<EventCallback<FolderWebSocketEvent>>();
+  // Sync event listeners (PRD-107)
+  private syncEventListeners = new Set<EventCallback<SyncWebSocketEvent>>();
   // Pending user room join (D25 race condition fix)
   private pendingUserRoomJoin: string | null = null;
   // Track reconnection attempts for connection store
@@ -448,6 +454,24 @@ export class SocketClient {
   }
 
   /**
+   * Subscribe to sync events (PRD-107)
+   *
+   * Receives events for OneDrive/SharePoint sync operations:
+   * - sync:progress - Progress update (0-100%)
+   * - sync:completed - Sync finished successfully
+   * - sync:error - Sync failed
+   *
+   * @param callback Event handler
+   * @returns Unsubscribe function
+   */
+  onSyncEvent(callback: EventCallback<SyncWebSocketEvent>): () => void {
+    this.syncEventListeners.add(callback);
+    return () => {
+      this.syncEventListeners.delete(callback);
+    };
+  }
+
+  /**
    * Join the user room for file events (D25)
    *
    * Call this after user authentication completes to ensure
@@ -488,6 +512,10 @@ export class SocketClient {
     this.socket.removeAllListeners(JOB_WS_CHANNELS.FAILURE);
     // Folder status channel (folder-based batch upload)
     this.socket.removeAllListeners(FOLDER_WS_CHANNELS.STATUS);
+    // Sync event channels (PRD-107)
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_PROGRESS);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_COMPLETED);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_ERROR);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -608,6 +636,42 @@ export class SocketClient {
           callback(event);
         } catch (err) {
           console.error('[SocketClient] Error in folder status handler:', err);
+        }
+      });
+    });
+
+    // Sync progress events (PRD-107)
+    this.socket.on(SYNC_WS_EVENTS.SYNC_PROGRESS, (data: SyncProgress) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SYNC_PROGRESS as 'sync:progress', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in sync event handler:', err);
+        }
+      });
+    });
+
+    // Sync completed events (PRD-107)
+    this.socket.on(SYNC_WS_EVENTS.SYNC_COMPLETED, (data: SyncCompletedPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SYNC_COMPLETED as 'sync:completed', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in sync event handler:', err);
+        }
+      });
+    });
+
+    // Sync error events (PRD-107)
+    this.socket.on(SYNC_WS_EVENTS.SYNC_ERROR, (data: SyncErrorPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SYNC_ERROR as 'sync:error', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try {
+          callback(event);
+        } catch (err) {
+          console.error('[SocketClient] Error in sync event handler:', err);
         }
       });
     });

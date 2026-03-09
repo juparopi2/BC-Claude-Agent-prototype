@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useFiles, useFolderNavigation, useFileProcessingEvents } from '@/src/domains/files';
 import { useUIPreferencesStore } from '@/src/domains/ui';
+import { useSyncEvents } from '@/src/domains/integrations';
 import { FileToolbar } from './FileToolbar';
 import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';
@@ -30,6 +31,9 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
 
   // Activate WebSocket listeners for file processing status updates (D25)
   useFileProcessingEvents();
+
+  // Activate WebSocket listeners for sync status updates (PRD-107)
+  useSyncEvents();
 
   // Load files on mount and when folder changes
   useEffect(() => {

@@ -7,6 +7,7 @@ Operational scripts for diagnostics, maintenance, cost analysis, and development
 ```
 scripts/
   _shared/                 Shared utilities (Prisma, Azure clients, CLI args)
+  connectors/              Connection & sync management (OneDrive, SharePoint)
   costs/                   Cost analysis, billing reports, verification
   database/                SQL migrations, schema updates, user management
   diagnostics/             Agent flow debugging, session inspection, API captures
@@ -102,6 +103,38 @@ npx tsx scripts/costs/inspect-usage.ts --user "USER-UUID" --days 7
 **Known limitation**: Supervisor framework-generated messages (routing/handoff) show 0 tokens
 in the `messages` table. The supervisor's actual LLM call tokens are captured in aggregate
 via `usage_events` (trackClaudeUsage). The `--health` flag reports this count as INFO, not error.
+
+---
+
+## connectors/ — Connection & Sync Management
+
+Scripts for diagnosing and repairing OneDrive/SharePoint connector sync issues.
+
+| Script | Purpose | Key Flags |
+|--------|---------|-----------|
+| `diagnose-sync.ts` | Inspect scopes, file hierarchy, stuck syncs, orphaned files | `--userId`, `--connectionId`, `--scopeId`, `--verbose` |
+| `fix-stuck-scopes.ts` | Reset scopes stuck in 'syncing' status | `--userId`, `--connectionId`, `--dry-run`, `--fix`, `--reset-to-idle` |
+| `cleanup-duplicate-files.sql` | Deduplicate files before adding unique constraint | (run manually via SSMS) |
+| `cleanup-user-onedrive-files.sql` | Remove ALL OneDrive files for a specific user | (run manually via SSMS) |
+
+### Sync Diagnostic Workflow
+
+```bash
+# 1. Check scope status for a user
+npx tsx scripts/connectors/diagnose-sync.ts --userId <ID>
+
+# 2. Inspect a specific scope with file listing
+npx tsx scripts/connectors/diagnose-sync.ts --scopeId <ID> --verbose
+
+# 3. Preview stuck scopes
+npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --dry-run
+
+# 4. Reset stuck scopes to error (can re-sync from ConnectionWizard)
+npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --fix
+
+# 5. Or reset to idle for immediate re-sync
+npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --fix --reset-to-idle
+```
 
 ---
 
@@ -223,6 +256,7 @@ Scripts use `../_shared/` relative imports (not `@/` path aliases) because they 
 
 1. **Choose the right folder** based on the script's primary concern:
    - Analyzes costs/tokens/billing -> `costs/`
+   - Manages connector sync/scopes -> `connectors/`
    - Interacts with SQL/schema/users -> `database/`
    - Debugs agent behavior/sessions/API -> `diagnostics/`
    - Manages Redis/BullMQ -> `redis/`

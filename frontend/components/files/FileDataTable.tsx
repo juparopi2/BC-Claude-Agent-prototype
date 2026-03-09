@@ -38,6 +38,7 @@ import {
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import type { ParsedFile } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { Folder, Upload, GripVertical } from 'lucide-react';
 import {
   Table,
@@ -286,6 +287,11 @@ export function FileDataTable() {
     async (file: ParsedFile) => {
       if (file.isFolder) {
         navigateToFolder(file.id, file);
+        return;
+      }
+      // OneDrive files open in OneDrive's web viewer (PRD-107)
+      if (file.sourceType === FILE_SOURCE_TYPE.ONEDRIVE && file.externalUrl) {
+        window.open(file.externalUrl, '_blank');
         return;
       }
       if (isPreviewableFile(file.mimeType)) {

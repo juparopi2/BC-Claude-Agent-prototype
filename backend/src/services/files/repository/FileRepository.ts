@@ -201,10 +201,8 @@ export class FileRepository implements IFileRepository {
       // Favorites mode at root: flat list of ALL favorites
       where['is_favorite'] = true;
     } else if (folderId === undefined || folderId === null) {
-      // Normal root: only root-level items (unless filtering by sourceType)
-      if (!sourceType) {
-        where['parent_folder_id'] = null;
-      }
+      // Normal root: only root-level items
+      where['parent_folder_id'] = null;
     } else {
       // Inside a folder: all contents (regardless of favoritesOnly)
       where['parent_folder_id'] = folderId;
@@ -270,10 +268,8 @@ export class FileRepository implements IFileRepository {
       // Favorites mode at root: flat list of ALL favorites
       where['is_favorite'] = true;
     } else if (folderId === undefined || folderId === null) {
-      // Normal root: only root-level items (unless filtering by sourceType)
-      if (!sourceType) {
-        where['parent_folder_id'] = null;
-      }
+      // Normal root: only root-level items
+      where['parent_folder_id'] = null;
     } else {
       // Inside a folder: all contents (regardless of favoritesOnly)
       where['parent_folder_id'] = folderId;

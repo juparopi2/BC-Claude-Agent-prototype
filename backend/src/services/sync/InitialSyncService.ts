@@ -145,6 +145,108 @@ export class InitialSyncService {
 
       logger.info({ connectionId, scopeId, fileCount: fileChanges.length }, 'Files to ingest');
 
+      // PRD-107: Extract folder changes for tree hierarchy storage
+      const folderChanges = allChanges.filter(
+        (c) => c.changeType !== 'deleted' && c.item.isFolder
+      );
+
+      // PRD-107: Upsert folders sorted by depth (parents before children)
+      // Build external-to-internal ID mapping for parent chain resolution
+      const externalToInternalId = new Map<string, string>();
+
+      if (folderChanges.length > 0) {
+        // Query existing folders for this connection to seed the map
+        const existingFolders = await prisma.files.findMany({
+          where: {
+            connection_id: connectionId,
+            is_folder: true,
+            source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+          },
+          select: { id: true, external_id: true },
+        });
+        for (const ef of existingFolders) {
+          if (ef.external_id) {
+            externalToInternalId.set(ef.external_id, ef.id);
+          }
+        }
+
+        // Sort by depth (count '/' in parentPath) — parents processed first
+        const sortedFolders = [...folderChanges].sort((a, b) => {
+          const depthA = (a.item.parentPath ?? '').split('/').length;
+          const depthB = (b.item.parentPath ?? '').split('/').length;
+          return depthA - depthB;
+        });
+
+        for (const change of sortedFolders) {
+          const item = change.item;
+          try {
+            // Resolve parent_folder_id:
+            // - If parentId matches scope_resource_id (scope root), set null
+            // - Otherwise look up in the mapping
+            let parentFolderId: string | null = null;
+            if (item.parentId && item.parentId !== scope.scope_resource_id) {
+              parentFolderId = externalToInternalId.get(item.parentId) ?? null;
+            }
+
+            const existing = await prisma.files.findFirst({
+              where: { connection_id: connectionId, external_id: item.id },
+              select: { id: true },
+            });
+
+            if (existing) {
+              await prisma.files.update({
+                where: { id: existing.id },
+                data: {
+                  name: item.name,
+                  external_url: item.webUrl || null,
+                  external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                  parent_folder_id: parentFolderId,
+                  connection_scope_id: scopeId,
+                  last_synced_at: new Date(),
+                },
+              });
+              externalToInternalId.set(item.id, existing.id);
+            } else {
+              const folderId = randomUUID().toUpperCase();
+              await prisma.files.create({
+                data: {
+                  id: folderId,
+                  user_id: userId,
+                  name: item.name,
+                  mime_type: 'inode/directory',
+                  size_bytes: BigInt(0),
+                  blob_path: null,
+                  is_folder: true,
+                  source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+                  external_id: item.id,
+                  external_drive_id: connection.microsoft_drive_id,
+                  connection_id: connectionId,
+                  connection_scope_id: scopeId,
+                  external_url: item.webUrl || null,
+                  external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                  parent_folder_id: parentFolderId,
+                  pipeline_status: 'ready',
+                  processing_retry_count: 0,
+                  embedding_retry_count: 0,
+                  is_favorite: false,
+                },
+              });
+              externalToInternalId.set(item.id, folderId);
+            }
+          } catch (folderErr) {
+            const errorInfo = folderErr instanceof Error
+              ? { message: folderErr.message, name: folderErr.name }
+              : { value: String(folderErr) };
+            logger.warn(
+              { error: errorInfo, folderId: item.id, folderName: item.name, connectionId, scopeId },
+              'Skipping folder due to ingestion error'
+            );
+          }
+        }
+
+        logger.info({ connectionId, scopeId, folderCount: folderChanges.length }, 'Folders upserted');
+      }
+
       const totalFiles = fileChanges.length;
       let processedFiles = 0;
 
@@ -166,6 +268,12 @@ export class InitialSyncService {
               });
 
               if (existing) {
+                // Resolve parent folder for existing file update
+                let parentFolderId: string | null = null;
+                if (item.parentId && item.parentId !== scope.scope_resource_id) {
+                  parentFolderId = externalToInternalId.get(item.parentId) ?? null;
+                }
+
                 // Update metadata only — do NOT touch pipeline_status to avoid re-processing
                 await prisma.files.update({
                   where: { id: existing.id },
@@ -175,11 +283,18 @@ export class InitialSyncService {
                     size_bytes: BigInt(item.sizeBytes ?? 0),
                     external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
                     content_hash_external: item.eTag ?? null,
+                    parent_folder_id: parentFolderId,
                     connection_scope_id: scopeId,
                     last_synced_at: new Date(),
                   },
                 });
               } else {
+                // Resolve parent folder for new file creation
+                let parentFolderId: string | null = null;
+                if (item.parentId && item.parentId !== scope.scope_resource_id) {
+                  parentFolderId = externalToInternalId.get(item.parentId) ?? null;
+                }
+
                 // Create new file record
                 const fileId = randomUUID().toUpperCase();
 
@@ -200,6 +315,7 @@ export class InitialSyncService {
                     external_url: item.webUrl || null,
                     external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
                     content_hash_external: item.eTag ?? null,
+                    parent_folder_id: parentFolderId,
                     pipeline_status: 'queued',
                     processing_retry_count: 0,
                     embedding_retry_count: 0,

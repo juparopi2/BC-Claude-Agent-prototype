@@ -12,6 +12,7 @@ import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { useSortFilterStore } from '../stores/sortFilterStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { buildPathToFolder } from '../utils/folderPathBuilder';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 
 const EMPTY_FOLDERS: ParsedFile[] = [];
@@ -191,6 +192,7 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
       const showFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
       const result = await fileApi.getFiles({
         folderId: null,
+        sourceType: FILE_SOURCE_TYPE.LOCAL,
         ...(showFavoritesOnly ? { favoritesOnly: true } : {}),
       });
       if (result.success) {

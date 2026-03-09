@@ -293,6 +293,9 @@ export type {
   DeltaChange,
   DeltaQueryResult,
   SyncProgress,
+  SyncCompletedPayload,
+  SyncErrorPayload,
+  SyncWebSocketEvent,
 
   // Connection types (PRD-100)
   ConnectionSummary,

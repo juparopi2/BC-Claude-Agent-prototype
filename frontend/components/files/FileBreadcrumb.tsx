@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback } from 'react';
-import { Home, ChevronRight, Star } from 'lucide-react';
+import { Home, ChevronRight, Star, Cloud } from 'lucide-react';
+import { FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
 import { useFolderNavigation } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
@@ -29,17 +30,20 @@ import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 export function FileBreadcrumb() {
   const { folderPath, currentFolderId, setCurrentFolder } = useFolderNavigation();
   const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
+  const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
+  const setSourceTypeFilter = useSortFilterStore((s) => s.setSourceTypeFilter);
 
   const handleNavigate = useCallback((folderId: string | null, index: number) => {
     if (folderId === null) {
-      // Navigate to root
+      // Clear filter when going to root (back to "All Files")
+      setSourceTypeFilter(null);
       setCurrentFolder(null, []);
     } else {
       // Truncate path to the clicked folder (inclusive)
       const newPath = folderPath.slice(0, index + 1);
       setCurrentFolder(folderId, newPath);
     }
-  }, [setCurrentFolder, folderPath]);
+  }, [setCurrentFolder, setSourceTypeFilter, folderPath]);
 
   return (
     <nav
@@ -57,11 +61,13 @@ export function FileBreadcrumb() {
       >
         {showFavoritesOnly ? (
           <Star className="size-4 fill-amber-400 text-amber-400" />
+        ) : sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE ? (
+          <Cloud className="size-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }} />
         ) : (
           <Home className="size-4" />
         )}
         <span className="sr-only sm:not-sr-only">
-          {showFavoritesOnly ? 'Favorites' : 'Files'}
+          {showFavoritesOnly ? 'Favorites' : sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE ? PROVIDER_DISPLAY_NAME[PROVIDER_ID.ONEDRIVE] : 'Files'}
         </span>
       </button>
 

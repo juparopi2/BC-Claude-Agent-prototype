@@ -68,7 +68,7 @@ The following constraints exist in Azure SQL and are documented as `///` comment
 | `users` | `chk_users_role` | `role` | admin, editor, viewer |
 | `connections` | `CK_connections_provider` | `provider` | business_central, onedrive, sharepoint, power_bi |
 | `connections` | `CK_connections_status` | `status` | disconnected, connected, expired, error |
-| `connection_scopes` | `CK_connection_scopes_scope_type` | `scope_type` | root, folder, site, library |
+| `connection_scopes` | `CK_connection_scopes_scope_type` | `scope_type` | root, folder, file, site, library |
 | `connection_scopes` | `CK_connection_scopes_sync_status` | `sync_status` | idle, syncing, error |
 | `files` | `CK_files_source_type` | `source_type` | local, onedrive, sharepoint |
 

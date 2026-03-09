@@ -27,6 +27,7 @@ import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { toast } from 'sonner'
+import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 
 // ============================================
 // Types
@@ -43,18 +44,18 @@ type WizardStep = 'connect' | 'browse' | 'sync'
 
 type SyncState = 'idle' | 'syncing' | 'complete' | 'error'
 
-interface FolderNodeData {
+interface TreeNodeData {
   item: ExternalFileItem
-  children: FolderNodeData[] | null
+  children: TreeNodeData[] | null
   isExpanded: boolean
   isLoading: boolean
-  fileCount: number
 }
 
 interface SelectedScope {
   id: string
   name: string
   path: string | null
+  isFolder: boolean
 }
 
 interface ScopeProgressEntry {
@@ -86,7 +87,7 @@ interface CreateScopesResponse {
 // Utility — find a node in the tree by id
 // ============================================
 
-function findNode(nodes: FolderNodeData[], id: string): FolderNodeData | null {
+function findNode(nodes: TreeNodeData[], id: string): TreeNodeData | null {
   for (const node of nodes) {
     if (node.item.id === id) return node
     if (node.children) {
@@ -98,96 +99,158 @@ function findNode(nodes: FolderNodeData[], id: string): FolderNodeData | null {
 }
 
 // ============================================
-// FolderNode — recursive folder row
+// Utility — sort folders first, then files, both alphabetically
 // ============================================
 
-interface FolderNodeProps {
-  node: FolderNodeData
+function sortItems(items: ExternalFileItem[]): ExternalFileItem[] {
+  return [...items].sort((a, b) => {
+    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+// ============================================
+// Utility — format file size for display
+// ============================================
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const size = bytes / Math.pow(1024, i)
+  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+// ============================================
+// TreeNode — recursive folder/file row
+// ============================================
+
+interface TreeNodeProps {
+  node: TreeNodeData
   depth: number
   selectedScopes: Map<string, SelectedScope>
   onToggleExpand: (itemId: string) => void
   onToggleSelect: (item: ExternalFileItem) => void
 }
 
-function FolderNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect }: FolderNodeProps) {
+function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect }: TreeNodeProps) {
   const { item } = node
   const isSelected = selectedScopes.has(item.id)
 
-  return (
-    <div>
-      <div
-        className="flex items-center gap-1.5 py-1.5 pr-2 rounded-md hover:bg-muted/50 cursor-pointer select-none"
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
-      >
-        {/* Expand chevron */}
-        <button
-          type="button"
-          className="size-4 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleExpand(item.id)
-          }}
-          aria-label={node.isExpanded ? 'Collapse folder' : 'Expand folder'}
+  if (item.isFolder) {
+    return (
+      <div>
+        <div
+          className="flex items-center gap-1.5 py-1.5 pr-2 rounded-md hover:bg-muted/50 cursor-pointer select-none"
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
         >
-          {node.isLoading ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : node.isExpanded ? (
-            <ChevronDown className="size-3.5" />
+          {/* Expand chevron */}
+          <button
+            type="button"
+            className="size-4 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleExpand(item.id)
+            }}
+            aria-label={node.isExpanded ? 'Collapse folder' : 'Expand folder'}
+          >
+            {node.isLoading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : node.isExpanded ? (
+              <ChevronDown className="size-3.5" />
+            ) : (
+              <ChevronRight className="size-3.5" />
+            )}
+          </button>
+
+          {/* Checkbox */}
+          <Checkbox
+            id={`item-${item.id}`}
+            checked={isSelected}
+            onCheckedChange={() => onToggleSelect(item)}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${item.name}`}
+          />
+
+          {/* Folder icon */}
+          {node.isExpanded ? (
+            <FolderOpen className="size-4 shrink-0 text-blue-500" />
           ) : (
-            <ChevronRight className="size-3.5" />
+            <Folder className="size-4 shrink-0 text-muted-foreground" />
           )}
-        </button>
 
-        {/* Checkbox */}
-        <Checkbox
-          id={`folder-${item.id}`}
-          checked={isSelected}
-          onCheckedChange={() => onToggleSelect(item)}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={`Select ${item.name}`}
-        />
-
-        {/* Folder icon */}
-        {node.isExpanded ? (
-          <FolderOpen className="size-4 shrink-0 text-blue-500" />
-        ) : (
-          <Folder className="size-4 shrink-0 text-muted-foreground" />
-        )}
-
-        {/* Name */}
-        <span
-          className="text-sm truncate flex-1"
-          onClick={() => onToggleExpand(item.id)}
-        >
-          {item.name}
-        </span>
-      </div>
-
-      {/* Children */}
-      {node.isExpanded && node.children !== null && (
-        <div>
-          {node.children.length === 0 ? (
-            <div
-              className="text-xs text-muted-foreground py-1"
-              style={{ paddingLeft: `${8 + (depth + 1) * 16 + 22}px` }}
-            >
-              {node.fileCount > 0
-                ? `${node.fileCount} file(s) — select parent folder to sync`
-                : 'Empty folder'}
-            </div>
-          ) : (
-            node.children.map((child) => (
-              <FolderNode
-                key={child.item.id}
-                node={child}
-                depth={depth + 1}
-                selectedScopes={selectedScopes}
-                onToggleExpand={onToggleExpand}
-                onToggleSelect={onToggleSelect}
-              />
-            ))
-          )}
+          {/* Name */}
+          <span
+            className="text-sm truncate flex-1"
+            onClick={() => onToggleExpand(item.id)}
+          >
+            {item.name}
+          </span>
         </div>
+
+        {/* Children */}
+        {node.isExpanded && node.children !== null && (
+          <div>
+            {node.children.length === 0 ? (
+              <div
+                className="text-xs text-muted-foreground py-1"
+                style={{ paddingLeft: `${8 + (depth + 1) * 16 + 22}px` }}
+              >
+                Empty folder
+              </div>
+            ) : (
+              node.children.map((child) => (
+                <TreeNode
+                  key={child.item.id}
+                  node={child}
+                  depth={depth + 1}
+                  selectedScopes={selectedScopes}
+                  onToggleExpand={onToggleExpand}
+                  onToggleSelect={onToggleSelect}
+                />
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // File row
+  const iconType = getFileIconType(item.name, item.mimeType ?? undefined)
+  const colors = fileTypeColors[iconType]
+
+  return (
+    <div
+      className="flex items-center gap-1.5 py-1.5 pr-2 rounded-md hover:bg-muted/50 select-none"
+      style={{ paddingLeft: `${8 + depth * 16}px` }}
+    >
+      {/* Spacer (no chevron for files) */}
+      <span className="size-4 shrink-0" />
+
+      {/* Checkbox */}
+      <Checkbox
+        id={`item-${item.id}`}
+        checked={isSelected}
+        onCheckedChange={() => onToggleSelect(item)}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Select ${item.name}`}
+      />
+
+      {/* File type icon */}
+      <FileTypeIcon
+        iconType={iconType}
+        className={`size-4 shrink-0 ${colors?.icon ?? 'text-muted-foreground'}`}
+      />
+
+      {/* Name */}
+      <span className="text-sm truncate flex-1">{item.name}</span>
+
+      {/* File size */}
+      {item.sizeBytes > 0 && (
+        <span className="text-xs text-muted-foreground shrink-0 ml-2">
+          {formatFileSize(item.sizeBytes)}
+        </span>
       )}
     </div>
   )
@@ -206,9 +269,9 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const [connectionId, setConnectionId] = useState<string | null>(null)
 
   // Step 2: browse
-  const [rootNodes, setRootNodes] = useState<FolderNodeData[]>([])
+  const [rootNodes, setRootNodes] = useState<TreeNodeData[]>([])
   const [isBrowseLoading, setIsBrowseLoading] = useState(false)
-  const [nodeMap, setNodeMap] = useState<Map<string, FolderNodeData>>(new Map())
+  const [nodeMap, setNodeMap] = useState<Map<string, TreeNodeData>>(new Map())
   const [selectedScopes, setSelectedScopes] = useState<Map<string, SelectedScope>>(new Map())
 
   // Step 3: sync
@@ -306,7 +369,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   // ============================================
 
   const buildNodeMap = useCallback(
-    (nodes: FolderNodeData[], map: Map<string, FolderNodeData>): void => {
+    (nodes: TreeNodeData[], map: Map<string, TreeNodeData>): void => {
       for (const node of nodes) {
         map.set(node.item.id, node)
         if (node.children) {
@@ -333,23 +396,22 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         }
 
         const data: FolderListResult = await response.json()
-        const folders = data.items.filter((i) => i.isFolder)
+        const sorted = sortItems(data.items)
 
-        const nodes: FolderNodeData[] = folders.map((item) => ({
+        const nodes: TreeNodeData[] = sorted.map((item) => ({
           item,
-          children: null,
+          children: item.isFolder ? null : null,
           isExpanded: false,
           isLoading: false,
-          fileCount: 0,
         }))
 
-        const map = new Map<string, FolderNodeData>()
+        const map = new Map<string, TreeNodeData>()
         buildNodeMap(nodes, map)
 
         setRootNodes(nodes)
         setNodeMap(map)
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to load OneDrive folders')
+        toast.error(err instanceof Error ? err.message : 'Failed to load OneDrive contents')
       } finally {
         setIsBrowseLoading(false)
       }
@@ -368,6 +430,9 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
       const node = nodeMap.get(itemId)
       if (!node) return
+
+      // Files cannot be expanded
+      if (!node.item.isFolder) return
 
       // Already have children — just toggle visibility
       if (node.children !== null) {
@@ -402,15 +467,13 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         }
 
         const data: FolderListResult = await response.json()
-        const subFolders = data.items.filter((i) => i.isFolder)
-        const fileCount = data.items.filter((i) => !i.isFolder).length
+        const sorted = sortItems(data.items)
 
-        const children: FolderNodeData[] = subFolders.map((item) => ({
+        const children: TreeNodeData[] = sorted.map((item) => ({
           item,
-          children: null,
+          children: item.isFolder ? null : null,
           isExpanded: false,
           isLoading: false,
-          fileCount: 0,
         }))
 
         setRootNodes((prev) => {
@@ -419,15 +482,13 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           if (target) {
             target.children = children
             target.isLoading = false
-            target.fileCount = fileCount
           }
           return cloned
         })
 
         setNodeMap((prev) => {
           const next = new Map(prev)
-          // Update parent with children reference so toggle check works
-          const updatedParent: FolderNodeData = { ...node, children, isLoading: false, isExpanded: true, fileCount }
+          const updatedParent: TreeNodeData = { ...node, children, isLoading: false, isExpanded: true }
           next.set(itemId, updatedParent)
           for (const child of children) {
             next.set(child.item.id, child)
@@ -469,6 +530,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           id: item.id,
           name: item.name,
           path: item.parentPath,
+          isFolder: item.isFolder,
         })
       }
       return next
@@ -521,7 +583,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           if (hasError) {
             stopPolling()
             setSyncState('error')
-            setSyncError('One or more folders failed to sync')
+            setSyncError('One or more items failed to sync')
             return
           }
 
@@ -555,7 +617,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       try {
         // 1. Create scopes
         const scopesPayload = Array.from(selectedScopes.values()).map((s) => ({
-          scopeType: 'folder',
+          scopeType: s.isFolder ? 'folder' : 'file',
           scopeResourceId: s.id,
           scopeDisplayName: s.name,
           scopePath: s.path,
@@ -686,9 +748,9 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         {step === 'browse' && (
           <>
             <DialogHeader>
-              <DialogTitle>Select Folders to Sync</DialogTitle>
+              <DialogTitle>Select Items to Sync</DialogTitle>
               <DialogDescription>
-                {`Choose which OneDrive folders to make available for the ${AGENT_DISPLAY_NAME[AGENT_ID.RAG_AGENT]} agent.`}
+                {`Choose which OneDrive folders or files to make available for the ${AGENT_DISPLAY_NAME[AGENT_ID.RAG_AGENT]} agent.`}
               </DialogDescription>
             </DialogHeader>
 
@@ -696,15 +758,15 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               {isBrowseLoading ? (
                 <div className="flex items-center justify-center h-[200px] text-muted-foreground gap-2">
                   <Loader2 className="size-4 animate-spin" />
-                  <span className="text-sm">Loading folders...</span>
+                  <span className="text-sm">Loading contents...</span>
                 </div>
               ) : rootNodes.length === 0 ? (
                 <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                  <span className="text-sm">No folders found</span>
+                  <span className="text-sm">No items found</span>
                 </div>
               ) : (
                 rootNodes.map((node) => (
-                  <FolderNode
+                  <TreeNode
                     key={node.item.id}
                     node={node}
                     depth={0}
@@ -718,7 +780,15 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
             {selectedScopes.size > 0 && (
               <p className="text-xs text-muted-foreground">
-                {selectedScopes.size} folder{selectedScopes.size !== 1 ? 's' : ''} selected
+                {(() => {
+                  const values = Array.from(selectedScopes.values())
+                  const folderCount = values.filter((s) => s.isFolder).length
+                  const fileCount = values.filter((s) => !s.isFolder).length
+                  const parts: string[] = []
+                  if (folderCount > 0) parts.push(`${folderCount} folder${folderCount !== 1 ? 's' : ''}`)
+                  if (fileCount > 0) parts.push(`${fileCount} file${fileCount !== 1 ? 's' : ''}`)
+                  return `${parts.join(', ')} selected`
+                })()}
               </p>
             )}
 
@@ -748,10 +818,10 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               <DialogTitle>Syncing Files</DialogTitle>
               <DialogDescription>
                 {syncState === 'complete'
-                  ? 'Your OneDrive folders have been synced successfully.'
+                  ? 'Your OneDrive items have been synced successfully.'
                   : syncState === 'error'
                     ? 'An error occurred while syncing.'
-                    : 'Importing files from your selected OneDrive folders.'}
+                    : 'Importing files from your selected OneDrive items.'}
               </DialogDescription>
             </DialogHeader>
 

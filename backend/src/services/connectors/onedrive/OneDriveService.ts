@@ -53,6 +53,9 @@ function mapDriveItem(item: Record<string, unknown>): ExternalFileItem {
     parentPath: item.parentReference
       ? String((item.parentReference as Record<string, unknown>).path ?? null)
       : null,
+    childCount: item.folder
+      ? Number((item.folder as Record<string, unknown>).childCount ?? 0)
+      : null,
   };
 }
 
@@ -223,6 +226,26 @@ export class OneDriveService {
 
     logger.info({ connectionId, itemId }, 'Download URL fetched');
     return downloadUrl;
+  }
+
+  /**
+   * Fetch metadata for a single item (file or folder) by its ID.
+   * Calls GET /drives/{driveId}/items/{itemId}
+   */
+  async getItemMetadata(connectionId: string, itemId: string): Promise<ExternalFileItem> {
+    logger.info({ connectionId, itemId }, 'Fetching item metadata');
+
+    const { driveId } = await getConnectionDriveInfo(connectionId);
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+
+    const raw = await getGraphHttpClient().get<Record<string, unknown>>(
+      `/drives/${driveId}/items/${itemId}`,
+      token
+    );
+
+    const result = mapDriveItem(raw);
+    logger.info({ connectionId, itemId, name: result.name }, 'Item metadata fetched');
+    return result;
   }
 
   /**

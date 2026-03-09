@@ -150,7 +150,7 @@ model connections {
 }
 
 /// CHECK constraints (enforced by DB, not representable in Prisma DSL):
-/// - CK_connection_scopes_scope_type: scope_type IN ('root','folder','site','library')
+/// - CK_connection_scopes_scope_type: scope_type IN ('root','folder','file','site','library')
 /// - CK_connection_scopes_sync_status: sync_status IN ('idle','syncing','error')
 model connection_scopes {
   id                        String       @id @default(dbgenerated("newid()")) @db.UniqueIdentifier

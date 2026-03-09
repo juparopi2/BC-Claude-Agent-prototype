@@ -14,6 +14,9 @@ import {
   File,
   FileCode,
   FileArchive,
+  FileVideo,
+  FileAudio,
+  NotebookPen,
   Presentation,
 } from 'lucide-react';
 
@@ -27,6 +30,9 @@ export type FileIconType =
   | 'image'
   | 'code'
   | 'archive'
+  | 'video'
+  | 'audio'
+  | 'onenote'
   | 'file';
 
 /**
@@ -41,9 +47,15 @@ export function getExtension(fileName: string): string {
  * Returns specific types for PDF, Word, Excel, PowerPoint for color-coding.
  */
 export function getFileIconType(fileName: string, mimeType?: string): FileIconType {
-  // Check mimeType first for images
+  // Check mimeType prefixes first
   if (mimeType?.startsWith('image/')) {
     return 'image';
+  }
+  if (mimeType?.startsWith('video/')) {
+    return 'video';
+  }
+  if (mimeType?.startsWith('audio/')) {
+    return 'audio';
   }
 
   const ext = getExtension(fileName);
@@ -64,7 +76,11 @@ export function getFileIconType(fileName: string, mimeType?: string): FileIconTy
       return 'spreadsheet';
     case 'txt':
     case 'md':
+    case 'loop':
       return 'text';
+    case 'one':
+    case 'onetoc2':
+      return 'onenote';
     case 'png':
     case 'jpg':
     case 'jpeg':
@@ -72,6 +88,20 @@ export function getFileIconType(fileName: string, mimeType?: string): FileIconTy
     case 'webp':
     case 'svg':
       return 'image';
+    case 'mp4':
+    case 'mov':
+    case 'avi':
+    case 'mkv':
+    case 'webm':
+    case 'wmv':
+      return 'video';
+    case 'mp3':
+    case 'wav':
+    case 'm4a':
+    case 'flac':
+    case 'ogg':
+    case 'wma':
+      return 'audio';
     case 'js':
     case 'ts':
     case 'jsx':
@@ -100,6 +130,9 @@ export const fileTypeColors: Record<string, { icon: string; bg: string }> = {
   word: { icon: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
   excel: { icon: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
   powerpoint: { icon: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30' },
+  onenote: { icon: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+  video: { icon: 'text-slate-600', bg: 'bg-slate-50 dark:bg-slate-950/30' },
+  audio: { icon: 'text-pink-600', bg: 'bg-pink-50 dark:bg-pink-950/30' },
 };
 
 /**
@@ -117,8 +150,14 @@ export function FileIcon({ iconType, className }: { iconType: FileIconType; clas
       return <FileSpreadsheet className={className} />;
     case 'powerpoint':
       return <Presentation className={className} />;
+    case 'onenote':
+      return <NotebookPen className={className} />;
     case 'image':
       return <FileImage className={className} />;
+    case 'video':
+      return <FileVideo className={className} />;
+    case 'audio':
+      return <FileAudio className={className} />;
     case 'code':
       return <FileCode className={className} />;
     case 'archive':

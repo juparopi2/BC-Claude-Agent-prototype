@@ -33,6 +33,7 @@ export interface ExternalFileItem {
   eTag: string | null;
   parentId: string | null;
   parentPath: string | null;
+  childCount: number | null;
 }
 
 /**

@@ -1,10 +1,11 @@
 # PRD-105: File-Level Browsing & Type Validation in Connection Wizard
 
 **Phase**: OneDrive Enhancement
-**Status**: Planned
+**Status**: Phase 1 (Lite) Implemented — Phase 2 Planned
 **Prerequisites**: PRD-101 (Implemented), PRD-104 (Bug Fixes)
-**Estimated Effort**: 2–3 days
+**Estimated Effort**: 2–3 days (Phase 1: 1 day — done, Phase 2: 1–2 days)
 **Created**: 2026-03-09
+**Last Updated**: 2026-03-09
 
 ---
 
@@ -177,21 +178,75 @@ Choose which OneDrive folders to make available for the Knowledge Base Expert ag
 
 ---
 
-## 8. Success Criteria
+## 8. Phase 1 (Lite) — Completed 2026-03-09
 
-- [ ] Files are visible in the folder tree alongside folders
-- [ ] Unsupported files are grayed out with informative tooltip
-- [ ] Supported files are selectable via checkbox
-- [ ] Individual files can be selected for sync without selecting entire folder
-- [ ] Folder selection includes all supported files within it
-- [ ] Unsupported files are never processed through the RAG pipeline
-- [ ] `isFileSyncSupported()` uses shared constants (single source of truth)
-- [ ] All existing tests pass
-- [ ] Type-check and lint pass
+Phase 1 implements file-level browsing and selection without type validation (graying out unsupported files). All files are visible and selectable; type validation is deferred to Phase 2.
+
+### What was implemented
+
+#### Frontend
+- **`file-type-utils.tsx`**: Added `video`, `audio`, `onenote` icon types with `FileVideo`, `FileAudio`, `NotebookPen` icons. Added extension mappings (`.one`, `.onetoc2`, `.mp4`, `.mov`, `.avi`, `.mkv`, `.webm`, `.wmv`, `.mp3`, `.wav`, `.m4a`, `.flac`, `.ogg`, `.wma`, `.loop`) and MIME prefix checks (`video/*`, `audio/*`). Added color entries (onenote=purple, video=slate, audio=pink).
+- **`ConnectionWizard.tsx`**: Major refactor:
+  - Renamed `FolderNodeData` -> `TreeNodeData`, `FolderNode` -> `TreeNode`
+  - Removed `.filter(i => i.isFolder)` from root fetch and subfolder fetch — all items now visible
+  - Added `sortItems()` helper (folders first, then files, both alphabetical)
+  - Added inline `formatFileSize()` helper
+  - `TreeNode` renders files with type-specific icons (via `getFileIconType`/`FileTypeIcon`) and right-aligned file size
+  - Files are leaf nodes (no expand chevron, spacer instead)
+  - Added `isFolder` field to `SelectedScope` to distinguish scope types on creation
+  - Scope creation uses `scopeType: s.isFolder ? 'folder' : 'file'`
+  - Updated all UI text: "Select Items to Sync", "Loading contents...", "No items found"
+  - Selection summary now shows separate counts: "2 folders, 3 files selected"
+
+#### Shared Package
+- **`onedrive.schemas.ts`**: Added `'file'` to `scopeType` enum: `z.enum(['root', 'folder', 'file', 'site', 'library'])`
+- **`onedrive.types.ts`**: Added `childCount: number | null` to `ExternalFileItem`
+
+#### Backend
+- **`OneDriveService.ts`**: Added `childCount` mapping in `mapDriveItem()` from Graph API folder facet. Added `getItemMetadata()` method for single-item metadata fetch.
+- **`InitialSyncService.ts`**: Added scope type check — `file` scopes route to new `_runFileLevelSync()` method. This lightweight path fetches single file metadata, creates one DB record, enqueues for processing, and updates scope status. Full error handling with scope status updates and WebSocket emission.
+
+#### Database / Schema
+- **`schema.prisma`**: Updated CHECK constraint comment to include `'file'`
+- **`backend/prisma/CLAUDE.md`**: Updated constraint table
+- **CHECK constraint SQL** (must be run manually against Azure SQL):
+  ```sql
+  ALTER TABLE connection_scopes DROP CONSTRAINT CK_connection_scopes_scope_type;
+  ALTER TABLE connection_scopes ADD CONSTRAINT CK_connection_scopes_scope_type
+    CHECK (scope_type IN ('root','folder','file','site','library'));
+  ```
+
+### Verification results
+- `npm run build:shared` — passed
+- `npm run verify:types` (shared + frontend) — passed
+- `npm run -w backend build` — passed (610 files)
+- `npm run -w bc-agent-frontend lint` — 0 errors (46 pre-existing warnings)
+- `npx prisma db push` — schema in sync (CHECK constraint is SQL-level, not Prisma)
+
+### What was NOT implemented (deferred to Phase 2)
+- `isFileSyncSupported()` utility — no file type validation
+- Grayed out unsupported files with tooltip
+- `isSupported` field in browse API response
+- Pipeline guard for unsupported MIME types
+- Folder selection recursively selecting all supported files
 
 ---
 
-## 9. Out of Scope
+## 9. Phase 2 — Success Criteria (Remaining)
+
+- [x] Files are visible in the folder tree alongside folders
+- [ ] Unsupported files are grayed out with informative tooltip
+- [x] Supported files are selectable via checkbox
+- [x] Individual files can be selected for sync without selecting entire folder
+- [ ] Folder selection includes all supported files within it
+- [ ] Unsupported files are never processed through the RAG pipeline
+- [ ] `isFileSyncSupported()` uses shared constants (single source of truth)
+- [x] All existing tests pass
+- [x] Type-check and lint pass
+
+---
+
+## 10. Out of Scope
 
 - Folder size estimation (total sync size preview)
 - File preview from the folder picker

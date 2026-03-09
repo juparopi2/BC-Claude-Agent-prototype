@@ -14,7 +14,7 @@ import { z } from 'zod';
 export const createScopesSchema = z.object({
   scopes: z.array(
     z.object({
-      scopeType: z.enum(['root', 'folder', 'site', 'library']),
+      scopeType: z.enum(['root', 'folder', 'file', 'site', 'library']),
       scopeResourceId: z.string().min(1, 'Scope resource ID is required'),
       scopeDisplayName: z.string().min(1, 'Scope display name is required').max(255),
       scopePath: z.string().max(1000).optional(),

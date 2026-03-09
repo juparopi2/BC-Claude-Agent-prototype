@@ -23,7 +23,7 @@ import { randomUUID } from 'crypto';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
 import { FILE_SOURCE_TYPE, SYNC_WS_EVENTS } from '@bc-agent/shared';
-import type { DeltaChange } from '@bc-agent/shared';
+import type { DeltaChange, ExternalFileItem } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getConnectionRepository } from '@/domains/connections';
 import { getMessageQueue } from '@/infrastructure/queue';
@@ -78,6 +78,15 @@ export class InitialSyncService {
 
       // Step 1: Mark scope as syncing
       await repo.updateScope(scopeId, { syncStatus: 'syncing' });
+
+      // Check scope type — file scopes use a lightweight single-item path
+      const scope = await repo.findScopeById(scopeId);
+      if (!scope) throw new Error(`Scope not found: ${scopeId}`);
+
+      if (scope.scope_type === 'file') {
+        await this._runFileLevelSync(connectionId, scopeId, userId, scope);
+        return;
+      }
 
       // Step 2: Fetch connection info (need microsoft_drive_id)
       const connection = await prisma.connections.findUnique({
@@ -228,6 +237,117 @@ export class InitialSyncService {
       }
 
       // Emit sync:error
+      this.emitError(userId, { connectionId, scopeId, error: errorMessage });
+    }
+  }
+
+  // ============================================================================
+  // File-level sync (single file scope)
+  // ============================================================================
+
+  /**
+   * Lightweight sync path for scope_type='file'.
+   * Fetches a single file's metadata from Graph API and ingests it directly
+   * without running a delta query.
+   */
+  private async _runFileLevelSync(
+    connectionId: string,
+    scopeId: string,
+    userId: string,
+    scope: { scope_resource_id: string | null }
+  ): Promise<void> {
+    try {
+      if (!scope.scope_resource_id) {
+        throw new Error(`File scope has no resource ID: ${scopeId}`);
+      }
+
+      // 1. Fetch file metadata from Graph API
+      const item: ExternalFileItem = await getOneDriveService().getItemMetadata(
+        connectionId,
+        scope.scope_resource_id
+      );
+
+      // 2. Fetch connection's microsoft_drive_id
+      const connection = await prisma.connections.findUnique({
+        where: { id: connectionId },
+        select: { microsoft_drive_id: true },
+      });
+
+      if (!connection) {
+        throw new Error(`Connection not found: ${connectionId}`);
+      }
+
+      // 3. Create file record in DB
+      const fileId = randomUUID().toUpperCase();
+
+      await prisma.files.create({
+        data: {
+          id: fileId,
+          user_id: userId,
+          name: item.name,
+          mime_type: item.mimeType ?? 'application/octet-stream',
+          size_bytes: BigInt(item.sizeBytes ?? 0),
+          blob_path: null,
+          is_folder: false,
+          source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+          external_id: item.id,
+          external_drive_id: connection.microsoft_drive_id,
+          connection_id: connectionId,
+          connection_scope_id: scopeId,
+          external_url: item.webUrl || null,
+          external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+          content_hash_external: item.eTag ?? null,
+          pipeline_status: 'queued',
+          processing_retry_count: 0,
+          embedding_retry_count: 0,
+          is_favorite: false,
+        },
+      });
+
+      // 4. Enqueue for processing pipeline
+      const messageQueue = getMessageQueue();
+      await messageQueue.addFileProcessingFlow({
+        fileId,
+        batchId: scopeId,
+        userId,
+        mimeType: item.mimeType ?? 'application/octet-stream',
+        fileName: item.name,
+      });
+
+      // 5. Update scope as complete
+      const repo = getConnectionRepository();
+      await repo.updateScope(scopeId, {
+        syncStatus: 'idle',
+        itemCount: 1,
+        lastSyncAt: new Date(),
+        lastSyncError: null,
+      });
+
+      logger.info({ connectionId, scopeId, fileId, fileName: item.name }, 'File-level sync completed');
+
+      // 6. Emit sync:completed
+      this.emitCompleted(userId, { connectionId, scopeId, totalFiles: 1 });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorInfo = error instanceof Error
+        ? { message: error.message, stack: error.stack, name: error.name }
+        : { value: String(error) };
+
+      logger.error({ error: errorInfo, connectionId, scopeId, userId }, 'File-level sync failed');
+
+      try {
+        const repo = getConnectionRepository();
+        await repo.updateScope(scopeId, {
+          syncStatus: 'error',
+          lastSyncError: errorMessage,
+        });
+      } catch (updateErr) {
+        const updateErrorInfo = updateErr instanceof Error
+          ? { message: updateErr.message, name: updateErr.name }
+          : { value: String(updateErr) };
+        logger.error({ error: updateErrorInfo, scopeId }, 'Failed to update scope error status');
+      }
+
       this.emitError(userId, { connectionId, scopeId, error: errorMessage });
     }
   }

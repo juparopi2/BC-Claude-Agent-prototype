@@ -9,7 +9,9 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import { cn } from '@/lib/utils';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { useFiles, useFolderNavigation, useFileProcessingEvents } from '@/src/domains/files';
+import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useSyncEvents } from '@/src/domains/integrations';
 import { FileToolbar } from './FileToolbar';
@@ -26,6 +28,8 @@ interface FileExplorerProps {
 export function FileExplorer({ className, isNarrow = false }: FileExplorerProps) {
   const { fetchFiles } = useFiles();
   const { currentFolderId } = useFolderNavigation();
+  const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
+  const isOneDriveView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE;
   const isSidebarVisible = useUIPreferencesStore((state) => state.isFileSidebarVisible);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -57,7 +61,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
         <div className={cn('flex flex-col h-full min-h-0', className)}>
           <FileToolbar isNarrow />
           <FileBreadcrumb />
-          <FileUploadZone className="flex-1 min-h-0 overflow-hidden">
+          <FileUploadZone disabled={isOneDriveView} className="flex-1 min-h-0 overflow-hidden">
             <FileDataTable />
           </FileUploadZone>
         </div>
@@ -94,7 +98,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           >
             <div className="flex flex-col h-full min-h-0 overflow-hidden">
               <FileBreadcrumb />
-              <FileUploadZone className="flex-1 min-h-0 overflow-hidden">
+              <FileUploadZone disabled={isOneDriveView} className="flex-1 min-h-0 overflow-hidden">
                 <FileDataTable />
               </FileUploadZone>
             </div>

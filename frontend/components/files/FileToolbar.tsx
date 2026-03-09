@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CreateFolderDialog } from './CreateFolderDialog';
 import { useFileUploadTrigger } from './FileUploadZone';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useFiles } from '@/src/domains/files';
 import { useUIPreferencesStore } from '@/src/domains/ui';
@@ -34,7 +35,8 @@ interface FileToolbarProps {
 
 export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const { openFilePicker, isUploading } = useFileUploadTrigger();
-  const { showFavoritesOnly, toggleFavoritesOnly, columnVisibility, setColumnVisibility } = useSortFilterStore();
+  const { showFavoritesOnly, toggleFavoritesOnly, columnVisibility, setColumnVisibility, sourceTypeFilter } = useSortFilterStore();
+  const isOneDriveView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE;
   const { isFileSidebarVisible: isSidebarVisible, toggleFileSidebar: toggleSidebar } = useUIPreferencesStore();
   const { isLoading, refreshCurrentFolder } = useFiles();
 
@@ -99,25 +101,27 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
           </Tooltip>
         )}
 
-        {/* Upload button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 gap-1"
-              onClick={openFilePicker}
-              disabled={isUploading}
-            >
-              <Upload className="size-4" />
-              {!isCompact && <span>Upload</span>}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Upload files</TooltipContent>
-        </Tooltip>
+        {/* Upload button — hidden in OneDrive view */}
+        {!isOneDriveView && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1"
+                onClick={openFilePicker}
+                disabled={isUploading}
+              >
+                <Upload className="size-4" />
+                {!isCompact && <span>Upload</span>}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Upload files</TooltipContent>
+          </Tooltip>
+        )}
 
-        {/* New Folder button */}
-        <CreateFolderDialog isCompact={isCompact} />
+        {/* New Folder button — hidden in OneDrive view */}
+        {!isOneDriveView && <CreateFolderDialog isCompact={isCompact} />}
 
       </div>
       <div className="flex items-center gap-0">

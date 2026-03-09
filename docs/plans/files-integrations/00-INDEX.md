@@ -3,7 +3,7 @@
 **Project**: External File Connectors (OneDrive, SharePoint)
 **Status**: In Progress
 **Created**: 2026-03-05
-**Last Updated**: 2026-03-05
+**Last Updated**: 2026-03-09
 
 ---
 
@@ -40,41 +40,92 @@ This initiative connects OneDrive and SharePoint as external file sources, enabl
 
 Each PRD delivers backend functionality WITH its corresponding UI slice for E2E validation.
 
-| PRD | Phase | Title | Backend Deliverables | UI Deliverables |
-|---|---|---|---|---|
-| [PRD-100](./PRD-100-foundation.md) | Foundation | Infrastructure & Abstraction Layer (COMPLETED) | Schema, `IFileContentProvider`, pipeline refactor, connections API, shared constants | Connections tab activated with real status, provider icons |
-| [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive | OneDrive Connection & Initial Sync (IMPLEMENTED) | OAuth flow, `OneDriveService`, `GraphApiContentProvider`, initial delta sync, pipeline integration | Connection wizard, OneDrive folder tree root, browse + file list, sync progress |
-| [PRD-102](./PRD-102-webhook-sync-engine.md) | Webhooks | Real-Time Sync Engine | Webhook endpoint, `SubscriptionManager`, `DeltaSyncService`, lifecycle handling, polling fallback | Sync status badges, last-synced timestamps, real-time file appearance, sync error states |
-| [PRD-103](./PRD-103-sharepoint-connection.md) | SharePoint | SharePoint Connection | `SharePointService`, multi-site discovery, library browsing, SP-specific delta, reuse webhook infra | SP connection wizard (multi-step site/library picker), SP folder tree root, SP visual theme |
-| [PRD-104](./PRD-104-wizard-bugfixes.md) | Bug Fixes | OneDrive Wizard Bug Fixes | None | Fix: folder collapse, connected modal flow, button label, agent name text, empty folder message |
-| [PRD-105](./PRD-105-file-browsing-validation.md) | OneDrive Enhancement | File-Level Browsing & Type Validation | `isFileSyncSupported()` shared utility, browse API `isSupported` field, pipeline MIME guard | File tree shows files, unsupported types grayed + tooltip, individual file selection |
-| [PRD-106](./PRD-106-shared-files-browsing.md) | OneDrive Enhancement | Shared Files Browsing | `listSharedWithMe()`, `listSharedFolder()`, `remote_drive_id` on scopes | "Shared with me" tab in wizard, shared metadata display, shared file sync |
-| [PRD-107](./PRD-107-settings-connections-tab.md) | Cross-Provider | Settings Connections Tab & Full Disconnect | `full-disconnect` endpoint, AI Search cleanup, MSAL cache cleanup, `disconnect-summary` API | Settings > Connections tab, destructive confirmation modal with typed confirmation |
+| PRD | Title | Status |
+|---|---|---|
+| [PRD-100](./PRD-100-foundation.md) | Infrastructure & Abstraction Layer | **COMPLETED** |
+| [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive Connection & Initial Sync | **COMPLETED** |
+| [PRD-102](./PRD-102-wizard-bugfixes.md) | OneDrive Wizard Bug Fixes | **COMPLETED** |
+| [PRD-103](./PRD-103-file-browsing-lite.md) | File-Level Browsing (Lite) | **COMPLETED** |
+| [PRD-104](./PRD-104-scope-filtered-sync.md) | Scope-Filtered Sync & Deduplication | **TODO — CRITICAL** |
+| [PRD-105](./PRD-105-scope-management.md) | Scope Management & Re-configuration | TODO |
+| [PRD-106](./PRD-106-file-type-validation.md) | File Type Validation & Pipeline Guard | TODO |
+| [PRD-107](./PRD-107-onedrive-ux-polish.md) | OneDrive File UX Polish | TODO |
+| [PRD-108](./PRD-108-webhook-sync-engine.md) | Real-Time Sync Engine (Webhooks) | Planned |
+| [PRD-109](./PRD-109-settings-disconnect.md) | Settings Connections Tab & Full Disconnect | Planned |
+| [PRD-110](./PRD-110-shared-files-browsing.md) | OneDrive "Shared With Me" Browsing | Planned |
+| [PRD-111](./PRD-111-sharepoint-connection.md) | SharePoint Connection | Planned |
 
 ### Dependency Chain
 
 ```
-PRD-100 (Foundation)
-   |
+PRD-100 (Foundation) ──── COMPLETED
+   │
    v
-PRD-101 (OneDrive) -------> PRD-102 (Webhooks)
-   |                             |
-   v                             v
-PRD-104 (Bug Fixes)        PRD-103 (SharePoint)
-   |
+PRD-101 (OneDrive) ───── COMPLETED
+   │
    v
-PRD-105 (File Browsing) --> PRD-106 (Shared Files)
-
-PRD-101 + PRD-104 --------> PRD-107 (Settings Disconnect)
+PRD-102 (Bug Fixes) ──── COMPLETED
+   │
+   v
+PRD-103 (File Browsing Lite) ── COMPLETED
+   │
+   v
+PRD-104 (Scope-Filtered Sync) ←── NEXT (CRITICAL)
+   │
+   v
+PRD-105 (Scope Management)
+   │
+   v
+PRD-106 (File Type Validation)
+   │
+   v
+PRD-107 (OneDrive UX Polish)
+   │
+   ├──→ PRD-108 (Webhooks) ──→ PRD-111 (SharePoint)
+   │
+   ├──→ PRD-109 (Settings Disconnect)
+   │
+   └──→ PRD-110 (Shared Files)
 ```
 
-PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequential (need files to exist before syncing changes). PRD-103 reuses all infrastructure from 100-102.
+PRD-100 through PRD-103 form the completed foundation. PRD-104 is the **critical next step** — fixes data integrity bugs that make the sync pipeline unreliable (ignores folder scope, creates duplicates).
 
-PRD-104 (bug fixes) can be implemented immediately after PRD-101 — no other dependencies. PRD-105 depends on PRD-104 (fixes the tree first). PRD-106 depends on PRD-105 (needs file-level browsing). PRD-107 can start after PRD-101 + PRD-104 and is provider-agnostic.
+PRD-105 through PRD-107 form a sequential chain of OneDrive enhancements. After PRD-107, three independent tracks can proceed in parallel: Webhooks (→ SharePoint), Settings Disconnect, and Shared Files.
+
+### Renumbering History (2026-03-09)
+
+The PRD series was renumbered to reflect the actual implementation order and insert new critical PRDs discovered during manual testing:
+
+| Old # | New # | Reason |
+|-------|-------|--------|
+| PRD-104 | PRD-102 | Implemented before file browsing, sequential after PRD-101 |
+| PRD-105 (Phase 1) | PRD-103 | Completed; Phase 2 extracted to PRD-106 |
+| _(new)_ | PRD-104 | Critical sync bugs discovered during testing |
+| _(new)_ | PRD-105 | Scope management gap discovered during testing |
+| PRD-105 (Phase 2) | PRD-106 | Extracted file type validation from browsing |
+| _(new)_ | PRD-107 | UX polish items collected during testing |
+| PRD-102 | PRD-108 | Moved later — webhooks depend on working sync |
+| PRD-107 | PRD-109 | Moved later — disconnect needs working scopes |
+| PRD-106 | PRD-110 | Moved later — shared files depend on UX polish |
+| PRD-103 | PRD-111 | Moved later — SharePoint depends on webhooks |
+
+### Issues Discovered During Testing (2026-03-09)
+
+| Severity | Issue | PRD |
+|----------|-------|-----|
+| **CRITICAL** | Sync ignores folder scope — syncs entire drive | PRD-104 |
+| **CRITICAL** | No duplicate prevention — re-sync creates duplicate files | PRD-104 |
+| HIGH | No scope pre-selection on re-configure | PRD-105 |
+| HIGH | No confirmation modals for scope changes | PRD-105 |
+| HIGH | Double-click downloads OneDrive files instead of opening in browser | PRD-107 |
+| MEDIUM | Flat file list in sidebar — no synced folder structure | PRD-107 |
+| MEDIUM | No frontend sync event listeners | PRD-107 |
+| MEDIUM | No scope deletion/cleanup mechanism | PRD-105 |
+| LOW | Unsupported files processed (no pipeline guard) | PRD-106 |
 
 ### PRD-101 Implementation Summary
 
-**Status**: Implemented + E2E Verified (2026-03-05). All 12 implementation steps + 10 E2E verification fixes complete. See [PRD-101 Section 9](./PRD-101-onedrive-connection.md#9-implementation-status) for details.
+**Status**: Completed + E2E Verified (2026-03-05). All 12 implementation steps + 10 E2E verification fixes complete. See [PRD-101 Section 9](./PRD-101-onedrive-connection.md#9-implementation-status) for details.
 
 **Key deliverables**:
 - 7 new backend services (GraphHttpClient, GraphRateLimiter, OneDriveService, GraphApiContentProvider, GraphTokenManager refresh, InitialSyncService, OAuth routes)
@@ -307,4 +358,4 @@ A utility script or API endpoint for fully resetting a user's connection state t
 - AI Search embeddings
 - MSAL Redis cache
 
-This is partially addressed by PRD-107 (full disconnect workflow), but a dedicated script would be useful for automated testing. Consider adding to `scripts/` or as a test helper in `PipelineTestHelper`.
+This is partially addressed by PRD-109 (full disconnect workflow), but a dedicated script would be useful for automated testing. Consider adding to `scripts/` or as a test helper in `PipelineTestHelper`.

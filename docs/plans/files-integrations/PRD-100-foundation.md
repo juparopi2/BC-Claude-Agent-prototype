@@ -200,7 +200,7 @@ UPDATE files SET source_type = 'local' WHERE source_type = 'blob_storage';
 |---|---|
 | `IFileContentProvider.ts` | Interface: `getContent(fileId, userId)`, `isAccessible(fileId, userId)`, optional `getDownloadUrl(fileId, userId)` |
 | `BlobContentProvider.ts` | Wraps `FileRepository.findById()` + `FileUploadService.downloadFromBlob()`. Singleton via `getBlobContentProvider()`. |
-| `ContentProviderFactory.ts` | Routes by `source_type`: LOCAL -> BlobContentProvider, ONEDRIVE/SHAREPOINT -> throws "not implemented (PRD-101/PRD-103)". Singleton via `getContentProviderFactory()`. |
+| `ContentProviderFactory.ts` | Routes by `source_type`: LOCAL -> BlobContentProvider, ONEDRIVE/SHAREPOINT -> throws "not implemented (PRD-101/PRD-111)". Singleton via `getContentProviderFactory()`. |
 | `GraphTokenManager.ts` | AES-256-GCM encryption (matching BCTokenManager pattern). Methods: `getValidToken()`, `storeTokens()`, `revokeTokens()`. Custom `ConnectionTokenExpiredError`. Singleton via `getGraphTokenManager()`. |
 | `index.ts` | Barrel exports |
 
@@ -340,9 +340,9 @@ Route registered in `backend/src/server.ts`: `app.use('/api/connections', connec
 
 - OneDrive/SharePoint OAuth flow (PRD-101)
 - `GraphApiContentProvider` implementation (PRD-101)
-- External file browsing or sync (PRD-101, PRD-102)
-- Webhook infrastructure (PRD-102)
-- SharePoint multi-site discovery (PRD-103)
+- External file browsing or sync (PRD-101, PRD-108)
+- Webhook infrastructure (PRD-108)
+- SharePoint multi-site discovery (PRD-111)
 - BC token migration from `users` to `connections` table (future)
 
 ---

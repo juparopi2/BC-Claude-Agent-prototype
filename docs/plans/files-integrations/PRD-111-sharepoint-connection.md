@@ -1,8 +1,8 @@
-# PRD-103: SharePoint Connection
+# PRD-111: SharePoint Connection
 
 **Phase**: SharePoint
 **Status**: Planned
-**Prerequisites**: PRD-102 (Webhook Sync Engine)
+**Prerequisites**: PRD-108 (Webhook Sync Engine)
 **Estimated Effort**: 5-7 days
 **Created**: 2026-03-05
 
@@ -10,13 +10,13 @@
 
 ## 1. Objective
 
-Enable users to connect to SharePoint, discover accessible sites, browse document libraries, select scopes for sync, and leverage the entire webhook-based sync engine built in PRD-102. SharePoint differs from OneDrive primarily in its hierarchical resource model (Tenant -> Sites -> Document Libraries -> Folders/Files) and the multi-site nature of its content.
+Enable users to connect to SharePoint, discover accessible sites, browse document libraries, select scopes for sync, and leverage the entire webhook-based sync engine built in PRD-108. SharePoint differs from OneDrive primarily in its hierarchical resource model (Tenant -> Sites -> Document Libraries -> Folders/Files) and the multi-site nature of its content.
 
 UI deliverables include the SharePoint connection wizard with multi-step site/library picker, SharePoint root in the folder tree with teal accent, and SharePoint-specific visual theming.
 
 ---
 
-## 2. Current State (After PRD-102)
+## 2. Current State (After PRD-108)
 
 - Full OneDrive integration working (OAuth, browse, sync, webhooks)
 - `IFileContentProvider` abstraction with `GraphApiContentProvider`
@@ -27,7 +27,7 @@ UI deliverables include the SharePoint connection wizard with multi-step site/li
 
 ---
 
-## 3. Expected State (After PRD-103)
+## 3. Expected State (After PRD-111)
 
 ### Backend
 - `SharePointService`: site discovery, library listing, folder/file browsing, delta queries
@@ -431,11 +431,11 @@ When browsing inside SharePoint:
 | SP Connection Wizard | **NEW** | Multi-step site/library picker |
 | SP Folder Tree nodes | **NEW** | Site + library virtual nodes with teal theme |
 
-**Estimated code reuse: ~70%** — the heavy infrastructure from PRD-100/101/102 pays off.
+**Estimated code reuse: ~70%** — the heavy infrastructure from PRD-100/101/108 pays off.
 
 ---
 
-## 8. Risks & Mitigations (PRD-103 Specific)
+## 8. Risks & Mitigations (PRD-111 Specific)
 
 | Risk | Mitigation |
 |---|---|

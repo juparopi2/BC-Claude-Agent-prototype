@@ -1,8 +1,8 @@
-# PRD-104: OneDrive Connection Wizard — Bug Fixes
+# PRD-102: OneDrive Connection Wizard — Bug Fixes
 
 **Phase**: OneDrive (Post PRD-101)
-**Status**: Planned
-**Prerequisites**: PRD-101 (Implemented)
+**Status**: **COMPLETED** (2026-03-09)
+**Prerequisites**: PRD-101 (Completed)
 **Estimated Effort**: 0.5–1 day
 **Created**: 2026-03-09
 
@@ -126,7 +126,7 @@ const subFolders = data.items.filter((i) => i.isFolder)
 ```
 If a folder has 10 PDFs and 0 subfolders, `subFolders.length === 0`, and the UI renders "Empty folder" (lines 168–174).
 
-**Fix**: Two options depending on PRD-105 (file browsing) timeline:
+**Fix**: Two options depending on PRD-103 (file browsing) timeline:
 
 **Option A** (minimal, standalone): Change the "Empty folder" message to account for files:
 ```typescript
@@ -145,9 +145,9 @@ const subFolders = data.items.filter((i) => i.isFolder);
 ) : (/* render children */)}
 ```
 
-**Option B** (if PRD-105 ships first): Files will be rendered in the tree, making the "Empty folder" message naturally correct.
+**Option B** (if PRD-103 ships first): Files will be rendered in the tree, making the "Empty folder" message naturally correct.
 
-**Recommendation**: Implement Option A now. It is standalone and communicates the presence of files even before PRD-105 adds file-level browsing.
+**Resolution**: PRD-103 shipped first, rendering files in the tree. This bug is moot.
 
 ---
 
@@ -187,10 +187,10 @@ Total: 3 files modified. No backend changes. No new files.
 
 ## 6. Success Criteria
 
-- [ ] Folders can be expanded AND collapsed in the tree (toggle works)
-- [ ] Connected users see folder picker directly (skip authentication step)
-- [ ] Badge text says "Configure" for connected providers
-- [ ] Subtitle uses agent display name from `@bc-agent/shared`
-- [ ] Folders with only files show accurate item count instead of "Empty folder"
-- [ ] All existing frontend tests pass
-- [ ] `npm run -w bc-agent-frontend lint` passes
+- [x] Folders can be expanded AND collapsed in the tree (toggle works)
+- [x] Connected users see folder picker directly (skip authentication step)
+- [x] Badge text says "Configure" for connected providers
+- [x] Subtitle uses agent display name from `@bc-agent/shared`
+- [x] Folders with only files show accurate item count instead of "Empty folder"
+- [x] All existing frontend tests pass
+- [x] `npm run -w bc-agent-frontend lint` passes

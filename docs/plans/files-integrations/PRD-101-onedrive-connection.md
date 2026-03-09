@@ -11,7 +11,7 @@
 
 ## 1. Objective
 
-Enable users to connect their OneDrive account, browse folders, select scopes to sync, and trigger an initial synchronization that processes external files through the RAG pipeline. This is the first full connector implementation, establishing patterns that SharePoint (PRD-103) will reuse.
+Enable users to connect their OneDrive account, browse folders, select scopes to sync, and trigger an initial synchronization that processes external files through the RAG pipeline. This is the first full connector implementation, establishing patterns that SharePoint (PRD-111) will reuse.
 
 UI deliverables include the connection wizard, OneDrive root in the folder tree, external file browsing, and sync progress indicators.
 
@@ -559,8 +559,8 @@ Event constants defined in `@bc-agent/shared` (`constants/sync-events.ts`).
 
 ## 8. Out of Scope
 
-- Real-time sync / change notifications (PRD-102)
-- SharePoint integration (PRD-103)
+- Real-time sync / change notifications (PRD-108)
+- SharePoint integration (PRD-111)
 - Write operations to OneDrive (rename, delete, upload) — read-only integration
 - Bidirectional sync — changes in our system do NOT propagate to OneDrive
 - OneDrive Personal accounts (focus on OneDrive for Business/Work)

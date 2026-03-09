@@ -1,8 +1,8 @@
-# PRD-106: OneDrive "Shared With Me" Browsing & Sync
+# PRD-110: OneDrive "Shared With Me" Browsing & Sync
 
 **Phase**: OneDrive Enhancement
 **Status**: Planned
-**Prerequisites**: PRD-101 (Implemented), PRD-105 (File-Level Browsing)
+**Prerequisites**: PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 3–4 days
 **Created**: 2026-03-09
 
@@ -14,7 +14,7 @@ Enable users to browse and sync files that have been shared with them in OneDriv
 
 ---
 
-## 2. Current State (After PRD-101)
+## 2. Current State (After PRD-107)
 
 - The Connection Wizard only browses the user's personal drive via `/drives/{driveId}/root/children`
 - No support for the Microsoft Graph `/me/drive/sharedWithMe` endpoint
@@ -24,7 +24,7 @@ Enable users to browse and sync files that have been shared with them in OneDriv
 
 ---
 
-## 3. Expected State (After PRD-106)
+## 3. Expected State (After PRD-110)
 
 ### Browse Step Changes
 
@@ -38,13 +38,13 @@ The folder picker in the Connection Wizard displays two sections (tabs or segmen
 - **Shared folders**: Expandable, showing their contents (fetched from the source drive via `remoteItem.parentReference.driveId`)
 - **Shared files**: Individual files selectable for sync
 - **Shared items metadata**: Shows sharer name, sharing date, and permissions (read/edit)
-- **Type validation**: Same rules as PRD-105 (unsupported types grayed out)
+- **Type validation**: Same rules as PRD-106 (unsupported types grayed out)
 
 ### Sync Behavior
 
 - Shared files are synced using the **source drive ID** from `remoteItem.parentReference.driveId` and `remoteItem.id`
 - Files table records: `source_type = 'onedrive'`, `external_drive_id` = source drive ID (NOT the user's drive)
-- Delta sync (PRD-102): Shared items require separate delta tracking per source drive. This is a complexity consideration — see Section 6.
+- Delta sync (PRD-108): Shared items require separate delta tracking per source drive. This is a complexity consideration — see Section 6.
 
 ---
 
@@ -122,7 +122,7 @@ interface OneDriveBrowseItem {
   mimeType?: string;
   size?: number;
   lastModified?: string;
-  isSupported?: boolean;  // from PRD-105
+  isSupported?: boolean;  // from PRD-106
   // New fields for shared items:
   isShared?: boolean;
   sharedBy?: string;       // display name of sharer
@@ -194,7 +194,7 @@ When `remote_drive_id` is set, the sync engine uses it instead of the connection
 
 ---
 
-## 6. Delta Sync Considerations (PRD-102 Impact)
+## 6. Delta Sync Considerations (PRD-108 Impact)
 
 Shared items introduce complexity for the webhook sync engine:
 
@@ -212,7 +212,7 @@ Shared items introduce complexity for the webhook sync engine:
 This is an acceptable trade-off: shared items change less frequently than personal files, and the polling fallback provides reasonable freshness (30-minute maximum lag).
 
 ### Future Enhancement
-Application-level permissions (`Files.Read.All` application scope) would allow subscribing to any drive in the tenant. This requires admin consent and is out of scope for PRD-106.
+Application-level permissions (`Files.Read.All` application scope) would allow subscribing to any drive in the tenant. This requires admin consent and is out of scope for PRD-110.
 
 ---
 
@@ -224,7 +224,7 @@ Application-level permissions (`Files.Read.All` application scope) would allow s
 | Sharer deletes the original file | Next sync attempt gets 404 — soft-delete local copy, notify user |
 | Shared folder with 1000+ items | Pagination via `@odata.nextLink` (same as personal drive browsing) |
 | Same file shared by multiple people | Each sharing creates a separate entry in sharedWithMe; deduplicate by `remoteItem.id` |
-| Shared item is a OneNote notebook | Unsupported type — grayed out (PRD-105 file type validation) |
+| Shared item is a OneNote notebook | Unsupported type — grayed out (PRD-106 file type validation) |
 
 ---
 
@@ -255,7 +255,7 @@ Application-level permissions (`Files.Read.All` application scope) would allow s
 - [ ] Shared files can be selected and synced
 - [ ] Synced shared files are processed through the RAG pipeline
 - [ ] Content download works for shared items (uses source drive ID)
-- [ ] File type validation applies to shared items (PRD-105)
+- [ ] File type validation applies to shared items (PRD-106)
 - [ ] Permission revocation is handled gracefully (403 — error state)
 - [ ] All existing tests pass
 - [ ] Type-check and lint pass
@@ -268,4 +268,4 @@ Application-level permissions (`Files.Read.All` application scope) would allow s
 - Real-time webhook notifications for shared items (polling only)
 - Application-level permissions for cross-drive subscriptions
 - Sharing management (share/unshare files from within MyWorkMate)
-- SharePoint shared libraries (covered by PRD-103)
+- SharePoint shared libraries (covered by PRD-111)

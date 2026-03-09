@@ -1,17 +1,19 @@
-# PRD-105: File-Level Browsing & Type Validation in Connection Wizard
+# PRD-103: File-Level Browsing (Lite) in Connection Wizard
 
 **Phase**: OneDrive Enhancement
-**Status**: Phase 1 (Lite) Implemented — Phase 2 Planned
-**Prerequisites**: PRD-101 (Implemented), PRD-104 (Bug Fixes)
-**Estimated Effort**: 2–3 days (Phase 1: 1 day — done, Phase 2: 1–2 days)
+**Status**: **COMPLETED** (2026-03-09)
+**Prerequisites**: PRD-101 (Completed), PRD-102 (Completed)
+**Estimated Effort**: 1 day
 **Created**: 2026-03-09
-**Last Updated**: 2026-03-09
+**Completed**: 2026-03-09
 
 ---
 
 ## 1. Objective
 
-Extend the OneDrive Connection Wizard to display individual files alongside folders, validate file types against the platform's supported extensions, and allow users to select specific files (not just folders) for sync. This gives users fine-grained control over what enters their Knowledge Base.
+Extend the OneDrive Connection Wizard to display individual files alongside folders and allow users to select specific files (not just folders) for sync. This gives users fine-grained control over what enters their Knowledge Base.
+
+> **Note**: This PRD covers Phase 1 (file visibility and selection) only. Phase 2 (file type validation with `isFileSyncSupported()`, grayed-out unsupported files, and pipeline guards) has been extracted to **PRD-106**.
 
 ---
 
@@ -25,7 +27,7 @@ Extend the OneDrive Connection Wizard to display individual files alongside fold
 
 ---
 
-## 3. Expected State (After PRD-105)
+## 3. Expected State (After PRD-103)
 
 ### Browse Step Changes
 
@@ -42,7 +44,7 @@ Extend the OneDrive Connection Wizard to display individual files alongside fold
 ### Sync Behavior Changes
 
 1. When syncing, only supported file types are processed through the RAG pipeline
-2. Unsupported files are silently skipped during initial sync AND delta sync (PRD-102)
+2. Unsupported files are silently skipped during initial sync AND delta sync (PRD-108)
 3. File type validation uses the shared `SUPPORTED_MIME_TYPES` constant (single source of truth)
 
 ---
@@ -129,7 +131,7 @@ This protects against unsupported files entering the pipeline even if the fronte
 
 ### Step 4: Pipeline Guard (0.5 day)
 1. Add MIME type check in `InitialSyncService`
-2. Add MIME type check in `DeltaSyncService` (PRD-102 prep)
+2. Add MIME type check in `DeltaSyncService` (PRD-108 prep)
 3. Unit tests for filtering behavior
 
 ---

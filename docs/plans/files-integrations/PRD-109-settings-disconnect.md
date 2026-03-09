@@ -1,8 +1,8 @@
-# PRD-107: Settings — Connections Tab & Full Disconnect Workflow
+# PRD-109: Settings — Connections Tab & Full Disconnect Workflow
 
 **Phase**: Cross-Provider Enhancement
 **Status**: Planned
-**Prerequisites**: PRD-101 (Implemented), PRD-104 (Bug Fixes)
+**Prerequisites**: PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 3–4 days
 **Created**: 2026-03-09
 
@@ -39,7 +39,7 @@ This feature is designed to be **provider-agnostic**: the same UI pattern and cl
 
 ---
 
-## 3. Expected State (After PRD-107)
+## 3. Expected State (After PRD-109)
 
 ### Settings > Connections Tab
 
@@ -138,7 +138,7 @@ async fullDisconnect(connectionId: string, userId: string): Promise<FullDisconne
   // 1. Verify ownership
   const connection = await this.connectionService.getConnection(connectionId, userId);
 
-  // 2. Cancel any active webhook subscriptions (PRD-102)
+  // 2. Cancel any active webhook subscriptions (PRD-108)
   if (connection.scopes) {
     for (const scope of connection.scopes) {
       if (scope.subscriptionId) {
@@ -275,7 +275,7 @@ The disconnect workflow is designed to work with any connector:
 | Settings tab row | Icon and description from shared constants |
 | Disconnect summary | Generic query by `connection_id` |
 
-When SharePoint (PRD-103) or other connectors are added, they automatically appear in Settings > Connections and use the same disconnect workflow.
+When SharePoint (PRD-111) or other connectors are added, they automatically appear in Settings > Connections and use the same disconnect workflow.
 
 ---
 
@@ -361,4 +361,4 @@ When SharePoint (PRD-103) or other connectors are added, they automatically appe
 - Export/download of synced data before disconnect
 - Undo/recovery after disconnect (stated as irreversible)
 - Admin-level bulk disconnect (multi-user)
-- Automatic disconnect on token expiry (separate concern for PRD-102 lifecycle handling)
+- Automatic disconnect on token expiry (separate concern for PRD-108 lifecycle handling)

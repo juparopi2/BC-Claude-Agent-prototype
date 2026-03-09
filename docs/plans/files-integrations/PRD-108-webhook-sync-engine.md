@@ -1,8 +1,8 @@
-# PRD-102: Real-Time Sync Engine (Change Notifications)
+# PRD-108: Real-Time Sync Engine (Change Notifications)
 
 **Phase**: Webhooks
 **Status**: Planned
-**Prerequisites**: PRD-101 (OneDrive Connection)
+**Prerequisites**: PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 6-8 days
 **Created**: 2026-03-05
 
@@ -27,7 +27,7 @@ UI deliverables include sync status badges, last-synced timestamps, real-time fi
 
 ---
 
-## 3. Expected State (After PRD-102)
+## 3. Expected State (After PRD-108)
 
 ### Backend
 - Public HTTPS webhook endpoint receives Graph change notifications
@@ -501,7 +501,7 @@ SUBSCRIPTION_MAX_DURATION_DAYS=29
 
 ---
 
-## 8. Risks & Mitigations (PRD-102 Specific)
+## 8. Risks & Mitigations (PRD-108 Specific)
 
 | Risk | Mitigation |
 |---|---|
@@ -516,7 +516,7 @@ SUBSCRIPTION_MAX_DURATION_DAYS=29
 
 ## 9. Out of Scope
 
-- SharePoint change notifications (PRD-103 — same infra, different resource paths)
+- SharePoint change notifications (PRD-111 — same infra, different resource paths)
 - Bidirectional sync (write back to OneDrive)
 - Granular change tracking within files (only full file re-processing)
 - Real-time collaborative editing awareness

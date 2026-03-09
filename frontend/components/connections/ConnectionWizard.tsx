@@ -938,37 +938,38 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               />
             )}
 
-            <DialogFooter>
-              {!isReconfiguring && (
+            {!showDiff && (
+              <DialogFooter>
+                {!isReconfiguring && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setStep('connect')}
+                    className="gap-1.5"
+                  >
+                    <ArrowLeft className="size-4" />
+                    Back
+                  </Button>
+                )}
                 <Button
-                  variant="outline"
-                  onClick={() => setStep('connect')}
-                  className="gap-1.5"
-                >
-                  <ArrowLeft className="size-4" />
-                  Back
-                </Button>
-              )}
-              <Button
-                onClick={() => {
-                  if (isReconfiguring) {
-                    // Check if there are any changes
-                    const values = Array.from(selectedScopes.values())
-                    const hasChanges = values.some((s) => s.status === 'new' || s.status === 'removed')
-                    if (hasChanges) {
-                      setShowDiff(true)
+                  onClick={() => {
+                    if (isReconfiguring) {
+                      const values = Array.from(selectedScopes.values())
+                      const hasChanges = values.some((s) => s.status === 'new' || s.status === 'removed')
+                      if (hasChanges) {
+                        setShowDiff(true)
+                      } else {
+                        onClose()
+                      }
                     } else {
-                      onClose()
+                      setStep('sync')
                     }
-                  } else {
-                    setStep('sync')
-                  }
-                }}
-                disabled={!isReconfiguring && selectedScopes.size === 0}
-              >
-                {isReconfiguring ? 'Save Changes' : 'Continue'}
-              </Button>
-            </DialogFooter>
+                  }}
+                  disabled={!isReconfiguring && selectedScopes.size === 0}
+                >
+                  {isReconfiguring ? 'Save Changes' : 'Continue'}
+                </Button>
+              </DialogFooter>
+            )}
           </>
         )}
 

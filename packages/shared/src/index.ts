@@ -460,6 +460,11 @@ export {
 } from './utils/fileNameResolver';
 
 // ============================================
+// Utils - File Sync Support (PRD-106)
+// ============================================
+export { isFileSyncSupported } from './utils/file-support';
+
+// ============================================
 // Constants - Error codes, messages, mappings
 // ============================================
 export {

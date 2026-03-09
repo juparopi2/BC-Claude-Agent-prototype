@@ -22,7 +22,7 @@
 import { randomUUID } from 'crypto';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
-import { FILE_SOURCE_TYPE, SYNC_WS_EVENTS } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, SYNC_WS_EVENTS, isFileSyncSupported } from '@bc-agent/shared';
 import type { DeltaChange, DeltaQueryResult, ExternalFileItem } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getConnectionRepository } from '@/domains/connections';
@@ -131,10 +131,17 @@ export class InitialSyncService {
 
       logger.info({ connectionId, scopeId, totalChanges: allChanges.length }, 'Delta query complete');
 
-      // Step 4: Filter files only (exclude deleted items and folders)
+      // Step 4: Filter files only (exclude deleted items, folders, and unsupported MIME types)
       const fileChanges = allChanges.filter(
-        (c) => c.changeType !== 'deleted' && !c.item.isFolder
+        (c) => c.changeType !== 'deleted' && !c.item.isFolder && isFileSyncSupported(c.item.mimeType)
       );
+
+      const skippedUnsupported = allChanges.filter(
+        (c) => c.changeType !== 'deleted' && !c.item.isFolder && !isFileSyncSupported(c.item.mimeType)
+      ).length;
+      if (skippedUnsupported > 0) {
+        logger.info({ connectionId, scopeId, skippedUnsupported }, 'Skipped unsupported file types');
+      }
 
       logger.info({ connectionId, scopeId, fileCount: fileChanges.length }, 'Files to ingest');
 
@@ -297,6 +304,20 @@ export class InitialSyncService {
         connectionId,
         scope.scope_resource_id
       );
+
+      // 1b. Skip unsupported file types (PRD-106)
+      if (!isFileSyncSupported(item.mimeType)) {
+        logger.info({ scopeId, fileName: item.name, mimeType: item.mimeType }, 'Skipping unsupported file type');
+        const repo = getConnectionRepository();
+        await repo.updateScope(scopeId, {
+          syncStatus: 'idle',
+          itemCount: 0,
+          lastSyncAt: new Date(),
+          lastSyncError: null,
+        });
+        this.emitCompleted(userId, { connectionId, scopeId, totalFiles: 0 });
+        return;
+      }
 
       // 2. Fetch connection's microsoft_drive_id
       const connection = await prisma.connections.findUnique({

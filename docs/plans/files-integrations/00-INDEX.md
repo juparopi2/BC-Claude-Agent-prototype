@@ -48,7 +48,7 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-103](./PRD-103-file-browsing-lite.md) | File-Level Browsing (Lite) | **COMPLETED** |
 | [PRD-104](./PRD-104-scope-filtered-sync.md) | Scope-Filtered Sync & Deduplication | **TODO — CRITICAL** |
 | [PRD-105](./PRD-105-scope-management.md) | Scope Management & Re-configuration | TODO |
-| [PRD-106](./PRD-106-file-type-validation.md) | File Type Validation & Pipeline Guard | TODO |
+| [PRD-106](./PRD-106-file-type-validation.md) | File Type Validation & Pipeline Guard | **COMPLETED** |
 | [PRD-107](./PRD-107-onedrive-ux-polish.md) | OneDrive File UX Polish | TODO |
 | [PRD-108](./PRD-108-webhook-sync-engine.md) | Real-Time Sync Engine (Webhooks) | Planned |
 | [PRD-109](./PRD-109-settings-disconnect.md) | Settings Connections Tab & Full Disconnect | Planned |

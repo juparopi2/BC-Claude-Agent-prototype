@@ -1,7 +1,7 @@
 # PRD-106: File Type Validation & Pipeline Guard
 
 **Phase**: OneDrive Enhancement
-**Status**: TODO
+**Status**: **COMPLETED**
 **Prerequisites**: PRD-105 (Scope Management)
 **Estimated Effort**: 1–2 days
 **Created**: 2026-03-09
@@ -147,15 +147,15 @@ When a folder is selected, the selection logic should:
 
 ## 7. Success Criteria
 
-- [ ] `isFileSyncSupported()` correctly validates all supported MIME types
-- [ ] Browse API includes `isSupported` field
-- [ ] Unsupported files are grayed out with tooltip in wizard
-- [ ] Unsupported files cannot be individually selected
-- [ ] Sync skips unsupported file types (no pipeline entry)
-- [ ] Supported files sync normally
-- [ ] Unit tests for `isFileSyncSupported()` cover all supported + common unsupported types
-- [ ] All existing tests pass
-- [ ] Type-check and lint pass
+- [x] `isFileSyncSupported()` correctly validates all supported MIME types
+- [x] Browse API includes `isSupported` field
+- [x] Unsupported files are grayed out with tooltip in wizard
+- [x] Unsupported files cannot be individually selected
+- [x] Sync skips unsupported file types (no pipeline entry)
+- [x] Supported files sync normally
+- [x] Unit tests for `isFileSyncSupported()` cover all supported + common unsupported types
+- [x] All existing tests pass
+- [x] Type-check and lint pass
 
 ---
 

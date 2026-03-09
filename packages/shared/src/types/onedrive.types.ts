@@ -34,6 +34,8 @@ export interface ExternalFileItem {
   parentId: string | null;
   parentPath: string | null;
   childCount: number | null;
+  /** Set by browse API; absent in delta/internal paths */
+  isSupported?: boolean;
 }
 
 /**

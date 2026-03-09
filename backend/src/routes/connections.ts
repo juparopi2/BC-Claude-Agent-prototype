@@ -27,6 +27,7 @@ import {
   sendNotFound,
   sendForbidden,
   sendConflict,
+  sendUnauthorized,
 } from '@/shared/utils/error-response';
 import {
   validateSafe,
@@ -36,7 +37,9 @@ import {
   createScopesSchema,
   browseFolderQuerySchema,
   batchScopesSchema,
+  isFileSyncSupported,
 } from '@bc-agent/shared';
+import type { FolderListResult } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getInitialSyncService } from '@/services/sync/InitialSyncService';
 
@@ -46,6 +49,20 @@ const router = Router();
 // ============================================================================
 // Route helpers
 // ============================================================================
+
+/**
+ * Enrich browse results with `isSupported` flag (PRD-106).
+ * Folders are always marked supported; files check against ALLOWED_MIME_TYPES.
+ */
+function enrichBrowseItems(result: FolderListResult): FolderListResult {
+  return {
+    ...result,
+    items: result.items.map((item) => ({
+      ...item,
+      isSupported: item.isFolder ? true : isFileSyncSupported(item.mimeType),
+    })),
+  };
+}
 
 /**
  * Parse and validate the :id path parameter as a UUID.
@@ -64,6 +81,17 @@ function parseConnectionId(
 }
 
 /**
+ * Detect connector-layer auth errors (expired token or Graph API 401).
+ * Uses duck-typing to avoid cross-module instanceof issues.
+ */
+function isConnectorAuthError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'ConnectionTokenExpiredError') return true;
+  if (error.name === 'GraphApiError' && 'statusCode' in error && (error as { statusCode: number }).statusCode === 401) return true;
+  return false;
+}
+
+/**
  * Map domain errors to appropriate HTTP responses.
  * Returns true if the error was handled, false if it should propagate.
  */
@@ -78,6 +106,10 @@ function handleDomainError(error: unknown, res: Response): boolean {
   }
   if (error instanceof ScopeCurrentlySyncingError) {
     sendConflict(res, ErrorCode.CONFLICT);
+    return true;
+  }
+  if (isConnectorAuthError(error)) {
+    sendUnauthorized(res, ErrorCode.INVALID_TOKEN);
     return true;
   }
   return false;
@@ -381,7 +413,7 @@ router.get(
       const result = await getOneDriveService().listFolder(connectionId, undefined, pageToken);
 
       logger.info({ userId: userId.toUpperCase(), connectionId }, 'Root folder browsed');
-      res.json(result);
+      res.json(enrichBrowseItems(result));
     } catch (error) {
       if (handleDomainError(error, res)) return;
 
@@ -428,7 +460,7 @@ router.get(
       const result = await getOneDriveService().listFolder(connectionId, folderId, pageToken);
 
       logger.info({ userId: userId.toUpperCase(), connectionId, folderId }, 'Folder browsed');
-      res.json(result);
+      res.json(enrichBrowseItems(result));
     } catch (error) {
       if (handleDomainError(error, res)) return;
 

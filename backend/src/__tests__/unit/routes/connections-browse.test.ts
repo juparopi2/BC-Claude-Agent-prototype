@@ -98,6 +98,13 @@ vi.mock('@/domains/connections', () => ({
       this.name = 'ConnectionForbiddenError';
     }
   },
+  ScopeCurrentlySyncingError: class ScopeCurrentlySyncingError extends Error {
+    readonly code = 'SCOPE_CURRENTLY_SYNCING';
+    constructor(scopeId: string) {
+      super(`Scope ${scopeId} is currently syncing`);
+      this.name = 'ScopeCurrentlySyncingError';
+    }
+  },
 }));
 
 vi.mock('@/services/connectors/onedrive', () => ({
@@ -141,6 +148,15 @@ const sampleFolderResult = {
   items: [
     { id: 'FOLDER-01', name: 'Documents', isFolder: true, mimeType: null, sizeBytes: 0, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null },
     { id: 'FILE-01', name: 'report.pdf', isFolder: false, mimeType: 'application/pdf', sizeBytes: 1024, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null },
+  ],
+  nextPageToken: undefined,
+};
+
+/** Expected browse response after enrichBrowseItems adds isSupported (PRD-106) */
+const enrichedFolderResult = {
+  items: [
+    { id: 'FOLDER-01', name: 'Documents', isFolder: true, mimeType: null, sizeBytes: 0, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, isSupported: true },
+    { id: 'FILE-01', name: 'report.pdf', isFolder: false, mimeType: 'application/pdf', sizeBytes: 1024, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, isSupported: true },
   ],
   nextPageToken: undefined,
 };
@@ -205,12 +221,12 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
   // GET /:id/browse — Browse root folder
   // ==========================================================================
   describe('GET /:id/browse', () => {
-    it('returns the folder listing from OneDriveService.listFolder', async () => {
+    it('returns the folder listing enriched with isSupported from OneDriveService.listFolder', async () => {
       const res = await request(app)
         .get(`/api/connections/${CONNECTION_ID}/browse`)
         .expect(200);
 
-      expect(res.body).toEqual(sampleFolderResult);
+      expect(res.body).toEqual(enrichedFolderResult);
       expect(mockListFolder).toHaveBeenCalledWith(CONNECTION_ID, undefined, undefined);
     });
 
@@ -260,6 +276,56 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
 
       expect(res.body.code).toBe('VALIDATION_ERROR');
     });
+
+    it('sets isSupported correctly for folders, supported files, unsupported files, and null mimeType', async () => {
+      mockListFolder.mockResolvedValue({
+        items: [
+          { id: 'F1', name: 'Docs', isFolder: true, mimeType: null, sizeBytes: 0, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null },
+          { id: 'F2', name: 'notes.txt', isFolder: false, mimeType: 'text/plain', sizeBytes: 100, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null },
+          { id: 'F3', name: 'archive.zip', isFolder: false, mimeType: 'application/zip', sizeBytes: 2000, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null },
+          { id: 'F4', name: 'unknown', isFolder: false, mimeType: null, sizeBytes: 500, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null },
+        ],
+        nextPageToken: null,
+      });
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse`)
+        .expect(200);
+
+      expect(res.body.items).toEqual([
+        expect.objectContaining({ id: 'F1', isSupported: true }),    // folder → always true
+        expect.objectContaining({ id: 'F2', isSupported: true }),    // text/plain → supported
+        expect.objectContaining({ id: 'F3', isSupported: false }),   // application/zip → unsupported
+        expect.objectContaining({ id: 'F4', isSupported: false }),   // null mimeType → unsupported
+      ]);
+    });
+
+    it('returns 401 when OneDrive token is expired (ConnectionTokenExpiredError)', async () => {
+      const tokenError = new Error('Token expired for connection');
+      tokenError.name = 'ConnectionTokenExpiredError';
+      mockListFolder.mockRejectedValue(tokenError);
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse`)
+        .expect(401);
+
+      expect(res.body.code).toBe('INVALID_TOKEN');
+    });
+
+    it('returns 401 when Graph API returns 401 (GraphApiError)', async () => {
+      const graphError = Object.assign(new Error('InvalidAuthenticationToken'), {
+        name: 'GraphApiError',
+        statusCode: 401,
+        graphErrorCode: 'InvalidAuthenticationToken',
+      });
+      mockListFolder.mockRejectedValue(graphError);
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse`)
+        .expect(401);
+
+      expect(res.body.code).toBe('INVALID_TOKEN');
+    });
   });
 
   // ==========================================================================
@@ -268,12 +334,12 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
   describe('GET /:id/browse/:folderId', () => {
     const FOLDER_ID = 'FOLDER-RESOURCE-01';
 
-    it('returns folder listing with folderId passed to listFolder', async () => {
+    it('returns folder listing enriched with isSupported with folderId passed to listFolder', async () => {
       const res = await request(app)
         .get(`/api/connections/${CONNECTION_ID}/browse/${FOLDER_ID}`)
         .expect(200);
 
-      expect(res.body).toEqual(sampleFolderResult);
+      expect(res.body).toEqual(enrichedFolderResult);
       expect(mockListFolder).toHaveBeenCalledWith(CONNECTION_ID, FOLDER_ID, undefined);
     });
 

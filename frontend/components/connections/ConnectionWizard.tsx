@@ -22,8 +22,9 @@ import {
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import type { ExternalFileItem, FolderListResult, ConnectionScopeDetail, ConnectionScopeWithStats, ScopeBatchResult } from '@bc-agent/shared'
-import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID } from '@bc-agent/shared'
+import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, SUPPORTED_EXTENSIONS_DISPLAY } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { toast } from 'sonner'
@@ -231,38 +232,46 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
   // File row
   const iconType = getFileIconType(item.name, item.mimeType ?? undefined)
   const colors = fileTypeColors[iconType]
+  const isUnsupported = item.isSupported === false
 
-  return (
+  const fileRow = (
     <div
-      className="flex items-center gap-1.5 py-1.5 pr-2 rounded-md hover:bg-muted/50 select-none"
+      className={`flex items-center gap-1.5 py-1.5 pr-2 rounded-md select-none ${isUnsupported ? 'opacity-50' : 'hover:bg-muted/50'}`}
       style={{ paddingLeft: `${8 + depth * 16}px` }}
     >
       {/* Spacer (no chevron for files) */}
       <span className="size-4 shrink-0" />
 
-      {/* Checkbox */}
-      <Checkbox
-        id={`item-${item.id}`}
-        checked={isSelected && selectedScopes.get(item.id)?.status !== 'removed'}
-        onCheckedChange={() => onToggleSelect(item)}
-        onClick={(e) => e.stopPropagation()}
-        aria-label={`Select ${item.name}`}
-      />
+      {/* Checkbox or spacer for unsupported files */}
+      {isUnsupported ? (
+        <span className="size-4 shrink-0" />
+      ) : (
+        <Checkbox
+          id={`item-${item.id}`}
+          checked={isSelected && selectedScopes.get(item.id)?.status !== 'removed'}
+          onCheckedChange={() => onToggleSelect(item)}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Select ${item.name}`}
+        />
+      )}
 
       {/* File type icon */}
       <FileTypeIcon
         iconType={iconType}
-        className={`size-4 shrink-0 ${colors?.icon ?? 'text-muted-foreground'}`}
+        className={`size-4 shrink-0 ${isUnsupported ? 'text-muted-foreground' : (colors?.icon ?? 'text-muted-foreground')}`}
       />
 
       {/* Name */}
-      <span className={`text-sm truncate flex-1 ${selectedScopes.get(item.id)?.status === 'removed' ? 'line-through text-muted-foreground' : ''}`}>
+      <span className={`text-sm truncate flex-1 ${isUnsupported ? 'text-muted-foreground' : selectedScopes.get(item.id)?.status === 'removed' ? 'line-through text-muted-foreground' : ''}`}>
         {item.name}
       </span>
-      {selectedScopes.get(item.id)?.status === 'existing' && (
+      {isUnsupported && (
+        <span className="text-[10px] text-muted-foreground shrink-0 ml-1">Unsupported</span>
+      )}
+      {!isUnsupported && selectedScopes.get(item.id)?.status === 'existing' && (
         <span className="text-[10px] text-green-600 dark:text-green-400 shrink-0 ml-1">Synced</span>
       )}
-      {selectedScopes.get(item.id)?.status === 'removed' && (
+      {!isUnsupported && selectedScopes.get(item.id)?.status === 'removed' && (
         <span className="text-[10px] text-red-500 shrink-0 ml-1">Will remove</span>
       )}
 
@@ -274,6 +283,21 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
       )}
     </div>
   )
+
+  if (isUnsupported) {
+    return (
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>{fileRow}</TooltipTrigger>
+          <TooltipContent side="top" className="max-w-xs text-xs">
+            <p>Supported formats: {SUPPORTED_EXTENSIONS_DISPLAY}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
+  return fileRow
 }
 
 // ============================================
@@ -291,6 +315,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   // Step 2: browse
   const [rootNodes, setRootNodes] = useState<TreeNodeData[]>([])
   const [isBrowseLoading, setIsBrowseLoading] = useState(false)
+  const [browseAuthError, setBrowseAuthError] = useState(false)
+  const [browseRefreshKey, setBrowseRefreshKey] = useState(0)
   const [nodeMap, setNodeMap] = useState<Map<string, TreeNodeData>>(new Map())
   const [selectedScopes, setSelectedScopes] = useState<Map<string, SelectedScope>>(new Map())
   const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
@@ -322,6 +348,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setConnectionId(null)
     setRootNodes([])
     setIsBrowseLoading(false)
+    setBrowseAuthError(false)
+    setBrowseRefreshKey(0)
     setNodeMap(new Map())
     setSelectedScopes(new Map())
     setExistingScopes([])
@@ -423,6 +451,11 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           ),
         ])
 
+        if (browseResponse.status === 401) {
+          setBrowseAuthError(true)
+          return
+        }
+
         if (!browseResponse.ok) {
           throw new Error(`Failed to load folders: HTTP ${browseResponse.status}`)
         }
@@ -485,7 +518,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     }
 
     fetchRoot()
-  }, [step, connectionId, buildNodeMap])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, connectionId, buildNodeMap, browseRefreshKey])
 
   // ============================================
   // Step 2: Toggle folder expand (lazy load children)
@@ -528,6 +562,11 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse/${itemId}`,
           { credentials: 'include' }
         )
+
+        if (response.status === 401) {
+          setBrowseAuthError(true)
+          return
+        }
 
         if (!response.ok) {
           throw new Error(`Failed to load folder contents: HTTP ${response.status}`)
@@ -588,6 +627,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   // ============================================
 
   const handleToggleSelect = useCallback((item: ExternalFileItem) => {
+    if (!item.isFolder && item.isSupported === false) return;
+
     setSelectedScopes((prev) => {
       const next = new Map(prev)
       const existing = next.get(item.id)
@@ -890,7 +931,28 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             </DialogHeader>
 
             <div className="min-h-[200px] max-h-[300px] overflow-y-auto border rounded-md py-1">
-              {isBrowseLoading ? (
+              {browseAuthError ? (
+                <div className="flex flex-col items-center justify-center h-[200px] gap-3 px-4">
+                  <Cloud className="size-8 text-muted-foreground" />
+                  <p className="text-sm text-center text-muted-foreground">
+                    Your OneDrive session has expired. Please sign in again to continue.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      setBrowseAuthError(false)
+                      await handleConnect()
+                      // Bump refresh key to re-trigger browse fetch after re-auth
+                      setBrowseRefreshKey((k) => k + 1)
+                    }}
+                    disabled={isConnecting}
+                    className="gap-1.5 bg-[#0078D4] hover:bg-[#106EBE] text-white"
+                  >
+                    {isConnecting ? <Loader2 className="size-3.5 animate-spin" /> : <Cloud className="size-3.5" />}
+                    {isConnecting ? 'Reconnecting...' : 'Reconnect'}
+                  </Button>
+                </div>
+              ) : isBrowseLoading ? (
                 <div className="flex items-center justify-center h-[200px] text-muted-foreground gap-2">
                   <Loader2 className="size-4 animate-spin" />
                   <span className="text-sm">Loading contents...</span>

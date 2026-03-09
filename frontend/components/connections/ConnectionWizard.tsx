@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
 import type { ExternalFileItem, FolderListResult, ConnectionScopeDetail } from '@bc-agent/shared'
-import { CONNECTIONS_API } from '@bc-agent/shared'
+import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { toast } from 'sonner'
@@ -48,6 +48,7 @@ interface FolderNodeData {
   children: FolderNodeData[] | null
   isExpanded: boolean
   isLoading: boolean
+  fileCount: number
 }
 
 interface SelectedScope {
@@ -170,7 +171,9 @@ function FolderNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelec
               className="text-xs text-muted-foreground py-1"
               style={{ paddingLeft: `${8 + (depth + 1) * 16 + 22}px` }}
             >
-              Empty folder
+              {node.fileCount > 0
+                ? `${node.fileCount} file(s) — select parent folder to sync`
+                : 'Empty folder'}
             </div>
           ) : (
             node.children.map((child) => (
@@ -337,6 +340,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           children: null,
           isExpanded: false,
           isLoading: false,
+          fileCount: 0,
         }))
 
         const map = new Map<string, FolderNodeData>()
@@ -399,12 +403,14 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
         const data: FolderListResult = await response.json()
         const subFolders = data.items.filter((i) => i.isFolder)
+        const fileCount = data.items.filter((i) => !i.isFolder).length
 
         const children: FolderNodeData[] = subFolders.map((item) => ({
           item,
           children: null,
           isExpanded: false,
           isLoading: false,
+          fileCount: 0,
         }))
 
         setRootNodes((prev) => {
@@ -413,12 +419,16 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           if (target) {
             target.children = children
             target.isLoading = false
+            target.fileCount = fileCount
           }
           return cloned
         })
 
         setNodeMap((prev) => {
           const next = new Map(prev)
+          // Update parent with children reference so toggle check works
+          const updatedParent: FolderNodeData = { ...node, children, isLoading: false, isExpanded: true, fileCount }
+          next.set(itemId, updatedParent)
           for (const child of children) {
             next.set(child.item.id, child)
           }
@@ -434,6 +444,11 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             target.isExpanded = false
           }
           return cloned
+        })
+        setNodeMap((prev) => {
+          const next = new Map(prev)
+          next.set(itemId, { ...node, isLoading: false, isExpanded: false })
+          return next
         })
       }
     },
@@ -673,7 +688,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             <DialogHeader>
               <DialogTitle>Select Folders to Sync</DialogTitle>
               <DialogDescription>
-                Choose which OneDrive folders to make available for AI search.
+                {`Choose which OneDrive folders to make available for the ${AGENT_DISPLAY_NAME[AGENT_ID.RAG_AGENT]} agent.`}
               </DialogDescription>
             </DialogHeader>
 

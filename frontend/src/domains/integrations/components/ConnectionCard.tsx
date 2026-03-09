@@ -24,7 +24,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 // ============================================
 
 const STATUS_BADGE: Record<ConnectionStatus | 'coming_soon', { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  connected: { label: 'Connected', variant: 'default' },
+  connected: { label: 'Configure', variant: 'default' },
   disconnected: { label: 'Configure', variant: 'outline' },
   expired: { label: 'Expired', variant: 'destructive' },
   error: { label: 'Error', variant: 'destructive' },

@@ -6,7 +6,7 @@ import { Folder, Database, Link } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileExplorer } from '@/components/files';
-import { PROVIDER_ID, PROVIDER_UI_ORDER, type ProviderId } from '@bc-agent/shared';
+import { PROVIDER_ID, PROVIDER_UI_ORDER, CONNECTION_STATUS, type ProviderId } from '@bc-agent/shared';
 import { useIntegrations, ConnectionCard } from '@/src/domains/integrations';
 import { ConnectionWizard } from '@/components/connections/ConnectionWizard';
 import { toast } from 'sonner';
@@ -124,7 +124,15 @@ export default function RightPanel() {
                     providerId={providerId}
                     connection={match ?? null}
                     disabled={DISABLED_PROVIDERS.has(providerId)}
-                    onClick={!DISABLED_PROVIDERS.has(providerId) ? () => openWizard(providerId) : undefined}
+                    onClick={!DISABLED_PROVIDERS.has(providerId) ? () => {
+                      const existingConnection = connections.find(
+                        (c) => c.provider === providerId && c.status === CONNECTION_STATUS.CONNECTED
+                      );
+                      if (existingConnection) {
+                        setInitialConnectionId(existingConnection.id);
+                      }
+                      openWizard(providerId);
+                    } : undefined}
                   />
                 );
               })}

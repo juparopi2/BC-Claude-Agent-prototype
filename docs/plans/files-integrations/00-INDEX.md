@@ -46,6 +46,10 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive | OneDrive Connection & Initial Sync (IMPLEMENTED) | OAuth flow, `OneDriveService`, `GraphApiContentProvider`, initial delta sync, pipeline integration | Connection wizard, OneDrive folder tree root, browse + file list, sync progress |
 | [PRD-102](./PRD-102-webhook-sync-engine.md) | Webhooks | Real-Time Sync Engine | Webhook endpoint, `SubscriptionManager`, `DeltaSyncService`, lifecycle handling, polling fallback | Sync status badges, last-synced timestamps, real-time file appearance, sync error states |
 | [PRD-103](./PRD-103-sharepoint-connection.md) | SharePoint | SharePoint Connection | `SharePointService`, multi-site discovery, library browsing, SP-specific delta, reuse webhook infra | SP connection wizard (multi-step site/library picker), SP folder tree root, SP visual theme |
+| [PRD-104](./PRD-104-wizard-bugfixes.md) | Bug Fixes | OneDrive Wizard Bug Fixes | None | Fix: folder collapse, connected modal flow, button label, agent name text, empty folder message |
+| [PRD-105](./PRD-105-file-browsing-validation.md) | OneDrive Enhancement | File-Level Browsing & Type Validation | `isFileSyncSupported()` shared utility, browse API `isSupported` field, pipeline MIME guard | File tree shows files, unsupported types grayed + tooltip, individual file selection |
+| [PRD-106](./PRD-106-shared-files-browsing.md) | OneDrive Enhancement | Shared Files Browsing | `listSharedWithMe()`, `listSharedFolder()`, `remote_drive_id` on scopes | "Shared with me" tab in wizard, shared metadata display, shared file sync |
+| [PRD-107](./PRD-107-settings-connections-tab.md) | Cross-Provider | Settings Connections Tab & Full Disconnect | `full-disconnect` endpoint, AI Search cleanup, MSAL cache cleanup, `disconnect-summary` API | Settings > Connections tab, destructive confirmation modal with typed confirmation |
 
 ### Dependency Chain
 
@@ -54,12 +58,19 @@ PRD-100 (Foundation)
    |
    v
 PRD-101 (OneDrive) -------> PRD-102 (Webhooks)
-                                |
-                                v
-                          PRD-103 (SharePoint)
+   |                             |
+   v                             v
+PRD-104 (Bug Fixes)        PRD-103 (SharePoint)
+   |
+   v
+PRD-105 (File Browsing) --> PRD-106 (Shared Files)
+
+PRD-101 + PRD-104 --------> PRD-107 (Settings Disconnect)
 ```
 
 PRD-100 is a hard prerequisite for all others. PRD-101 and PRD-102 are sequential (need files to exist before syncing changes). PRD-103 reuses all infrastructure from 100-102.
+
+PRD-104 (bug fixes) can be implemented immediately after PRD-101 — no other dependencies. PRD-105 depends on PRD-104 (fixes the tree first). PRD-106 depends on PRD-105 (needs file-level browsing). PRD-107 can start after PRD-101 + PRD-104 and is provider-agnostic.
 
 ### PRD-101 Implementation Summary
 
@@ -259,3 +270,41 @@ export const FILE_SOURCE_TYPE = {
 - Rate limiter tests with concurrent requests
 - Verify per-tenant throttling behavior
 - Verify AI Search query performance with userId filter at scale
+
+---
+
+## 7. Deferred Considerations
+
+### 7.1 Multi-User File Deduplication in AI Search
+
+**Status**: Deferred — Not feasible without significant architectural redesign.
+
+**Problem**: When two users in the same Microsoft 365 tenant both sync the same shared file, the system currently indexes it twice (once per user) in Azure AI Search, duplicating storage.
+
+**Why it's hard**: The entire stack assumes per-user ownership of chunks:
+- `file_chunks` table has `user_id` + `file_id` FK per chunk
+- AI Search index filters every query by `userId eq X` for multi-tenant isolation
+- `SoftDeleteService` deletes chunks by `userId + fileId` — shared chunks would break this (User A deleting would remove User B's data)
+- `DuplicateDetectionService` only checks within a single user's library
+- Billing/usage tracking is per-user per-file
+
+**What would be needed**:
+1. `file_chunk_references` mapping table (many-to-one: multiple file records → shared chunks)
+2. Reference-counted chunk deletion (only delete when last reference removed)
+3. Search filter redesign (query by file IDs instead of user ID, or permission-based filtering)
+4. Billing attribution changes for shared chunks
+
+**Estimated effort**: 2–3 months of engineering + comprehensive regression testing.
+
+**Recommendation**: The storage cost of duplicate chunks (~8KB per chunk × 10 chunks per file) is negligible compared to the engineering complexity. At 10K users with 20% file overlap, the duplication amounts to ~16GB — well within AI Search capacity. Revisit only if AI Search storage becomes a real constraint at scale (S2+ tier pressure).
+
+### 7.2 Full Connection Reset Script (E2E Testing)
+
+A utility script or API endpoint for fully resetting a user's connection state to "new user" for E2E testing purposes. Should clean up:
+- `connections` + `connection_scopes` records
+- `files` records with `source_type = 'onedrive'`
+- `file_chunks` for those files
+- AI Search embeddings
+- MSAL Redis cache
+
+This is partially addressed by PRD-107 (full disconnect workflow), but a dedicated script would be useful for automated testing. Consider adding to `scripts/` or as a test helper in `PipelineTestHelper`.

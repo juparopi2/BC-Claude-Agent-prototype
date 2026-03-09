@@ -6,7 +6,7 @@ import { Folder, Database, Link } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileExplorer } from '@/components/files';
-import { PROVIDER_ID, PROVIDER_UI_ORDER, CONNECTION_STATUS, type ProviderId } from '@bc-agent/shared';
+import { PROVIDER_ID, PROVIDER_UI_ORDER, type ProviderId } from '@bc-agent/shared';
 import { useIntegrations, ConnectionCard } from '@/src/domains/integrations';
 import { ConnectionWizard } from '@/components/connections/ConnectionWizard';
 import { toast } from 'sonner';
@@ -21,7 +21,7 @@ const DISABLED_PROVIDERS = new Set<ProviderId>([
 export default function RightPanel() {
   const [panelWidth, setPanelWidth] = useState<number>(Infinity);
   const panelRef = useRef<HTMLDivElement>(null);
-  const { connections, openWizard, wizardOpen, closeWizard, wizardProviderId } = useIntegrations();
+  const { connections, openWizard, wizardOpen, closeWizard, wizardProviderId, wizardInitialConnectionId } = useIntegrations();
 
   // Controlled tab state for programmatic switching
   const [activeTab, setActiveTab] = useState('files');
@@ -30,7 +30,6 @@ export default function RightPanel() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const [initialConnectionId, setInitialConnectionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!panelRef.current) return;
@@ -54,8 +53,7 @@ export default function RightPanel() {
     if (connected === 'onedrive' && connectionId) {
       // OAuth success — switch to connections tab and open wizard at browse step
       setActiveTab('connections');
-      setInitialConnectionId(connectionId);
-      openWizard(PROVIDER_ID.ONEDRIVE);
+      openWizard(PROVIDER_ID.ONEDRIVE, connectionId);
       router.replace(pathname);
     } else if (onedriveError) {
       // OAuth error — show toast
@@ -66,13 +64,6 @@ export default function RightPanel() {
     // Run only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Clear initialConnectionId when wizard closes
-  useEffect(() => {
-    if (!wizardOpen) {
-      setInitialConnectionId(null);
-    }
-  }, [wizardOpen]);
 
   const isNarrow = panelWidth < 280;
 
@@ -124,15 +115,7 @@ export default function RightPanel() {
                     providerId={providerId}
                     connection={match ?? null}
                     disabled={DISABLED_PROVIDERS.has(providerId)}
-                    onClick={!DISABLED_PROVIDERS.has(providerId) ? () => {
-                      const existingConnection = connections.find(
-                        (c) => c.provider === providerId && c.status === CONNECTION_STATUS.CONNECTED
-                      );
-                      if (existingConnection) {
-                        setInitialConnectionId(existingConnection.id);
-                      }
-                      openWizard(providerId);
-                    } : undefined}
+                    onClick={!DISABLED_PROVIDERS.has(providerId) ? () => openWizard(providerId) : undefined}
                   />
                 );
               })}
@@ -145,7 +128,7 @@ export default function RightPanel() {
         <ConnectionWizard
           isOpen={wizardOpen}
           onClose={closeWizard}
-          initialConnectionId={initialConnectionId}
+          initialConnectionId={wizardInitialConnectionId}
         />
       )}
     </div>

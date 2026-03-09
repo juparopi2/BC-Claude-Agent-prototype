@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import type { ConnectionSummary, ConnectionListResponse, ProviderId } from '@bc-agent/shared';
-import { CONNECTIONS_API } from '@bc-agent/shared';
+import { CONNECTIONS_API, CONNECTION_STATUS } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
 
 // ============================================
@@ -22,6 +22,7 @@ interface IntegrationListState {
   hasFetched: boolean;
   wizardOpen: boolean;
   wizardProviderId: ProviderId | null;
+  wizardInitialConnectionId: string | null;
 }
 
 // ============================================
@@ -31,7 +32,7 @@ interface IntegrationListState {
 interface IntegrationListActions {
   fetchConnections: () => Promise<void>;
   reset: () => void;
-  openWizard: (providerId: ProviderId) => void;
+  openWizard: (providerId: ProviderId, connectionId?: string) => void;
   closeWizard: () => void;
 }
 
@@ -48,6 +49,7 @@ const initialState: IntegrationListState = {
   hasFetched: false,
   wizardOpen: false,
   wizardProviderId: null,
+  wizardInitialConnectionId: null,
 };
 
 // ============================================
@@ -91,6 +93,15 @@ export const useIntegrationListStore = create<IntegrationListStore>((set, get) =
 
   reset: () => set(initialState),
 
-  openWizard: (providerId) => set({ wizardOpen: true, wizardProviderId: providerId }),
-  closeWizard: () => set({ wizardOpen: false, wizardProviderId: null }),
+  openWizard: (providerId, connectionId?) => {
+    let resolvedId: string | null = connectionId ?? null;
+    if (!resolvedId) {
+      const existing = get().connections.find(
+        (c) => c.provider === providerId && c.status === CONNECTION_STATUS.CONNECTED
+      );
+      if (existing) resolvedId = existing.id;
+    }
+    set({ wizardOpen: true, wizardProviderId: providerId, wizardInitialConnectionId: resolvedId });
+  },
+  closeWizard: () => set({ wizardOpen: false, wizardProviderId: null, wizardInitialConnectionId: null }),
 }));

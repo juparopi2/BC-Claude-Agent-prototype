@@ -17,6 +17,7 @@ export function useIntegrations() {
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections);
   const wizardOpen = useIntegrationListStore((s) => s.wizardOpen);
   const wizardProviderId = useIntegrationListStore((s) => s.wizardProviderId);
+  const wizardInitialConnectionId = useIntegrationListStore((s) => s.wizardInitialConnectionId);
   const openWizard = useIntegrationListStore((s) => s.openWizard);
   const closeWizard = useIntegrationListStore((s) => s.closeWizard);
 
@@ -26,5 +27,5 @@ export function useIntegrations() {
     }
   }, [hasFetched, fetchConnections]);
 
-  return { connections, isLoading, error, wizardOpen, wizardProviderId, openWizard, closeWizard };
+  return { connections, isLoading, error, wizardOpen, wizardProviderId, wizardInitialConnectionId, openWizard, closeWizard };
 }

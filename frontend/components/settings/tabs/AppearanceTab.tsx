@@ -97,7 +97,7 @@ export function AppearanceTab() {
               onClick={() => handleThemeChange(option.value)}
               disabled={isSaving}
               className={cn(
-                'flex items-center gap-4 p-4 rounded-lg border transition-colors text-left',
+                'flex items-center gap-4 p-4 rounded-lg border transition-colors text-left cursor-pointer',
                 'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 isSelected
                   ? 'border-primary bg-primary/5'

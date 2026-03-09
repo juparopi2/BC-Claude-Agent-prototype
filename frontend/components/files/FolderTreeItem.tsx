@@ -107,7 +107,7 @@ export const FolderTreeItem = memo(function FolderTreeItem({
           <CollapsibleTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="p-0.5 hover:bg-accent rounded"
+              className="p-0.5 hover:bg-accent rounded cursor-pointer"
               aria-label={isExpanded ? 'Collapse' : 'Expand'}
             >
                {isLoading ? (

@@ -93,7 +93,7 @@ export function FolderTree({ className }: FolderTreeProps) {
         <button
           onClick={handleAllFiles}
           className={cn(
-            'flex items-center gap-2 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors',
+            'flex items-center gap-2 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors cursor-pointer',
             currentFolderId === null && !sourceTypeFilter && 'bg-accent'
           )}
         >
@@ -130,7 +130,7 @@ export function FolderTree({ className }: FolderTreeProps) {
               <div className="flex items-center gap-1 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors">
                 <CollapsibleTrigger asChild>
                   <button
-                    className="p-0.5 hover:bg-accent rounded"
+                    className="p-0.5 hover:bg-accent rounded cursor-pointer"
                     aria-label={isOneDriveExpanded ? 'Collapse OneDrive' : 'Expand OneDrive'}
                   >
                     {isOneDriveExpanded ? (
@@ -143,7 +143,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                 <button
                   onClick={handleOneDriveClick}
                   className={cn(
-                    'flex items-center gap-2 flex-1',
+                    'flex items-center gap-2 flex-1 cursor-pointer',
                     sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && !currentFolderId && 'font-semibold'
                   )}
                 >

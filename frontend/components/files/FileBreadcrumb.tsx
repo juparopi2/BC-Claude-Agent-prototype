@@ -53,7 +53,7 @@ export function FileBreadcrumb() {
       <button
         onClick={() => handleNavigate(null, -1)}
         className={cn(
-          'flex items-center gap-1 px-2 py-1 rounded hover:bg-accent transition-colors',
+          'flex items-center gap-1 px-2 py-1 rounded hover:bg-accent transition-colors cursor-pointer',
           currentFolderId === null && 'bg-accent font-medium'
         )}
         aria-current={currentFolderId === null ? 'page' : undefined}
@@ -78,7 +78,7 @@ export function FileBreadcrumb() {
           <button
             onClick={() => handleNavigate(folder.id, index)}
             className={cn(
-              'px-2 py-1 rounded hover:bg-accent transition-colors truncate max-w-32',
+              'px-2 py-1 rounded hover:bg-accent transition-colors truncate max-w-32 cursor-pointer',
               index === folderPath.length - 1 && 'bg-accent font-medium'
             )}
             title={folder.name}

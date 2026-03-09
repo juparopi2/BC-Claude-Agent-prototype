@@ -16,7 +16,7 @@ import type {
   ManifestFileItem,
   ManifestFolderItem,
 } from '@bc-agent/shared';
-import { PIPELINE_STATUS } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, PIPELINE_STATUS } from '@bc-agent/shared';
 import { computeFileHashesWithIds } from '@/lib/utils/hash';
 import { getUploadApiClient } from '@/src/infrastructure/api/uploadApiClient';
 import { useBatchUploadStore } from '../stores/uploadBatchStore';
@@ -538,7 +538,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
               mimeType: 'inode/directory',
               sizeBytes: 0,
               blobPath: '',
-              sourceType: 'local',
+              sourceType: FILE_SOURCE_TYPE.LOCAL,
               externalUrl: null,
               isFavorite: false,
               pipelineStatus: 'ready',

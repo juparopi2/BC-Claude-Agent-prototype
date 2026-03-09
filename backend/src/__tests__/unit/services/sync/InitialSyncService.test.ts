@@ -31,6 +31,7 @@ vi.mock('@/shared/utils/logger', () => ({
 // Mock Prisma — only the tables used by InitialSyncService
 const mockConnectionsFindUnique = vi.hoisted(() => vi.fn());
 const mockFilesFindFirst = vi.hoisted(() => vi.fn());
+const mockFilesFindMany = vi.hoisted(() => vi.fn());
 const mockFilesCreate = vi.hoisted(() => vi.fn());
 const mockFilesUpdate = vi.hoisted(() => vi.fn());
 
@@ -41,6 +42,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     },
     files: {
       findFirst: mockFilesFindFirst,
+      findMany: mockFilesFindMany,
       create: mockFilesCreate,
       update: mockFilesUpdate,
     },
@@ -121,13 +123,14 @@ function runSync(service: InitialSyncService, connectionId: string, scopeId: str
 function defaultScopeRow(overrides?: Partial<{
   scope_type: string;
   scope_resource_id: string | null;
+  scope_display_name: string | null;
 }>) {
   return {
     id: SCOPE_ID,
     connection_id: CONNECTION_ID,
     scope_type: overrides?.scope_type ?? 'root',
     scope_resource_id: overrides?.scope_resource_id ?? null,
-    scope_display_name: null,
+    scope_display_name: overrides?.scope_display_name ?? null,
     scope_path: null,
     sync_status: 'idle',
     last_sync_at: null,
@@ -210,6 +213,7 @@ describe('InitialSyncService', () => {
   beforeEach(() => {
     mockConnectionsFindUnique.mockReset();
     mockFilesFindFirst.mockReset();
+    mockFilesFindMany.mockReset();
     mockFilesCreate.mockReset();
     mockFilesUpdate.mockReset();
     mockExecuteDeltaQuery.mockReset();
@@ -232,6 +236,9 @@ describe('InitialSyncService', () => {
 
     // Default: no existing file (new file path)
     mockFilesFindFirst.mockResolvedValue(null);
+
+    // Default: no existing folders for the connection
+    mockFilesFindMany.mockResolvedValue([]);
 
     // Default: all writes succeed
     mockFilesCreate.mockResolvedValue({});
@@ -277,15 +284,24 @@ describe('InitialSyncService', () => {
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // findFirst called for each file (not folders)
+      // findFirst called: 1 for folder upsert + 1 for file dedup = 2
+      // (report.xlsx has unsupported MIME type, filtered out by isFileSyncSupported)
       expect(mockFilesFindFirst).toHaveBeenCalledTimes(2);
 
-      // Both files are new → create called twice
+      // 1 folder upsert + 1 file = 2 creates total
       expect(mockFilesCreate).toHaveBeenCalledTimes(2);
 
-      // Verify first file record fields
-      const firstCall = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      expect(firstCall.data).toMatchObject({
+      // Verify folder record (created first via folder upsert loop)
+      const folderCall = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(folderCall.data).toMatchObject({
+        name: 'Docs',
+        is_folder: true,
+        mime_type: 'inode/directory',
+      });
+
+      // Verify file record
+      const fileCall = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
+      expect(fileCall.data).toMatchObject({
         name: 'doc.pdf',
         user_id: USER_ID,
         mime_type: 'application/pdf',
@@ -299,15 +315,7 @@ describe('InitialSyncService', () => {
       });
 
       // ID must be UPPERCASE UUID
-      expect(firstCall.data.id as string).toMatch(/^[A-F0-9-]+$/);
-
-      // Second file
-      const secondCall = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
-      expect(secondCall.data).toMatchObject({
-        name: 'report.xlsx',
-        external_id: 'file-2',
-        mime_type: 'application/vnd.ms-excel',
-      });
+      expect(fileCall.data.id as string).toMatch(/^[A-F0-9-]+$/);
     });
 
     it('enqueues new files for processing via messageQueue.addFileProcessingFlow', async () => {
@@ -413,7 +421,7 @@ describe('InitialSyncService', () => {
       expect(call.data.name).toBe('keep.pdf');
     });
 
-    it('skips folders', async () => {
+    it('skips folders from file processing (folders are upserted separately)', async () => {
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [
           makeFolderChange('folder-1', 'Documents'),
@@ -427,7 +435,9 @@ describe('InitialSyncService', () => {
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      // 2 folders upserted + 1 file = 3 total creates
+      expect(mockFilesCreate).toHaveBeenCalledTimes(3);
+      // itemCount only counts files, not folders
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({ syncStatus: 'idle', itemCount: 1 })
@@ -574,7 +584,8 @@ describe('InitialSyncService', () => {
         FOLDER_RESOURCE_ID
       );
       expect(mockExecuteDeltaQuery).not.toHaveBeenCalled();
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      // PRD-112: 1 scope root folder + 1 file = 2 creates
+      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
     });
 
     it('uses executeDeltaQuery when scope_type is "root"', async () => {
@@ -636,6 +647,160 @@ describe('InitialSyncService', () => {
       expect(mockExecuteFolderDeltaQuery).not.toHaveBeenCalled();
       expect(mockGetItemMetadata).toHaveBeenCalledWith(CONNECTION_ID, 'ext-file-id');
       expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ==========================================================================
+  // syncScope — scope root folder creation (PRD-112)
+  // ==========================================================================
+
+  describe('syncScope() — scope root folder creation', () => {
+    it('creates scope root folder for folder-type scopes before processing subfolders', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: 'My Documents',
+        })
+      );
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Should create the scope root folder even with no subfolders or files
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+
+      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(call.data).toMatchObject({
+        user_id: USER_ID,
+        name: 'My Documents',
+        mime_type: 'inode/directory',
+        is_folder: true,
+        external_id: FOLDER_RESOURCE_ID,
+        external_drive_id: DRIVE_ID,
+        connection_id: CONNECTION_ID,
+        connection_scope_id: SCOPE_ID,
+        parent_folder_id: null,
+        pipeline_status: 'ready',
+      });
+    });
+
+    it('does not create scope root folder for root-type scopes', async () => {
+      mockFindScopeById.mockResolvedValue(defaultScopeRow({ scope_type: 'root' }));
+
+      mockExecuteDeltaQuery.mockResolvedValueOnce({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      expect(mockFilesCreate).not.toHaveBeenCalled();
+    });
+
+    it('reuses existing scope root folder from DB instead of creating duplicate', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({ scope_type: 'folder', scope_resource_id: FOLDER_RESOURCE_ID })
+      );
+
+      // Scope root folder already exists in DB
+      mockFilesFindFirst.mockResolvedValue({ id: 'EXISTING-SCOPE-FOLDER-ID' });
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Should NOT create a new folder
+      expect(mockFilesCreate).not.toHaveBeenCalled();
+    });
+
+    it('skips scope root folder creation when already in externalToInternalId map', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({ scope_type: 'folder', scope_resource_id: FOLDER_RESOURCE_ID })
+      );
+
+      // Seed the map via findMany (existing folder with matching external_id)
+      mockFilesFindMany.mockResolvedValue([
+        { id: 'MAP-SEEDED-FOLDER-ID', external_id: FOLDER_RESOURCE_ID },
+      ]);
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // findFirst for scope root should NOT be called (map already has it)
+      // Only findFirst calls would be for file dedup, not scope root
+      expect(mockFilesCreate).not.toHaveBeenCalled();
+    });
+
+    it('uses scope_display_name as folder name, falls back to "OneDrive Folder"', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: null,
+        })
+      );
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(call.data.name).toBe('OneDrive Folder');
+    });
+
+    it('children of scope folder resolve parent_folder_id to the scope root', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({ scope_type: 'folder', scope_resource_id: FOLDER_RESOURCE_ID })
+      );
+
+      // File whose parentId is the scope folder
+      const fileWithParent = makeFileChange('file-1', 'child-doc.pdf');
+      fileWithParent.item.parentId = FOLDER_RESOURCE_ID;
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [fileWithParent],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // 1 scope root folder + 1 file = 2 creates
+      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
+
+      // The file create should have parent_folder_id pointing to the scope root
+      const fileCreate = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
+      expect(fileCreate.data.name).toBe('child-doc.pdf');
+      // parent_folder_id should be the UUID generated for the scope root
+      expect(fileCreate.data.parent_folder_id).toBeTruthy();
+      expect(fileCreate.data.parent_folder_id).not.toBeNull();
     });
   });
 
@@ -941,7 +1106,7 @@ describe('InitialSyncService', () => {
       expect(call.data.size_bytes).toBe(BigInt(204800));
     });
 
-    it('uses application/octet-stream as fallback when mimeType is null', async () => {
+    it('files with null mimeType are filtered out by isFileSyncSupported (PRD-106)', async () => {
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [
           {
@@ -967,10 +1132,12 @@ describe('InitialSyncService', () => {
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-
-      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      expect(call.data.mime_type).toBe('application/octet-stream');
+      // File with null mimeType is not sync-supported and gets filtered out
+      expect(mockFilesCreate).not.toHaveBeenCalled();
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({ syncStatus: 'idle', itemCount: 0 })
+      );
     });
 
     it('sets external_url to null when webUrl is empty string', async () => {

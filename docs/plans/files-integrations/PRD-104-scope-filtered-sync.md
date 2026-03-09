@@ -392,6 +392,16 @@ Also clean AI Search embeddings for deleted files via the application's `SoftDel
   - Added `_runFileLevelSync` dedup tests (new file, existing file, scope update)
   - **32 tests total, all passing.**
 
+#### Post-Implementation Fix: Scope Root Folder Creation (2026-03-09)
+
+Discovered during PRD-107 testing that the scope root folder itself was never created in the `files` table. Fix applied to `InitialSyncService.ts`:
+- Scope root folder now explicitly created for `folder`-type scopes before processing child folders
+- `externalToInternalId` map seeding moved outside `folderChanges.length > 0` guard
+- Removed `parentId !== scope.scope_resource_id` parent resolution special-case (3 occurrences)
+- 6 new tests (38 total for InitialSyncService)
+
+See PRD-107 §6.9 for full details.
+
 ### Verification Results
 
 | Check | Result |
@@ -402,6 +412,7 @@ Also clean AI Search embeddings for deleted files via the application's `SoftDel
 | `npx prisma db push` | "Database is already in sync" |
 | DB: `UQ_files_connection_external` index | `is_unique: true, has_filter: true` |
 | DB: Duplicate count | 0 |
+| Scope root folder creation (post-fix) | 38/38 PASS |
 
 ### Files Modified/Created
 

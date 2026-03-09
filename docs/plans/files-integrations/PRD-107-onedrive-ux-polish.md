@@ -56,7 +56,7 @@ Previously, `_runSync()` filtered out folders entirely. Now:
 3. **Depth-sorted folder upsert**: Sorts folders by `parentPath` depth (counting `/` separators) so parents are inserted before children. Each folder is created/updated as a `files` record with `is_folder: true`, `mime_type: 'inode/directory'`, `pipeline_status: 'ready'`, and resolved `parent_folder_id`.
 4. **File `parent_folder_id`**: Both existing-file update and new-file create branches now resolve and persist `parent_folder_id` using the `externalToInternalId` map built during folder processing.
 
-**Scope root handling**: Items whose `parentId` matches `scope.scope_resource_id` get `parent_folder_id = null` (they are at the scope root).
+**Scope root handling** (updated by scope-root-folder fix): The scope root folder itself is created as a `files` record before processing child folders (if `scope_type === 'folder'`). Children whose `parentId` matches `scope.scope_resource_id` resolve to the scope root's internal ID via the `externalToInternalId` map. The `externalToInternalId` map seeding and scope root creation run outside the `folderChanges.length > 0` guard so they're available even with zero subfolders.
 
 #### 3.2.2 Frontend: Isolate Local Folder Tree
 
@@ -243,6 +243,19 @@ Replaced all `'onedrive'`, `'local'`, `'#0078D4'`, `'OneDrive'`, `'connected'` m
 | `backend/scripts/connectors/cleanup-user-onedrive-files.sql` | Moved from `scripts/` |
 | `backend/scripts/CLAUDE.md` | Added `connectors/` section |
 
+### 6.9 Bug 7 (Post-Session): Scope Root Folder Not Created During Sync
+
+**File**: `backend/src/services/sync/InitialSyncService.ts`
+
+After the PRD-107 folder hierarchy implementation, the scope root folder itself was never created in the `files` table. The scope folder was filtered from delta results (intentional — it IS the scope, not a child), but the code never compensated by creating it explicitly. Combined with parent resolution that special-cased `parentId === scope.scope_resource_id` to `null`, this caused all children of the scope root to appear at root level in the UI.
+
+**Fix** (3 parts):
+1. **Moved `externalToInternalId` map and seeding outside `folderChanges.length > 0` guard** — map is needed for scope root and file parent resolution even with zero subfolders.
+2. **Added scope root folder creation** — For `folder`-type scopes, creates the scope folder as a `files` record with `is_folder: true`, `pipeline_status: 'ready'`, and `parent_folder_id: null`. Uses `scope_display_name` as name, falls back to `'OneDrive Folder'`. Checks both the `externalToInternalId` map and DB before creating to avoid duplicates.
+3. **Removed `parentId !== scope.scope_resource_id` special-case** from all 3 parent resolution patterns. Children now naturally resolve their `parent_folder_id` via the map since the scope root is registered there.
+
+6 new unit tests added: scope root creation, dedup, display name fallback, parent resolution for children.
+
 ---
 
 ## 7. Out of Scope
@@ -253,4 +266,4 @@ Replaced all `'onedrive'`, `'local'`, `'#0078D4'`, `'OneDrive'`, `'connected'` m
 - Offline sync indicators
 - Sync history/log view
 - File counts per folder in sidebar (deferred — requires aggregation query)
-- Backend unit tests for folder upsert (can be added separately)
+- ~~Backend unit tests for folder upsert~~ (addressed: 38 tests now covering folder upsert + scope root creation)

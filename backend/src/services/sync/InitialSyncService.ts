@@ -146,47 +146,123 @@ export class InitialSyncService {
       logger.info({ connectionId, scopeId, fileCount: fileChanges.length }, 'Files to ingest');
 
       // PRD-107: Extract folder changes for tree hierarchy storage
+      // Filter out the scoped folder itself (Microsoft Graph includes it in delta results)
       const folderChanges = allChanges.filter(
-        (c) => c.changeType !== 'deleted' && c.item.isFolder
+        (c) => c.changeType !== 'deleted' && c.item.isFolder && c.item.id !== scope.scope_resource_id
       );
 
       // PRD-107: Upsert folders sorted by depth (parents before children)
       // Build external-to-internal ID mapping for parent chain resolution
+      // NOTE: Map and seeding are OUTSIDE the folderChanges guard because the scope
+      // root folder and file parent resolution need the map even with zero subfolders.
       const externalToInternalId = new Map<string, string>();
 
-      if (folderChanges.length > 0) {
-        // Query existing folders for this connection to seed the map
-        const existingFolders = await prisma.files.findMany({
-          where: {
-            connection_id: connectionId,
-            is_folder: true,
-            source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-          },
-          select: { id: true, external_id: true },
-        });
-        for (const ef of existingFolders) {
-          if (ef.external_id) {
-            externalToInternalId.set(ef.external_id, ef.id);
+      // Query existing folders for this connection to seed the map
+      const existingFolders = await prisma.files.findMany({
+        where: {
+          connection_id: connectionId,
+          is_folder: true,
+          source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+        },
+        select: { id: true, external_id: true },
+      });
+      for (const ef of existingFolders) {
+        if (ef.external_id) {
+          externalToInternalId.set(ef.external_id, ef.id);
+        }
+      }
+
+      // PRD-112: Create the scope root folder itself (if folder-type scope).
+      // The scope folder is filtered from delta results (it IS the scope, not a child),
+      // but it must exist in the files table so children can reference it as parent.
+      if (scope.scope_type === 'folder' && scope.scope_resource_id) {
+        if (!externalToInternalId.has(scope.scope_resource_id)) {
+          const existingScopeFolder = await prisma.files.findFirst({
+            where: { connection_id: connectionId, external_id: scope.scope_resource_id },
+            select: { id: true },
+          });
+
+          if (existingScopeFolder) {
+            externalToInternalId.set(scope.scope_resource_id, existingScopeFolder.id);
+          } else {
+            const scopeFolderId = randomUUID().toUpperCase();
+            await prisma.files.create({
+              data: {
+                id: scopeFolderId,
+                user_id: userId,
+                name: scope.scope_display_name ?? 'OneDrive Folder',
+                mime_type: 'inode/directory',
+                size_bytes: BigInt(0),
+                blob_path: null,
+                is_folder: true,
+                source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+                external_id: scope.scope_resource_id,
+                external_drive_id: connection.microsoft_drive_id,
+                connection_id: connectionId,
+                connection_scope_id: scopeId,
+                external_url: null,
+                external_modified_at: null,
+                parent_folder_id: null,
+                pipeline_status: 'ready',
+                processing_retry_count: 0,
+                embedding_retry_count: 0,
+                is_favorite: false,
+              },
+            });
+            externalToInternalId.set(scope.scope_resource_id, scopeFolderId);
+            logger.info({ scopeId, scopeFolderId, name: scope.scope_display_name }, 'Created scope root folder');
           }
         }
+      }
 
+      if (folderChanges.length > 0) {
         // Sort by depth (count '/' in parentPath) — parents processed first
+        // Defensive: null/undefined parentPath gets depth -1 (processed first as root-level items)
         const sortedFolders = [...folderChanges].sort((a, b) => {
-          const depthA = (a.item.parentPath ?? '').split('/').length;
-          const depthB = (b.item.parentPath ?? '').split('/').length;
+          const pathA = a.item.parentPath;
+          const pathB = b.item.parentPath;
+          const depthA = pathA ? pathA.split('/').length : -1;
+          const depthB = pathB ? pathB.split('/').length : -1;
           return depthA - depthB;
         });
+
+        logger.info(
+          {
+            connectionId,
+            scopeId,
+            scopeResourceId: scope.scope_resource_id,
+            folderCount: sortedFolders.length,
+            folders: sortedFolders.map((f) => ({
+              id: f.item.id,
+              name: f.item.name,
+              parentId: f.item.parentId,
+              parentPath: f.item.parentPath,
+            })),
+          },
+          'Sorted folders for hierarchy upsert'
+        );
 
         for (const change of sortedFolders) {
           const item = change.item;
           try {
-            // Resolve parent_folder_id:
-            // - If parentId matches scope_resource_id (scope root), set null
-            // - Otherwise look up in the mapping
+            // Resolve parent_folder_id from the external-to-internal ID map.
+            // The scope root folder is now in the map (PRD-112), so children
+            // whose parentId === scope_resource_id resolve naturally.
             let parentFolderId: string | null = null;
-            if (item.parentId && item.parentId !== scope.scope_resource_id) {
+            if (item.parentId) {
               parentFolderId = externalToInternalId.get(item.parentId) ?? null;
             }
+
+            logger.debug(
+              {
+                folderName: item.name,
+                externalId: item.id,
+                parentId: item.parentId,
+                resolvedParentFolderId: parentFolderId,
+                mapSize: externalToInternalId.size,
+              },
+              'Resolving folder parent'
+            );
 
             const existing = await prisma.files.findFirst({
               where: { connection_id: connectionId, external_id: item.id },
@@ -270,7 +346,7 @@ export class InitialSyncService {
               if (existing) {
                 // Resolve parent folder for existing file update
                 let parentFolderId: string | null = null;
-                if (item.parentId && item.parentId !== scope.scope_resource_id) {
+                if (item.parentId) {
                   parentFolderId = externalToInternalId.get(item.parentId) ?? null;
                 }
 
@@ -291,7 +367,7 @@ export class InitialSyncService {
               } else {
                 // Resolve parent folder for new file creation
                 let parentFolderId: string | null = null;
-                if (item.parentId && item.parentId !== scope.scope_resource_id) {
+                if (item.parentId) {
                   parentFolderId = externalToInternalId.get(item.parentId) ?? null;
                 }
 

@@ -46,14 +46,15 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-101](./PRD-101-onedrive-connection.md) | OneDrive Connection & Initial Sync | **COMPLETED** |
 | [PRD-102](./PRD-102-wizard-bugfixes.md) | OneDrive Wizard Bug Fixes | **COMPLETED** |
 | [PRD-103](./PRD-103-file-browsing-lite.md) | File-Level Browsing (Lite) | **COMPLETED** |
-| [PRD-104](./PRD-104-scope-filtered-sync.md) | Scope-Filtered Sync & Deduplication | **TODO — CRITICAL** |
-| [PRD-105](./PRD-105-scope-management.md) | Scope Management & Re-configuration | TODO |
+| [PRD-104](./PRD-104-scope-filtered-sync.md) | Scope-Filtered Sync & Deduplication | **COMPLETED** |
+| [PRD-105](./PRD-105-scope-management.md) | Scope Management & Re-configuration | **COMPLETED** |
 | [PRD-106](./PRD-106-file-type-validation.md) | File Type Validation & Pipeline Guard | **COMPLETED** |
-| [PRD-107](./PRD-107-onedrive-ux-polish.md) | OneDrive File UX Polish | TODO |
+| [PRD-107](./PRD-107-onedrive-ux-polish.md) | OneDrive File UX Polish | **COMPLETED** |
 | [PRD-108](./PRD-108-webhook-sync-engine.md) | Real-Time Sync Engine (Webhooks) | Planned |
 | [PRD-109](./PRD-109-settings-disconnect.md) | Settings Connections Tab & Full Disconnect | Planned |
 | [PRD-110](./PRD-110-shared-files-browsing.md) | OneDrive "Shared With Me" Browsing | Planned |
 | [PRD-111](./PRD-111-sharepoint-connection.md) | SharePoint Connection | Planned |
+| [PRD-112](./PRD-112-scope-selection-inheritance.md) | Scope Selection Inheritance | Proposed |
 
 ### Dependency Chain
 
@@ -70,27 +71,27 @@ PRD-102 (Bug Fixes) ──── COMPLETED
 PRD-103 (File Browsing Lite) ── COMPLETED
    │
    v
-PRD-104 (Scope-Filtered Sync) ←── NEXT (CRITICAL)
+PRD-104 (Scope-Filtered Sync) ── COMPLETED
    │
    v
-PRD-105 (Scope Management)
+PRD-105 (Scope Management) ── COMPLETED
    │
    v
-PRD-106 (File Type Validation)
+PRD-106 (File Type Validation) ── COMPLETED
    │
    v
-PRD-107 (OneDrive UX Polish)
+PRD-107 (OneDrive UX Polish) ── COMPLETED
    │
-   ├──→ PRD-108 (Webhooks) ──→ PRD-111 (SharePoint)
+   ├──→ PRD-108 (Webhooks) ←── NEXT
    │
    ├──→ PRD-109 (Settings Disconnect)
    │
-   └──→ PRD-110 (Shared Files)
+   ├──→ PRD-110 (Shared Files)
+   │
+   └──→ PRD-112 (Scope Selection Inheritance)
 ```
 
-PRD-100 through PRD-103 form the completed foundation. PRD-104 is the **critical next step** — fixes data integrity bugs that make the sync pipeline unreliable (ignores folder scope, creates duplicates).
-
-PRD-105 through PRD-107 form a sequential chain of OneDrive enhancements. After PRD-107, three independent tracks can proceed in parallel: Webhooks (→ SharePoint), Settings Disconnect, and Shared Files.
+PRD-100 through PRD-107 form the completed OneDrive foundation. Three independent tracks can now proceed in parallel: Webhooks (PRD-108 → PRD-111 SharePoint), Settings Disconnect (PRD-109), Shared Files (PRD-110), and Scope Selection Inheritance (PRD-112).
 
 ### Renumbering History (2026-03-09)
 
@@ -122,6 +123,7 @@ The PRD series was renumbered to reflect the actual implementation order and ins
 | MEDIUM | No frontend sync event listeners | PRD-107 |
 | MEDIUM | No scope deletion/cleanup mechanism | PRD-105 |
 | LOW | Unsupported files processed (no pipeline guard) | PRD-106 |
+| HIGH | Scope root folder not created during folder sync | PRD-107 §6.9 |
 
 ### PRD-101 Implementation Summary
 

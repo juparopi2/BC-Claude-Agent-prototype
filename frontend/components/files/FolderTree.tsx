@@ -83,11 +83,8 @@ export function FolderTree({ className }: FolderTreeProps) {
   }, [setSourceTypeFilter, navigateToFolder]);
 
   const handleOneDriveFolderSelect = useCallback((folderId: string, folder: ParsedFile) => {
-    // When selecting a specific OneDrive subfolder, clear the source type filter
-    // so we see the actual folder contents (not a flat view)
-    setSourceTypeFilter(null);
     navigateToFolder(folderId, folder);
-  }, [setSourceTypeFilter, navigateToFolder]);
+  }, [navigateToFolder]);
 
   return (
     <ScrollArea className={cn('h-full', className)}>

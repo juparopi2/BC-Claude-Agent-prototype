@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback } from 'react';
-import { Home, ChevronRight, Star, Cloud } from 'lucide-react';
-import { FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
+import { ChevronRight, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFolderNavigation } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
+import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
 
 /**
  * FileBreadcrumb Component
@@ -31,19 +31,18 @@ export function FileBreadcrumb() {
   const { folderPath, currentFolderId, setCurrentFolder } = useFolderNavigation();
   const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
   const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
-  const setSourceTypeFilter = useSortFilterStore((s) => s.setSourceTypeFilter);
+
+  const sourceUI = getFileSourceUI(sourceTypeFilter);
 
   const handleNavigate = useCallback((folderId: string | null, index: number) => {
     if (folderId === null) {
-      // Clear filter when going to root (back to "All Files")
-      setSourceTypeFilter(null);
       setCurrentFolder(null, []);
     } else {
       // Truncate path to the clicked folder (inclusive)
       const newPath = folderPath.slice(0, index + 1);
       setCurrentFolder(folderId, newPath);
     }
-  }, [setCurrentFolder, setSourceTypeFilter, folderPath]);
+  }, [setCurrentFolder, folderPath]);
 
   return (
     <nav
@@ -61,13 +60,14 @@ export function FileBreadcrumb() {
       >
         {showFavoritesOnly ? (
           <Star className="size-4 fill-amber-400 text-amber-400" />
-        ) : sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE ? (
-          <Cloud className="size-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }} />
         ) : (
-          <Home className="size-4" />
+          <sourceUI.Icon
+            className="size-4"
+            {...(sourceUI.accentColor ? { style: { color: sourceUI.accentColor } } : {})}
+          />
         )}
         <span className="sr-only sm:not-sr-only">
-          {showFavoritesOnly ? 'Favorites' : sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE ? PROVIDER_DISPLAY_NAME[PROVIDER_ID.ONEDRIVE] : 'Files'}
+          {showFavoritesOnly ? 'Favorites' : sourceUI.displayName}
         </span>
       </button>
 

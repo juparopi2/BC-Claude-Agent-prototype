@@ -41,17 +41,23 @@ function mapDriveItem(item: Record<string, unknown>): ExternalFileItem {
     name: String(item.name),
     isFolder: !!item.folder,
     mimeType: item.file
-      ? String((item.file as Record<string, unknown>).mimeType ?? null)
+      ? ((item.file as Record<string, unknown>).mimeType != null
+          ? String((item.file as Record<string, unknown>).mimeType)
+          : null)
       : null,
     sizeBytes: Number(item.size ?? 0),
     lastModifiedAt: String(item.lastModifiedDateTime ?? ''),
     webUrl: String(item.webUrl ?? ''),
     eTag: item.eTag ? String(item.eTag) : null,
     parentId: item.parentReference
-      ? String((item.parentReference as Record<string, unknown>).id ?? null)
+      ? ((item.parentReference as Record<string, unknown>).id != null
+          ? String((item.parentReference as Record<string, unknown>).id)
+          : null)
       : null,
     parentPath: item.parentReference
-      ? String((item.parentReference as Record<string, unknown>).path ?? null)
+      ? ((item.parentReference as Record<string, unknown>).path != null
+          ? String((item.parentReference as Record<string, unknown>).path)
+          : null)
       : null,
     childCount: item.folder
       ? Number((item.folder as Record<string, unknown>).childCount ?? 0)

@@ -1,12 +1,13 @@
 import { useCallback, memo, useEffect } from 'react';
-import { FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_ID } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
-import { Folder, ChevronRight, ChevronDown, Loader2, Cloud } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
 import { getFileApiClient } from '@/src/infrastructure/api';
+import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
 import { FileContextMenu } from './FileContextMenu';
 
 // Empty array constant to avoid creating new references
@@ -58,7 +59,10 @@ export const FolderTreeItem = memo(function FolderTreeItem({
       setLoadingFolder(folder.id, true);
       try {
         const fileApi = getFileApiClient();
-        const result = await fileApi.getFiles({ folderId: folder.id });
+        const result = await fileApi.getFiles({
+          folderId: folder.id,
+          ...(folder.sourceType !== FILE_SOURCE_TYPE.LOCAL ? { sourceType: folder.sourceType } : {}),
+        });
         if (result.success) {
           const childFolders = result.data.files.filter((f) => f.isFolder);
           // Always set, even if empty - this marks as "loaded"
@@ -74,7 +78,7 @@ export const FolderTreeItem = memo(function FolderTreeItem({
     };
 
     loadChildren();
-  }, [isExpanded, folder.id, isLoaded, isLoading, setLoadingFolder, setTreeFolders]);
+  }, [isExpanded, folder.id, folder.sourceType, isLoaded, isLoading, setLoadingFolder, setTreeFolders]);
 
   const handleSelect = useCallback(() => {
     if (onSelect) {
@@ -85,6 +89,8 @@ export const FolderTreeItem = memo(function FolderTreeItem({
       navigateToFolder(folder.id, folder);
     }
   }, [folder, onSelect, navigateToFolder]);
+
+  const sourceUI = getFileSourceUI(folder.sourceType);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={() => toggleFolderExpanded(folder.id)}>
@@ -121,10 +127,10 @@ export const FolderTreeItem = memo(function FolderTreeItem({
                 'size-4 flex-shrink-0',
                 isExpanded ? 'text-amber-600' : 'text-amber-500'
               )} />
-              {folder.sourceType === FILE_SOURCE_TYPE.ONEDRIVE && (
-                <Cloud
+              {folder.sourceType !== FILE_SOURCE_TYPE.LOCAL && sourceUI.accentColor && (
+                <sourceUI.Icon
                   className="absolute -bottom-0.5 -right-1 size-2.5"
-                  style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], fill: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }}
+                  style={{ color: sourceUI.accentColor, fill: sourceUI.accentColor }}
                 />
               )}
             </span>

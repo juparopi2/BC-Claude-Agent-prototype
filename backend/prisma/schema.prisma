@@ -263,6 +263,10 @@ model file_chunks {
   @@index([user_id], map: "IX_file_chunks_user_id")
 }
 
+/// Filtered unique index (enforced by DB, not representable in Prisma DSL):
+/// - UQ_files_connection_external: UNIQUE (connection_id, external_id) WHERE connection_id IS NOT NULL AND external_id IS NOT NULL
+///   Prevents duplicate OneDrive files per connection. Created via raw SQL (PRD-104).
+///   Prisma @@index below is a documentation placeholder; real uniqueness is the filtered index.
 model files {
   id                       String                     @id(map: "PK__files__3213E83F64B37894") @default(dbgenerated("newid()"), map: "DF__files__id__3A179ED3") @db.UniqueIdentifier
   user_id                  String                     @db.UniqueIdentifier
@@ -313,7 +317,9 @@ model files {
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
   @@index([user_id, content_hash], map: "IX_files_user_content_hash")
-  @@index([connection_id, external_id], map: "IX_files_connection_external")
+  /// Replaced by filtered unique index UQ_files_connection_external in DB (PRD-104)
+  /// Prisma cannot represent filtered indexes, so this @@index is omitted.
+  /// The DB-level filtered unique index enforces uniqueness where both columns are NOT NULL.
   @@index([batch_id])
 }
 

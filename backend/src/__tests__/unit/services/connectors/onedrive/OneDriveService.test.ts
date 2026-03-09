@@ -229,6 +229,7 @@ describe('OneDriveService', () => {
         eTag: '"etag-abc"',
         parentId: 'parent-folder-id',
         parentPath: '/drives/DRIVE-123/root:',
+        childCount: null,
       });
       expect(result.nextPageToken).toBeNull();
     });
@@ -550,6 +551,107 @@ describe('OneDriveService', () => {
       expect(result.changes).toHaveLength(2);
       expect(result.changes[0]?.changeType).toBe('modified');
       expect(result.changes[1]?.changeType).toBe('deleted');
+    });
+  });
+
+  // ==========================================================================
+  // executeFolderDeltaQuery
+  // ==========================================================================
+
+  describe('executeFolderDeltaQuery', () => {
+    const FOLDER_ID = 'FOLDER-ABC-123';
+
+    it('calls /drives/{driveId}/items/{folderId}/delta when no deltaLink provided', async () => {
+      mockGet.mockResolvedValue({
+        value: [],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/DRIVE-123/root/delta(token=done)',
+      });
+
+      await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID);
+
+      expect(mockGet).toHaveBeenCalledWith(
+        `/drives/${DRIVE_ID}/items/${FOLDER_ID}/delta`,
+        MOCK_TOKEN
+      );
+    });
+
+    it('uses deltaLink verbatim when provided', async () => {
+      const absoluteDeltaLink = 'https://graph.microsoft.com/v1.0/drives/DRIVE-123/items/FOLDER-ABC-123/delta(token=resume)';
+
+      mockGet.mockResolvedValue({
+        value: [],
+        '@odata.deltaLink': absoluteDeltaLink,
+      });
+
+      await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID, absoluteDeltaLink);
+
+      expect(mockGet).toHaveBeenCalledWith(absoluteDeltaLink, MOCK_TOKEN);
+      // DB should NOT be queried when deltaLink is provided
+      expect(mockFindUnique).not.toHaveBeenCalled();
+    });
+
+    it('returns correct DeltaQueryResult shape with changes', async () => {
+      const rawItem = buildRawDriveItem({ id: 'folder-file-001', name: 'InFolder.docx' });
+      const deltaLinkUrl = 'https://graph.microsoft.com/v1.0/drives/DRIVE-123/items/FOLDER-ABC-123/delta(token=latest)';
+
+      mockGet.mockResolvedValue({
+        value: [rawItem],
+        '@odata.deltaLink': deltaLinkUrl,
+      });
+
+      const result = await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID);
+
+      expect(result.changes).toHaveLength(1);
+      expect(result.changes[0]?.changeType).toBe('modified');
+      expect(result.changes[0]?.item.id).toBe('folder-file-001');
+      expect(result.changes[0]?.item.name).toBe('InFolder.docx');
+      expect(result.deltaLink).toBe(deltaLinkUrl);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextPageLink).toBeNull();
+    });
+
+    it('handles pagination links (hasMore + nextPageLink)', async () => {
+      const nextLinkUrl = 'https://graph.microsoft.com/v1.0/drives/DRIVE-123/items/FOLDER-ABC-123/delta?$skiptoken=page2';
+
+      mockGet.mockResolvedValue({
+        value: [buildRawDriveItem()],
+        '@odata.nextLink': nextLinkUrl,
+      });
+
+      const result = await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID);
+
+      expect(result.hasMore).toBe(true);
+      expect(result.nextPageLink).toBe(nextLinkUrl);
+      expect(result.deltaLink).toBeNull();
+    });
+
+    it('handles deleted items with changeType "deleted"', async () => {
+      const deletedItem = buildRawDriveItem({
+        id: 'folder-deleted-001',
+        name: 'Removed.docx',
+        deleted: { state: 'deleted' },
+      });
+
+      mockGet.mockResolvedValue({
+        value: [deletedItem],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/DRIVE-123/items/FOLDER-ABC-123/delta(token=end)',
+      });
+
+      const result = await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID);
+
+      expect(result.changes[0]?.changeType).toBe('deleted');
+      expect(result.changes[0]?.item.id).toBe('folder-deleted-001');
+    });
+
+    it('returns empty changes array when response value is empty', async () => {
+      mockGet.mockResolvedValue({
+        value: [],
+        '@odata.deltaLink': 'https://graph.microsoft.com/v1.0/drives/DRIVE-123/items/FOLDER-ABC-123/delta(token=empty)',
+      });
+
+      const result = await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID);
+
+      expect(result.changes).toEqual([]);
     });
   });
 

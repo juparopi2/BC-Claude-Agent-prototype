@@ -95,3 +95,33 @@ Run via `sqlcmd` or Azure Data Studio against the target database.
 3. Update the `///` comment in `schema.prisma` above the affected model
 4. Update the table in this file (`CLAUDE.md`)
 5. Run `npm run -w backend test:unit` to verify no test assertions break
+
+## Filtered Unique Indexes (Not Representable in Prisma DSL)
+
+Prisma does NOT support SQL Server filtered indexes. These are created via raw SQL and are invisible to `prisma db pull` / `prisma db push`.
+
+### UQ_files_connection_external
+
+**Table**: `files`
+**Columns**: `connection_id`, `external_id`
+**Filter**: `WHERE connection_id IS NOT NULL AND external_id IS NOT NULL`
+**Purpose**: Prevents duplicate file records when re-syncing from OneDrive. Each external file (identified by `external_id`) can only exist once per connection. The filter allows multiple rows with NULL values (locally-uploaded files have no connection_id/external_id).
+
+**Why filtered**: Both columns are nullable (`String?`). SQL Server treats NULLs as equal in regular unique constraints, which would prevent multiple local files from existing. The filter restricts uniqueness enforcement to OneDrive files only.
+
+**Prisma impact**: Since this is a filtered index, Prisma cannot generate a compound unique accessor. Code must use `findFirst` + `create`/`update` instead of `upsert`:
+
+```typescript
+const existing = await prisma.files.findFirst({
+  where: { connection_id: connectionId, external_id: externalId },
+  select: { id: true, pipeline_status: true },
+});
+
+if (existing) {
+  await prisma.files.update({ where: { id: existing.id }, data: { ... } });
+} else {
+  await prisma.files.create({ data: { ... } });
+}
+```
+
+**History**: Replaced the non-unique index `IX_files_connection_external` (PRD-104). Duplicates were cleaned up using `backend/scripts/cleanup-duplicate-files.sql` before the index was created.

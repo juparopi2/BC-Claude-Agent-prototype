@@ -1,16 +1,16 @@
 /**
- * InitialSyncService (PRD-101)
+ * InitialSyncService (PRD-101, PRD-104)
  *
  * Orchestrates the initial full enumeration and ingestion of files from a
  * OneDrive connection scope into the local files table and processing queue.
  *
  * Design:
  * - syncScope() is fire-and-forget (called without await from the route handler).
- * - Executes a full delta query (no deltaLink = full drive enumeration) and
- *   follows all @odata.nextLink pages to collect every item.
+ * - Delta queries are scope-aware: folder scopes use folder-scoped delta,
+ *   root scopes use full drive delta (PRD-104).
  * - Only files (not folders) are ingested; folders are skipped.
- * - Files are created in the local `files` table via Prisma and enqueued for
- *   the extract → chunk → embed → pipeline-complete processing pipeline.
+ * - Files are upserted (not created) to prevent duplicates on re-sync (PRD-104).
+ *   Only newly created files (pipeline_status='queued') are enqueued for processing.
  * - WebSocket events are emitted to `user:{userId}` room at each batch and on
  *   completion or error.
  * - The final deltaLink is persisted in connection_scopes.last_sync_cursor for
@@ -23,7 +23,7 @@ import { randomUUID } from 'crypto';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
 import { FILE_SOURCE_TYPE, SYNC_WS_EVENTS } from '@bc-agent/shared';
-import type { DeltaChange, ExternalFileItem } from '@bc-agent/shared';
+import type { DeltaChange, DeltaQueryResult, ExternalFileItem } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getConnectionRepository } from '@/domains/connections';
 import { getMessageQueue } from '@/infrastructure/queue';
@@ -98,19 +98,29 @@ export class InitialSyncService {
         throw new Error(`Connection not found: ${connectionId}`);
       }
 
-      // Step 3: Execute full delta query — follow all pages
+      // Step 3: Execute delta query — scope-aware routing
       const allChanges: DeltaChange[] = [];
       let deltaLink: string | null = null;
       let nextPageLink: string | null = null;
 
-      // First call: no deltaLink = full enumeration
-      let page = await getOneDriveService().executeDeltaQuery(connectionId);
+      // First call: route based on scope_type
+      let page: DeltaQueryResult;
+
+      if (scope.scope_type === 'folder' && scope.scope_resource_id) {
+        logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id }, 'Starting folder-scoped delta');
+        page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id);
+      } else {
+        logger.info({ connectionId, scopeId }, 'Starting root-scoped delta');
+        page = await getOneDriveService().executeDeltaQuery(connectionId);
+      }
+
       allChanges.push(...page.changes);
       deltaLink = page.deltaLink;
       nextPageLink = page.nextPageLink;
 
       while (nextPageLink) {
         logger.debug({ connectionId, scopeId, collectedSoFar: allChanges.length }, 'Following delta nextPageLink');
+        // nextPageLink is an absolute URL already scoped — works for both root and folder delta
         page = await getOneDriveService().executeDeltaQuery(connectionId, nextPageLink);
         allChanges.push(...page.changes);
         if (page.deltaLink) {
@@ -142,42 +152,63 @@ export class InitialSyncService {
             const item = change.item;
 
             try {
-              const fileId = randomUUID().toUpperCase();
-
-              // Create file record in DB
-              await prisma.files.create({
-                data: {
-                  id: fileId,
-                  user_id: userId,
-                  name: item.name,
-                  mime_type: item.mimeType ?? 'application/octet-stream',
-                  size_bytes: BigInt(item.sizeBytes ?? 0),
-                  blob_path: null,
-                  is_folder: false,
-                  source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-                  external_id: item.id,
-                  external_drive_id: connection.microsoft_drive_id,
-                  connection_id: connectionId,
-                  connection_scope_id: scopeId,
-                  external_url: item.webUrl || null,
-                  external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                  content_hash_external: item.eTag ?? null,
-                  pipeline_status: 'queued',
-                  processing_retry_count: 0,
-                  embedding_retry_count: 0,
-                  is_favorite: false,
-                },
+              // Check if file already exists (dedup via filtered unique index)
+              const existing = await prisma.files.findFirst({
+                where: { connection_id: connectionId, external_id: item.id },
+                select: { id: true, pipeline_status: true },
               });
 
-              // Enqueue file for processing pipeline (extract → chunk → embed → pipeline-complete)
-              await messageQueue.addFileProcessingFlow({
-                fileId,
-                batchId: scopeId,
-                userId,
-                mimeType: item.mimeType ?? 'application/octet-stream',
-                fileName: item.name,
-                // blobPath omitted — external file, no blob storage path
-              });
+              if (existing) {
+                // Update metadata only — do NOT touch pipeline_status to avoid re-processing
+                await prisma.files.update({
+                  where: { id: existing.id },
+                  data: {
+                    name: item.name,
+                    mime_type: item.mimeType ?? 'application/octet-stream',
+                    size_bytes: BigInt(item.sizeBytes ?? 0),
+                    external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                    content_hash_external: item.eTag ?? null,
+                    connection_scope_id: scopeId,
+                    last_synced_at: new Date(),
+                  },
+                });
+              } else {
+                // Create new file record
+                const fileId = randomUUID().toUpperCase();
+
+                await prisma.files.create({
+                  data: {
+                    id: fileId,
+                    user_id: userId,
+                    name: item.name,
+                    mime_type: item.mimeType ?? 'application/octet-stream',
+                    size_bytes: BigInt(item.sizeBytes ?? 0),
+                    blob_path: null,
+                    is_folder: false,
+                    source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+                    external_id: item.id,
+                    external_drive_id: connection.microsoft_drive_id,
+                    connection_id: connectionId,
+                    connection_scope_id: scopeId,
+                    external_url: item.webUrl || null,
+                    external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                    content_hash_external: item.eTag ?? null,
+                    pipeline_status: 'queued',
+                    processing_retry_count: 0,
+                    embedding_retry_count: 0,
+                    is_favorite: false,
+                  },
+                });
+
+                // Only enqueue newly created files for processing
+                await messageQueue.addFileProcessingFlow({
+                  fileId,
+                  batchId: scopeId,
+                  userId,
+                  mimeType: item.mimeType ?? 'application/octet-stream',
+                  fileName: item.name,
+                });
+              }
             } catch (fileErr) {
               const errorInfo = fileErr instanceof Error
                 ? { message: fileErr.message, name: fileErr.name }
@@ -277,44 +308,69 @@ export class InitialSyncService {
         throw new Error(`Connection not found: ${connectionId}`);
       }
 
-      // 3. Create file record in DB
-      const fileId = randomUUID().toUpperCase();
-
-      await prisma.files.create({
-        data: {
-          id: fileId,
-          user_id: userId,
-          name: item.name,
-          mime_type: item.mimeType ?? 'application/octet-stream',
-          size_bytes: BigInt(item.sizeBytes ?? 0),
-          blob_path: null,
-          is_folder: false,
-          source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-          external_id: item.id,
-          external_drive_id: connection.microsoft_drive_id,
-          connection_id: connectionId,
-          connection_scope_id: scopeId,
-          external_url: item.webUrl || null,
-          external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-          content_hash_external: item.eTag ?? null,
-          pipeline_status: 'queued',
-          processing_retry_count: 0,
-          embedding_retry_count: 0,
-          is_favorite: false,
-        },
+      // 3. Check if file already exists (dedup via filtered unique index)
+      const existing = await prisma.files.findFirst({
+        where: { connection_id: connectionId, external_id: item.id },
+        select: { id: true, pipeline_status: true },
       });
 
-      // 4. Enqueue for processing pipeline
-      const messageQueue = getMessageQueue();
-      await messageQueue.addFileProcessingFlow({
-        fileId,
-        batchId: scopeId,
-        userId,
-        mimeType: item.mimeType ?? 'application/octet-stream',
-        fileName: item.name,
-      });
+      let fileId: string;
 
-      // 5. Update scope as complete
+      if (existing) {
+        // Update metadata only — do NOT touch pipeline_status
+        await prisma.files.update({
+          where: { id: existing.id },
+          data: {
+            name: item.name,
+            mime_type: item.mimeType ?? 'application/octet-stream',
+            size_bytes: BigInt(item.sizeBytes ?? 0),
+            external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+            content_hash_external: item.eTag ?? null,
+            connection_scope_id: scopeId,
+            last_synced_at: new Date(),
+          },
+        });
+        fileId = existing.id;
+      } else {
+        // Create new file record
+        fileId = randomUUID().toUpperCase();
+
+        await prisma.files.create({
+          data: {
+            id: fileId,
+            user_id: userId,
+            name: item.name,
+            mime_type: item.mimeType ?? 'application/octet-stream',
+            size_bytes: BigInt(item.sizeBytes ?? 0),
+            blob_path: null,
+            is_folder: false,
+            source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+            external_id: item.id,
+            external_drive_id: connection.microsoft_drive_id,
+            connection_id: connectionId,
+            connection_scope_id: scopeId,
+            external_url: item.webUrl || null,
+            external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+            content_hash_external: item.eTag ?? null,
+            pipeline_status: 'queued',
+            processing_retry_count: 0,
+            embedding_retry_count: 0,
+            is_favorite: false,
+          },
+        });
+
+        // Only enqueue newly created files for processing
+        const messageQueue = getMessageQueue();
+        await messageQueue.addFileProcessingFlow({
+          fileId,
+          batchId: scopeId,
+          userId,
+          mimeType: item.mimeType ?? 'application/octet-stream',
+          fileName: item.name,
+        });
+      }
+
+      // 4. Update scope as complete
       const repo = getConnectionRepository();
       await repo.updateScope(scopeId, {
         syncStatus: 'idle',

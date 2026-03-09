@@ -311,6 +311,74 @@ export class OneDriveService {
 
     return result;
   }
+
+  /**
+   * Execute a folder-scoped delta query to detect changes within a specific folder.
+   *
+   * If deltaLink is provided, it is used verbatim as the request URL (absolute).
+   * Otherwise, calls GET /drives/{driveId}/items/{folderId}/delta to start a new
+   * folder-scoped delta session.
+   *
+   * This mirrors executeDeltaQuery but scopes the enumeration to a single folder
+   * subtree instead of the entire drive root.
+   */
+  async executeFolderDeltaQuery(
+    connectionId: string,
+    folderId: string,
+    deltaLink?: string
+  ): Promise<DeltaQueryResult> {
+    logger.info({ connectionId, folderId, hasDeltaLink: !!deltaLink }, 'Executing folder-scoped delta query');
+
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+
+    let raw: Record<string, unknown>;
+
+    if (deltaLink) {
+      // deltaLink is an absolute URL — use it directly (already scoped to the folder)
+      raw = await getGraphHttpClient().get<Record<string, unknown>>(deltaLink, token);
+    } else {
+      const { driveId } = await getConnectionDriveInfo(connectionId);
+      raw = await getGraphHttpClient().get<Record<string, unknown>>(
+        `/drives/${driveId}/items/${folderId}/delta`,
+        token
+      );
+    }
+
+    const rawItems = Array.isArray(raw.value) ? (raw.value as Record<string, unknown>[]) : [];
+
+    const changes: DeltaChange[] = rawItems.map((item): DeltaChange => {
+      const externalItem = mapDriveItem(item);
+
+      // Deleted items have a `deleted` facet set
+      const isDeleted = typeof item.deleted === 'object' && item.deleted !== null;
+      const changeType: DeltaChange['changeType'] = isDeleted ? 'deleted' : 'modified';
+
+      return { item: externalItem, changeType };
+    });
+
+    const nextLink = raw['@odata.nextLink'];
+    const newDeltaLink = raw['@odata.deltaLink'];
+
+    const result: DeltaQueryResult = {
+      changes,
+      deltaLink: typeof newDeltaLink === 'string' ? newDeltaLink : null,
+      hasMore: typeof nextLink === 'string',
+      nextPageLink: typeof nextLink === 'string' ? nextLink : null,
+    };
+
+    logger.info(
+      {
+        connectionId,
+        folderId,
+        changeCount: changes.length,
+        hasMore: result.hasMore,
+        hasDeltaLink: result.deltaLink !== null,
+      },
+      'Folder-scoped delta query complete'
+    );
+
+    return result;
+  }
 }
 
 // ============================================================================

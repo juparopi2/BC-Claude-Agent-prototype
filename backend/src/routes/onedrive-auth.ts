@@ -40,10 +40,14 @@ const ONEDRIVE_SCOPES = ['Files.Read.All', 'offline_access'];
 const SCOPES_GRANTED_VALUE = 'Files.Read.All';
 
 function getRedirectUri(): string {
-  return (
-    process.env.ONEDRIVE_REDIRECT_URI ??
-    `${process.env.BACKEND_URL ?? 'http://localhost:3002'}/api/auth/callback/onedrive`
-  );
+  if (process.env.ONEDRIVE_REDIRECT_URI) {
+    return process.env.ONEDRIVE_REDIRECT_URI;
+  }
+  // Derive from MICROSOFT_REDIRECT_URI (already set in CI/production) by appending /onedrive
+  if (process.env.MICROSOFT_REDIRECT_URI) {
+    return `${process.env.MICROSOFT_REDIRECT_URI}/onedrive`;
+  }
+  return 'http://localhost:3002/api/auth/callback/onedrive';
 }
 
 function getFrontendUrl(): string {

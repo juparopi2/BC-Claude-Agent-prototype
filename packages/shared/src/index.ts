@@ -297,6 +297,9 @@ export type {
   // Connection types (PRD-100)
   ConnectionSummary,
   ConnectionScopeDetail,
+  ConnectionScopeWithStats,
+  ScopeBatchInput,
+  ScopeBatchResult,
   ConnectionListResponse,
 
   // Agent Registry types (PRD-011)
@@ -591,6 +594,8 @@ export {
   // OneDrive schemas (PRD-101)
   createScopesSchema,
   browseFolderQuerySchema,
+  batchScopesSchema,
+  scopeIdParamSchema,
 
   // Connection schemas (PRD-100)
   createConnectionSchema,

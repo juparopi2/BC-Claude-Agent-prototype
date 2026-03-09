@@ -32,3 +32,35 @@ export const browseFolderQuerySchema = z.object({
 });
 
 export type BrowseFolderQuery = z.infer<typeof browseFolderQuerySchema>;
+
+/**
+ * Schema for batch scope add/remove operations (PRD-105).
+ * At least one add or one remove is required.
+ */
+export const batchScopesSchema = z.object({
+  add: z.array(
+    z.object({
+      scopeType: z.enum(['root', 'folder', 'file', 'site', 'library']),
+      scopeResourceId: z.string().min(1, 'Scope resource ID is required'),
+      scopeDisplayName: z.string().min(1, 'Scope display name is required').max(255),
+      scopePath: z.string().max(1000).optional(),
+    })
+  ).max(50, 'Maximum 50 scopes to add per request').default([]),
+  remove: z.array(
+    z.string().uuid('Invalid scope ID format')
+  ).max(50, 'Maximum 50 scopes to remove per request').default([]),
+}).refine(
+  (data) => data.add.length > 0 || data.remove.length > 0,
+  { message: 'At least one add or remove operation is required' }
+);
+
+export type BatchScopesInput = z.infer<typeof batchScopesSchema>;
+
+/**
+ * Schema for :scopeId path parameter (PRD-105).
+ */
+export const scopeIdParamSchema = z.object({
+  scopeId: z.string().uuid('Invalid scope ID format'),
+});
+
+export type ScopeIdParam = z.infer<typeof scopeIdParamSchema>;

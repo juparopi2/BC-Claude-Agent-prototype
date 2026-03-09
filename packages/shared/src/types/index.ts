@@ -394,6 +394,9 @@ export type {
 export type {
   ConnectionSummary,
   ConnectionScopeDetail,
+  ConnectionScopeWithStats,
+  ScopeBatchInput,
+  ScopeBatchResult,
   ConnectionListResponse,
 } from './connection.types';
 

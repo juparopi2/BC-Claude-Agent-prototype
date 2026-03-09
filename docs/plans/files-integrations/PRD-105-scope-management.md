@@ -1,10 +1,11 @@
 # PRD-105: Scope Management & Re-configuration
 
 **Phase**: OneDrive Enhancement
-**Status**: TODO
+**Status**: DONE
 **Prerequisites**: PRD-104 (Scope-Filtered Sync)
 **Estimated Effort**: 3–4 days
 **Created**: 2026-03-09
+**Completed**: 2026-03-09
 
 ---
 
@@ -40,15 +41,16 @@ Enable users to view, modify, and delete their sync scopes through the Connectio
 
 ### Scope Removal with Cleanup
 - Removing a scope triggers cleanup of all associated files:
-  1. Delete AI Search embeddings for affected files
-  2. Delete `file_chunks` records
-  3. Delete `files` records
+  1. NULL out `message_citations.file_id` for affected files (preserve citation text)
+  2. Delete AI Search embeddings for affected files (best-effort)
+  3. Delete `files` records (FK cascades handle `file_chunks`, `image_embeddings`, `message_file_attachments`)
   4. Delete the `connection_scopes` record
-- Cleanup is performed by a new `ScopeCleanupService`
+- Cleanup is performed by `ScopeCleanupService`
+- Syncing scopes are blocked from removal (409 Conflict)
 
 ### Scope Status Badges
 - Each scope in the tree shows its current sync status (synced, syncing, error)
-- Item count per scope displayed
+- Actual file count per scope displayed (real COUNT query on `files` table)
 
 ---
 
@@ -56,147 +58,170 @@ Enable users to view, modify, and delete their sync scopes through the Connectio
 
 ### 4.1 Backend — Scopes API
 
-**New endpoint**: `GET /api/connections/:id/scopes`
+**Enhanced endpoint**: `GET /api/connections/:id/scopes`
 
-Returns all scopes for a connection with file counts:
+Now returns scopes with actual `fileCount` from the DB via `findScopesWithFileCounts()` (LEFT JOIN + COUNT):
 
 ```typescript
-interface ScopeWithStats {
-  id: string;
-  scopeType: string;
-  scopeResourceId: string | null;
-  scopeDisplayName: string | null;
-  scopePath: string | null;
-  syncStatus: string;
-  lastSyncAt: string | null;
-  itemCount: number;
+interface ConnectionScopeWithStats extends ConnectionScopeDetail {
   fileCount: number;  // actual files in DB for this scope
 }
 ```
 
 **New endpoint**: `DELETE /api/connections/:id/scopes/:scopeId`
 
-Triggers `ScopeCleanupService.removeScope()`:
+Triggers `ScopeCleanupService.removeScope()` with full cascade:
 
 ```typescript
-async removeScope(scopeId: string, userId: string): Promise<ScopeRemovalResult> {
-  // 1. Find all files linked to this scope
-  const files = await prisma.files.findMany({
-    where: { connection_scope_id: scopeId },
-    select: { id: true },
-  });
-  const fileIds = files.map(f => f.id);
-
-  // 2. Delete AI Search embeddings
-  for (const fileId of fileIds) {
-    await vectorSearchService.deleteChunksForFile(fileId, userId);
-  }
-
-  // 3. Delete file_chunks
-  await prisma.file_chunks.deleteMany({
-    where: { file_id: { in: fileIds } },
-  });
-
-  // 4. Delete files
-  await prisma.files.deleteMany({
-    where: { connection_scope_id: scopeId },
-  });
-
-  // 5. Delete scope record
-  await prisma.connection_scopes.delete({
-    where: { id: scopeId },
-  });
-
-  return { filesDeleted: fileIds.length, scopeId };
+async removeScope(connectionId, scopeId, userId): Promise<ScopeRemovalResult> {
+  // 1. Validate scope exists and belongs to connection
+  // 2. Guard: block if sync_status === 'syncing' → ScopeCurrentlySyncingError (409)
+  // 3. Fetch files for scope
+  // 4. NULL out message_citations.file_id (raw SQL subquery)
+  // 5. Best-effort AI Search cleanup (deleteChunksForFile per file, log+continue on failure)
+  // 6. Delete files (FK cascades handle chunks, embeddings, attachments)
+  // 7. Delete scope record
+  return { filesDeleted, scopeId };
 }
 ```
 
 **New endpoint**: `POST /api/connections/:id/scopes/batch`
 
-Accepts a diff payload for batch scope changes:
+Accepts a diff payload validated by `batchScopesSchema`:
 ```typescript
-interface ScopeBatchPayload {
-  add: CreateScopeInput[];     // New scopes to create and sync
-  remove: string[];            // Scope IDs to remove (with cleanup)
+interface ScopeBatchInput {
+  add: Array<{ scopeType, scopeResourceId, scopeDisplayName, scopePath? }>;  // max 50
+  remove: string[];  // scope IDs, max 50
+}
+
+interface ScopeBatchResult {
+  added: ConnectionScopeDetail[];  // newly created scopes (with fileCount: 0)
+  removed: Array<{ scopeId: string; filesDeleted: number }>;
 }
 ```
+
+Removes are processed first (sequential, via ScopeCleanupService), then adds (with fire-and-forget sync trigger per new scope).
 
 ### 4.2 Frontend — Scope Pre-Selection
 
 **File**: `frontend/components/connections/ConnectionWizard.tsx`
 
 On wizard open for an existing connection:
-1. Fetch `GET /api/connections/:id/scopes`
-2. For each scope, find the corresponding tree node and mark it as checked
-3. Use a different checkbox state for "already synced" vs "newly selected":
-   - **Already synced**: Filled checkbox with subtle green badge ("Synced · 12 files")
-   - **Newly selected**: Standard checkbox (empty → checked)
-   - **Marked for removal**: Red strikethrough on previously-synced item
+1. Fetch `GET /api/connections/:id/scopes` in parallel with browse data
+2. Pre-populate `selectedScopes` Map with `status: 'existing'` entries matched by `scopeResourceId`
+3. Three-state checkbox toggle:
+   - **Already synced** (`existing`): Filled checkbox with green "Synced · N files" badge
+   - **Newly selected** (`new`): Standard checked checkbox
+   - **Marked for removal** (`removed`): Unchecked checkbox with strikethrough name + red "Will remove" badge
+4. Button changes: "Save Changes" when reconfiguring, "Continue" for first-time
 
-### 4.3 Frontend — Scope Diff Modal
+### 4.3 Frontend — Scope Diff View
 
-When the user clicks "Save Changes" (replacing "Start Sync" for re-configuration):
+**File**: `frontend/components/connections/ScopeDiffView.tsx`
+
+Inline component shown when user clicks "Save Changes" and changes exist:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Review Changes                                          │
 │                                                          │
-│  ➕ Adding:                                              │
-│     📁 Projects/Alpha (will sync ~23 files)             │
-│     📁 Reports/ (will sync ~8 files)                    │
+│  ➕ Adding (2):                                         │
+│     Projects/Alpha                                       │
+│     Reports/                                             │
 │                                                          │
-│  ➖ Removing:                                            │
-│     📁 Old Archive/ (will delete 45 files from KB)      │
+│  ➖ Removing (1):                                       │
+│     Old Archive/ — will delete 45 files                  │
 │                                                          │
-│  ═ Unchanged:                                            │
-│     📁 Documents/ (47 files synced)                     │
+│  🔄 Unchanged (1)                                       │
 │                                                          │
 │  [Cancel]                              [Apply Changes]   │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 4.4 New Service: ScopeCleanupService
+### 4.4 Service: ScopeCleanupService
 
 **File**: `backend/src/services/sync/ScopeCleanupService.ts`
 
-Handles the cleanup side of scope removal. Uses structured logging with service name `ScopeCleanupService`.
+Singleton with `createChildLogger({ service: 'ScopeCleanupService' })`.
 
-Error handling: If AI Search deletion fails for a specific file, log the error and continue with remaining files (best-effort cleanup). The scope record is only deleted after all files are cleaned up.
+Cleanup cascade follows `cleanup-user-onedrive-files.sql` pattern:
+1. NULL citations (no FK cascade on `message_citations.file_id`)
+2. Best-effort AI Search deletion (errors logged, don't abort)
+3. Delete files via `deleteMany` (FK cascades handle dependents)
+4. Delete scope record
+
+Error class `ScopeCurrentlySyncingError` blocks removal of actively syncing scopes.
 
 ---
 
-## 5. Affected Files
+## 5. Implementation Details
 
 ### New Files
 | File | Purpose |
 |------|---------|
-| `backend/src/services/sync/ScopeCleanupService.ts` | Scope removal with file cleanup |
+| `backend/src/services/sync/ScopeCleanupService.ts` | Scope removal with cascading file + AI Search cleanup |
+| `frontend/components/connections/ScopeDiffView.tsx` | Diff summary UI for reconfiguration |
+| `backend/src/__tests__/unit/services/sync/ScopeCleanupService.test.ts` | 23 unit tests for scope cleanup |
 
 ### Modified Files
 | File | Change |
 |------|--------|
-| `frontend/components/connections/ConnectionWizard.tsx` | Scope pre-selection, diff UI |
-| `backend/src/routes/connections.ts` | GET scopes, DELETE scope, POST batch endpoints |
-| `backend/src/domains/connections/ConnectionRepository.ts` | Scope queries with file counts |
-| `backend/src/domains/connections/ConnectionService.ts` | Scope management business logic |
+| `packages/shared/src/types/connection.types.ts` | Added `ConnectionScopeWithStats`, `ScopeBatchInput`, `ScopeBatchResult` |
+| `packages/shared/src/schemas/onedrive.schemas.ts` | Added `batchScopesSchema`, `scopeIdParamSchema` |
+| `packages/shared/src/index.ts` | Re-exported new types and schemas |
+| `packages/shared/src/types/index.ts` | Re-exported new types |
+| `packages/shared/src/schemas/index.ts` | Re-exported new schemas |
+| `backend/src/domains/connections/ConnectionRepository.ts` | Added `findScopesWithFileCounts`, `findFilesByScopeId`, `deleteScopeById` |
+| `backend/src/domains/connections/ConnectionService.ts` | Added `listScopesWithStats`, `deleteScope`, `batchUpdateScopes` |
+| `backend/src/domains/connections/index.ts` | Re-exported `ScopeCurrentlySyncingError` |
+| `backend/src/routes/connections.ts` | Added DELETE scope, POST batch, enhanced GET scopes with file counts |
+| `frontend/components/connections/ConnectionWizard.tsx` | Scope pre-selection, 3-state toggle, diff view, batch API integration |
+
+### Design Decisions
+| # | Decision | Rationale |
+|---|----------|-----------|
+| D1 | Direct deletion (not SoftDeleteService) | Scope removal is a bulk admin operation, not a user-visible soft-delete |
+| D2 | Separate operations per remove (not single TX) | Removes involve external services (AI Search); return per-operation results |
+| D3 | Block syncing scope removal (409) | Avoid race conditions between sync writing files and cleanup deleting them |
+| D4 | Real COUNT query for fileCount | `item_count` on scope reflects delta changes, not actual DB file count |
 
 ---
 
 ## 6. Success Criteria
 
-- [ ] Re-opening wizard shows currently synced scopes pre-checked
-- [ ] "Already synced" scopes show file count and synced badge
-- [ ] Adding new scopes triggers sync only for new scopes
-- [ ] Removing a scope deletes its files, chunks, and AI Search embeddings
-- [ ] Diff modal shows clear summary of changes before applying
-- [ ] Unchanged scopes are not re-synced
-- [ ] `ScopeCleanupService` handles partial failures gracefully
-- [ ] All existing tests pass
-- [ ] Type-check and lint pass
+- [x] Re-opening wizard shows currently synced scopes pre-checked
+- [x] "Already synced" scopes show file count and synced badge
+- [x] Adding new scopes triggers sync only for new scopes
+- [x] Removing a scope deletes its files, chunks, and AI Search embeddings
+- [x] Diff view shows clear summary of changes before applying
+- [x] Unchanged scopes are not re-synced
+- [x] `ScopeCleanupService` handles partial failures gracefully
+- [x] All existing tests pass
+- [x] Type-check and lint pass
+- [x] 23 unit tests for ScopeCleanupService pass
 
 ---
 
-## 7. Out of Scope
+## 7. Verification
+
+```bash
+# Type-check
+npm run build:shared && npm run verify:types
+
+# Backend build
+npm run -w backend build
+
+# Unit tests
+npm run -w backend test:unit -- -t "ScopeCleanupService"
+
+# Lint
+npm run -w backend lint
+npm run -w bc-agent-frontend lint
+```
+
+---
+
+## 8. Out of Scope
 
 - Scope-level sync status indicators in the Files sidebar (PRD-107)
 - Real-time sync events for scope changes (PRD-108)

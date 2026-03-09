@@ -43,6 +43,34 @@ export interface ConnectionScopeDetail {
 }
 
 /**
+ * Scope detail with actual file count from DB (PRD-105).
+ */
+export interface ConnectionScopeWithStats extends ConnectionScopeDetail {
+  fileCount: number;
+}
+
+/**
+ * Input for batch scope add/remove operations (PRD-105).
+ */
+export interface ScopeBatchInput {
+  add: Array<{
+    scopeType: string;
+    scopeResourceId: string;
+    scopeDisplayName: string;
+    scopePath?: string;
+  }>;
+  remove: string[];
+}
+
+/**
+ * Result of a batch scope operation (PRD-105).
+ */
+export interface ScopeBatchResult {
+  added: ConnectionScopeDetail[];
+  removed: Array<{ scopeId: string; filesDeleted: number }>;
+}
+
+/**
  * Response shape for GET /api/connections
  */
 export interface ConnectionListResponse {

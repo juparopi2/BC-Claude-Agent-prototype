@@ -25,6 +25,9 @@ import type {
 import type { ProviderId } from '@bc-agent/shared';
 import type { ConnectionStatus, SyncStatus } from '@bc-agent/shared';
 import type { CreateConnectionInput, UpdateConnectionInput } from '@bc-agent/shared/schemas';
+import type { ConnectionScopeWithStats, ScopeBatchInput, ScopeBatchResult } from '@bc-agent/shared';
+import { getScopeCleanupService } from '@/services/sync/ScopeCleanupService';
+import { getInitialSyncService } from '@/services/sync/InitialSyncService';
 
 const logger = createChildLogger({ service: 'ConnectionService' });
 
@@ -173,6 +176,123 @@ export class ConnectionService {
 
     const scopes = await repo.findScopesByConnection(normalizedConnectionId);
     return scopes.map((scope) => this.toScopeDetail(scope));
+  }
+
+  /**
+   * List scopes with actual file counts from the DB (PRD-105).
+   */
+  async listScopesWithStats(userId: string, connectionId: string): Promise<ConnectionScopeWithStats[]> {
+    const normalizedUserId = userId.toUpperCase();
+    const normalizedConnectionId = connectionId.toUpperCase();
+    logger.debug({ userId: normalizedUserId, connectionId: normalizedConnectionId }, 'Listing scopes with stats');
+
+    const repo = getConnectionRepository();
+    const row = await repo.findById(normalizedUserId, normalizedConnectionId);
+
+    if (!row) {
+      throw new ConnectionNotFoundError(normalizedConnectionId);
+    }
+
+    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
+
+    const scopesWithCounts = await repo.findScopesWithFileCounts(normalizedConnectionId);
+    return scopesWithCounts.map((scope) => ({
+      ...this.toScopeDetail(scope),
+      fileCount: scope.file_count,
+    }));
+  }
+
+  /**
+   * Delete a single scope with cascading file cleanup (PRD-105).
+   */
+  async deleteScope(userId: string, connectionId: string, scopeId: string): Promise<{ scopeId: string; filesDeleted: number }> {
+    const normalizedUserId = userId.toUpperCase();
+    const normalizedConnectionId = connectionId.toUpperCase();
+    const normalizedScopeId = scopeId.toUpperCase();
+    logger.debug({ userId: normalizedUserId, connectionId: normalizedConnectionId, scopeId: normalizedScopeId }, 'Deleting scope');
+
+    const repo = getConnectionRepository();
+    const row = await repo.findById(normalizedUserId, normalizedConnectionId);
+
+    if (!row) {
+      throw new ConnectionNotFoundError(normalizedConnectionId);
+    }
+
+    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
+
+    const cleanupService = getScopeCleanupService();
+    const result = await cleanupService.removeScope(normalizedConnectionId, normalizedScopeId, normalizedUserId);
+
+    logger.info(
+      { userId: normalizedUserId, connectionId: normalizedConnectionId, scopeId: normalizedScopeId, filesDeleted: result.filesDeleted },
+      'Scope deleted'
+    );
+
+    return result;
+  }
+
+  /**
+   * Batch add/remove scopes for a connection (PRD-105).
+   * Removes are processed first, then adds. Each operation is independent.
+   */
+  async batchUpdateScopes(
+    userId: string,
+    connectionId: string,
+    input: ScopeBatchInput
+  ): Promise<ScopeBatchResult> {
+    const normalizedUserId = userId.toUpperCase();
+    const normalizedConnectionId = connectionId.toUpperCase();
+    logger.debug(
+      { userId: normalizedUserId, connectionId: normalizedConnectionId, addCount: input.add.length, removeCount: input.remove.length },
+      'Batch updating scopes'
+    );
+
+    const repo = getConnectionRepository();
+    const row = await repo.findById(normalizedUserId, normalizedConnectionId);
+
+    if (!row) {
+      throw new ConnectionNotFoundError(normalizedConnectionId);
+    }
+
+    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
+
+    // Process removes first
+    const removed: Array<{ scopeId: string; filesDeleted: number }> = [];
+    const cleanupService = getScopeCleanupService();
+
+    for (const scopeId of input.remove) {
+      const normalizedScopeId = scopeId.toUpperCase();
+      const result = await cleanupService.removeScope(normalizedConnectionId, normalizedScopeId, normalizedUserId);
+      removed.push(result);
+    }
+
+    // Process adds
+    const added: ConnectionScopeWithStats[] = [];
+    const initialSyncService = getInitialSyncService();
+
+    for (const scopeInput of input.add) {
+      const scopeId = await repo.createScope(normalizedConnectionId, {
+        scopeType: scopeInput.scopeType,
+        scopeResourceId: scopeInput.scopeResourceId,
+        scopeDisplayName: scopeInput.scopeDisplayName,
+        scopePath: scopeInput.scopePath,
+      });
+
+      const scopeRow = await repo.findScopeById(scopeId);
+      if (scopeRow) {
+        added.push({ ...this.toScopeDetail(scopeRow), fileCount: 0 });
+      }
+
+      // Fire-and-forget sync for the new scope
+      initialSyncService.syncScope(normalizedConnectionId, scopeId, normalizedUserId);
+    }
+
+    logger.info(
+      { userId: normalizedUserId, connectionId: normalizedConnectionId, addedCount: added.length, removedCount: removed.length },
+      'Batch scope update complete'
+    );
+
+    return { added, removed };
   }
 
   // ============================================================================

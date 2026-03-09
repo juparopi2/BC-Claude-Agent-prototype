@@ -326,6 +326,74 @@ export class ConnectionRepository {
       where: { connection_id: connectionId },
     });
   }
+
+  /**
+   * Fetch scopes with actual file counts from the files table (PRD-105).
+   * Uses raw SQL because Prisma doesn't have a direct relation from scopes → files.
+   */
+  async findScopesWithFileCounts(connectionId: string): Promise<(ScopeRow & { file_count: number })[]> {
+    logger.debug({ connectionId }, 'Fetching scopes with file counts');
+
+    const rows = await prisma.$queryRaw<Array<ScopeRow & { file_count: number }>>`
+      SELECT
+        cs.id,
+        cs.connection_id,
+        cs.scope_type,
+        cs.scope_resource_id,
+        cs.scope_display_name,
+        cs.scope_path,
+        cs.sync_status,
+        cs.last_sync_at,
+        cs.last_sync_error,
+        cs.last_sync_cursor,
+        cs.item_count,
+        cs.created_at,
+        CAST(COUNT(f.id) AS INT) AS file_count
+      FROM connection_scopes cs
+      LEFT JOIN files f ON f.connection_scope_id = cs.id
+      WHERE cs.connection_id = ${connectionId}
+      GROUP BY
+        cs.id, cs.connection_id, cs.scope_type, cs.scope_resource_id,
+        cs.scope_display_name, cs.scope_path, cs.sync_status, cs.last_sync_at,
+        cs.last_sync_error, cs.last_sync_cursor, cs.item_count, cs.created_at
+      ORDER BY cs.created_at ASC
+    `;
+
+    return rows.map((row) => ({
+      ...row,
+      id: row.id.toUpperCase(),
+      connection_id: row.connection_id.toUpperCase(),
+    }));
+  }
+
+  /**
+   * Find all files belonging to a specific scope (PRD-105).
+   * Returns minimal fields needed for cleanup (id, blob_path).
+   */
+  async findFilesByScopeId(scopeId: string): Promise<Array<{ id: string; blob_path: string | null }>> {
+    logger.debug({ scopeId }, 'Fetching files by scope ID');
+
+    const rows = await prisma.files.findMany({
+      where: { connection_scope_id: scopeId },
+      select: { id: true, blob_path: true },
+    });
+
+    return rows.map((row) => ({
+      id: row.id.toUpperCase(),
+      blob_path: row.blob_path,
+    }));
+  }
+
+  /**
+   * Hard-delete a single connection scope (PRD-105).
+   */
+  async deleteScopeById(scopeId: string): Promise<void> {
+    logger.debug({ scopeId }, 'Deleting connection scope');
+
+    await prisma.connection_scopes.delete({
+      where: { id: scopeId },
+    });
+  }
 }
 
 // ============================================================================

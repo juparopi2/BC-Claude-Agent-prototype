@@ -20,3 +20,5 @@ export {
   ConnectionNotFoundError,
   ConnectionForbiddenError,
 } from './ConnectionService';
+
+export { ScopeCurrentlySyncingError } from '@/services/sync/ScopeCleanupService';

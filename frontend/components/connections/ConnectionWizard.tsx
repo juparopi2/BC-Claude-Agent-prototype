@@ -22,12 +22,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
-import type { ExternalFileItem, FolderListResult, ConnectionScopeDetail } from '@bc-agent/shared'
+import type { ExternalFileItem, FolderListResult, ConnectionScopeDetail, ConnectionScopeWithStats, ScopeBatchResult } from '@bc-agent/shared'
 import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { toast } from 'sonner'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
+import { ScopeDiffView } from './ScopeDiffView'
 
 // ============================================
 // Types
@@ -56,6 +57,9 @@ interface SelectedScope {
   name: string
   path: string | null
   isFolder: boolean
+  status: 'new' | 'existing' | 'removed'
+  existingScopeId?: string
+  fileCount?: number
 }
 
 interface ScopeProgressEntry {
@@ -166,7 +170,7 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
           {/* Checkbox */}
           <Checkbox
             id={`item-${item.id}`}
-            checked={isSelected}
+            checked={isSelected && selectedScopes.get(item.id)?.status !== 'removed'}
             onCheckedChange={() => onToggleSelect(item)}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Select ${item.name}`}
@@ -181,11 +185,19 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
 
           {/* Name */}
           <span
-            className="text-sm truncate flex-1"
+            className={`text-sm truncate flex-1 ${selectedScopes.get(item.id)?.status === 'removed' ? 'line-through text-muted-foreground' : ''}`}
             onClick={() => onToggleExpand(item.id)}
           >
             {item.name}
           </span>
+          {selectedScopes.get(item.id)?.status === 'existing' && (
+            <span className="text-[10px] text-green-600 dark:text-green-400 shrink-0 ml-1">
+              Synced{selectedScopes.get(item.id)?.fileCount ? ` · ${selectedScopes.get(item.id)?.fileCount} files` : ''}
+            </span>
+          )}
+          {selectedScopes.get(item.id)?.status === 'removed' && (
+            <span className="text-[10px] text-red-500 shrink-0 ml-1">Will remove</span>
+          )}
         </div>
 
         {/* Children */}
@@ -231,7 +243,7 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
       {/* Checkbox */}
       <Checkbox
         id={`item-${item.id}`}
-        checked={isSelected}
+        checked={isSelected && selectedScopes.get(item.id)?.status !== 'removed'}
         onCheckedChange={() => onToggleSelect(item)}
         onClick={(e) => e.stopPropagation()}
         aria-label={`Select ${item.name}`}
@@ -244,7 +256,15 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
       />
 
       {/* Name */}
-      <span className="text-sm truncate flex-1">{item.name}</span>
+      <span className={`text-sm truncate flex-1 ${selectedScopes.get(item.id)?.status === 'removed' ? 'line-through text-muted-foreground' : ''}`}>
+        {item.name}
+      </span>
+      {selectedScopes.get(item.id)?.status === 'existing' && (
+        <span className="text-[10px] text-green-600 dark:text-green-400 shrink-0 ml-1">Synced</span>
+      )}
+      {selectedScopes.get(item.id)?.status === 'removed' && (
+        <span className="text-[10px] text-red-500 shrink-0 ml-1">Will remove</span>
+      )}
 
       {/* File size */}
       {item.sizeBytes > 0 && (
@@ -273,11 +293,14 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const [isBrowseLoading, setIsBrowseLoading] = useState(false)
   const [nodeMap, setNodeMap] = useState<Map<string, TreeNodeData>>(new Map())
   const [selectedScopes, setSelectedScopes] = useState<Map<string, SelectedScope>>(new Map())
+  const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
+  const isReconfiguring = existingScopes.length > 0
 
   // Step 3: sync
   const [syncState, setSyncState] = useState<SyncState>('idle')
   const [scopeProgress, setScopeProgress] = useState<Map<string, ScopeProgressEntry>>(new Map())
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [showDiff, setShowDiff] = useState(false)
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections)
@@ -301,6 +324,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setIsBrowseLoading(false)
     setNodeMap(new Map())
     setSelectedScopes(new Map())
+    setExistingScopes([])
+    setShowDiff(false)
     setSyncState('idle')
     setScopeProgress(new Map())
     setSyncError(null)
@@ -386,17 +411,40 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     const fetchRoot = async () => {
       setIsBrowseLoading(true)
       try {
-        const response = await fetch(
-          `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse`,
-          { credentials: 'include' }
-        )
+        // Fetch root folder contents and existing scopes in parallel
+        const [browseResponse, scopesResponse] = await Promise.all([
+          fetch(
+            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse`,
+            { credentials: 'include' }
+          ),
+          fetch(
+            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes`,
+            { credentials: 'include' }
+          ),
+        ])
 
-        if (!response.ok) {
-          throw new Error(`Failed to load folders: HTTP ${response.status}`)
+        if (!browseResponse.ok) {
+          throw new Error(`Failed to load folders: HTTP ${browseResponse.status}`)
         }
 
-        const data: FolderListResult = await response.json()
+        const data: FolderListResult = await browseResponse.json()
         const sorted = sortItems(data.items)
+
+        // Parse existing scopes
+        let fetchedScopes: ConnectionScopeWithStats[] = []
+        if (scopesResponse.ok) {
+          const scopesData = await scopesResponse.json() as { scopes: ConnectionScopeWithStats[] }
+          fetchedScopes = scopesData.scopes ?? []
+        }
+        setExistingScopes(fetchedScopes)
+
+        // Build a set of existing scope resource IDs for matching
+        const existingScopeMap = new Map<string, ConnectionScopeWithStats>()
+        for (const scope of fetchedScopes) {
+          if (scope.scopeResourceId) {
+            existingScopeMap.set(scope.scopeResourceId, scope)
+          }
+        }
 
         const nodes: TreeNodeData[] = sorted.map((item) => ({
           item,
@@ -410,6 +458,25 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
         setRootNodes(nodes)
         setNodeMap(map)
+
+        // Pre-populate selectedScopes with existing scopes
+        if (fetchedScopes.length > 0) {
+          const preSelected = new Map<string, SelectedScope>()
+          for (const scope of fetchedScopes) {
+            if (scope.scopeResourceId) {
+              preSelected.set(scope.scopeResourceId, {
+                id: scope.scopeResourceId,
+                name: scope.scopeDisplayName ?? scope.scopeResourceId,
+                path: null,
+                isFolder: scope.scopeType === 'folder' || scope.scopeType === 'root',
+                status: 'existing',
+                existingScopeId: scope.id,
+                fileCount: scope.fileCount,
+              })
+            }
+          }
+          setSelectedScopes(preSelected)
+        }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to load OneDrive contents')
       } finally {
@@ -523,14 +590,27 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const handleToggleSelect = useCallback((item: ExternalFileItem) => {
     setSelectedScopes((prev) => {
       const next = new Map(prev)
-      if (next.has(item.id)) {
-        next.delete(item.id)
+      const existing = next.get(item.id)
+
+      if (existing) {
+        if (existing.status === 'existing') {
+          // Mark existing scope for removal
+          next.set(item.id, { ...existing, status: 'removed' })
+        } else if (existing.status === 'removed') {
+          // Restore existing scope
+          next.set(item.id, { ...existing, status: 'existing' })
+        } else {
+          // Remove new selection
+          next.delete(item.id)
+        }
       } else {
+        // New selection
         next.set(item.id, {
           id: item.id,
           name: item.name,
           path: item.parentPath,
           isFolder: item.isFolder,
+          status: 'new',
         })
       }
       return next
@@ -615,54 +695,109 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       setSyncError(null)
 
       try {
-        // 1. Create scopes
-        const scopesPayload = Array.from(selectedScopes.values()).map((s) => ({
-          scopeType: s.isFolder ? 'folder' : 'file',
-          scopeResourceId: s.id,
-          scopeDisplayName: s.name,
-          scopePath: s.path,
-        }))
+        if (isReconfiguring) {
+          // Batch mode: add new scopes, remove deleted ones
+          const scopeValues = Array.from(selectedScopes.values())
+          const toAdd = scopeValues
+            .filter((s) => s.status === 'new')
+            .map((s) => ({
+              scopeType: s.isFolder ? 'folder' : 'file',
+              scopeResourceId: s.id,
+              scopeDisplayName: s.name,
+              scopePath: s.path,
+            }))
+          const toRemove = scopeValues
+            .filter((s) => s.status === 'removed' && s.existingScopeId)
+            .map((s) => s.existingScopeId!)
 
-        const scopesResponse = await fetch(
-          `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scopes: scopesPayload }),
+          if (toAdd.length === 0 && toRemove.length === 0) {
+            setSyncState('complete')
+            return
           }
-        )
 
-        if (!scopesResponse.ok) {
-          const body = await scopesResponse.json().catch(() => ({})) as { message?: string }
-          throw new Error(body.message ?? `Failed to create scopes: HTTP ${scopesResponse.status}`)
-        }
+          const batchResponse = await fetch(
+            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/batch`,
+            {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ add: toAdd, remove: toRemove }),
+            }
+          )
 
-        const scopesData = await scopesResponse.json() as CreateScopesResponse
-        const createdScopes = scopesData.scopes ?? []
+          if (!batchResponse.ok) {
+            const body = await batchResponse.json().catch(() => ({})) as { message?: string }
+            throw new Error(body.message ?? `Failed to update scopes: HTTP ${batchResponse.status}`)
+          }
 
-        // 2. Trigger sync for each scope
-        await Promise.all(
-          createdScopes.map((scope) =>
-            fetch(
-              `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/${scope.id}/sync`,
-              {
-                method: 'POST',
-                credentials: 'include',
-              }
+          const batchResult = await batchResponse.json() as ScopeBatchResult
+          const newScopes = batchResult.added ?? []
+
+          if (newScopes.length > 0) {
+            // Trigger sync for new scopes
+            await Promise.all(
+              newScopes.map((scope) =>
+                fetch(
+                  `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/${scope.id}/sync`,
+                  { method: 'POST', credentials: 'include' }
+                )
+              )
+            )
+
+            const initProgress = new Map<string, ScopeProgressEntry>()
+            for (const scope of newScopes) {
+              initProgress.set(scope.id, { processedFiles: 0, totalFiles: 0, percentage: 0 })
+            }
+            setScopeProgress(initProgress)
+            startPolling(connectionId, newScopes.map((s) => s.id))
+          } else {
+            // Only removals — done immediately
+            setSyncState('complete')
+            useIntegrationListStore.getState().fetchConnections()
+          }
+        } else {
+          // First-time setup: original flow
+          const scopesPayload = Array.from(selectedScopes.values()).map((s) => ({
+            scopeType: s.isFolder ? 'folder' : 'file',
+            scopeResourceId: s.id,
+            scopeDisplayName: s.name,
+            scopePath: s.path,
+          }))
+
+          const scopesResponse = await fetch(
+            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes`,
+            {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scopes: scopesPayload }),
+            }
+          )
+
+          if (!scopesResponse.ok) {
+            const body = await scopesResponse.json().catch(() => ({})) as { message?: string }
+            throw new Error(body.message ?? `Failed to create scopes: HTTP ${scopesResponse.status}`)
+          }
+
+          const scopesData = await scopesResponse.json() as CreateScopesResponse
+          const createdScopes = scopesData.scopes ?? []
+
+          await Promise.all(
+            createdScopes.map((scope) =>
+              fetch(
+                `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/${scope.id}/sync`,
+                { method: 'POST', credentials: 'include' }
+              )
             )
           )
-        )
 
-        // 3. Initialise progress map
-        const initProgress = new Map<string, ScopeProgressEntry>()
-        for (const scope of createdScopes) {
-          initProgress.set(scope.id, { processedFiles: 0, totalFiles: 0, percentage: 0 })
+          const initProgress = new Map<string, ScopeProgressEntry>()
+          for (const scope of createdScopes) {
+            initProgress.set(scope.id, { processedFiles: 0, totalFiles: 0, percentage: 0 })
+          }
+          setScopeProgress(initProgress)
+          startPolling(connectionId, createdScopes.map((s) => s.id))
         }
-        setScopeProgress(initProgress)
-
-        // 4. Start polling
-        startPolling(connectionId, createdScopes.map((s) => s.id))
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Sync failed'
         setSyncError(message)
@@ -672,7 +807,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     }
 
     void runSync()
-  }, [step, connectionId, syncState, selectedScopes, startPolling])
+  }, [step, connectionId, syncState, selectedScopes, startPolling, isReconfiguring])
 
   // ============================================
   // Derived — aggregate progress across scopes
@@ -792,20 +927,46 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               </p>
             )}
 
+            {isReconfiguring && showDiff && (
+              <ScopeDiffView
+                selectedScopes={selectedScopes}
+                onConfirm={() => {
+                  setShowDiff(false)
+                  setStep('sync')
+                }}
+                onCancel={() => setShowDiff(false)}
+              />
+            )}
+
             <DialogFooter>
+              {!isReconfiguring && (
+                <Button
+                  variant="outline"
+                  onClick={() => setStep('connect')}
+                  className="gap-1.5"
+                >
+                  <ArrowLeft className="size-4" />
+                  Back
+                </Button>
+              )}
               <Button
-                variant="outline"
-                onClick={() => setStep('connect')}
-                className="gap-1.5"
+                onClick={() => {
+                  if (isReconfiguring) {
+                    // Check if there are any changes
+                    const values = Array.from(selectedScopes.values())
+                    const hasChanges = values.some((s) => s.status === 'new' || s.status === 'removed')
+                    if (hasChanges) {
+                      setShowDiff(true)
+                    } else {
+                      onClose()
+                    }
+                  } else {
+                    setStep('sync')
+                  }
+                }}
+                disabled={!isReconfiguring && selectedScopes.size === 0}
               >
-                <ArrowLeft className="size-4" />
-                Back
-              </Button>
-              <Button
-                onClick={() => setStep('sync')}
-                disabled={selectedScopes.size === 0}
-              >
-                Continue
+                {isReconfiguring ? 'Save Changes' : 'Continue'}
               </Button>
             </DialogFooter>
           </>
@@ -815,13 +976,17 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         {step === 'sync' && (
           <>
             <DialogHeader>
-              <DialogTitle>Syncing Files</DialogTitle>
+              <DialogTitle>{isReconfiguring ? 'Updating Scopes' : 'Syncing Files'}</DialogTitle>
               <DialogDescription>
                 {syncState === 'complete'
-                  ? 'Your OneDrive items have been synced successfully.'
+                  ? isReconfiguring
+                    ? 'Your sync scopes have been updated successfully.'
+                    : 'Your OneDrive items have been synced successfully.'
                   : syncState === 'error'
                     ? 'An error occurred while syncing.'
-                    : 'Importing files from your selected OneDrive items.'}
+                    : isReconfiguring
+                      ? 'Applying scope changes...'
+                      : 'Importing files from your selected OneDrive items.'}
               </DialogDescription>
             </DialogHeader>
 

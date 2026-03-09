@@ -385,11 +385,15 @@ export {
 export {
   createScopesSchema,
   browseFolderQuerySchema,
+  batchScopesSchema,
+  scopeIdParamSchema,
 } from './onedrive.schemas';
 
 export type {
   CreateScopesInput,
   BrowseFolderQuery,
+  BatchScopesInput,
+  ScopeIdParam,
 } from './onedrive.schemas';
 
 // ============================================

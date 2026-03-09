@@ -10,13 +10,15 @@
  * - PATCH /api/connections/:id     → update connection
  * - DELETE /api/connections/:id    → disconnect/delete
  * - GET /api/connections/:id/scopes → list scopes
+ * - DELETE /api/connections/:id/scopes/:scopeId → delete scope (cascade files)
+ * - POST /api/connections/:id/scopes/batch   → batch add/remove scopes
  *
  * @module routes/connections
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
-import { getConnectionService, ConnectionNotFoundError, ConnectionForbiddenError } from '@/domains/connections';
+import { getConnectionService, ConnectionNotFoundError, ConnectionForbiddenError, ScopeCurrentlySyncingError } from '@/domains/connections';
 import { getConnectionRepository } from '@/domains/connections';
 import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
@@ -24,6 +26,7 @@ import {
   sendError,
   sendNotFound,
   sendForbidden,
+  sendConflict,
 } from '@/shared/utils/error-response';
 import {
   validateSafe,
@@ -32,6 +35,7 @@ import {
   connectionIdParamSchema,
   createScopesSchema,
   browseFolderQuerySchema,
+  batchScopesSchema,
 } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getInitialSyncService } from '@/services/sync/InitialSyncService';
@@ -70,6 +74,10 @@ function handleDomainError(error: unknown, res: Response): boolean {
   }
   if (error instanceof ConnectionForbiddenError) {
     sendForbidden(res, ErrorCode.FORBIDDEN);
+    return true;
+  }
+  if (error instanceof ScopeCurrentlySyncingError) {
+    sendConflict(res, ErrorCode.CONFLICT);
     return true;
   }
   return false;
@@ -279,7 +287,7 @@ router.get(
 
       const userId = req.userId!;
       const service = getConnectionService();
-      const scopes = await service.listScopes(userId, connectionId);
+      const scopes = await service.listScopesWithStats(userId, connectionId);
 
       logger.info(
         { userId: userId.toUpperCase(), connectionId, scopeCount: scopes.length },
@@ -297,6 +305,48 @@ router.get(
           connectionId: req.params.id,
         },
         'Failed to list connection scopes'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * DELETE /api/connections/:id/scopes/:scopeId
+ * Remove a scope and cascade-delete its files (PRD-105).
+ */
+router.delete(
+  '/:id/scopes/:scopeId',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const scopeId = req.params.scopeId?.toUpperCase();
+      if (!scopeId) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Invalid scope ID');
+        return;
+      }
+
+      const userId = req.userId!;
+      const service = getConnectionService();
+      await service.deleteScope(userId, connectionId, scopeId);
+
+      logger.info({ userId: userId.toUpperCase(), connectionId, scopeId }, 'Scope deleted');
+      res.status(204).end();
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+          scopeId: req.params.scopeId,
+        },
+        'Failed to delete scope'
       );
       next(error);
     }
@@ -454,6 +504,54 @@ router.post(
           connectionId: req.params.id,
         },
         'Failed to create connection scopes'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/connections/:id/scopes/batch
+ * Batch add/remove scopes with cascading cleanup (PRD-105).
+ */
+router.post(
+  '/:id/scopes/batch',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const bodyResult = validateSafe(batchScopesSchema, req.body);
+      if (!bodyResult.success) {
+        sendError(
+          res,
+          ErrorCode.VALIDATION_ERROR,
+          bodyResult.error.errors[0]?.message ?? 'Invalid request body'
+        );
+        return;
+      }
+
+      const userId = req.userId!;
+      const service = getConnectionService();
+      const result = await service.batchUpdateScopes(userId, connectionId, bodyResult.data);
+
+      logger.info(
+        { userId: userId.toUpperCase(), connectionId, addedCount: result.added.length, removedCount: result.removed.length },
+        'Batch scope update complete'
+      );
+      res.json(result);
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to batch update scopes'
       );
       next(error);
     }

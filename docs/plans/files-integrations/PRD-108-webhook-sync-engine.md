@@ -521,3 +521,25 @@ SUBSCRIPTION_MAX_DURATION_DAYS=29
 - Granular change tracking within files (only full file re-processing)
 - Real-time collaborative editing awareness
 - Webhook endpoint authentication beyond clientState validation
+- Cross-connection deduplication (see Section 10)
+
+---
+
+## 10. Implementation Notes (From PRD-104)
+
+### 10.1 Re-Connection to Same Scope Triggers Full Re-Processing
+
+**Observed during PRD-104 verification (2026-03-09)**
+
+When a user disconnects and reconnects to the same OneDrive scope (or creates a second connection pointing to the same folder), all files are re-processed through the full embedding pipeline — even though identical content already exists in the system from the previous connection.
+
+**Root cause**: Deduplication in PRD-104 is scoped to `(connection_id, external_id)`. A new connection gets a new `connection_id`, so all files appear as "new" to the `findFirst` check in `InitialSyncService`, triggering `addFileProcessingFlow()` for every file.
+
+**Impact**: Unnecessary compute cost (extraction + chunking + embedding) for files whose content hasn't changed. For large scopes (1000+ files), this can mean significant Azure AI Search and OpenAI embedding costs.
+
+**Possible optimization for PRD-108**: When `DeltaSyncService` or `InitialSyncService` creates a new file, check if an identical file already exists for the same user by comparing `(user_id, external_id, content_hash_external)`. If a match is found with `pipeline_status = 'ready'`:
+1. Copy existing `file_chunks` to the new file record (re-link chunk references)
+2. Reuse existing AI Search embeddings (or clone them with the new file ID)
+3. Set `pipeline_status = 'ready'` directly, skipping the processing pipeline
+
+**Decision**: Deferred — this optimization requires careful handling of chunk/embedding ownership across connections and is better addressed alongside PRD-108's content change detection logic, which already compares `content_hash_external` (eTag). The infrastructure for "skip processing if content is identical" aligns naturally with the "skip processing if content hasn't changed" logic in `DeltaSyncService.processChanges()`.

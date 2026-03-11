@@ -152,7 +152,7 @@ describe('FileExplorer', () => {
 
       // Wait for fetchFiles to be called with undefined (root folder)
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null, sourceType: 'local' });
       });
 
       // Wait for files to be loaded into store
@@ -233,7 +233,7 @@ describe('FileExplorer', () => {
 
       // Wait for initial fetch
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null, sourceType: 'local' });
       });
 
       // Navigate to folder by updating folderTreeStore
@@ -248,7 +248,7 @@ describe('FileExplorer', () => {
 
       // Wait for fetchFiles to be called with new folderId
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId, sourceType: 'local' });
       });
 
       // Verify currentFolderId is updated
@@ -284,7 +284,7 @@ describe('FileExplorer', () => {
 
       // Wait for initial fetch
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId, sourceType: 'local' });
       });
 
       // Navigate back to root
@@ -297,7 +297,7 @@ describe('FileExplorer', () => {
 
       // Wait for fetchFiles to be called with undefined (root)
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: null, sourceType: 'local' });
       });
 
       // Verify we're at root
@@ -348,8 +348,8 @@ describe('FileExplorer', () => {
 
       // Wait for both fetchFiles calls
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: folder1 });
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: folder2 });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: folder1, sourceType: 'local' });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: folder2, sourceType: 'local' });
       });
 
       // Verify final state is folder2
@@ -460,7 +460,7 @@ describe('FileExplorer', () => {
 
       // Verify fetchFiles was called with the correct folderId
       await waitFor(() => {
-        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: testFolderId });
+        expect(mockGetFiles).toHaveBeenCalledWith({ folderId: testFolderId, sourceType: 'local' });
       });
     });
   });

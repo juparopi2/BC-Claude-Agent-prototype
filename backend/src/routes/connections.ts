@@ -550,6 +550,99 @@ router.get(
 );
 
 /**
+ * GET /api/connections/:id/browse-shared
+ * List items shared with the user on OneDrive (PRD-110).
+ */
+router.get(
+  '/:id/browse-shared',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+
+      // Verify ownership
+      const service = getConnectionService();
+      await service.getConnection(userId, connectionId);
+
+      const result = await getOneDriveService().listSharedWithMe(connectionId);
+
+      logger.info({ userId: userId.toUpperCase(), connectionId }, 'Shared items browsed');
+      res.json(enrichBrowseItems(result));
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to browse shared items'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/connections/:id/browse-shared/:driveId/:itemId
+ * Browse inside a shared folder on a remote drive (PRD-110).
+ */
+router.get(
+  '/:id/browse-shared/:driveId/:itemId',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const driveId = req.params.driveId;
+      const itemId = req.params.itemId;
+      if (!driveId || !itemId) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, 'Missing driveId or itemId');
+        return;
+      }
+      const userId = req.userId!;
+
+      // Verify ownership
+      const service = getConnectionService();
+      await service.getConnection(userId, connectionId);
+
+      const queryResult = validateSafe(browseFolderQuerySchema, req.query);
+      if (!queryResult.success) {
+        sendError(res, ErrorCode.VALIDATION_ERROR, queryResult.error.errors[0]?.message ?? 'Invalid query parameters');
+        return;
+      }
+
+      const { pageToken } = queryResult.data;
+      const result = await getOneDriveService().listSharedFolder(connectionId, driveId, itemId, pageToken);
+
+      logger.info({ userId: userId.toUpperCase(), connectionId, driveId, itemId }, 'Shared folder browsed');
+      res.json(enrichBrowseItems(result));
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+          driveId: req.params.driveId,
+          itemId: req.params.itemId,
+        },
+        'Failed to browse shared folder'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
  * POST /api/connections/:id/scopes
  * Create sync scopes (selected folders) for a connection.
  */
@@ -585,6 +678,7 @@ router.post(
             scopeResourceId: scope.scopeResourceId,
             scopeDisplayName: scope.scopeDisplayName,
             scopePath: scope.scopePath,
+            remoteDriveId: scope.remoteDriveId,
           });
           return repo.findScopeById(scopeId);
         })

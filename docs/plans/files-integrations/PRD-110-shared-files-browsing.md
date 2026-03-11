@@ -1,7 +1,7 @@
 # PRD-110: OneDrive "Shared With Me" Browsing & Sync
 
 **Phase**: OneDrive Enhancement
-**Status**: Planned
+**Status**: COMPLETED
 **Prerequisites**: PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 3–4 days
 **Created**: 2026-03-09
@@ -249,16 +249,16 @@ Application-level permissions (`Files.Read.All` application scope) would allow s
 
 ## 9. Success Criteria
 
-- [ ] "Shared with me" tab displays items shared by other users
-- [ ] Shared folders can be expanded to browse their contents
-- [ ] Shared items show sharer name and sharing date
-- [ ] Shared files can be selected and synced
-- [ ] Synced shared files are processed through the RAG pipeline
-- [ ] Content download works for shared items (uses source drive ID)
-- [ ] File type validation applies to shared items (PRD-106)
-- [ ] Permission revocation is handled gracefully (403 — error state)
-- [ ] All existing tests pass
-- [ ] Type-check and lint pass
+- [x] "Shared with me" tab displays items shared by other users
+- [x] Shared folders can be expanded to browse their contents
+- [x] Shared items show sharer name and sharing date
+- [x] Shared files can be selected and synced
+- [x] Synced shared files are processed through the RAG pipeline
+- [x] Content download works for shared items (uses source drive ID)
+- [x] File type validation applies to shared items (PRD-106)
+- [x] Permission revocation is handled gracefully (403 — error state)
+- [x] All existing tests pass
+- [x] Type-check and lint pass
 
 ---
 
@@ -269,3 +269,105 @@ Application-level permissions (`Files.Read.All` application scope) would allow s
 - Application-level permissions for cross-drive subscriptions
 - Sharing management (share/unshare files from within MyWorkMate)
 - SharePoint shared libraries (covered by PRD-111)
+
+---
+
+## 11. Implementation Status
+
+**Completed**: 2026-03-11
+
+### Shared Package
+- `ExternalFileItem` extended with 5 optional fields: `isShared`, `sharedBy`, `sharedDate`, `remoteDriveId`, `remoteItemId`
+- `createScopesSchema` and `batchScopesSchema` extended with optional `remoteDriveId` field
+
+### Database
+- `connection_scopes.remote_drive_id` column added (NVarChar(200), nullable)
+- Applied via `prisma db push`
+
+### Backend — OneDriveService
+- `mapSharedDriveItem()` helper maps Graph `/me/drive/sharedWithMe` items to `ExternalFileItem`
+- `listSharedWithMe(connectionId)` — fetches shared items via Graph API
+- `listSharedFolder(connectionId, driveId, itemId, pageToken?)` — browses remote drive folders
+- `downloadFileContentFromDrive(connectionId, driveId, itemId)` — downloads from explicit drive
+- `getDownloadUrlFromDrive(connectionId, driveId, itemId)` — gets download URL from explicit drive
+
+### Backend — Routes
+- `GET /api/connections/:id/browse-shared` — lists shared items
+- `GET /api/connections/:id/browse-shared/:driveId/:itemId` — browses shared folders
+
+### Backend — Scope Creation
+- `ConnectionRepository.createScope()` accepts `remoteDriveId`
+- `ScopeRow` interface includes `remote_drive_id`
+- Routes and `ConnectionService.batchUpdateScopes()` forward `remoteDriveId`
+
+### Backend — Sync Services
+- `InitialSyncService`: resolves effective drive ID (`scope.remote_drive_id ?? connection.microsoft_drive_id`), skips subscription for shared scopes
+- `DeltaSyncService`: same effective drive ID pattern
+- `SubscriptionManager.createSubscription()`: early return for shared scopes
+- `GraphApiContentProvider`: routes downloads by `external_drive_id` (shared files use `downloadFileContentFromDrive`)
+
+### Frontend
+- Tab UI: "My Files" / "Shared with me" segmented control
+- Lazy loading of shared items on first tab switch
+- Shared folder expansion via `browse-shared/:driveId/:itemId`
+- Children of shared folders inherit `remoteDriveId`
+- "Shared by {name}" metadata label with Users icon
+- Scope payloads include `remoteDriveId` for both first-time and batch modes
+
+### Design Decisions
+- **Effective drive ID pattern**: `scope.remote_drive_id ?? connection.microsoft_drive_id` — shared scopes use the remote drive, personal scopes use the connection drive
+- **No webhooks for shared scopes**: Subscription creation is skipped because Graph subscriptions can only target the user's own drive
+- **`external_drive_id` on files**: Shared files store the remote drive ID so `GraphApiContentProvider` can route downloads correctly
+- **Children inherit remoteDriveId**: When expanding a shared folder, all children nodes inherit the parent's `remoteDriveId` for correct drill-down
+
+---
+
+## 9. Post-Testing Bugfixes (PRD-110b)
+
+Issues found during live testing against a real PMC SharePoint/OneDrive account.
+
+### Fix 1: "Expected string, received null" on scope batch
+
+**Root cause**: `scopePath: s.path` in the frontend sends `null` for shared items with no `parentPath`. Zod's `z.string().optional()` rejects `null`.
+
+**Fix** (two-sided):
+- **Frontend** (`ConnectionWizard.tsx`): Changed `scopePath: s.path` to `...(s.path != null && { scopePath: s.path })` on both batch and first-time-setup payloads
+- **Backend** (`onedrive.schemas.ts`): Changed `scopePath` from `.optional()` to `.nullish()` in both `createScopesSchema` and `batchScopesSchema`
+
+### Fix 2: Incomplete shared items (pagination)
+
+**Root cause**: `listSharedWithMe()` called Graph API with no query params — only the first page returned (sometimes just 1 item).
+
+**Fix** (`OneDriveService.ts`): Auto-paginate with `$top=200`, follow `@odata.nextLink` up to 10 pages (max 2000 items). Returns full list with `nextPageToken: null`.
+
+### Fix 3: Right-click context menu
+
+**Implementation** (`FolderTree.tsx`): Wrapped OneDrive section with `<ContextMenu>` from shadcn/ui. Right-click shows "Configure" item with `Settings2` icon that opens `ConnectionWizard`.
+
+### Fix 4: 404 on shared file sync
+
+**Root cause**: `_runFileLevelSync` called `getItemMetadata(connectionId, itemId)` which uses the user's **personal drive ID**. Shared items have `scope_resource_id` = `remoteItem.id` living on the **remote drive** — hence `itemNotFound` 404.
+
+**Fix**:
+- **OneDriveService**: Added `getItemMetadataFromDrive(connectionId, driveId, itemId)` — follows existing `downloadFileContentFromDrive` pattern
+- **InitialSyncService**: When `scope.remote_drive_id` exists, routes to `getItemMetadataFromDrive` with the remote drive ID
+
+### Fix 5: Shared file icon
+
+**Implementation**: Added `is_shared` boolean column to `files` table (default `false`). Set to `true` during sync when `scope.remote_drive_id` exists. Propagated through `FileDbRecord` → `parseFile()` → `ParsedFile` → `FileIcon.tsx`.
+
+**Visual**: Shared OneDrive files show a `Users` badge (two people icon) instead of the `Cloud` badge. Color remains Microsoft blue (`#0078D4`).
+
+### Files modified
+| File | Change |
+|------|--------|
+| `packages/shared/src/schemas/onedrive.schemas.ts` | `scopePath` → `.nullish()` |
+| `packages/shared/src/types/file.types.ts` | Added `isShared` to `ParsedFile` |
+| `frontend/components/connections/ConnectionWizard.tsx` | Conditional spread for `scopePath` |
+| `frontend/components/files/FolderTree.tsx` | Right-click context menu |
+| `frontend/components/files/FileIcon.tsx` | `Users` badge for shared files |
+| `backend/prisma/schema.prisma` | Added `is_shared` column to `files` |
+| `backend/src/types/file.types.ts` | Added `is_shared` to `FileDbRecord`, `parseFile()` |
+| `backend/src/services/connectors/onedrive/OneDriveService.ts` | Auto-paginate `listSharedWithMe`, added `getItemMetadataFromDrive` |
+| `backend/src/services/sync/InitialSyncService.ts` | Remote drive routing for file-level sync, `is_shared` flag |
+| `docs/plans/files-integrations/PRD-111-sharepoint-connection.md` | Section 4.12: OneDrive–SharePoint unified shared view |

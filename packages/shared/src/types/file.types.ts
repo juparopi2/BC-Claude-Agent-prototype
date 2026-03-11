@@ -136,6 +136,9 @@ export interface ParsedFile {
   /** URL to open file in its native app (e.g., OneDrive web). Null for local files. */
   externalUrl: string | null;
 
+  /** Whether this file comes from a "Shared with me" scope (PRD-110) */
+  isShared: boolean;
+
   /** True if this is a folder */
   isFolder: boolean;
 

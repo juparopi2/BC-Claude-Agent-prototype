@@ -180,11 +180,12 @@ describe('MessageQueue.close()', () => {
     // Note: Redis is injected (ownsRedisConnection = false), so quit() is NOT called
     // Queues: MESSAGE_PERSISTENCE, TOOL_EXECUTION, EVENT_PROCESSING, USAGE_AGGREGATION,
     //         CITATION_PERSISTENCE, FILE_DELETION, FILE_EXTRACT, FILE_CHUNK, FILE_EMBED,
-    //         FILE_PIPELINE_COMPLETE, DLQ, FILE_MAINTENANCE = 12 queues total
-    // Workers: all queues except DLQ (no worker) = 11 workers
-    const numWorkers = 11;
-    const numQueueEvents = 12;
-    const numQueues = 12;
+    //         FILE_PIPELINE_COMPLETE, DLQ, FILE_MAINTENANCE, EXTERNAL_FILE_SYNC,
+    //         SUBSCRIPTION_MGMT = 14 queues total
+    // Workers: all queues except DLQ (no worker) = 13 workers
+    const numWorkers = 13;
+    const numQueueEvents = 14;
+    const numQueues = 14;
     const total = numWorkers + numQueueEvents + numQueues;
     expect(capturedCallOrder).toHaveLength(total);
 

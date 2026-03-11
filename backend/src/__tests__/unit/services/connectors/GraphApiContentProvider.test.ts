@@ -14,7 +14,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFindFirst = vi.hoisted(() => vi.fn());
 const mockDownloadFileContent = vi.hoisted(() => vi.fn());
+const mockDownloadFileContentFromDrive = vi.hoisted(() => vi.fn());
 const mockGetDownloadUrl = vi.hoisted(() => vi.fn());
+const mockGetDownloadUrlFromDrive = vi.hoisted(() => vi.fn());
 
 vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => ({
@@ -36,7 +38,9 @@ vi.mock('@/infrastructure/database/prisma', () => ({
 vi.mock('@/services/connectors/onedrive/OneDriveService', () => ({
   getOneDriveService: vi.fn(() => ({
     downloadFileContent: mockDownloadFileContent,
+    downloadFileContentFromDrive: mockDownloadFileContentFromDrive,
     getDownloadUrl: mockGetDownloadUrl,
+    getDownloadUrlFromDrive: mockGetDownloadUrlFromDrive,
   })),
 }));
 
@@ -210,6 +214,84 @@ describe('GraphApiContentProvider', () => {
       );
 
       expect(mockGetDownloadUrl).not.toHaveBeenCalled();
+    });
+  });
+
+  // ==========================================================================
+  // PRD-110: external_drive_id routing
+  // ==========================================================================
+
+  describe('getContent — PRD-110 external_drive_id routing', () => {
+    it('downloads from external_drive_id when set', async () => {
+      const REMOTE_DRIVE_ID = 'REMOTE-DRIVE-001';
+      const fakeBuffer = Buffer.from('shared file content');
+      mockFindFirst.mockResolvedValue({
+        ...BASE_FILE_RECORD,
+        external_drive_id: REMOTE_DRIVE_ID,
+      });
+      mockDownloadFileContentFromDrive.mockResolvedValue({ buffer: fakeBuffer });
+
+      const result = await provider.getContent(FILE_ID, USER_ID);
+
+      expect(result.buffer).toBe(fakeBuffer);
+      expect(mockDownloadFileContentFromDrive).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        REMOTE_DRIVE_ID,
+        EXTERNAL_ID
+      );
+      expect(mockDownloadFileContent).not.toHaveBeenCalled();
+    });
+
+    it('falls back to connection drive when external_drive_id is null', async () => {
+      const fakeBuffer = Buffer.from('regular file content');
+      mockFindFirst.mockResolvedValue({
+        ...BASE_FILE_RECORD,
+        external_drive_id: null,
+      });
+      mockDownloadFileContent.mockResolvedValue({ buffer: fakeBuffer });
+
+      const result = await provider.getContent(FILE_ID, USER_ID);
+
+      expect(result.buffer).toBe(fakeBuffer);
+      expect(mockDownloadFileContent).toHaveBeenCalledWith(CONNECTION_ID, EXTERNAL_ID);
+      expect(mockDownloadFileContentFromDrive).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getDownloadUrl — PRD-110 external_drive_id routing', () => {
+    it('routes to getDownloadUrlFromDrive when external_drive_id is set', async () => {
+      const REMOTE_DRIVE_ID = 'REMOTE-DRIVE-001';
+      const expectedUrl = 'https://remote-drive.example.com/file?token=xyz';
+      mockFindFirst.mockResolvedValue({
+        ...BASE_FILE_RECORD,
+        external_drive_id: REMOTE_DRIVE_ID,
+      });
+      mockGetDownloadUrlFromDrive.mockResolvedValue(expectedUrl);
+
+      const result = await provider.getDownloadUrl(FILE_ID, USER_ID);
+
+      expect(result).toBe(expectedUrl);
+      expect(mockGetDownloadUrlFromDrive).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        REMOTE_DRIVE_ID,
+        EXTERNAL_ID
+      );
+      expect(mockGetDownloadUrl).not.toHaveBeenCalled();
+    });
+
+    it('routes to getDownloadUrl when external_drive_id is null', async () => {
+      const expectedUrl = 'https://download.example.com/file?token=abc';
+      mockFindFirst.mockResolvedValue({
+        ...BASE_FILE_RECORD,
+        external_drive_id: null,
+      });
+      mockGetDownloadUrl.mockResolvedValue(expectedUrl);
+
+      const result = await provider.getDownloadUrl(FILE_ID, USER_ID);
+
+      expect(result).toBe(expectedUrl);
+      expect(mockGetDownloadUrl).toHaveBeenCalledWith(CONNECTION_ID, EXTERNAL_ID);
+      expect(mockGetDownloadUrlFromDrive).not.toHaveBeenCalled();
     });
   });
 });

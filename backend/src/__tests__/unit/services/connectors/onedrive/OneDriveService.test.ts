@@ -517,7 +517,8 @@ describe('OneDriveService', () => {
       await service.executeDeltaQuery(CONNECTION_ID, absoluteDeltaLink);
 
       // When deltaLink is provided, it is used verbatim — DB lookup is skipped
-      expect(mockGet).toHaveBeenCalledWith(absoluteDeltaLink, MOCK_TOKEN);
+      // Third arg `true` tells GraphHttpClient this is an absolute URL
+      expect(mockGet).toHaveBeenCalledWith(absoluteDeltaLink, MOCK_TOKEN, true);
       // DB should NOT be queried when deltaLink is provided
       expect(mockFindUnique).not.toHaveBeenCalled();
     });
@@ -585,7 +586,8 @@ describe('OneDriveService', () => {
 
       await service.executeFolderDeltaQuery(CONNECTION_ID, FOLDER_ID, absoluteDeltaLink);
 
-      expect(mockGet).toHaveBeenCalledWith(absoluteDeltaLink, MOCK_TOKEN);
+      // Third arg `true` tells GraphHttpClient this is an absolute URL
+      expect(mockGet).toHaveBeenCalledWith(absoluteDeltaLink, MOCK_TOKEN, true);
       // DB should NOT be queried when deltaLink is provided
       expect(mockFindUnique).not.toHaveBeenCalled();
     });
@@ -677,6 +679,175 @@ describe('OneDriveService', () => {
       await expect(service.listFolder(CONNECTION_ID)).rejects.toThrow(
         `Connection has no drive ID: ${CONNECTION_ID}`
       );
+    });
+  });
+
+  // ==========================================================================
+  // listSharedWithMe
+  // ==========================================================================
+
+  describe('listSharedWithMe', () => {
+    it('returns shared items with isShared and shared metadata', async () => {
+      mockGet.mockResolvedValue({
+        value: [
+          {
+            id: 'local-ref-id',
+            name: 'Shared Folder',
+            remoteItem: {
+              id: 'REMOTE-ITEM-001',
+              name: 'Shared Folder',
+              folder: { childCount: 3 },
+              size: 0,
+              lastModifiedDateTime: '2026-03-01T10:00:00Z',
+              webUrl: 'https://example.com/shared-folder',
+              parentReference: {
+                driveId: 'REMOTE-DRIVE-001',
+                path: '/drive/root:/Shared',
+              },
+              shared: {
+                owner: { user: { displayName: 'Jane Smith' } },
+                sharedDateTime: '2026-02-15T08:30:00Z',
+              },
+            },
+          },
+        ],
+      });
+
+      const result = await service.listSharedWithMe(CONNECTION_ID);
+
+      expect(result.items).toHaveLength(1);
+      const item = result.items[0]!;
+
+      // Uses remoteItem.id, not the local reference id
+      expect(item.id).toBe('REMOTE-ITEM-001');
+      expect(item.isShared).toBe(true);
+      expect(item.sharedBy).toBe('Jane Smith');
+      expect(item.sharedDate).toBe('2026-02-15T08:30:00Z');
+      expect(item.remoteDriveId).toBe('REMOTE-DRIVE-001');
+      expect(item.remoteItemId).toBe('REMOTE-ITEM-001');
+      expect(item.isFolder).toBe(true);
+      expect(item.childCount).toBe(3);
+
+      expect(mockGet).toHaveBeenCalledWith('/me/drive/sharedWithMe?$top=200', MOCK_TOKEN, false);
+    });
+
+    it('returns empty result when no shared items', async () => {
+      mockGet.mockResolvedValue({ value: [] });
+
+      const result = await service.listSharedWithMe(CONNECTION_ID);
+
+      expect(result.items).toEqual([]);
+      expect(result.nextPageToken).toBeNull();
+    });
+
+    it('handles items without remoteItem gracefully', async () => {
+      mockGet.mockResolvedValue({
+        value: [
+          {
+            id: 'plain-item-id',
+            name: 'PlainShared.docx',
+            size: 1024,
+            lastModifiedDateTime: '2026-01-10T12:00:00Z',
+            webUrl: 'https://example.com/plain',
+            file: { mimeType: 'application/msword' },
+            parentReference: {
+              id: 'parent-id',
+              path: '/drive/root:',
+            },
+            // no remoteItem property
+          },
+        ],
+      });
+
+      const result = await service.listSharedWithMe(CONNECTION_ID);
+
+      expect(result.items).toHaveLength(1);
+      const item = result.items[0]!;
+      // Falls back to regular mapping with isShared: true
+      expect(item.isShared).toBe(true);
+      expect(item.id).toBe('plain-item-id');
+      expect(item.name).toBe('PlainShared.docx');
+    });
+  });
+
+  // ==========================================================================
+  // listSharedFolder
+  // ==========================================================================
+
+  describe('listSharedFolder', () => {
+    it('browses children on the remote drive', async () => {
+      const rawFile = buildRawDriveItem({ id: 'CHILD-FILE-001', name: 'Report.xlsx' });
+      mockGet.mockResolvedValue({ value: [rawFile] });
+
+      const result = await service.listSharedFolder(CONNECTION_ID, 'DRIVE-123', 'ITEM-456');
+
+      expect(mockGet).toHaveBeenCalledWith(
+        '/drives/DRIVE-123/items/ITEM-456/children',
+        MOCK_TOKEN
+      );
+      expect(result.items).toHaveLength(1);
+      // Items are mapped with regular mapDriveItem — no shared metadata
+      expect(result.items[0]?.id).toBe('CHILD-FILE-001');
+      expect(result.items[0]?.isShared).toBeUndefined();
+      expect(result.nextPageToken).toBeNull();
+    });
+
+    it('supports pagination via pageToken', async () => {
+      mockGet.mockResolvedValue({ value: [] });
+
+      await service.listSharedFolder(CONNECTION_ID, 'DRIVE-123', 'ITEM-456', 'abc123');
+
+      expect(mockGet).toHaveBeenCalledWith(
+        `/drives/DRIVE-123/items/ITEM-456/children?$skiptoken=${encodeURIComponent('abc123')}`,
+        MOCK_TOKEN
+      );
+    });
+  });
+
+  // ==========================================================================
+  // downloadFileContentFromDrive
+  // ==========================================================================
+
+  describe('downloadFileContentFromDrive', () => {
+    it('downloads content using explicit drive ID', async () => {
+      const fakeBuffer = Buffer.from('remote drive file content');
+      mockGetBuffer.mockResolvedValue(fakeBuffer);
+
+      const result = await service.downloadFileContentFromDrive(
+        CONNECTION_ID,
+        'DRIVE-123',
+        'ITEM-456'
+      );
+
+      expect(mockGetBuffer).toHaveBeenCalledWith(
+        '/drives/DRIVE-123/items/ITEM-456/content',
+        MOCK_TOKEN
+      );
+      expect(result.buffer).toBe(fakeBuffer);
+      expect(result.contentType).toBe('application/octet-stream');
+    });
+  });
+
+  // ==========================================================================
+  // getDownloadUrlFromDrive
+  // ==========================================================================
+
+  describe('getDownloadUrlFromDrive', () => {
+    it('fetches download URL using explicit drive ID', async () => {
+      const downloadUrl = 'https://download.example.com/signed?token=xyz';
+      mockGet.mockResolvedValue({
+        '@microsoft.graph.downloadUrl': downloadUrl,
+      });
+
+      const result = await service.getDownloadUrlFromDrive(
+        CONNECTION_ID,
+        'DRIVE-123',
+        'ITEM-456'
+      );
+
+      expect(result).toBe(downloadUrl);
+      const expectedPath = `/drives/DRIVE-123/items/ITEM-456?$select=${encodeURIComponent('@microsoft.graph.downloadUrl')}`;
+      expect(mockGet).toHaveBeenCalledWith(expectedPath, MOCK_TOKEN);
     });
   });
 

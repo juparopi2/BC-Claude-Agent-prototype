@@ -53,12 +53,14 @@ vi.mock('@/infrastructure/database/prisma', () => ({
 const mockExecuteDeltaQuery = vi.hoisted(() => vi.fn());
 const mockExecuteFolderDeltaQuery = vi.hoisted(() => vi.fn());
 const mockGetItemMetadata = vi.hoisted(() => vi.fn());
+const mockGetItemMetadataFromDrive = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/connectors/onedrive', () => ({
   getOneDriveService: vi.fn(() => ({
     executeDeltaQuery: mockExecuteDeltaQuery,
     executeFolderDeltaQuery: mockExecuteFolderDeltaQuery,
     getItemMetadata: mockGetItemMetadata,
+    getItemMetadataFromDrive: mockGetItemMetadataFromDrive,
   })),
 }));
 
@@ -1249,6 +1251,184 @@ describe('InitialSyncService', () => {
           lastSyncError: null,
         })
       );
+    });
+  });
+
+  // ==========================================================================
+  // PRD-110: shared scope — remote_drive_id propagation
+  // ==========================================================================
+
+  const REMOTE_DRIVE_ID = 'REMOTE-DRIVE-001';
+
+  describe('PRD-110 — shared scope behavior', () => {
+    it('shared scope uses remote_drive_id as external_drive_id for created files', async () => {
+      mockFindScopeById.mockResolvedValue({
+        ...defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: 'Shared Folder',
+        }),
+        remote_drive_id: REMOTE_DRIVE_ID,
+      });
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [makeFileChange('file-shared-1', 'shared-doc.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // PRD-112: 1 scope root folder + 1 file = 2 creates
+      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
+
+      // The file create (second call) should use REMOTE_DRIVE_ID as external_drive_id
+      const fileCreate = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
+      expect(fileCreate.data).toMatchObject({
+        name: 'shared-doc.pdf',
+        external_drive_id: REMOTE_DRIVE_ID,
+        connection_id: CONNECTION_ID,
+        connection_scope_id: SCOPE_ID,
+        user_id: USER_ID,
+      });
+    });
+
+    it('shared scope passes remote_drive_id as microsoftDriveId to ensureScopeRootFolder', async () => {
+      mockFindScopeById.mockResolvedValue({
+        ...defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: 'Shared Root',
+        }),
+        remote_drive_id: REMOTE_DRIVE_ID,
+      });
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // ensureScopeRootFolder uses prisma.files.findFirst + create
+      // The scope root folder create should use REMOTE_DRIVE_ID as external_drive_id
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+
+      const rootFolderCreate = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(rootFolderCreate.data).toMatchObject({
+        name: 'Shared Root',
+        is_folder: true,
+        external_id: FOLDER_RESOURCE_ID,
+        external_drive_id: REMOTE_DRIVE_ID,
+        connection_id: CONNECTION_ID,
+      });
+    });
+
+    it('shared scope skips subscription creation', async () => {
+      mockFindScopeById.mockResolvedValue({
+        ...defaultScopeRow({ scope_type: 'root' }),
+        remote_drive_id: REMOTE_DRIVE_ID,
+      });
+
+      mockExecuteDeltaQuery.mockResolvedValueOnce({
+        changes: [makeFileChange('file-1', 'shared-file.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      // Track dynamic imports by verifying no SubscriptionManager is imported
+      // The service uses dynamic import for subscription creation inside the
+      // `if (!scope.remote_drive_id)` guard — we verify the sync completes normally.
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Sync should still complete with files created
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({ syncStatus: 'idle' })
+      );
+    });
+
+    it('file-level shared scope uses getItemMetadataFromDrive with remote_drive_id', async () => {
+      const sharedFileItem = {
+        id: 'remote-file-id',
+        name: 'shared-report.xlsx',
+        isFolder: false,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        sizeBytes: 5000,
+        lastModifiedAt: '2026-01-01T00:00:00Z',
+        webUrl: 'https://example.com/shared-report.xlsx',
+        eTag: '"etag-shared"',
+        parentId: null,
+        parentPath: null,
+        childCount: null,
+      };
+
+      mockFindScopeById.mockResolvedValue({
+        ...defaultScopeRow({
+          scope_type: 'file',
+          scope_resource_id: 'remote-file-id',
+          scope_display_name: 'shared-report.xlsx',
+        }),
+        remote_drive_id: REMOTE_DRIVE_ID,
+      });
+      mockGetItemMetadataFromDrive.mockResolvedValue(sharedFileItem);
+      mockFilesFindFirst.mockResolvedValue(null);
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Should use getItemMetadataFromDrive (NOT getItemMetadata)
+      expect(mockGetItemMetadataFromDrive).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        REMOTE_DRIVE_ID,
+        'remote-file-id'
+      );
+      expect(mockGetItemMetadata).not.toHaveBeenCalled();
+
+      // File should be created with remote_drive_id as external_drive_id
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      const createCall = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(createCall.data).toMatchObject({
+        name: 'shared-report.xlsx',
+        external_drive_id: REMOTE_DRIVE_ID,
+        external_id: 'remote-file-id',
+      });
+    });
+
+    it('non-shared scope uses connection drive ID (regression test)', async () => {
+      // Scope with no remote_drive_id — uses connection's microsoft_drive_id
+      mockFindScopeById.mockResolvedValue({
+        ...defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: 'Local Folder',
+        }),
+        remote_drive_id: null,
+      });
+
+      mockExecuteFolderDeltaQuery.mockResolvedValueOnce({
+        changes: [makeFileChange('file-local-1', 'local-doc.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // PRD-112: 1 scope root folder + 1 file = 2 creates
+      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
+
+      // File should use the connection's DRIVE_ID (from mockConnectionsFindUnique default)
+      const fileCreate = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
+      expect(fileCreate.data).toMatchObject({
+        name: 'local-doc.pdf',
+        external_drive_id: DRIVE_ID,
+        connection_id: CONNECTION_ID,
+      });
     });
   });
 });

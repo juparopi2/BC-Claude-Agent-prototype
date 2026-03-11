@@ -329,19 +329,19 @@ When SharePoint (PRD-111) or other connectors are added, they automatically appe
 
 ## 7. Success Criteria
 
-- [ ] "Connections" tab appears in Settings panel
-- [ ] Active connections show provider info, display name, and stats
-- [ ] "Configure" button opens ConnectionWizard modal
-- [ ] "Disconnect" button opens confirmation modal
-- [ ] Confirmation requires typing "DISCONNECT"
-- [ ] Full disconnect removes: connection record, scopes, synced files, file chunks, AI Search embeddings, MSAL cache
-- [ ] Source files in OneDrive are NOT affected
-- [ ] WebSocket event notifies frontend of disconnection
-- [ ] Partial failure is handled gracefully (best-effort cleanup)
-- [ ] Disconnected providers show "Connect" button
-- [ ] Works for all providers (provider-agnostic design)
-- [ ] All existing tests pass
-- [ ] Type-check and lint pass
+- [x] "Connections" tab appears in Settings panel
+- [x] Active connections show provider info, display name, and stats
+- [x] "Configure" button opens ConnectionWizard modal
+- [x] "Disconnect" button opens confirmation modal
+- [x] Confirmation requires typing "DISCONNECT"
+- [x] Full disconnect removes: connection record, scopes, synced files, file chunks, AI Search embeddings, MSAL cache
+- [x] Source files in OneDrive are NOT affected
+- [x] WebSocket event notifies frontend of disconnection
+- [x] Partial failure is handled gracefully (best-effort cleanup)
+- [x] Disconnected providers show "Connect" button
+- [x] Works for all providers (provider-agnostic design)
+- [x] All existing tests pass
+- [x] Type-check and lint pass
 
 ---
 
@@ -362,3 +362,39 @@ When SharePoint (PRD-111) or other connectors are added, they automatically appe
 - Undo/recovery after disconnect (stated as irreversible)
 - Admin-level bulk disconnect (multi-user)
 - Automatic disconnect on token expiry (separate concern for PRD-108 lifecycle handling)
+
+---
+
+## 10. Implementation Status
+
+**Completed**: 2026-03-11
+
+### Backend — Disconnect APIs
+- `GET /api/connections/:id/disconnect-summary` — returns counts of scopes, files, and chunks to be deleted
+- `DELETE /api/connections/:id/full-disconnect` — sequential cleanup: cancel subscriptions, delete AI Search embeddings, delete `file_chunks`, delete `files`, revoke MSAL tokens, clear Redis cache, delete connection record
+- Best-effort error handling: cleanup continues past individual step failures; partial results returned in response
+- `ConnectionService.fullDisconnect()` method added with `FullDisconnectResult` return type
+- `DisconnectSummary` interface added to shared types
+
+### Backend — WebSocket Notification
+- `connection:disconnected` event emitted after successful full disconnect
+- Carries `{ connectionId, provider }` payload for targeted frontend state update
+
+### Frontend — Settings Tab
+- `frontend/src/components/settings/ConnectionsTab.tsx` — new component
+- Added "Connections" tab to `SettingsTabs.tsx` (after "Capabilities", icon: `Plug`)
+- `ConnectionRow` sub-component: provider icon, display name, stats summary, Configure and Disconnect action buttons
+- Disconnected providers rendered with "Connect" button and description text
+- Uses existing `useIntegrations()` hook for data fetching
+
+### Frontend — Disconnect Modal
+- `frontend/src/components/connections/DisconnectConfirmModal.tsx` — new component
+- Fetches `DisconnectSummary` on open to populate itemized deletion list
+- Text input requiring exact "DISCONNECT" string to enable the destructive button
+- Loading spinner during cleanup; success toast on completion; warning toast on partial failure
+- Refreshes connection list via `useIntegrations()` invalidation after disconnect
+
+### Design Decisions
+- **Separate endpoint from simple DELETE**: `full-disconnect` is distinct from `DELETE /api/connections/:id` to avoid accidental data loss from existing callers
+- **Best-effort cleanup**: Individual step failures are logged and accumulated; the connection record is always deleted last so partial cleanup is recoverable on retry
+- **Provider-agnostic**: The modal and backend logic are driven by `PROVIDER_DISPLAY_NAME` / `PROVIDER_ICON` constants — no provider-specific code paths in the disconnect flow

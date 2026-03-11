@@ -101,6 +101,7 @@ export class FileFixture {
       blob_path: FileFixture.generateBlobPath(userId, name),
       is_folder: false,
       is_favorite: false,
+      is_shared: false,
       pipeline_status: 'ready',
       extracted_text: null,
       content_hash: null,

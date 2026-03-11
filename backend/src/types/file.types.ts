@@ -124,6 +124,9 @@ export interface FileDbRecord {
   /** UTC timestamp of the file's original modification date from the user's filesystem */
   file_modified_at: Date | null;
 
+  /** Whether this file comes from a "Shared with me" scope (PRD-110) */
+  is_shared: boolean;
+
   /** UTC timestamp when file was uploaded */
   created_at: Date;
 
@@ -344,6 +347,7 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     contentHash: record.content_hash,
     deletionStatus: record.deletion_status ?? null,
     deletedAt: record.deleted_at ? record.deleted_at.toISOString() : null,
+    isShared: record.is_shared ?? false,
     fileModifiedAt: record.file_modified_at ? record.file_modified_at.toISOString() : null,
     createdAt: record.created_at.toISOString(),
     updatedAt: record.updated_at.toISOString(),

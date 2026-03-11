@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
+  Users,
 } from 'lucide-react'
 import {
   Dialog,
@@ -60,6 +61,8 @@ interface SelectedScope {
   status: 'new' | 'existing' | 'removed'
   existingScopeId?: string
   fileCount?: number
+  remoteDriveId?: string
+  remoteItemId?: string
 }
 
 interface ScopeProgressEntry {
@@ -73,6 +76,8 @@ interface AuthInitiateResponse {
   connectionId?: string
   authUrl?: string
 }
+
+type BrowseTab = 'my-files' | 'shared'
 
 interface SyncStatusResponse {
   scopes: Array<{
@@ -190,6 +195,12 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
           >
             {item.name}
           </span>
+          {item.isShared && item.sharedBy && (
+            <span className="text-[10px] text-blue-500 dark:text-blue-400 shrink-0 ml-1 flex items-center gap-0.5">
+              <Users className="size-2.5" />
+              {item.sharedBy}
+            </span>
+          )}
           {selectedScopes.get(item.id)?.status === 'existing' && (
             <span className="text-[10px] text-green-600 dark:text-green-400 shrink-0 ml-1">
               Synced{selectedScopes.get(item.id)?.fileCount ? ` · ${selectedScopes.get(item.id)?.fileCount} files` : ''}
@@ -264,6 +275,12 @@ function TreeNode({ node, depth, selectedScopes, onToggleExpand, onToggleSelect 
       <span className={`text-sm truncate flex-1 ${isUnsupported ? 'text-muted-foreground' : selectedScopes.get(item.id)?.status === 'removed' ? 'line-through text-muted-foreground' : ''}`}>
         {item.name}
       </span>
+      {item.isShared && item.sharedBy && (
+        <span className="text-[10px] text-blue-500 dark:text-blue-400 shrink-0 ml-1 flex items-center gap-0.5">
+          <Users className="size-2.5" />
+          {item.sharedBy}
+        </span>
+      )}
       {isUnsupported && (
         <span className="text-[10px] text-muted-foreground shrink-0 ml-1">Unsupported</span>
       )}
@@ -317,6 +334,13 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const [browseAuthError, setBrowseAuthError] = useState(false)
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0)
   const [nodeMap, setNodeMap] = useState<Map<string, TreeNodeData>>(new Map())
+
+  // Shared tab state (PRD-110)
+  const [browseTab, setBrowseTab] = useState<BrowseTab>('my-files')
+  const [sharedNodes, setSharedNodes] = useState<TreeNodeData[]>([])
+  const [isSharedLoading, setIsSharedLoading] = useState(false)
+  const [sharedLoadedOnce, setSharedLoadedOnce] = useState(false)
+  const [sharedNodeMap, setSharedNodeMap] = useState<Map<string, TreeNodeData>>(new Map())
   const [selectedScopes, setSelectedScopes] = useState<Map<string, SelectedScope>>(new Map())
   const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
   const isReconfiguring = existingScopes.length > 0
@@ -352,6 +376,11 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setNodeMap(new Map())
     setSelectedScopes(new Map())
     setExistingScopes([])
+    setBrowseTab('my-files')
+    setSharedNodes([])
+    setIsSharedLoading(false)
+    setSharedLoadedOnce(false)
+    setSharedNodeMap(new Map())
     setShowDiff(false)
     setSyncState('idle')
     setScopeProgress(new Map())
@@ -520,6 +549,54 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, connectionId, buildNodeMap, browseRefreshKey])
 
+  // Fetch shared items when switching to shared tab for the first time (PRD-110)
+  useEffect(() => {
+    if (step !== 'browse' || !connectionId || browseTab !== 'shared' || sharedLoadedOnce) return
+
+    const fetchShared = async () => {
+      setIsSharedLoading(true)
+      try {
+        const response = await fetch(
+          `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse-shared`,
+          { credentials: 'include' }
+        )
+
+        if (response.status === 401) {
+          setBrowseAuthError(true)
+          return
+        }
+
+        if (!response.ok) {
+          throw new Error(`Failed to load shared items: HTTP ${response.status}`)
+        }
+
+        const data: FolderListResult = await response.json()
+        const sorted = sortItems(data.items)
+
+        const nodes: TreeNodeData[] = sorted.map((item) => ({
+          item,
+          children: item.isFolder ? null : null,
+          isExpanded: false,
+          isLoading: false,
+        }))
+
+        const map = new Map<string, TreeNodeData>()
+        buildNodeMap(nodes, map)
+
+        setSharedNodes(nodes)
+        setSharedNodeMap(map)
+        setSharedLoadedOnce(true)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load shared items')
+      } finally {
+        setIsSharedLoading(false)
+      }
+    }
+
+    fetchShared()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, connectionId, browseTab, sharedLoadedOnce, buildNodeMap])
+
   // ============================================
   // Step 2: Toggle folder expand (lazy load children)
   // ============================================
@@ -528,7 +605,13 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     async (itemId: string) => {
       if (!connectionId) return
 
-      const node = nodeMap.get(itemId)
+      // Determine which tree this node belongs to
+      const isInShared = sharedNodeMap.has(itemId)
+      const currentNodeMap = isInShared ? sharedNodeMap : nodeMap
+      const setCurrentNodes = isInShared ? setSharedNodes : setRootNodes
+      const setCurrentNodeMap = isInShared ? setSharedNodeMap : setNodeMap
+
+      const node = currentNodeMap.get(itemId)
       if (!node) return
 
       // Files cannot be expanded
@@ -536,7 +619,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
       // Already have children — just toggle visibility
       if (node.children !== null) {
-        setRootNodes((prev) => {
+        setCurrentNodes((prev) => {
           const cloned = structuredClone(prev)
           const target = findNode(cloned, itemId)
           if (target) target.isExpanded = !target.isExpanded
@@ -546,7 +629,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       }
 
       // Mark as loading + expanded optimistically
-      setRootNodes((prev) => {
+      setCurrentNodes((prev) => {
         const cloned = structuredClone(prev)
         const target = findNode(cloned, itemId)
         if (target) {
@@ -557,10 +640,13 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       })
 
       try {
-        const response = await fetch(
-          `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse/${itemId}`,
-          { credentials: 'include' }
-        )
+        // PRD-110: Use shared folder endpoint for items with remoteDriveId
+        const remoteDriveId = node.item.remoteDriveId
+        const browseUrl = remoteDriveId
+          ? `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse-shared/${remoteDriveId}/${itemId}`
+          : `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse/${itemId}`
+
+        const response = await fetch(browseUrl, { credentials: 'include' })
 
         if (response.status === 401) {
           setBrowseAuthError(true)
@@ -574,14 +660,15 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         const data: FolderListResult = await response.json()
         const sorted = sortItems(data.items)
 
+        // PRD-110: Children of shared folders inherit remoteDriveId
         const children: TreeNodeData[] = sorted.map((item) => ({
-          item,
+          item: remoteDriveId ? { ...item, remoteDriveId } : item,
           children: item.isFolder ? null : null,
           isExpanded: false,
           isLoading: false,
         }))
 
-        setRootNodes((prev) => {
+        setCurrentNodes((prev) => {
           const cloned = structuredClone(prev)
           const target = findNode(cloned, itemId)
           if (target) {
@@ -591,7 +678,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           return cloned
         })
 
-        setNodeMap((prev) => {
+        setCurrentNodeMap((prev) => {
           const next = new Map(prev)
           const updatedParent: TreeNodeData = { ...node, children, isLoading: false, isExpanded: true }
           next.set(itemId, updatedParent)
@@ -602,7 +689,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         })
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to load folder')
-        setRootNodes((prev) => {
+        setCurrentNodes((prev) => {
           const cloned = structuredClone(prev)
           const target = findNode(cloned, itemId)
           if (target) {
@@ -611,14 +698,14 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           }
           return cloned
         })
-        setNodeMap((prev) => {
+        setCurrentNodeMap((prev) => {
           const next = new Map(prev)
           next.set(itemId, { ...node, isLoading: false, isExpanded: false })
           return next
         })
       }
     },
-    [connectionId, nodeMap]
+    [connectionId, nodeMap, sharedNodeMap]
   )
 
   // ============================================
@@ -651,6 +738,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
           path: item.parentPath,
           isFolder: item.isFolder,
           status: 'new',
+          remoteDriveId: item.remoteDriveId,
+          remoteItemId: item.remoteItemId,
         })
       }
       return next
@@ -744,7 +833,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               scopeType: s.isFolder ? 'folder' : 'file',
               scopeResourceId: s.id,
               scopeDisplayName: s.name,
-              scopePath: s.path,
+              ...(s.path != null && { scopePath: s.path }),
+              ...(s.remoteDriveId && { remoteDriveId: s.remoteDriveId }),
             }))
           const toRemove = scopeValues
             .filter((s) => s.status === 'removed' && s.existingScopeId)
@@ -801,7 +891,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             scopeType: s.isFolder ? 'folder' : 'file',
             scopeResourceId: s.id,
             scopeDisplayName: s.name,
-            scopePath: s.path,
+            ...(s.path != null && { scopePath: s.path }),
+            ...(s.remoteDriveId && { remoteDriveId: s.remoteDriveId }),
           }))
 
           const scopesResponse = await fetch(
@@ -929,6 +1020,32 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               </DialogDescription>
             </DialogHeader>
 
+            {/* PRD-110: Tab selector */}
+            <div className="flex border-b mb-2">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 text-sm font-medium border-b-2 transition-colors ${
+                  browseTab === 'my-files'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setBrowseTab('my-files')}
+              >
+                My Files
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 text-sm font-medium border-b-2 transition-colors ${
+                  browseTab === 'shared'
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setBrowseTab('shared')}
+              >
+                Shared with me
+              </button>
+            </div>
+
             <div className="min-h-[200px] max-h-[300px] overflow-y-auto border rounded-md py-1">
               {browseAuthError ? (
                 <div className="flex flex-col items-center justify-center h-[200px] gap-3 px-4">
@@ -956,12 +1073,34 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
                   <Loader2 className="size-4 animate-spin" />
                   <span className="text-sm">Loading contents...</span>
                 </div>
-              ) : rootNodes.length === 0 ? (
+              ) : browseTab === 'my-files' ? (
+                rootNodes.length === 0 ? (
+                  <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+                    <span className="text-sm">No items found</span>
+                  </div>
+                ) : (
+                  rootNodes.map((node) => (
+                    <TreeNode
+                      key={node.item.id}
+                      node={node}
+                      depth={0}
+                      selectedScopes={selectedScopes}
+                      onToggleExpand={handleToggleExpand}
+                      onToggleSelect={handleToggleSelect}
+                    />
+                  ))
+                )
+              ) : isSharedLoading ? (
+                <div className="flex items-center justify-center h-[200px] text-muted-foreground gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  <span className="text-sm">Loading shared items...</span>
+                </div>
+              ) : sharedNodes.length === 0 ? (
                 <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-                  <span className="text-sm">No items found</span>
+                  <span className="text-sm">No shared items found</span>
                 </div>
               ) : (
-                rootNodes.map((node) => (
+                sharedNodes.map((node) => (
                   <TreeNode
                     key={node.item.id}
                     node={node}

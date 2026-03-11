@@ -19,6 +19,7 @@ import {
   FileCode,
   FileJson,
   Cloud,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,15 +37,16 @@ export function FileIcon({ file, className }: FileIconProps) {
 
   const icon = getIconForFile(file, iconClassName);
 
-  // Add Cloud badge for external files (OneDrive)
+  // Add badge for external files (OneDrive)
   if (file.sourceType === FILE_SOURCE_TYPE.ONEDRIVE) {
     const accentColor = PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE];
+    const BadgeIcon = file.isShared ? Users : Cloud;
     return (
       <span className="relative inline-flex flex-shrink-0">
         {icon}
-        <Cloud
+        <BadgeIcon
           className="absolute -bottom-0.5 -right-1 size-3.5 drop-shadow-sm"
-          style={{ color: accentColor, fill: accentColor, strokeWidth: 1.5 }}
+          style={{ color: accentColor, fill: file.isShared ? undefined : accentColor, strokeWidth: 1.5 }}
         />
       </span>
     );

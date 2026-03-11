@@ -167,6 +167,7 @@ model connection_scopes {
   subscription_id           String?      @db.NVarChar(512)
   subscription_expires_at   DateTime?
   client_state              String?      @db.NVarChar(200)
+  remote_drive_id           String?      @db.NVarChar(200)
   created_at                DateTime     @default(dbgenerated("getutcdate()"))
   updated_at                DateTime     @default(dbgenerated("getutcdate()"))
   connections               connections  @relation(fields: [connection_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_connection_scopes_connection")
@@ -305,6 +306,7 @@ model files {
   /// V2 pipeline retry count (PRD-05). Incremented on each automatic recovery attempt.
   pipeline_retry_count     Int                        @default(0)
   file_modified_at         DateTime?
+  is_shared                Boolean                    @default(false)
   file_chunks              file_chunks[]
   connections              connections?               @relation(fields: [connection_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_files_connection")
   files                    files?                     @relation("filesTofiles", fields: [parent_folder_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK__files__parent_fo__41B8C09B")

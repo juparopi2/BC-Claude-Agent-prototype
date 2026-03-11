@@ -65,6 +65,50 @@ function mapDriveItem(item: Record<string, unknown>): ExternalFileItem {
   };
 }
 
+/**
+ * Map a raw Graph API /me/drive/sharedWithMe item to the strongly-typed ExternalFileItem DTO.
+ * Shared items carry their canonical metadata inside the `remoteItem` facet.
+ */
+function mapSharedDriveItem(item: Record<string, unknown>): ExternalFileItem {
+  const remoteItem = item.remoteItem as Record<string, unknown> | undefined;
+
+  if (!remoteItem) {
+    // Fallback: no remoteItem — treat as regular item
+    return { ...mapDriveItem(item), isShared: true };
+  }
+
+  const parentRef = remoteItem.parentReference as Record<string, unknown> | undefined;
+  const shared = remoteItem.shared as Record<string, unknown> | undefined;
+  const ownerUser = shared?.owner
+    ? ((shared.owner as Record<string, unknown>).user as Record<string, unknown> | undefined)
+    : undefined;
+
+  return {
+    id: String(remoteItem.id),
+    name: remoteItem.name != null ? String(remoteItem.name) : String(item.name ?? ''),
+    isFolder: !!remoteItem.folder,
+    mimeType: remoteItem.file
+      ? ((remoteItem.file as Record<string, unknown>).mimeType != null
+          ? String((remoteItem.file as Record<string, unknown>).mimeType)
+          : null)
+      : null,
+    sizeBytes: Number(remoteItem.size ?? 0),
+    lastModifiedAt: String(remoteItem.lastModifiedDateTime ?? ''),
+    webUrl: String(remoteItem.webUrl ?? item.webUrl ?? ''),
+    eTag: remoteItem.eTag ? String(remoteItem.eTag) : null,
+    parentId: parentRef?.id != null ? String(parentRef.id) : null,
+    parentPath: parentRef?.path != null ? String(parentRef.path) : null,
+    childCount: remoteItem.folder
+      ? Number((remoteItem.folder as Record<string, unknown>).childCount ?? 0)
+      : null,
+    isShared: true,
+    sharedBy: ownerUser?.displayName ? String(ownerUser.displayName) : undefined,
+    sharedDate: shared?.sharedDateTime ? String(shared.sharedDateTime) : undefined,
+    remoteDriveId: parentRef?.driveId ? String(parentRef.driveId) : undefined,
+    remoteItemId: String(remoteItem.id),
+  };
+}
+
 // ============================================================================
 // Internal DB helper
 // ============================================================================
@@ -255,6 +299,29 @@ export class OneDriveService {
   }
 
   /**
+   * Fetch metadata for a single item on a specific drive (e.g. shared items on remote drives).
+   * Calls GET /drives/{driveId}/items/{itemId}
+   */
+  async getItemMetadataFromDrive(
+    connectionId: string,
+    driveId: string,
+    itemId: string
+  ): Promise<ExternalFileItem> {
+    logger.info({ connectionId, driveId, itemId }, 'Fetching item metadata from specific drive');
+
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+
+    const raw = await getGraphHttpClient().get<Record<string, unknown>>(
+      `/drives/${driveId}/items/${itemId}`,
+      token
+    );
+
+    const result = mapDriveItem(raw);
+    logger.info({ connectionId, driveId, itemId, name: result.name }, 'Item metadata fetched from specific drive');
+    return result;
+  }
+
+  /**
    * Execute a delta query to detect changes since the last sync.
    *
    * If deltaLink is provided, it is used verbatim as the request URL (absolute).
@@ -392,6 +459,124 @@ export class OneDriveService {
     );
 
     return result;
+  }
+
+  /**
+   * List items shared with the current user.
+   * Calls GET /me/drive/sharedWithMe
+   */
+  async listSharedWithMe(connectionId: string): Promise<FolderListResult> {
+    logger.info({ connectionId }, 'Listing shared items');
+
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+    const allItems: ExternalFileItem[] = [];
+    let url: string = '/me/drive/sharedWithMe?$top=200';
+    let pageCount = 0;
+    const MAX_PAGES = 10; // safety cap: max 2000 items
+
+    while (url && pageCount < MAX_PAGES) {
+      const isAbsolute = url.startsWith('http');
+      const raw = await getGraphHttpClient().get<Record<string, unknown>>(
+        url, token, isAbsolute
+      );
+      const rawItems = Array.isArray(raw.value)
+        ? (raw.value as Record<string, unknown>[])
+        : [];
+      allItems.push(...rawItems.map(mapSharedDriveItem));
+
+      const nextLink = raw['@odata.nextLink'];
+      url = typeof nextLink === 'string' ? nextLink : '';
+      pageCount++;
+    }
+
+    logger.info(
+      { connectionId, itemCount: allItems.length, pagesLoaded: pageCount },
+      'Shared items listed'
+    );
+
+    return { items: allItems, nextPageToken: null };
+  }
+
+  /**
+   * Browse inside a shared folder on a remote drive.
+   * Calls GET /drives/{driveId}/items/{itemId}/children
+   */
+  async listSharedFolder(
+    connectionId: string,
+    driveId: string,
+    itemId: string,
+    pageToken?: string
+  ): Promise<FolderListResult> {
+    logger.info({ connectionId, driveId, itemId, hasPageToken: !!pageToken }, 'Listing shared folder contents');
+
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+
+    const folderSegment = `/drives/${driveId}/items/${itemId}/children`;
+    const path = pageToken
+      ? `${folderSegment}?$skiptoken=${encodeURIComponent(pageToken)}`
+      : folderSegment;
+
+    const raw = await getGraphHttpClient().get<Record<string, unknown>>(path, token);
+
+    const rawItems = Array.isArray(raw.value) ? (raw.value as Record<string, unknown>[]) : [];
+    const items = rawItems.map(mapDriveItem);
+
+    // Extract nextPageToken from @odata.nextLink if present
+    let nextPageToken: string | null = null;
+    const nextLink = raw['@odata.nextLink'];
+    if (typeof nextLink === 'string') {
+      const url = new URL(nextLink);
+      const skiptoken = url.searchParams.get('$skiptoken');
+      nextPageToken = skiptoken ?? nextLink;
+    }
+
+    logger.info(
+      { connectionId, driveId, itemId, itemCount: items.length, hasNextPage: nextPageToken !== null },
+      'Shared folder listing complete'
+    );
+
+    return { items, nextPageToken };
+  }
+
+  /**
+   * Download the binary content of a file from a specific drive.
+   * Same as downloadFileContent but with an explicit drive ID parameter.
+   */
+  async downloadFileContentFromDrive(
+    connectionId: string,
+    driveId: string,
+    itemId: string
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    logger.info({ connectionId, driveId, itemId }, 'Downloading file content from specific drive');
+
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+
+    const path = `/drives/${driveId}/items/${itemId}/content`;
+    const buffer = await getGraphHttpClient().getBuffer(path, token);
+
+    logger.info({ connectionId, driveId, itemId, sizeBytes: buffer.length }, 'File content downloaded from specific drive');
+
+    return { buffer, contentType: 'application/octet-stream' };
+  }
+
+  /**
+   * Get a pre-authenticated download URL for a file on a specific drive.
+   */
+  async getDownloadUrlFromDrive(connectionId: string, driveId: string, itemId: string): Promise<string> {
+    logger.info({ connectionId, driveId, itemId }, 'Fetching download URL from specific drive');
+
+    const token = await getGraphTokenManager().getValidToken(connectionId);
+
+    const path = `/drives/${driveId}/items/${itemId}?$select=${encodeURIComponent('@microsoft.graph.downloadUrl')}`;
+    const raw = await getGraphHttpClient().get<Record<string, unknown>>(path, token);
+
+    const downloadUrl = raw['@microsoft.graph.downloadUrl'];
+    if (typeof downloadUrl !== 'string' || !downloadUrl) {
+      throw new Error(`No download URL returned for item ${itemId} on drive ${driveId}`);
+    }
+
+    logger.info({ connectionId, driveId, itemId }, 'Download URL fetched from specific drive');
+    return downloadUrl;
   }
 }
 

@@ -41,6 +41,7 @@ describe('File Types', () => {
         sourceType: 'local',
         externalUrl: null,
         isFolder: false,
+        isShared: false,
         isFavorite: true,
         pipelineStatus: 'ready', // from pipeline_status
         readinessState: expect.any(String), // computed from pipeline_status

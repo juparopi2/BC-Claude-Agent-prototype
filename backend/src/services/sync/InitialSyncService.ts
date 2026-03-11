@@ -105,6 +105,9 @@ export class InitialSyncService {
         throw new Error(`Connection not found: ${connectionId}`);
       }
 
+      // PRD-110: Resolve effective drive ID — shared scopes use remote_drive_id
+      const effectiveDriveId = scope.remote_drive_id ?? connection.microsoft_drive_id;
+
       // Step 3: Execute delta query — scope-aware routing
       const allChanges: DeltaChange[] = [];
       let deltaLink: string | null = null;
@@ -174,7 +177,7 @@ export class InitialSyncService {
           userId,
           scopeResourceId: scope.scope_resource_id,
           scopeDisplayName: scope.scope_display_name,
-          microsoftDriveId: connection.microsoft_drive_id,
+          microsoftDriveId: effectiveDriveId,
           folderMap: externalToInternalId,
         });
       }
@@ -207,7 +210,7 @@ export class InitialSyncService {
               connectionId,
               scopeId,
               userId,
-              microsoftDriveId: connection.microsoft_drive_id,
+              microsoftDriveId: effectiveDriveId,
               folderMap: externalToInternalId,
             });
           } catch (folderErr) {
@@ -280,7 +283,7 @@ export class InitialSyncService {
                     is_folder: false,
                     source_type: FILE_SOURCE_TYPE.ONEDRIVE,
                     external_id: item.id,
-                    external_drive_id: connection.microsoft_drive_id,
+                    external_drive_id: effectiveDriveId,
                     connection_id: connectionId,
                     connection_scope_id: scopeId,
                     external_url: item.webUrl || null,
@@ -291,6 +294,7 @@ export class InitialSyncService {
                     processing_retry_count: 0,
                     embedding_retry_count: 0,
                     is_favorite: false,
+                    is_shared: !!scope.remote_drive_id,
                   },
                 });
 
@@ -342,20 +346,23 @@ export class InitialSyncService {
       this.emitCompleted(userId, { connectionId, scopeId, totalFiles });
 
       // PRD-108: Create Graph subscription for webhook notifications
-      try {
-        const { env } = await import('@/infrastructure/config');
-        if (env.GRAPH_WEBHOOK_BASE_URL) {
-          const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
-          getSubscriptionManager().createSubscription(connectionId, scopeId)
-            .catch((subErr) => {
-              const subErrInfo = subErr instanceof Error
-                ? { message: subErr.message, name: subErr.name }
-                : { value: String(subErr) };
-              logger.warn({ error: subErrInfo, connectionId, scopeId }, 'Subscription creation failed (non-fatal)');
-            });
+      // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
+      if (!scope.remote_drive_id) {
+        try {
+          const { env } = await import('@/infrastructure/config');
+          if (env.GRAPH_WEBHOOK_BASE_URL) {
+            const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
+            getSubscriptionManager().createSubscription(connectionId, scopeId)
+              .catch((subErr) => {
+                const subErrInfo = subErr instanceof Error
+                  ? { message: subErr.message, name: subErr.name }
+                  : { value: String(subErr) };
+                logger.warn({ error: subErrInfo, connectionId, scopeId }, 'Subscription creation failed (non-fatal)');
+              });
+          }
+        } catch {
+          // Dynamic import failure — non-fatal
         }
-      } catch {
-        // Dynamic import failure — non-fatal
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -396,7 +403,7 @@ export class InitialSyncService {
     connectionId: string,
     scopeId: string,
     userId: string,
-    scope: { scope_resource_id: string | null }
+    scope: { scope_resource_id: string | null; remote_drive_id: string | null }
   ): Promise<void> {
     try {
       if (!scope.scope_resource_id) {
@@ -404,10 +411,17 @@ export class InitialSyncService {
       }
 
       // 1. Fetch file metadata from Graph API
-      const item: ExternalFileItem = await getOneDriveService().getItemMetadata(
-        connectionId,
-        scope.scope_resource_id
-      );
+      // PRD-110: Shared items live on a remote drive — use getItemMetadataFromDrive
+      const item: ExternalFileItem = scope.remote_drive_id
+        ? await getOneDriveService().getItemMetadataFromDrive(
+            connectionId,
+            scope.remote_drive_id,
+            scope.scope_resource_id
+          )
+        : await getOneDriveService().getItemMetadata(
+            connectionId,
+            scope.scope_resource_id
+          );
 
       // 1b. Skip unsupported file types (PRD-106)
       if (!isFileSyncSupported(item.mimeType)) {
@@ -432,6 +446,9 @@ export class InitialSyncService {
       if (!connection) {
         throw new Error(`Connection not found: ${connectionId}`);
       }
+
+      // PRD-110: Resolve effective drive ID — shared scopes use remote_drive_id
+      const effectiveDriveId = scope.remote_drive_id ?? connection.microsoft_drive_id;
 
       // 3. Check if file already exists (dedup via filtered unique index)
       const existing = await prisma.files.findFirst({
@@ -471,7 +488,7 @@ export class InitialSyncService {
             is_folder: false,
             source_type: FILE_SOURCE_TYPE.ONEDRIVE,
             external_id: item.id,
-            external_drive_id: connection.microsoft_drive_id,
+            external_drive_id: effectiveDriveId,
             connection_id: connectionId,
             connection_scope_id: scopeId,
             external_url: item.webUrl || null,
@@ -481,6 +498,7 @@ export class InitialSyncService {
             processing_retry_count: 0,
             embedding_retry_count: 0,
             is_favorite: false,
+            is_shared: !!scope.remote_drive_id,
           },
         });
 
@@ -510,20 +528,23 @@ export class InitialSyncService {
       this.emitCompleted(userId, { connectionId, scopeId, totalFiles: 1 });
 
       // PRD-108: Create Graph subscription for webhook notifications
-      try {
-        const { env } = await import('@/infrastructure/config');
-        if (env.GRAPH_WEBHOOK_BASE_URL) {
-          const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
-          getSubscriptionManager().createSubscription(connectionId, scopeId)
-            .catch((subErr) => {
-              const subErrInfo = subErr instanceof Error
-                ? { message: subErr.message, name: subErr.name }
-                : { value: String(subErr) };
-              logger.warn({ error: subErrInfo, connectionId, scopeId }, 'Subscription creation failed (non-fatal)');
-            });
+      // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
+      if (!scope.remote_drive_id) {
+        try {
+          const { env } = await import('@/infrastructure/config');
+          if (env.GRAPH_WEBHOOK_BASE_URL) {
+            const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
+            getSubscriptionManager().createSubscription(connectionId, scopeId)
+              .catch((subErr) => {
+                const subErrInfo = subErr instanceof Error
+                  ? { message: subErr.message, name: subErr.name }
+                  : { value: String(subErr) };
+                logger.warn({ error: subErrInfo, connectionId, scopeId }, 'Subscription creation failed (non-fatal)');
+              });
+          }
+        } catch {
+          // Dynamic import failure — non-fatal
         }
-      } catch {
-        // Dynamic import failure — non-fatal
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

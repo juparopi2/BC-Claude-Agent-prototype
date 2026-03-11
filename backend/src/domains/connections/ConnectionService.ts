@@ -282,6 +282,7 @@ export class ConnectionService {
         scopeResourceId: scopeInput.scopeResourceId,
         scopeDisplayName: scopeInput.scopeDisplayName,
         scopePath: scopeInput.scopePath,
+        remoteDriveId: scopeInput.remoteDriveId,
       });
 
       const scopeRow = await repo.findScopeById(scopeId);

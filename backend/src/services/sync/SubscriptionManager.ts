@@ -85,6 +85,12 @@ export class SubscriptionManager {
       throw new Error(`Scope not found: ${scopeId}`);
     }
 
+    // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
+    if (scope.remote_drive_id) {
+      logger.info({ connectionId, scopeId }, 'Skipping subscription for shared scope (remote drive)');
+      return;
+    }
+
     // 2. Load connection
     const connection = await prisma.connections.findUnique({
       where: { id: connectionId },

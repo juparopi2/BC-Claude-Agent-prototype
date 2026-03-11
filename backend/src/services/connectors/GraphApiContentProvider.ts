@@ -23,6 +23,7 @@ interface FileRecord {
   connectionId: string;
   externalId: string;
   mimeType: string | null;
+  externalDriveId: string | null;
 }
 
 /**
@@ -36,6 +37,7 @@ async function getFileRecord(fileId: string, userId: string): Promise<FileRecord
       connection_id: true,
       external_id: true,
       mime_type: true,
+      external_drive_id: true,
     },
   });
 
@@ -47,6 +49,7 @@ async function getFileRecord(fileId: string, userId: string): Promise<FileRecord
     connectionId: file.connection_id,
     externalId: file.external_id,
     mimeType: file.mime_type,
+    externalDriveId: file.external_drive_id ?? null,
   };
 }
 
@@ -70,9 +73,12 @@ export class GraphApiContentProvider implements IFileContentProvider {
       throw new Error(`File not found or not accessible: ${fileId}`);
     }
 
-    const { connectionId, externalId, mimeType } = fileRecord;
+    const { connectionId, externalId, mimeType, externalDriveId } = fileRecord;
 
-    const { buffer } = await getOneDriveService().downloadFileContent(connectionId, externalId);
+    // PRD-110: Route download to specific drive for shared files
+    const { buffer } = externalDriveId
+      ? await getOneDriveService().downloadFileContentFromDrive(connectionId, externalDriveId, externalId)
+      : await getOneDriveService().downloadFileContent(connectionId, externalId);
 
     logger.info(
       { fileId, userId, connectionId, externalId, sizeBytes: buffer.length },
@@ -136,9 +142,12 @@ export class GraphApiContentProvider implements IFileContentProvider {
       throw new Error(`File not found or not accessible: ${fileId}`);
     }
 
-    const { connectionId, externalId } = fileRecord;
+    const { connectionId, externalId, externalDriveId } = fileRecord;
 
-    const url = await getOneDriveService().getDownloadUrl(connectionId, externalId);
+    // PRD-110: Route download URL to specific drive for shared files
+    const url = externalDriveId
+      ? await getOneDriveService().getDownloadUrlFromDrive(connectionId, externalDriveId, externalId)
+      : await getOneDriveService().getDownloadUrl(connectionId, externalId);
 
     logger.info({ fileId, userId, connectionId, externalId }, 'Download URL fetched');
     return url;

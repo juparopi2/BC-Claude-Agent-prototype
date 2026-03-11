@@ -55,6 +55,7 @@ export interface ScopeRow {
   last_sync_cursor: string | null;
   item_count: number;
   subscription_id: string | null;
+  remote_drive_id: string | null;
   created_at: Date;
 }
 
@@ -214,6 +215,7 @@ export class ConnectionRepository {
         last_sync_cursor: true,
         item_count: true,
         subscription_id: true,
+        remote_drive_id: true,
         created_at: true,
       },
       orderBy: { created_at: 'asc' },
@@ -237,6 +239,7 @@ export class ConnectionRepository {
       scopeResourceId: string;
       scopeDisplayName: string;
       scopePath?: string;
+      remoteDriveId?: string;
     }
   ): Promise<string> {
     const id = randomUUID().toUpperCase();
@@ -251,6 +254,7 @@ export class ConnectionRepository {
         scope_resource_id: data.scopeResourceId,
         scope_display_name: data.scopeDisplayName,
         scope_path: data.scopePath ?? null,
+        remote_drive_id: data.remoteDriveId ?? null,
         sync_status: 'idle',
         item_count: 0,
       },
@@ -309,6 +313,7 @@ export class ConnectionRepository {
         last_sync_cursor: true,
         item_count: true,
         subscription_id: true,
+        remote_drive_id: true,
         created_at: true,
       },
     });
@@ -353,6 +358,8 @@ export class ConnectionRepository {
         cs.last_sync_error,
         cs.last_sync_cursor,
         cs.item_count,
+        cs.subscription_id,
+        cs.remote_drive_id,
         cs.created_at,
         CAST(COUNT(f.id) AS INT) AS file_count
       FROM connection_scopes cs
@@ -361,7 +368,8 @@ export class ConnectionRepository {
       GROUP BY
         cs.id, cs.connection_id, cs.scope_type, cs.scope_resource_id,
         cs.scope_display_name, cs.scope_path, cs.sync_status, cs.last_sync_at,
-        cs.last_sync_error, cs.last_sync_cursor, cs.item_count, cs.created_at
+        cs.last_sync_error, cs.last_sync_cursor, cs.item_count, cs.subscription_id,
+        cs.remote_drive_id, cs.created_at
       ORDER BY cs.created_at ASC
     `;
 

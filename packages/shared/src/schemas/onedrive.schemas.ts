@@ -17,7 +17,8 @@ export const createScopesSchema = z.object({
       scopeType: z.enum(['root', 'folder', 'file', 'site', 'library']),
       scopeResourceId: z.string().min(1, 'Scope resource ID is required'),
       scopeDisplayName: z.string().min(1, 'Scope display name is required').max(255),
-      scopePath: z.string().max(1000).optional(),
+      scopePath: z.string().max(1000).nullish(),
+      remoteDriveId: z.string().max(200).optional(),
     })
   ).min(1, 'At least one scope is required').max(50, 'Maximum 50 scopes per request'),
 });
@@ -43,7 +44,8 @@ export const batchScopesSchema = z.object({
       scopeType: z.enum(['root', 'folder', 'file', 'site', 'library']),
       scopeResourceId: z.string().min(1, 'Scope resource ID is required'),
       scopeDisplayName: z.string().min(1, 'Scope display name is required').max(255),
-      scopePath: z.string().max(1000).optional(),
+      scopePath: z.string().max(1000).nullish(),
+      remoteDriveId: z.string().max(200).optional(),
     })
   ).max(50, 'Maximum 50 scopes to add per request').default([]),
   remove: z.array(

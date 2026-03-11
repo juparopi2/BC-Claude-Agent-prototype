@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useCallback, useState, useRef } from 'react';
-import { Home, Star, Cloud, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Home, Star, Cloud, ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useIntegrationListStore, useSyncStatusStore, selectIsAnySyncing } from '@/src/domains/integrations';
@@ -164,64 +165,76 @@ export function FolderTree({ className }: FolderTreeProps) {
 
         {/* OneDrive root (when connected) — PRD-107 */}
         {showOneDriveSection && (
-          <div className="mt-3 pt-3 border-t">
-            <Collapsible open={isOneDriveExpanded} onOpenChange={setOneDriveExpanded}>
-              <div className="flex items-center gap-1 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors">
-                <CollapsibleTrigger asChild>
-                  <button
-                    className="p-0.5 hover:bg-accent rounded cursor-pointer"
-                    aria-label={isOneDriveExpanded ? 'Collapse OneDrive' : 'Expand OneDrive'}
-                  >
-                    {isOneDriveExpanded ? (
-                      <ChevronDown className="size-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="size-4 text-muted-foreground" />
-                    )}
-                  </button>
-                </CollapsibleTrigger>
-                <button
-                  onClick={handleOneDriveClick}
-                  className={cn(
-                    'flex items-center gap-2 flex-1 cursor-pointer',
-                    sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && !currentFolderId && 'font-semibold'
-                  )}
-                >
-                  <Cloud className="size-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }} />
-                  <span className="text-sm font-medium">{PROVIDER_DISPLAY_NAME[PROVIDER_ID.ONEDRIVE]}</span>
-                </button>
-                {isAnySyncing && <Loader2 className="size-3 text-muted-foreground animate-spin" />}
-              </div>
-              <CollapsibleContent>
-                {isOneDriveExpired ? (
-                  <div className="flex flex-col items-center justify-center py-6 gap-3 px-4">
-                    <Cloud className="size-8 text-muted-foreground" />
-                    <p className="text-sm text-center text-muted-foreground">
-                      Your OneDrive session has expired. Please sign in again to continue.
-                    </p>
-                    <Button
-                      size="sm"
-                      onClick={() => oneDriveConnection && openWizard(PROVIDER_ID.ONEDRIVE, oneDriveConnection.id)}
-                      className="gap-1.5 bg-[#0078D4] hover:bg-[#106EBE] text-white"
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <div className="mt-3 pt-3 border-t">
+                <Collapsible open={isOneDriveExpanded} onOpenChange={setOneDriveExpanded}>
+                  <div className="flex items-center gap-1 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors">
+                    <CollapsibleTrigger asChild>
+                      <button
+                        className="p-0.5 hover:bg-accent rounded cursor-pointer"
+                        aria-label={isOneDriveExpanded ? 'Collapse OneDrive' : 'Expand OneDrive'}
+                      >
+                        {isOneDriveExpanded ? (
+                          <ChevronDown className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </CollapsibleTrigger>
+                    <button
+                      onClick={handleOneDriveClick}
+                      className={cn(
+                        'flex items-center gap-2 flex-1 cursor-pointer',
+                        sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && !currentFolderId && 'font-semibold'
+                      )}
                     >
-                      <Cloud className="size-3.5" />
-                      Reconnect
-                    </Button>
+                      <Cloud className="size-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }} />
+                      <span className="text-sm font-medium">{PROVIDER_DISPLAY_NAME[PROVIDER_ID.ONEDRIVE]}</span>
+                    </button>
+                    {isAnySyncing && <Loader2 className="size-3 text-muted-foreground animate-spin" />}
                   </div>
-                ) : isLoadingOdFolders ? (
-                  <FolderTreeSkeleton />
-                ) : (
-                  odRootFolders.map(folder => (
-                    <FolderTreeItem
-                      key={folder.id}
-                      folder={folder}
-                      level={1}
-                      onSelect={handleOneDriveFolderSelect}
-                    />
-                  ))
-                )}
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
+                  <CollapsibleContent>
+                    {isOneDriveExpired ? (
+                      <div className="flex flex-col items-center justify-center py-6 gap-3 px-4">
+                        <Cloud className="size-8 text-muted-foreground" />
+                        <p className="text-sm text-center text-muted-foreground">
+                          Your OneDrive session has expired. Please sign in again to continue.
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={() => oneDriveConnection && openWizard(PROVIDER_ID.ONEDRIVE, oneDriveConnection.id)}
+                          className="gap-1.5 bg-[#0078D4] hover:bg-[#106EBE] text-white"
+                        >
+                          <Cloud className="size-3.5" />
+                          Reconnect
+                        </Button>
+                      </div>
+                    ) : isLoadingOdFolders ? (
+                      <FolderTreeSkeleton />
+                    ) : (
+                      odRootFolders.map(folder => (
+                        <FolderTreeItem
+                          key={folder.id}
+                          folder={folder}
+                          level={1}
+                          onSelect={handleOneDriveFolderSelect}
+                        />
+                      ))
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem
+                onClick={() => oneDriveConnection && openWizard(PROVIDER_ID.ONEDRIVE, oneDriveConnection.id)}
+              >
+                <Settings2 className="size-4 mr-2" />
+                Configure
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
         )}
       </div>
     </ScrollArea>

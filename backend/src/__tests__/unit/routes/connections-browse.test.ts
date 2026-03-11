@@ -25,6 +25,8 @@ const {
   mockCreateScope,
   mockFindScopeById,
   mockListFolder,
+  mockListSharedWithMe,
+  mockListSharedFolder,
   mockSyncScope,
 } = vi.hoisted(() => ({
   mockGetConnection: vi.fn(),
@@ -32,6 +34,8 @@ const {
   mockCreateScope: vi.fn(),
   mockFindScopeById: vi.fn(),
   mockListFolder: vi.fn(),
+  mockListSharedWithMe: vi.fn(),
+  mockListSharedFolder: vi.fn(),
   mockSyncScope: vi.fn(),
 }));
 
@@ -110,6 +114,8 @@ vi.mock('@/domains/connections', () => ({
 vi.mock('@/services/connectors/onedrive', () => ({
   getOneDriveService: vi.fn(() => ({
     listFolder: mockListFolder,
+    listSharedWithMe: mockListSharedWithMe,
+    listSharedFolder: mockListSharedFolder,
   })),
 }));
 
@@ -157,6 +163,25 @@ const enrichedFolderResult = {
   items: [
     { id: 'FOLDER-01', name: 'Documents', isFolder: true, mimeType: null, sizeBytes: 0, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, isSupported: true },
     { id: 'FILE-01', name: 'report.pdf', isFolder: false, mimeType: 'application/pdf', sizeBytes: 1024, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, isSupported: true },
+  ],
+  nextPageToken: undefined,
+};
+
+const REMOTE_DRIVE_ID = 'REMOTE-DRIVE-001';
+const REMOTE_ITEM_ID = 'REMOTE-ITEM-001';
+
+const sampleSharedResult = {
+  items: [
+    { id: 'SHARED-FOLDER-01', name: 'Shared Docs', isFolder: true, mimeType: null, sizeBytes: 0, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, remoteDriveId: REMOTE_DRIVE_ID },
+    { id: 'SHARED-FILE-01', name: 'contract.pdf', isFolder: false, mimeType: 'application/pdf', sizeBytes: 2048, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, remoteDriveId: REMOTE_DRIVE_ID },
+  ],
+  nextPageToken: undefined,
+};
+
+const enrichedSharedResult = {
+  items: [
+    { id: 'SHARED-FOLDER-01', name: 'Shared Docs', isFolder: true, mimeType: null, sizeBytes: 0, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, remoteDriveId: REMOTE_DRIVE_ID, isSupported: true },
+    { id: 'SHARED-FILE-01', name: 'contract.pdf', isFolder: false, mimeType: 'application/pdf', sizeBytes: 2048, lastModifiedAt: '', webUrl: '', eTag: null, parentId: null, remoteDriveId: REMOTE_DRIVE_ID, isSupported: true },
   ],
   nextPageToken: undefined,
 };
@@ -212,6 +237,8 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
     mockGetConnection.mockResolvedValue(sampleConnection);
     mockListScopes.mockResolvedValue([sampleScopeDetail]);
     mockListFolder.mockResolvedValue(sampleFolderResult);
+    mockListSharedWithMe.mockResolvedValue(sampleSharedResult);
+    mockListSharedFolder.mockResolvedValue(sampleFolderResult);
     mockCreateScope.mockResolvedValue(SCOPE_ID);
     mockFindScopeById.mockResolvedValue(sampleScope);
     mockSyncScope.mockResolvedValue(undefined);
@@ -629,6 +656,196 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
         .expect(400);
 
       expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  // ==========================================================================
+  // GET /:id/browse-shared — Browse shared items (PRD-110)
+  // ==========================================================================
+  describe('GET /:id/browse-shared', () => {
+    it('returns enriched shared items from OneDriveService.listSharedWithMe', async () => {
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared`)
+        .expect(200);
+
+      expect(res.body).toEqual(enrichedSharedResult);
+      expect(mockListSharedWithMe).toHaveBeenCalledWith(CONNECTION_ID);
+    });
+
+    it('validates connection ownership by calling getConnection', async () => {
+      await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared`)
+        .expect(200);
+
+      expect(mockGetConnection).toHaveBeenCalledWith(USER_ID, CONNECTION_ID);
+    });
+
+    it('returns 401 when OneDrive token is expired (ConnectionTokenExpiredError)', async () => {
+      const tokenError = new Error('Token expired for connection');
+      tokenError.name = 'ConnectionTokenExpiredError';
+      mockListSharedWithMe.mockRejectedValue(tokenError);
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared`)
+        .expect(401);
+
+      expect(res.body.code).toBe('INVALID_TOKEN');
+    });
+
+    it('returns 401 when Graph API returns 401 (GraphApiError)', async () => {
+      const graphError = Object.assign(new Error('InvalidAuthenticationToken'), {
+        name: 'GraphApiError',
+        statusCode: 401,
+        graphErrorCode: 'InvalidAuthenticationToken',
+      });
+      mockListSharedWithMe.mockRejectedValue(graphError);
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared`)
+        .expect(401);
+
+      expect(res.body.code).toBe('INVALID_TOKEN');
+    });
+
+    it('returns 404 when connection is not found (ConnectionNotFoundError)', async () => {
+      const { ConnectionNotFoundError } = await import('@/domains/connections');
+      mockGetConnection.mockRejectedValue(new ConnectionNotFoundError(CONNECTION_ID));
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared`)
+        .expect(404);
+
+      expect(res.body.code).toBe('NOT_FOUND');
+    });
+
+    it('returns 400 when connection ID is not a valid UUID', async () => {
+      const res = await request(app)
+        .get('/api/connections/not-a-uuid/browse-shared')
+        .expect(400);
+
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  // ==========================================================================
+  // GET /:id/browse-shared/:driveId/:itemId — Browse inside a shared folder (PRD-110)
+  // ==========================================================================
+  describe('GET /:id/browse-shared/:driveId/:itemId', () => {
+    it('returns enriched children from OneDriveService.listSharedFolder', async () => {
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared/${REMOTE_DRIVE_ID}/${REMOTE_ITEM_ID}`)
+        .expect(200);
+
+      expect(res.body).toEqual(enrichedFolderResult);
+      expect(mockListSharedFolder).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        REMOTE_DRIVE_ID,
+        REMOTE_ITEM_ID,
+        undefined
+      );
+    });
+
+    it('passes pageToken query parameter to listSharedFolder', async () => {
+      const token = 'shared-page-token-xyz';
+      await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared/${REMOTE_DRIVE_ID}/${REMOTE_ITEM_ID}`)
+        .query({ pageToken: token })
+        .expect(200);
+
+      expect(mockListSharedFolder).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        REMOTE_DRIVE_ID,
+        REMOTE_ITEM_ID,
+        token
+      );
+    });
+
+    it('validates connection ownership before listing shared folder', async () => {
+      await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared/${REMOTE_DRIVE_ID}/${REMOTE_ITEM_ID}`)
+        .expect(200);
+
+      expect(mockGetConnection).toHaveBeenCalledWith(USER_ID, CONNECTION_ID);
+    });
+
+    it('returns 401 when token expired for shared folder access', async () => {
+      const tokenError = new Error('Token expired');
+      tokenError.name = 'ConnectionTokenExpiredError';
+      mockListSharedFolder.mockRejectedValue(tokenError);
+
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/browse-shared/${REMOTE_DRIVE_ID}/${REMOTE_ITEM_ID}`)
+        .expect(401);
+
+      expect(res.body.code).toBe('INVALID_TOKEN');
+    });
+
+    it('returns 400 when connection ID is not a valid UUID', async () => {
+      const res = await request(app)
+        .get(`/api/connections/bad-id/browse-shared/${REMOTE_DRIVE_ID}/${REMOTE_ITEM_ID}`)
+        .expect(400);
+
+      expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  // ==========================================================================
+  // POST /:id/scopes — remoteDriveId forwarding (PRD-110)
+  // ==========================================================================
+  describe('POST /:id/scopes — remoteDriveId forwarding', () => {
+    it('forwards remoteDriveId to createScope when provided', async () => {
+      const res = await request(app)
+        .post(`/api/connections/${CONNECTION_ID}/scopes`)
+        .send({
+          scopes: [
+            {
+              scopeType: 'folder',
+              scopeResourceId: REMOTE_ITEM_ID,
+              scopeDisplayName: 'Shared Documents',
+              scopePath: '/Shared Documents',
+              remoteDriveId: REMOTE_DRIVE_ID,
+            },
+          ],
+        })
+        .expect(201);
+
+      expect(res.body).toHaveProperty('scopes');
+      expect(mockCreateScope).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        expect.objectContaining({
+          scopeType: 'folder',
+          scopeResourceId: REMOTE_ITEM_ID,
+          scopeDisplayName: 'Shared Documents',
+          remoteDriveId: REMOTE_DRIVE_ID,
+        })
+      );
+    });
+
+    it('omits remoteDriveId from createScope when not provided (non-shared scope)', async () => {
+      await request(app)
+        .post(`/api/connections/${CONNECTION_ID}/scopes`)
+        .send({
+          scopes: [
+            {
+              scopeType: 'folder',
+              scopeResourceId: 'LOCAL-FOLDER-01',
+              scopeDisplayName: 'My Documents',
+            },
+          ],
+        })
+        .expect(201);
+
+      expect(mockCreateScope).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        expect.objectContaining({
+          scopeType: 'folder',
+          scopeResourceId: 'LOCAL-FOLDER-01',
+          scopeDisplayName: 'My Documents',
+        })
+      );
+      // remoteDriveId should be undefined (not present) for non-shared scopes
+      const callArg = mockCreateScope.mock.calls[0]![1] as Record<string, unknown>;
+      expect(callArg.remoteDriveId).toBeUndefined();
     });
   });
 

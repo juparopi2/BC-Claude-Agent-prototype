@@ -330,6 +330,38 @@ When browsing inside SharePoint:
 | Info banner | "Files from SharePoint. Open in SharePoint to edit." |
 | Status badges | Same as OneDrive but teal-colored |
 
+### 4.12 OneDrive–SharePoint Unified Shared View
+
+**Discovery** (PRD-110 live testing, March 2026):
+
+The Microsoft Graph endpoint `/me/drive/sharedWithMe` returns items from **ALL drives** — both the user's personal OneDrive and any SharePoint document library drives. Each returned item carries a `remoteItem` facet with `parentReference.driveId` identifying the source drive.
+
+This means PRD-110's "Shared with me" tab is already a **cross-provider** view that surfaces SharePoint items without any SharePoint-specific code.
+
+**Key findings:**
+
+1. **Unified API**: In OneDrive web (e.g., `pmcsoft-my.sharepoint.com`), "Shared" shows items from both OneDrive personal shares and SharePoint. The Graph API mirrors this unified view.
+
+2. **Deprecation notice**: `/me/drive/sharedWithMe` is **deprecated** and will stop returning data after **November 2026**. The recommended replacement is `/me/shares`. Migration must be planned before that date.
+
+3. **Permissions**: A `/sharedWithMe` request needs `Files.Read.All` to access shared items' content. Without it, some properties may be missing.
+
+4. **SharePoint items identification**: When someone shares a SharePoint document library file, it appears in `/sharedWithMe` with a `driveId` pointing to the SharePoint site's document library drive. The item is browsable and downloadable via the same Graph API patterns (`GET /drives/{driveId}/items/{itemId}/content`).
+
+**Architecture decision — two browsing approaches in the folder tree:**
+
+| Section | What it shows | Source |
+|---|---|---|
+| **OneDrive** -> "My Files" | Personal drive files | `/drives/{userDriveId}/...` |
+| **OneDrive** -> "Shared with me" | Cross-provider shared items (OneDrive + SharePoint) | `/me/drive/sharedWithMe` |
+| **SharePoint** (PRD-111) | Only explicitly connected SharePoint sites/libraries | `/sites/{siteId}/drives/...` |
+
+**Scope overlap**: A SharePoint file could appear both in OneDrive "Shared with me" AND in the SharePoint section. The sync engine uses `external_drive_id` + `external_id` as the canonical identity, so duplicate file records will NOT be created — the same file will be recognized regardless of the browsing path used.
+
+**Future considerations** (out of scope for PRD-110/111):
+- Browse by people, by meeting, by media (advanced features from OneDrive web)
+- Migrate from `/me/drive/sharedWithMe` to `/me/shares` before Nov 2026
+
 ---
 
 ## 5. Implementation Order

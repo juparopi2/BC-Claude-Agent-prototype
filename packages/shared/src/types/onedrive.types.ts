@@ -36,6 +36,16 @@ export interface ExternalFileItem {
   childCount: number | null;
   /** Set by browse API; absent in delta/internal paths */
   isSupported?: boolean;
+  // Shared item metadata (PRD-110)
+  isShared?: boolean;
+  /** remoteItem.shared.owner.user.displayName */
+  sharedBy?: string;
+  /** remoteItem.shared.sharedDateTime (ISO) */
+  sharedDate?: string;
+  /** remoteItem.parentReference.driveId */
+  remoteDriveId?: string;
+  /** remoteItem.id (actual ID on source drive) */
+  remoteItemId?: string;
 }
 
 /**

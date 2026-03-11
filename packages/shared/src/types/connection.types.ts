@@ -59,6 +59,7 @@ export interface ScopeBatchInput {
     scopeResourceId: string;
     scopeDisplayName: string;
     scopePath?: string;
+    remoteDriveId?: string;
   }>;
   remove: string[];
 }

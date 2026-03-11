@@ -119,6 +119,9 @@ export class DeltaSyncService {
         throw new Error(`Connection not found: ${connectionId}`);
       }
 
+      // PRD-110: Resolve effective drive ID — shared scopes use remote_drive_id
+      const effectiveDriveId = scope.remote_drive_id ?? connection.microsoft_drive_id;
+
       // Step 5: Execute delta query across all pages
       const allChanges: DeltaChange[] = [];
       let deltaLink: string | null = null;
@@ -171,7 +174,7 @@ export class DeltaSyncService {
           userId,
           scopeResourceId: scope.scope_resource_id,
           scopeDisplayName: scope.scope_display_name,
-          microsoftDriveId: connection.microsoft_drive_id,
+          microsoftDriveId: effectiveDriveId,
           folderMap,
         });
       }
@@ -375,7 +378,7 @@ export class DeltaSyncService {
             connectionId,
             scopeId,
             userId,
-            microsoftDriveId: connection.microsoft_drive_id,
+            microsoftDriveId: effectiveDriveId,
             folderMap,
           });
         } catch (folderErr) {
@@ -486,7 +489,7 @@ export class DeltaSyncService {
                 is_folder: false,
                 source_type: FILE_SOURCE_TYPE.ONEDRIVE,
                 external_id: item.id,
-                external_drive_id: connection.microsoft_drive_id,
+                external_drive_id: effectiveDriveId,
                 connection_id: connectionId,
                 connection_scope_id: scopeId,
                 external_url: item.webUrl || null,

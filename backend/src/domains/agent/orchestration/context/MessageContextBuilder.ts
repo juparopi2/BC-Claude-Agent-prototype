@@ -413,6 +413,11 @@ export class MessageContextBuilder {
           continue;
         }
 
+        if (!file.blobPath) {
+          logger.warn({ fileId: mention.fileId, userId }, 'Mentioned file has no blob path, skipping');
+          continue;
+        }
+
         if (isImageMimeType(file.mimeType)) {
           // Image block — use SAS URL instead of base64 to avoid checkpoint bloat
           if (file.sizeBytes > MAX_IMAGE_BYTES) {

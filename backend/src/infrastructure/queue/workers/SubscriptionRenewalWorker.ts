@@ -55,6 +55,12 @@ export class SubscriptionRenewalWorker {
           ? { message: error.message, name: error.name }
           : { value: String(error) };
 
+        // Token expired — skip this scope entirely
+        if (error instanceof Error && error.name === 'ConnectionTokenExpiredError') {
+          this.log.warn({ scopeId: scope.id, connectionId: scope.connection_id }, 'Token expired — skipping scope');
+          continue;
+        }
+
         // If 404, subscription expired — recreate and trigger sync
         if (error instanceof Error && 'statusCode' in error && (error as { statusCode: number }).statusCode === 404) {
           this.log.warn({ scopeId: scope.id }, 'Subscription expired (404) — recreating');

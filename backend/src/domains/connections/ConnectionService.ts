@@ -303,10 +303,20 @@ export class ConnectionService {
    * Map a DB row to the public-facing ConnectionSummary shape.
    */
   private toSummary(row: ConnectionRow, scopeCount: number): ConnectionSummary {
+    // Proactive expiry: if token is definitively past expiry, report as expired
+    let effectiveStatus = row.status as ConnectionStatus;
+    if (
+      effectiveStatus === 'connected' &&
+      row.token_expires_at &&
+      new Date(row.token_expires_at).getTime() < Date.now()
+    ) {
+      effectiveStatus = 'expired' as ConnectionStatus;
+    }
+
     return {
       id: row.id,
       provider: row.provider as ProviderId,
-      status: row.status as ConnectionStatus,
+      status: effectiveStatus,
       displayName: row.display_name,
       lastError: row.last_error,
       lastErrorAt: row.last_error_at?.toISOString() ?? null,

@@ -8,6 +8,7 @@
  */
 
 import type { Job } from 'bullmq';
+import { UnrecoverableError } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 import type { ExternalFileSyncJob } from '../types/jobs.types';
@@ -46,6 +47,15 @@ export class ExternalFileSyncWorker {
       const errorInfo = error instanceof Error
         ? { message: error.message, stack: error.stack, name: error.name }
         : { value: String(error) };
+
+      // Token expired — no point retrying; GraphTokenManager already marked connection as expired
+      if (error instanceof Error && error.name === 'ConnectionTokenExpiredError') {
+        this.log.warn(
+          { jobId: job.id, scopeId, connectionId },
+          'Token expired — skipping retry'
+        );
+        throw new UnrecoverableError(error.message);
+      }
 
       this.log.error(
         { error: errorInfo, jobId: job.id, scopeId, connectionId, triggerType },

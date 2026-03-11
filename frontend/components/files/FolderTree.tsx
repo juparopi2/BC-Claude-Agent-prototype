@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { Home, Star, Cloud, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Button } from '@/components/ui/button';
 import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useIntegrationListStore, useSyncStatusStore, selectIsAnySyncing } from '@/src/domains/integrations';
@@ -27,9 +28,10 @@ export function FolderTree({ className }: FolderTreeProps) {
   const setSourceTypeFilter = useSortFilterStore((s) => s.setSourceTypeFilter);
   const isRootLoading = useFolderTreeStore((s) => s.loadingFolderIds.has('root'));
   const connections = useIntegrationListStore((s) => s.connections);
-  const hasOneDrive = connections.some(
-    (c) => c.provider === PROVIDER_ID.ONEDRIVE && c.status === CONNECTION_STATUS.CONNECTED
-  );
+  const oneDriveConnection = connections.find((c) => c.provider === PROVIDER_ID.ONEDRIVE);
+  const hasOneDrive = oneDriveConnection?.status === CONNECTION_STATUS.CONNECTED;
+  const isOneDriveExpired = oneDriveConnection?.status === CONNECTION_STATUS.EXPIRED;
+  const showOneDriveSection = hasOneDrive || isOneDriveExpired;
   const hasExternalConnection = connections.some(
     (c) => c.status === CONNECTION_STATUS.CONNECTED
   );
@@ -43,13 +45,18 @@ export function FolderTree({ className }: FolderTreeProps) {
   const isOdRootLoaded = odRootFoldersFromStore !== undefined;
   const isLoadingOdFolders = useFolderTreeStore((s) => s.loadingFolderIds.has('onedrive-root'));
   const isAnySyncing = useSyncStatusStore(selectIsAnySyncing);
+  const openWizard = useIntegrationListStore((s) => s.openWizard);
 
   // Load OneDrive root folders when expanded (store-backed, mirrors local files pattern)
+  // Use a ref for the loading guard to avoid including isLoadingOdFolders in deps,
+  // which would cause a re-render → cleanup → cancelled=true race condition.
+  const odLoadingRef = useRef(false);
   useEffect(() => {
     if (!isOneDriveExpanded || !hasOneDrive) return;
     if (isOdRootLoaded) return;
-    if (isLoadingOdFolders) return;
+    if (odLoadingRef.current) return;
 
+    odLoadingRef.current = true;
     let cancelled = false;
     const loadOdFolders = async () => {
       setLoadingFolder('onedrive-root', true);
@@ -63,13 +70,14 @@ export function FolderTree({ className }: FolderTreeProps) {
         console.error('Failed to load OneDrive folders:', err);
         if (!cancelled) setTreeFolders('onedrive-root', []);
       } finally {
-        if (!cancelled) setLoadingFolder('onedrive-root', false);
+        setLoadingFolder('onedrive-root', false);
+        odLoadingRef.current = false;
       }
     };
     loadOdFolders();
 
-    return () => { cancelled = true; };
-  }, [isOneDriveExpanded, hasOneDrive, isOdRootLoaded, isLoadingOdFolders, setLoadingFolder, setTreeFolders]);
+    return () => { cancelled = true; odLoadingRef.current = false; };
+  }, [isOneDriveExpanded, hasOneDrive, isOdRootLoaded, setLoadingFolder, setTreeFolders]);
 
   // Load root folders on mount and when favorites mode changes
   useEffect(() => {
@@ -155,7 +163,7 @@ export function FolderTree({ className }: FolderTreeProps) {
         </Collapsible>
 
         {/* OneDrive root (when connected) — PRD-107 */}
-        {hasOneDrive && (
+        {showOneDriveSection && (
           <div className="mt-3 pt-3 border-t">
             <Collapsible open={isOneDriveExpanded} onOpenChange={setOneDriveExpanded}>
               <div className="flex items-center gap-1 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors">
@@ -184,7 +192,22 @@ export function FolderTree({ className }: FolderTreeProps) {
                 {isAnySyncing && <Loader2 className="size-3 text-muted-foreground animate-spin" />}
               </div>
               <CollapsibleContent>
-                {isLoadingOdFolders ? (
+                {isOneDriveExpired ? (
+                  <div className="flex flex-col items-center justify-center py-6 gap-3 px-4">
+                    <Cloud className="size-8 text-muted-foreground" />
+                    <p className="text-sm text-center text-muted-foreground">
+                      Your OneDrive session has expired. Please sign in again to continue.
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => oneDriveConnection && openWizard(PROVIDER_ID.ONEDRIVE, oneDriveConnection.id)}
+                      className="gap-1.5 bg-[#0078D4] hover:bg-[#106EBE] text-white"
+                    >
+                      <Cloud className="size-3.5" />
+                      Reconnect
+                    </Button>
+                  </div>
+                ) : isLoadingOdFolders ? (
                   <FolderTreeSkeleton />
                 ) : (
                   odRootFolders.map(folder => (

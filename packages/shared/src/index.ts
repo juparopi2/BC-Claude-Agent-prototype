@@ -301,6 +301,7 @@ export type {
   SyncFileRemovedPayload,
   SubscriptionRenewedPayload,
   SubscriptionErrorPayload,
+  ConnectionExpiredPayload,
 
   // Connection types (PRD-100)
   ConnectionSummary,

@@ -28,6 +28,7 @@ import type {
   SyncFileRemovedPayload,
   SubscriptionRenewedPayload,
   SubscriptionErrorPayload,
+  ConnectionExpiredPayload,
 } from '@bc-agent/shared';
 import { FILE_WS_CHANNELS, JOB_WS_CHANNELS, FOLDER_WS_CHANNELS, SYNC_WS_EVENTS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
@@ -526,6 +527,7 @@ export class SocketClient {
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_FILE_REMOVED);
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SUBSCRIPTION_RENEWED);
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SUBSCRIPTION_ERROR);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.CONNECTION_EXPIRED);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -718,6 +720,14 @@ export class SocketClient {
 
     this.socket.on(SYNC_WS_EVENTS.SUBSCRIPTION_ERROR, (data: SubscriptionErrorPayload) => {
       const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SUBSCRIPTION_ERROR as 'connection:subscription_error', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    // Connection expired events
+    this.socket.on(SYNC_WS_EVENTS.CONNECTION_EXPIRED, (data: ConnectionExpiredPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.CONNECTION_EXPIRED as 'connection:expired', ...data };
       this.syncEventListeners.forEach((callback) => {
         try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
       });

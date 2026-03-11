@@ -36,6 +36,7 @@ export interface ConnectionRow {
   last_error_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  token_expires_at: Date | null;
 }
 
 /**
@@ -81,6 +82,7 @@ export class ConnectionRepository {
         last_error_at: true,
         created_at: true,
         updated_at: true,
+        token_expires_at: true,
       },
       orderBy: { created_at: 'asc' },
     });
@@ -114,6 +116,7 @@ export class ConnectionRepository {
         last_error_at: true,
         created_at: true,
         updated_at: true,
+        token_expires_at: true,
       },
     });
 

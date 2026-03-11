@@ -72,6 +72,7 @@ export class GraphTokenManager {
         status: true,
         msal_home_account_id: true,
         scopes_granted: true,
+        user_id: true,
       },
     });
 
@@ -80,6 +81,7 @@ export class GraphTokenManager {
     }
 
     if (!connection.access_token_encrypted) {
+      await this.markConnectionExpired(connectionId, connection.user_id ?? undefined);
       throw new ConnectionTokenExpiredError(connectionId);
     }
 
@@ -126,10 +128,53 @@ export class GraphTokenManager {
         }
       }
 
+      await this.markConnectionExpired(connectionId, connection.user_id ?? undefined);
       throw new ConnectionTokenExpiredError(connectionId);
     }
 
     return this.decryptToken(connection.access_token_encrypted);
+  }
+
+  /**
+   * Mark connection as expired in DB and notify the frontend via WebSocket.
+   * Non-fatal: failures are logged but do not propagate.
+   */
+  private async markConnectionExpired(connectionId: string, userId?: string): Promise<void> {
+    try {
+      await prisma.connections.update({
+        where: { id: connectionId },
+        data: {
+          status: 'expired',
+          last_error: 'Token expired — re-authentication required',
+          last_error_at: new Date(),
+        },
+      });
+
+      logger.info({ connectionId }, 'Marked connection as expired');
+
+      // Notify frontend via WebSocket (dynamic import to avoid circular deps)
+      if (userId) {
+        try {
+          const { getSocketIO, isSocketServiceInitialized } = await import(
+            '@/services/websocket/SocketService'
+          );
+          if (isSocketServiceInitialized()) {
+            const { SYNC_WS_EVENTS } = await import('@bc-agent/shared');
+            getSocketIO()
+              .to(`user:${userId}`)
+              .emit(SYNC_WS_EVENTS.CONNECTION_EXPIRED, { connectionId });
+          }
+        } catch {
+          // WebSocket emission is best-effort
+        }
+      }
+    } catch (err) {
+      const errorInfo =
+        err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+      logger.warn({ connectionId, error: errorInfo }, 'Failed to mark connection as expired');
+    }
   }
 
   /**

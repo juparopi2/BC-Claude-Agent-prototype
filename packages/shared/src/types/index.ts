@@ -396,6 +396,7 @@ export type {
   SyncFileRemovedPayload,
   SubscriptionRenewedPayload,
   SubscriptionErrorPayload,
+  ConnectionExpiredPayload,
 } from './onedrive.types';
 
 // Connection types (PRD-100)

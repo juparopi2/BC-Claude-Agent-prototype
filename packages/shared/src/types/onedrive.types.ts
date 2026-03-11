@@ -121,6 +121,10 @@ export interface SubscriptionErrorPayload {
   error: string;
 }
 
+export interface ConnectionExpiredPayload {
+  connectionId: string;
+}
+
 export type SyncWebSocketEvent =
   | { type: 'sync:progress' } & SyncProgress
   | { type: 'sync:completed' } & SyncCompletedPayload
@@ -129,4 +133,5 @@ export type SyncWebSocketEvent =
   | { type: 'sync:file_updated' } & SyncFileUpdatedPayload
   | { type: 'sync:file_removed' } & SyncFileRemovedPayload
   | { type: 'connection:subscription_renewed' } & SubscriptionRenewedPayload
-  | { type: 'connection:subscription_error' } & SubscriptionErrorPayload;
+  | { type: 'connection:subscription_error' } & SubscriptionErrorPayload
+  | { type: 'connection:expired' } & ConnectionExpiredPayload;

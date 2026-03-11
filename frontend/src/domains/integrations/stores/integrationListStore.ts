@@ -97,7 +97,8 @@ export const useIntegrationListStore = create<IntegrationListStore>((set, get) =
     let resolvedId: string | null = connectionId ?? null;
     if (!resolvedId) {
       const existing = get().connections.find(
-        (c) => c.provider === providerId && c.status === CONNECTION_STATUS.CONNECTED
+        (c) => c.provider === providerId &&
+          (c.status === CONNECTION_STATUS.CONNECTED || c.status === CONNECTION_STATUS.EXPIRED)
       );
       if (existing) resolvedId = existing.id;
     }

@@ -10,6 +10,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
+import { useIntegrationListStore } from '../stores/integrationListStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { useFiles } from '@/src/domains/files';
 import { SYNC_WS_EVENTS, type SyncWebSocketEvent } from '@bc-agent/shared';
@@ -103,6 +104,16 @@ export function useSyncEvents(): void {
       case SYNC_WS_EVENTS.SUBSCRIPTION_ERROR as 'connection:subscription_error':
         toast.error('Sync subscription error', {
           description: event.error,
+        });
+        break;
+
+      case SYNC_WS_EVENTS.CONNECTION_EXPIRED as 'connection:expired':
+        // Refresh connections to get the 'expired' status
+        useIntegrationListStore.getState().fetchConnections();
+        // Invalidate cached OneDrive tree so fresh data loads after reconnection
+        invalidateTreeFolderRef.current('onedrive-root');
+        toast.warning('OneDrive session expired', {
+          description: 'Please reconnect to continue syncing.',
         });
         break;
     }

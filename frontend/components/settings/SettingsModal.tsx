@@ -15,7 +15,8 @@ import { AppearanceTab } from './tabs/AppearanceTab';
 import { UsageTab } from './tabs/UsageTab';
 import { CapabilitiesTab } from './tabs/CapabilitiesTab';
 import { BillingTab } from './tabs/BillingTab';
-import { User, Palette, BarChart3, Zap, CreditCard } from 'lucide-react';
+import { ConnectionsTab } from './tabs/ConnectionsTab';
+import { User, Palette, BarChart3, Zap, CreditCard, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SettingsModalProps {
@@ -34,6 +35,7 @@ const TABS: Array<{
   { id: SETTINGS_TAB.USAGE, label: 'Usage', icon: BarChart3 },
   { id: SETTINGS_TAB.BILLING, label: 'Billing', icon: CreditCard },
   { id: SETTINGS_TAB.CAPABILITIES, label: 'Capabilities', icon: Zap },
+  { id: SETTINGS_TAB.CONNECTIONS, label: 'Connections', icon: Link2 },
 ];
 
 /**
@@ -111,6 +113,10 @@ export function SettingsModal({
 
               <TabsContent value={SETTINGS_TAB.CAPABILITIES} className="mt-0 m-0 h-full">
                 <CapabilitiesTab />
+              </TabsContent>
+
+              <TabsContent value={SETTINGS_TAB.CONNECTIONS} className="mt-0 m-0 h-full">
+                <ConnectionsTab />
               </TabsContent>
 
             </div>

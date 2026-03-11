@@ -116,6 +116,11 @@ export function useSyncEvents(): void {
           description: 'Please reconnect to continue syncing.',
         });
         break;
+
+      case SYNC_WS_EVENTS.CONNECTION_DISCONNECTED:
+        // Refresh connections list after a full disconnect
+        useIntegrationListStore.getState().fetchConnections();
+        break;
     }
   }, []);
 

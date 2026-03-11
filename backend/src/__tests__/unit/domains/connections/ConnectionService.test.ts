@@ -24,6 +24,7 @@ const mockCreate = vi.hoisted(() => vi.fn());
 const mockUpdate = vi.hoisted(() => vi.fn());
 const mockDelete = vi.hoisted(() => vi.fn());
 const mockCountScopes = vi.hoisted(() => vi.fn());
+const mockCountFiles = vi.hoisted(() => vi.fn());
 const mockFindScopes = vi.hoisted(() => vi.fn());
 const mockTimingSafeCompare = vi.hoisted(() => vi.fn());
 
@@ -35,6 +36,7 @@ vi.mock('@/domains/connections/ConnectionRepository', () => ({
     update: mockUpdate,
     delete: mockDelete,
     countScopesByConnection: mockCountScopes,
+    countFilesByConnection: mockCountFiles,
     findScopesByConnection: mockFindScopes,
   })),
 }));
@@ -119,6 +121,7 @@ describe('ConnectionService', () => {
     it('returns ConnectionListResponse with correct shape', async () => {
       mockFindByUser.mockResolvedValue([makeRow()]);
       mockCountScopes.mockResolvedValue(2);
+      mockCountFiles.mockResolvedValue(10);
 
       const result = await service.listConnections(USER_ID);
 
@@ -151,6 +154,7 @@ describe('ConnectionService', () => {
     it('returns ConnectionSummary when found and owned', async () => {
       mockFindById.mockResolvedValue(makeRow());
       mockCountScopes.mockResolvedValue(1);
+      mockCountFiles.mockResolvedValue(5);
 
       const result = await service.getConnection(USER_ID, CONN_ID);
 

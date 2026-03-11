@@ -18,6 +18,7 @@ export const SYNC_WS_EVENTS = {
   SUBSCRIPTION_RENEWED: 'connection:subscription_renewed',
   SUBSCRIPTION_ERROR: 'connection:subscription_error',
   CONNECTION_EXPIRED: 'connection:expired',
+  CONNECTION_DISCONNECTED: 'connection:disconnected',
 } as const;
 
 export type SyncWsEventType = (typeof SYNC_WS_EVENTS)[keyof typeof SYNC_WS_EVENTS];

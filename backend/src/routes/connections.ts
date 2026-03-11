@@ -306,6 +306,76 @@ router.delete(
 );
 
 /**
+ * GET /api/connections/:id/disconnect-summary
+ * Returns a summary of what a full disconnect will remove.
+ */
+router.get(
+  '/:id/disconnect-summary',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+      const service = getConnectionService();
+      const summary = await service.getDisconnectSummary(userId, connectionId);
+
+      logger.info({ userId: userId.toUpperCase(), connectionId }, 'Disconnect summary retrieved');
+      res.json(summary);
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to get disconnect summary'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * DELETE /api/connections/:id/full-disconnect
+ * Performs a full disconnect: removes all scopes, files, embeddings, tokens, and MSAL cache.
+ */
+router.delete(
+  '/:id/full-disconnect',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+      const service = getConnectionService();
+      const result = await service.fullDisconnect(userId, connectionId);
+
+      logger.info({ userId: userId.toUpperCase(), ...result }, 'Full disconnect completed');
+      res.json(result);
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to perform full disconnect'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/connections/:id/scopes
  * Returns all sync scopes for a connection.
  */

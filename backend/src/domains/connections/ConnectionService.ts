@@ -21,6 +21,8 @@ import type {
   ConnectionSummary,
   ConnectionScopeDetail,
   ConnectionListResponse,
+  DisconnectSummary,
+  FullDisconnectResult,
 } from '@bc-agent/shared';
 import type { ProviderId } from '@bc-agent/shared';
 import type { ConnectionStatus, SyncStatus } from '@bc-agent/shared';
@@ -46,13 +48,14 @@ export class ConnectionService {
     const repo = getConnectionRepository();
     const rows = await repo.findByUser(normalizedUserId);
 
-    // Fetch scope counts in parallel for all connections
-    const scopeCounts = await Promise.all(
-      rows.map((row) => repo.countScopesByConnection(row.id))
-    );
+    // Fetch scope counts and file counts in parallel for all connections
+    const [scopeCounts, fileCounts] = await Promise.all([
+      Promise.all(rows.map((row) => repo.countScopesByConnection(row.id))),
+      Promise.all(rows.map((row) => repo.countFilesByConnection(row.id))),
+    ]);
 
     const connections = rows.map((row, index) =>
-      this.toSummary(row, scopeCounts[index] ?? 0)
+      this.toSummary(row, scopeCounts[index] ?? 0, fileCounts[index] ?? 0)
     );
 
     return { connections, count: connections.length };
@@ -76,8 +79,11 @@ export class ConnectionService {
 
     this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
 
-    const scopeCount = await repo.countScopesByConnection(row.id);
-    return this.toSummary(row, scopeCount);
+    const [scopeCount, fileCount] = await Promise.all([
+      repo.countScopesByConnection(row.id),
+      repo.countFilesByConnection(row.id),
+    ]);
+    return this.toSummary(row, scopeCount, fileCount);
   }
 
   /**
@@ -103,7 +109,7 @@ export class ConnectionService {
       throw new Error(`Failed to retrieve newly created connection ${id}`);
     }
 
-    return this.toSummary(row, 0);
+    return this.toSummary(row, 0, 0);
   }
 
   /**
@@ -295,6 +301,149 @@ export class ConnectionService {
     return { added, removed };
   }
 
+  /**
+   * Get a summary of what a full disconnect will remove.
+   * Used by the frontend confirmation modal.
+   */
+  async getDisconnectSummary(userId: string, connectionId: string): Promise<DisconnectSummary> {
+    const normalizedUserId = userId.toUpperCase();
+    const normalizedConnectionId = connectionId.toUpperCase();
+    logger.debug({ userId: normalizedUserId, connectionId: normalizedConnectionId }, 'Getting disconnect summary');
+
+    const repo = getConnectionRepository();
+    const row = await repo.findById(normalizedUserId, normalizedConnectionId);
+
+    if (!row) {
+      throw new ConnectionNotFoundError(normalizedConnectionId);
+    }
+
+    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
+
+    const [scopeCount, fileCount, chunkCount] = await Promise.all([
+      repo.countScopesByConnection(normalizedConnectionId),
+      repo.countFilesByConnection(normalizedConnectionId),
+      repo.countChunksByConnection(normalizedConnectionId),
+    ]);
+
+    return {
+      connectionId: normalizedConnectionId,
+      provider: row.provider,
+      displayName: row.display_name,
+      scopeCount,
+      fileCount,
+      chunkCount,
+    };
+  }
+
+  /**
+   * Full disconnect: remove all traces of a connection (scopes, files, embeddings, tokens, MSAL cache).
+   * Reuses ScopeCleanupService.removeScope() per scope for consistent cleanup.
+   */
+  async fullDisconnect(userId: string, connectionId: string): Promise<FullDisconnectResult> {
+    const normalizedUserId = userId.toUpperCase();
+    const normalizedConnectionId = connectionId.toUpperCase();
+    logger.info({ userId: normalizedUserId, connectionId: normalizedConnectionId }, 'Starting full disconnect');
+
+    const repo = getConnectionRepository();
+    const row = await repo.findByIdWithMsal(normalizedUserId, normalizedConnectionId);
+
+    if (!row) {
+      throw new ConnectionNotFoundError(normalizedConnectionId);
+    }
+
+    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
+
+    // 1. Fetch all scopes
+    const scopes = await repo.findScopesByConnection(normalizedConnectionId);
+
+    // 2. Remove each scope (subscriptions, citations, AI Search, files, scope record)
+    let scopesRemoved = 0;
+    let totalFilesDeleted = 0;
+    let searchCleanupFailures = 0;
+    const cleanupService = getScopeCleanupService();
+
+    for (const scope of scopes) {
+      try {
+        // Force-update syncing scopes to idle to avoid ScopeCurrentlySyncingError
+        if (scope.sync_status === 'syncing') {
+          await repo.updateScope(scope.id, { syncStatus: 'idle' });
+        }
+
+        const result = await cleanupService.removeScope(normalizedConnectionId, scope.id, normalizedUserId);
+        scopesRemoved++;
+        totalFilesDeleted += result.filesDeleted;
+      } catch (error) {
+        const errorInfo = error instanceof Error
+          ? { message: error.message, stack: error.stack, name: error.name }
+          : { value: String(error) };
+        logger.error({ error: errorInfo, scopeId: scope.id, connectionId: normalizedConnectionId }, 'Scope cleanup failed during full disconnect');
+        searchCleanupFailures++;
+      }
+    }
+
+    // 3. Revoke tokens
+    let tokenRevoked = false;
+    try {
+      const { getGraphTokenManager } = await import('@/services/connectors/GraphTokenManager');
+      await getGraphTokenManager().revokeTokens(normalizedConnectionId);
+      tokenRevoked = true;
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, stack: error.stack, name: error.name }
+        : { value: String(error) };
+      logger.error({ error: errorInfo, connectionId: normalizedConnectionId }, 'Token revocation failed during full disconnect');
+    }
+
+    // 4. Delete MSAL cache
+    let msalCacheDeleted = false;
+    if (row.msal_home_account_id) {
+      try {
+        const { deleteMsalCache } = await import('@/domains/auth/oauth/MsalRedisCachePlugin');
+        await deleteMsalCache(row.msal_home_account_id);
+        msalCacheDeleted = true;
+      } catch (error) {
+        const errorInfo = error instanceof Error
+          ? { message: error.message, stack: error.stack, name: error.name }
+          : { value: String(error) };
+        logger.error({ error: errorInfo, connectionId: normalizedConnectionId }, 'MSAL cache deletion failed during full disconnect');
+      }
+    } else {
+      msalCacheDeleted = true; // Nothing to delete
+    }
+
+    // 5. Delete connection record (cascades remaining scope records if any)
+    await repo.delete(normalizedConnectionId);
+
+    // 6. Emit WebSocket event
+    try {
+      const { isSocketServiceInitialized, getSocketIO } = await import('@/services/websocket/SocketService');
+      const { SYNC_WS_EVENTS } = await import('@bc-agent/shared');
+      if (isSocketServiceInitialized()) {
+        getSocketIO().to(`user:${normalizedUserId}`).emit(SYNC_WS_EVENTS.CONNECTION_DISCONNECTED, {
+          connectionId: normalizedConnectionId,
+          provider: row.provider,
+        });
+      }
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, stack: error.stack, name: error.name }
+        : { value: String(error) };
+      logger.warn({ error: errorInfo, connectionId: normalizedConnectionId }, 'WebSocket emit failed during full disconnect');
+    }
+
+    const result: FullDisconnectResult = {
+      connectionId: normalizedConnectionId,
+      scopesRemoved,
+      filesDeleted: totalFilesDeleted,
+      searchCleanupFailures,
+      tokenRevoked,
+      msalCacheDeleted,
+    };
+
+    logger.info({ ...result, userId: normalizedUserId }, 'Full disconnect completed');
+    return result;
+  }
+
   // ============================================================================
   // Private helpers
   // ============================================================================
@@ -302,7 +451,7 @@ export class ConnectionService {
   /**
    * Map a DB row to the public-facing ConnectionSummary shape.
    */
-  private toSummary(row: ConnectionRow, scopeCount: number): ConnectionSummary {
+  private toSummary(row: ConnectionRow, scopeCount: number, fileCount: number): ConnectionSummary {
     // Proactive expiry: if token is definitively past expiry, report as expired
     let effectiveStatus = row.status as ConnectionStatus;
     if (
@@ -323,6 +472,7 @@ export class ConnectionService {
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
       scopeCount,
+      fileCount,
     };
   }
 

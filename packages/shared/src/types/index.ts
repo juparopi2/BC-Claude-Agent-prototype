@@ -397,6 +397,7 @@ export type {
   SubscriptionRenewedPayload,
   SubscriptionErrorPayload,
   ConnectionExpiredPayload,
+  ConnectionDisconnectedPayload,
 } from './onedrive.types';
 
 // Connection types (PRD-100)
@@ -407,6 +408,8 @@ export type {
   ScopeBatchInput,
   ScopeBatchResult,
   ConnectionListResponse,
+  DisconnectSummary,
+  FullDisconnectResult,
 } from './connection.types';
 
 // Agent Identity types (PRD-020)

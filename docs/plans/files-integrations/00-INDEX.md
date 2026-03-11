@@ -51,7 +51,7 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-106](./PRD-106-file-type-validation.md) | File Type Validation & Pipeline Guard | **COMPLETED** |
 | [PRD-107](./PRD-107-onedrive-ux-polish.md) | OneDrive File UX Polish | **COMPLETED** |
 | [PRD-108](./PRD-108-webhook-sync-engine.md) | Real-Time Sync Engine (Webhooks) | **COMPLETED** |
-| [PRD-109](./PRD-109-settings-disconnect.md) | Settings Connections Tab & Full Disconnect | Planned |
+| [PRD-109](./PRD-109-settings-disconnect.md) | Settings Connections Tab & Full Disconnect | **COMPLETED** |
 | [PRD-110](./PRD-110-shared-files-browsing.md) | OneDrive "Shared With Me" Browsing | Planned |
 | [PRD-111](./PRD-111-sharepoint-connection.md) | SharePoint Connection | Planned |
 | [PRD-112](./PRD-112-scope-selection-inheritance.md) | Scope Selection Inheritance | Proposed |

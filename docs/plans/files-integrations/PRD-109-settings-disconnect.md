@@ -1,7 +1,7 @@
 # PRD-109: Settings — Connections Tab & Full Disconnect Workflow
 
 **Phase**: Cross-Provider Enhancement
-**Status**: Planned
+**Status**: COMPLETED
 **Prerequisites**: PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 3–4 days
 **Created**: 2026-03-09

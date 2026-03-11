@@ -34,6 +34,7 @@ interface IntegrationListActions {
   reset: () => void;
   openWizard: (providerId: ProviderId, connectionId?: string) => void;
   closeWizard: () => void;
+  removeConnection: (connectionId: string) => void;
 }
 
 type IntegrationListStore = IntegrationListState & IntegrationListActions;
@@ -105,4 +106,10 @@ export const useIntegrationListStore = create<IntegrationListStore>((set, get) =
     set({ wizardOpen: true, wizardProviderId: providerId, wizardInitialConnectionId: resolvedId });
   },
   closeWizard: () => set({ wizardOpen: false, wizardProviderId: null, wizardInitialConnectionId: null }),
+
+  removeConnection: (connectionId) => {
+    set((state) => ({
+      connections: state.connections.filter((c) => c.id !== connectionId),
+    }));
+  },
 }));

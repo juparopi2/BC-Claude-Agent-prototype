@@ -302,6 +302,7 @@ export type {
   SubscriptionRenewedPayload,
   SubscriptionErrorPayload,
   ConnectionExpiredPayload,
+  ConnectionDisconnectedPayload,
 
   // Connection types (PRD-100)
   ConnectionSummary,
@@ -310,6 +311,8 @@ export type {
   ScopeBatchInput,
   ScopeBatchResult,
   ConnectionListResponse,
+  DisconnectSummary,
+  FullDisconnectResult,
 
   // Agent Registry types (PRD-011)
   AgentUISummary,

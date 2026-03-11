@@ -400,6 +400,65 @@ export class ConnectionRepository {
       where: { id: scopeId },
     });
   }
+
+  /**
+   * Find a single connection by ID, including the msal_home_account_id field.
+   * Needed for MSAL cache deletion during disconnect (PRD-109).
+   */
+  async findByIdWithMsal(userId: string, connectionId: string): Promise<(ConnectionRow & { msal_home_account_id: string | null }) | null> {
+    logger.debug({ userId, connectionId }, 'Fetching connection with MSAL info');
+
+    const row = await prisma.connections.findFirst({
+      where: {
+        id: connectionId,
+        user_id: userId,
+      },
+      select: {
+        id: true,
+        user_id: true,
+        provider: true,
+        status: true,
+        display_name: true,
+        last_error: true,
+        last_error_at: true,
+        created_at: true,
+        updated_at: true,
+        token_expires_at: true,
+        msal_home_account_id: true,
+      },
+    });
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      ...row,
+      id: row.id.toUpperCase(),
+      user_id: row.user_id.toUpperCase(),
+    };
+  }
+
+  /**
+   * Count the number of files belonging to a connection (PRD-109).
+   */
+  async countFilesByConnection(connectionId: string): Promise<number> {
+    return prisma.files.count({ where: { connection_id: connectionId } });
+  }
+
+  /**
+   * Count the number of file chunks belonging to a connection via its files (PRD-109).
+   * Uses raw SQL join since there is no direct Prisma relation from chunks to connections.
+   */
+  async countChunksByConnection(connectionId: string): Promise<number> {
+    const result = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT CAST(COUNT(fc.id) AS INT) AS count
+      FROM file_chunks fc
+      INNER JOIN files f ON fc.file_id = f.id
+      WHERE f.connection_id = ${connectionId}
+    `;
+    return result[0]?.count ?? 0;
+  }
 }
 
 // ============================================================================

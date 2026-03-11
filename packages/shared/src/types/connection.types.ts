@@ -24,6 +24,7 @@ export interface ConnectionSummary {
   createdAt: string;
   updatedAt: string;
   scopeCount: number;
+  fileCount: number;
 }
 
 /**
@@ -76,4 +77,30 @@ export interface ScopeBatchResult {
 export interface ConnectionListResponse {
   connections: ConnectionSummary[];
   count: number;
+}
+
+/**
+ * Summary of what a full disconnect will remove.
+ * Returned by GET /api/connections/:id/disconnect-summary.
+ */
+export interface DisconnectSummary {
+  connectionId: string;
+  provider: string;
+  displayName: string | null;
+  scopeCount: number;
+  fileCount: number;
+  chunkCount: number;
+}
+
+/**
+ * Result of a full disconnect operation.
+ * Returned by DELETE /api/connections/:id/full-disconnect.
+ */
+export interface FullDisconnectResult {
+  connectionId: string;
+  scopesRemoved: number;
+  filesDeleted: number;
+  searchCleanupFailures: number;
+  tokenRevoked: boolean;
+  msalCacheDeleted: boolean;
 }

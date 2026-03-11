@@ -9,7 +9,6 @@ import {
   ChevronDown,
   Folder,
   FolderOpen,
-  ArrowLeft,
 } from 'lucide-react'
 import {
   Dialog,
@@ -1002,16 +1001,6 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
             {!showDiff && (
               <DialogFooter>
-                {!isReconfiguring && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setStep('connect')}
-                    className="gap-1.5"
-                  >
-                    <ArrowLeft className="size-4" />
-                    Back
-                  </Button>
-                )}
                 <Button
                   onClick={() => {
                     if (isReconfiguring) {

@@ -28,6 +28,13 @@ import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getConnectionRepository } from '@/domains/connections';
 import { getMessageQueue } from '@/infrastructure/queue';
 import { getSocketIO, isSocketServiceInitialized } from '@/services/websocket/SocketService';
+import {
+  buildFolderMap,
+  ensureScopeRootFolder,
+  resolveParentFolderId,
+  sortFoldersByDepth,
+  upsertFolder,
+} from '@/services/sync/FolderHierarchyResolver';
 
 const logger = createChildLogger({ service: 'InitialSyncService' });
 
@@ -155,76 +162,27 @@ export class InitialSyncService {
       // Build external-to-internal ID mapping for parent chain resolution
       // NOTE: Map and seeding are OUTSIDE the folderChanges guard because the scope
       // root folder and file parent resolution need the map even with zero subfolders.
-      const externalToInternalId = new Map<string, string>();
-
-      // Query existing folders for this connection to seed the map
-      const existingFolders = await prisma.files.findMany({
-        where: {
-          connection_id: connectionId,
-          is_folder: true,
-          source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-        },
-        select: { id: true, external_id: true },
-      });
-      for (const ef of existingFolders) {
-        if (ef.external_id) {
-          externalToInternalId.set(ef.external_id, ef.id);
-        }
-      }
+      const externalToInternalId = await buildFolderMap(connectionId);
 
       // PRD-112: Create the scope root folder itself (if folder-type scope).
       // The scope folder is filtered from delta results (it IS the scope, not a child),
       // but it must exist in the files table so children can reference it as parent.
       if (scope.scope_type === 'folder' && scope.scope_resource_id) {
-        if (!externalToInternalId.has(scope.scope_resource_id)) {
-          const existingScopeFolder = await prisma.files.findFirst({
-            where: { connection_id: connectionId, external_id: scope.scope_resource_id },
-            select: { id: true },
-          });
-
-          if (existingScopeFolder) {
-            externalToInternalId.set(scope.scope_resource_id, existingScopeFolder.id);
-          } else {
-            const scopeFolderId = randomUUID().toUpperCase();
-            await prisma.files.create({
-              data: {
-                id: scopeFolderId,
-                user_id: userId,
-                name: scope.scope_display_name ?? 'OneDrive Folder',
-                mime_type: 'inode/directory',
-                size_bytes: BigInt(0),
-                blob_path: null,
-                is_folder: true,
-                source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-                external_id: scope.scope_resource_id,
-                external_drive_id: connection.microsoft_drive_id,
-                connection_id: connectionId,
-                connection_scope_id: scopeId,
-                external_url: null,
-                external_modified_at: null,
-                parent_folder_id: null,
-                pipeline_status: 'ready',
-                processing_retry_count: 0,
-                embedding_retry_count: 0,
-                is_favorite: false,
-              },
-            });
-            externalToInternalId.set(scope.scope_resource_id, scopeFolderId);
-            logger.info({ scopeId, scopeFolderId, name: scope.scope_display_name }, 'Created scope root folder');
-          }
-        }
+        await ensureScopeRootFolder({
+          connectionId,
+          scopeId,
+          userId,
+          scopeResourceId: scope.scope_resource_id,
+          scopeDisplayName: scope.scope_display_name,
+          microsoftDriveId: connection.microsoft_drive_id,
+          folderMap: externalToInternalId,
+        });
       }
 
       if (folderChanges.length > 0) {
         // Sort by depth (count '/' in parentPath) — parents processed first
         // Defensive: null/undefined parentPath gets depth -1 (processed first as root-level items)
-        const sortedFolders = [...folderChanges].sort((a, b) => {
-          const pathA = a.item.parentPath;
-          const pathB = b.item.parentPath;
-          const depthA = pathA ? pathA.split('/').length : -1;
-          const depthB = pathB ? pathB.split('/').length : -1;
-          return depthA - depthB;
-        });
+        const sortedFolders = sortFoldersByDepth(folderChanges);
 
         logger.info(
           {
@@ -243,78 +201,21 @@ export class InitialSyncService {
         );
 
         for (const change of sortedFolders) {
-          const item = change.item;
           try {
-            // Resolve parent_folder_id from the external-to-internal ID map.
-            // The scope root folder is now in the map (PRD-112), so children
-            // whose parentId === scope_resource_id resolve naturally.
-            let parentFolderId: string | null = null;
-            if (item.parentId) {
-              parentFolderId = externalToInternalId.get(item.parentId) ?? null;
-            }
-
-            logger.debug(
-              {
-                folderName: item.name,
-                externalId: item.id,
-                parentId: item.parentId,
-                resolvedParentFolderId: parentFolderId,
-                mapSize: externalToInternalId.size,
-              },
-              'Resolving folder parent'
-            );
-
-            const existing = await prisma.files.findFirst({
-              where: { connection_id: connectionId, external_id: item.id },
-              select: { id: true },
+            await upsertFolder({
+              item: change.item,
+              connectionId,
+              scopeId,
+              userId,
+              microsoftDriveId: connection.microsoft_drive_id,
+              folderMap: externalToInternalId,
             });
-
-            if (existing) {
-              await prisma.files.update({
-                where: { id: existing.id },
-                data: {
-                  name: item.name,
-                  external_url: item.webUrl || null,
-                  external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                  parent_folder_id: parentFolderId,
-                  connection_scope_id: scopeId,
-                  last_synced_at: new Date(),
-                },
-              });
-              externalToInternalId.set(item.id, existing.id);
-            } else {
-              const folderId = randomUUID().toUpperCase();
-              await prisma.files.create({
-                data: {
-                  id: folderId,
-                  user_id: userId,
-                  name: item.name,
-                  mime_type: 'inode/directory',
-                  size_bytes: BigInt(0),
-                  blob_path: null,
-                  is_folder: true,
-                  source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-                  external_id: item.id,
-                  external_drive_id: connection.microsoft_drive_id,
-                  connection_id: connectionId,
-                  connection_scope_id: scopeId,
-                  external_url: item.webUrl || null,
-                  external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                  parent_folder_id: parentFolderId,
-                  pipeline_status: 'ready',
-                  processing_retry_count: 0,
-                  embedding_retry_count: 0,
-                  is_favorite: false,
-                },
-              });
-              externalToInternalId.set(item.id, folderId);
-            }
           } catch (folderErr) {
             const errorInfo = folderErr instanceof Error
               ? { message: folderErr.message, name: folderErr.name }
               : { value: String(folderErr) };
             logger.warn(
-              { error: errorInfo, folderId: item.id, folderName: item.name, connectionId, scopeId },
+              { error: errorInfo, folderId: change.item.id, folderName: change.item.name, connectionId, scopeId },
               'Skipping folder due to ingestion error'
             );
           }
@@ -345,10 +246,7 @@ export class InitialSyncService {
 
               if (existing) {
                 // Resolve parent folder for existing file update
-                let parentFolderId: string | null = null;
-                if (item.parentId) {
-                  parentFolderId = externalToInternalId.get(item.parentId) ?? null;
-                }
+                const parentFolderId = resolveParentFolderId(item.parentId, externalToInternalId);
 
                 // Update metadata only — do NOT touch pipeline_status to avoid re-processing
                 await prisma.files.update({
@@ -366,10 +264,7 @@ export class InitialSyncService {
                 });
               } else {
                 // Resolve parent folder for new file creation
-                let parentFolderId: string | null = null;
-                if (item.parentId) {
-                  parentFolderId = externalToInternalId.get(item.parentId) ?? null;
-                }
+                const parentFolderId = resolveParentFolderId(item.parentId, externalToInternalId);
 
                 // Create new file record
                 const fileId = randomUUID().toUpperCase();
@@ -445,6 +340,23 @@ export class InitialSyncService {
 
       // Step 7: Emit sync:completed
       this.emitCompleted(userId, { connectionId, scopeId, totalFiles });
+
+      // PRD-108: Create Graph subscription for webhook notifications
+      try {
+        const { env } = await import('@/infrastructure/config');
+        if (env.GRAPH_WEBHOOK_BASE_URL) {
+          const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
+          getSubscriptionManager().createSubscription(connectionId, scopeId)
+            .catch((subErr) => {
+              const subErrInfo = subErr instanceof Error
+                ? { message: subErr.message, name: subErr.name }
+                : { value: String(subErr) };
+              logger.warn({ error: subErrInfo, connectionId, scopeId }, 'Subscription creation failed (non-fatal)');
+            });
+        }
+      } catch {
+        // Dynamic import failure — non-fatal
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorInfo = error instanceof Error
@@ -596,6 +508,23 @@ export class InitialSyncService {
 
       // 6. Emit sync:completed
       this.emitCompleted(userId, { connectionId, scopeId, totalFiles: 1 });
+
+      // PRD-108: Create Graph subscription for webhook notifications
+      try {
+        const { env } = await import('@/infrastructure/config');
+        if (env.GRAPH_WEBHOOK_BASE_URL) {
+          const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
+          getSubscriptionManager().createSubscription(connectionId, scopeId)
+            .catch((subErr) => {
+              const subErrInfo = subErr instanceof Error
+                ? { message: subErr.message, name: subErr.name }
+                : { value: String(subErr) };
+              logger.warn({ error: subErrInfo, connectionId, scopeId }, 'Subscription creation failed (non-fatal)');
+            });
+        }
+      } catch {
+        // Dynamic import failure — non-fatal
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorInfo = error instanceof Error

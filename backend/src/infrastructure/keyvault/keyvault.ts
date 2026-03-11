@@ -46,6 +46,8 @@ export const SECRET_NAMES = {
   // Azure Audio Services (Speech-to-Text)
   AZURE_AUDIO_ENDPOINT: 'AZURE-AUDIO-ENDPOINT',
   AZURE_AUDIO_KEY: 'AZURE-AUDIO-KEY',
+  // Graph Webhooks (PRD-108)
+  GRAPH_WEBHOOK_BASE_URL: 'Graph-WebhookBaseUrl',
 } as const;
 
 /**
@@ -202,6 +204,10 @@ export async function loadSecretsFromKeyVault(): Promise<void> {
 
     const storageConnectionString = await getSecret(SECRET_NAMES.STORAGE_CONNECTION_STRING, 'STORAGE_CONNECTION_STRING');
     if (storageConnectionString) process.env.STORAGE_CONNECTION_STRING = storageConnectionString;
+
+    // Load Graph Webhook URL (PRD-108)
+    const graphWebhookBaseUrl = await getSecret(SECRET_NAMES.GRAPH_WEBHOOK_BASE_URL, 'GRAPH_WEBHOOK_BASE_URL');
+    if (graphWebhookBaseUrl) process.env.GRAPH_WEBHOOK_BASE_URL = graphWebhookBaseUrl;
 
     console.log('✅ Secrets loaded successfully from Key Vault');
   } catch (error) {

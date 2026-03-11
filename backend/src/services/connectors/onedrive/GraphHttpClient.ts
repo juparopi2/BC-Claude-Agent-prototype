@@ -122,13 +122,16 @@ export class GraphHttpClient {
   /**
    * Perform a GET request to the Graph API and return the parsed JSON body.
    *
-   * @param path   Path relative to `https://graph.microsoft.com/v1.0` (must start with `/`).
-   * @param token  Bearer token.
-   * @returns      Parsed JSON body cast to T.
-   * @throws       {GraphApiError} on non-2xx responses.
+   * @param path        Path relative to `https://graph.microsoft.com/v1.0` (must start with `/`),
+   *                    or a full absolute URL when `absoluteUrl` is true.
+   * @param token       Bearer token.
+   * @param absoluteUrl When true, `path` is used verbatim as the URL (e.g. Graph delta/nextLink
+   *                    cursors which are already full URLs). Defaults to false.
+   * @returns           Parsed JSON body cast to T.
+   * @throws            {GraphApiError} on non-2xx responses.
    */
-  async get<T>(path: string, token: string): Promise<T> {
-    const response = await this.fetchWithRetry(path, token, { method: 'GET' });
+  async get<T>(path: string, token: string, absoluteUrl = false): Promise<T> {
+    const response = await this.fetchWithRetry(path, token, { method: 'GET' }, absoluteUrl);
     return response.json() as Promise<T>;
   }
 
@@ -201,6 +204,53 @@ export class GraphHttpClient {
     return Buffer.from(arrayBuffer);
   }
 
+  /**
+   * Perform a POST request to the Graph API.
+   *
+   * @param path   Path relative to `https://graph.microsoft.com/v1.0`.
+   * @param token  Bearer token.
+   * @param body   Request body (will be serialized to JSON).
+   * @returns      Parsed JSON body cast to T.
+   * @throws       {GraphApiError} on non-2xx responses.
+   */
+  async post<T>(path: string, token: string, body: unknown): Promise<T> {
+    const response = await this.fetchWithRetry(path, token, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.json() as Promise<T>;
+  }
+
+  /**
+   * Perform a PATCH request to the Graph API.
+   *
+   * @param path   Path relative to `https://graph.microsoft.com/v1.0`.
+   * @param token  Bearer token.
+   * @param body   Request body (will be serialized to JSON).
+   * @returns      Parsed JSON body cast to T.
+   * @throws       {GraphApiError} on non-2xx responses.
+   */
+  async patch<T>(path: string, token: string, body: unknown): Promise<T> {
+    const response = await this.fetchWithRetry(path, token, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.json() as Promise<T>;
+  }
+
+  /**
+   * Perform a DELETE request to the Graph API.
+   *
+   * @param path   Path relative to `https://graph.microsoft.com/v1.0`.
+   * @param token  Bearer token.
+   * @throws       {GraphApiError} on non-2xx responses.
+   */
+  async delete(path: string, token: string): Promise<void> {
+    await this.fetchWithRetry(path, token, { method: 'DELETE' });
+  }
+
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
@@ -222,7 +272,12 @@ export class GraphHttpClient {
     absoluteUrl = false
   ): Promise<Response> {
     const url = absoluteUrl ? pathOrUrl : `${BASE_URL}${pathOrUrl}`;
-    const headers = buildHeaders(token);
+    const baseHeaders = buildHeaders(token);
+    // Merge any additional headers from init (e.g. Content-Type for POST/PATCH)
+    const headers: Record<string, string> = {
+      ...baseHeaders,
+      ...((init.headers as Record<string, string>) ?? {}),
+    };
 
     let attempt = 0;
 

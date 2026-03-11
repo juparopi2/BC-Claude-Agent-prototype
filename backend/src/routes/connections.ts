@@ -626,12 +626,27 @@ router.post(
         return;
       }
 
-      // Fire and forget — do not await
-      getInitialSyncService().syncScope(connectionId, scopeId, userId);
+      // PRD-108: Use delta sync if scope has a cursor, otherwise initial sync
+      if (scope.last_sync_cursor) {
+        import('@/services/sync/DeltaSyncService').then(({ getDeltaSyncService }) => {
+          getDeltaSyncService().syncDelta(connectionId, scopeId, userId, 'manual')
+            .catch((err) => {
+              const errorInfo = err instanceof Error
+                ? { message: err.message, name: err.name }
+                : { value: String(err) };
+              logger.error({ error: errorInfo, connectionId, scopeId }, 'Delta sync failed');
+            });
+        }).catch(() => {
+          // Fallback to initial sync if dynamic import fails
+          getInitialSyncService().syncScope(connectionId, scopeId, userId);
+        });
+      } else {
+        getInitialSyncService().syncScope(connectionId, scopeId, userId);
+      }
 
       logger.info(
         { userId: userId.toUpperCase(), connectionId, scopeId },
-        'Initial sync triggered'
+        'Sync triggered'
       );
       res.status(202).json({ status: 'started' });
     } catch (error) {

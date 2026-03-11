@@ -218,6 +218,30 @@ export interface FileCleanupJob {
 }
 
 /**
+ * External File Sync Job Data (PRD-108)
+ *
+ * Used by ExternalFileSyncWorker to run incremental delta sync
+ * when triggered by webhook, polling, or manual action.
+ */
+export interface ExternalFileSyncJob {
+  scopeId: string;
+  connectionId: string;
+  userId: string;
+  triggerType: 'webhook' | 'polling' | 'manual';
+}
+
+/**
+ * Subscription Management Job Data (PRD-108)
+ *
+ * Used by SubscriptionRenewalWorker for:
+ * - renew-subscriptions: Renew expiring Graph API subscriptions
+ * - poll-delta: Polling fallback for missed webhooks
+ */
+export interface SubscriptionMgmtJob {
+  type: 'renew-subscriptions' | 'poll-delta';
+}
+
+/**
  * Union type of all job data types
  *
  * Useful for generic job processing utilities.
@@ -231,4 +255,6 @@ export type AnyJobData =
   | EmbeddingGenerationJob
   | FileChunkingJob
   | CitationPersistenceJob
-  | FileCleanupJob;
+  | FileCleanupJob
+  | ExternalFileSyncJob
+  | SubscriptionMgmtJob;

@@ -53,6 +53,7 @@ export interface ScopeRow {
   last_sync_error: string | null;
   last_sync_cursor: string | null;
   item_count: number;
+  subscription_id: string | null;
   created_at: Date;
 }
 
@@ -209,6 +210,7 @@ export class ConnectionRepository {
         last_sync_error: true,
         last_sync_cursor: true,
         item_count: true,
+        subscription_id: true,
         created_at: true,
       },
       orderBy: { created_at: 'asc' },
@@ -303,6 +305,7 @@ export class ConnectionRepository {
         last_sync_error: true,
         last_sync_cursor: true,
         item_count: true,
+        subscription_id: true,
         created_at: true,
       },
     });

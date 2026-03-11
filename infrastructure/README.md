@@ -141,6 +141,33 @@ bash infrastructure/scripts/update-search-index-schema.sh
 bash infrastructure/scripts/update-search-semantic-config.sh
 ```
 
+### Post-Deploy: Graph Webhook URL (One-Time)
+
+After the backend Container App is deployed for the first time, set the `Graph-WebhookBaseUrl` Key Vault secret so that Microsoft Graph change notification subscriptions (PRD-108) know where to send webhooks.
+
+```bash
+# 1. Get the Container App FQDN
+FQDN=$(az containerapp show \
+  --name app-bcagent-backend-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --query 'properties.configuration.ingress.fqdn' -o tsv)
+
+# 2. Set the secret in Key Vault
+az keyvault secret set \
+  --vault-name kv-bcagent-dev \
+  --name Graph-WebhookBaseUrl \
+  --value "https://${FQDN}"
+
+# 3. Restart the backend Container App to pick up the new secret
+az containerapp revision restart \
+  --name app-bcagent-backend-dev \
+  --resource-group rg-BCAgentPrototype-app-dev
+```
+
+This only needs to be done once per environment. The FQDN is stable across deployments. Without this secret, webhook subscriptions are not created (the system falls back to polling-only sync).
+
+---
+
 ## Architecture Decisions
 
 ### Why Bicep over Bash Scripts?

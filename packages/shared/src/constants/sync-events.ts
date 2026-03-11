@@ -12,6 +12,11 @@ export const SYNC_WS_EVENTS = {
   SYNC_PROGRESS: 'sync:progress',
   SYNC_COMPLETED: 'sync:completed',
   SYNC_ERROR: 'sync:error',
+  SYNC_FILE_ADDED: 'sync:file_added',
+  SYNC_FILE_UPDATED: 'sync:file_updated',
+  SYNC_FILE_REMOVED: 'sync:file_removed',
+  SUBSCRIPTION_RENEWED: 'connection:subscription_renewed',
+  SUBSCRIPTION_ERROR: 'connection:subscription_error',
 } as const;
 
 export type SyncWsEventType = (typeof SYNC_WS_EVENTS)[keyof typeof SYNC_WS_EVENTS];

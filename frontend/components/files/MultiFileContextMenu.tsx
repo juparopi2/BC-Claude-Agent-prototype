@@ -65,6 +65,9 @@ export function MultiFileContextMenu({
   const { deleteFiles, error: actionError } = useFileActions();
   const mentions = useFileMentionStore((s) => s.mentions);
 
+  // Check if any external files are in the selection
+  const hasExternalFiles = files.some((f) => f.sourceType !== 'local');
+
   // Count folders in selection
   const folderCount = files.filter((f) => f.isFolder).length;
   const fileCount = files.length - folderCount;
@@ -139,13 +142,15 @@ export function MultiFileContextMenu({
               </>
             )}
           </ContextMenuItem>
-          <ContextMenuItem
-            onClick={() => setDeleteOpen(true)}
-            className="text-destructive focus:text-destructive"
-          >
-            <Trash2 className="size-4 mr-2" />
-            Delete {files.length} items
-          </ContextMenuItem>
+          {!hasExternalFiles && (
+            <ContextMenuItem
+              onClick={() => setDeleteOpen(true)}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="size-4 mr-2" />
+              Delete {files.length} items
+            </ContextMenuItem>
+          )}
         </ContextMenuContent>
       </ContextMenu>
 

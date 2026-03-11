@@ -23,6 +23,11 @@ import type {
   SyncProgress,
   SyncCompletedPayload,
   SyncErrorPayload,
+  SyncFileAddedPayload,
+  SyncFileUpdatedPayload,
+  SyncFileRemovedPayload,
+  SubscriptionRenewedPayload,
+  SubscriptionErrorPayload,
 } from '@bc-agent/shared';
 import { FILE_WS_CHANNELS, JOB_WS_CHANNELS, FOLDER_WS_CHANNELS, SYNC_WS_EVENTS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
@@ -516,6 +521,11 @@ export class SocketClient {
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_PROGRESS);
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_COMPLETED);
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_ERROR);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_FILE_ADDED);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_FILE_UPDATED);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SYNC_FILE_REMOVED);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SUBSCRIPTION_RENEWED);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.SUBSCRIPTION_ERROR);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -673,6 +683,43 @@ export class SocketClient {
         } catch (err) {
           console.error('[SocketClient] Error in sync event handler:', err);
         }
+      });
+    });
+
+    // Sync file change events (PRD-108)
+    this.socket.on(SYNC_WS_EVENTS.SYNC_FILE_ADDED, (data: SyncFileAddedPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SYNC_FILE_ADDED as 'sync:file_added', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    this.socket.on(SYNC_WS_EVENTS.SYNC_FILE_UPDATED, (data: SyncFileUpdatedPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SYNC_FILE_UPDATED as 'sync:file_updated', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    this.socket.on(SYNC_WS_EVENTS.SYNC_FILE_REMOVED, (data: SyncFileRemovedPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SYNC_FILE_REMOVED as 'sync:file_removed', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    // Subscription lifecycle events (PRD-108)
+    this.socket.on(SYNC_WS_EVENTS.SUBSCRIPTION_RENEWED, (data: SubscriptionRenewedPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SUBSCRIPTION_RENEWED as 'connection:subscription_renewed', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    this.socket.on(SYNC_WS_EVENTS.SUBSCRIPTION_ERROR, (data: SubscriptionErrorPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.SUBSCRIPTION_ERROR as 'connection:subscription_error', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
       });
     });
   }

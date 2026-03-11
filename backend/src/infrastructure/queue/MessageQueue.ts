@@ -40,6 +40,8 @@ export type {
   UsageAggregationJob,
   CitationPersistenceJob,
   EmbeddingGenerationJob,
+  ExternalFileSyncJob,
+  SubscriptionMgmtJob,
 } from './types';
 import type {
   MessagePersistenceJob,
@@ -47,6 +49,8 @@ import type {
   EventProcessingJob,
   UsageAggregationJob,
   CitationPersistenceJob,
+  ExternalFileSyncJob,
+  SubscriptionMgmtJob,
 } from './types';
 
 // Core components
@@ -68,6 +72,8 @@ import { getFileChunkWorker } from './workers/FileChunkWorker';
 import { getFileEmbedWorker } from './workers/FileEmbedWorker';
 import { getFilePipelineCompleteWorker } from './workers/FilePipelineCompleteWorker';
 import { getMaintenanceWorker, type MaintenanceJobData } from './workers/MaintenanceWorker';
+import { getExternalFileSyncWorker } from './workers/ExternalFileSyncWorker';
+import { getSubscriptionRenewalWorker } from './workers/SubscriptionRenewalWorker';
 import type { ExtractJobData, ChunkJobData, EmbedJobData, PipelineCompleteJobData } from './workers';
 import { FlowProducerManager } from './core/FlowProducerManager';
 import { ProcessingFlowFactory, type FileFlowParams } from './flow';
@@ -290,6 +296,20 @@ export class MessageQueue {
     this.workerRegistry.registerWorker(
       QueueName.FILE_MAINTENANCE,
       async (job: Job<MaintenanceJobData>) => maintenanceWorker.process(job)
+    );
+
+    // External File Sync Worker (PRD-108)
+    const externalFileSyncWorker = getExternalFileSyncWorker({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.EXTERNAL_FILE_SYNC,
+      async (job: Job<ExternalFileSyncJob>) => externalFileSyncWorker.process(job)
+    );
+
+    // Subscription Management Worker (PRD-108)
+    const subscriptionRenewalWorker = getSubscriptionRenewalWorker({ logger: this.log });
+    this.workerRegistry.registerWorker(
+      QueueName.SUBSCRIPTION_MGMT,
+      async (job: Job<SubscriptionMgmtJob>) => subscriptionRenewalWorker.process(job)
     );
 
     this.log.info('All workers initialized', {
@@ -561,6 +581,45 @@ export class MessageQueue {
       batchId: data.batchId,
       deletionReason: data.deletionReason,
     });
+
+    return job.id || '';
+  }
+
+  /**
+   * Add External File Sync Job (PRD-108)
+   *
+   * Enqueues a delta sync job for a connection scope, triggered by webhook,
+   * polling, or manual action. Uses jobId-based deduplication so that rapid
+   * back-to-back webhook notifications for the same scope collapse into one job.
+   *
+   * @param data - Sync job payload (scopeId, connectionId, userId, triggerType)
+   * @returns BullMQ job ID (may return existing job ID if deduplicated)
+   */
+  public async addExternalFileSyncJob(data: ExternalFileSyncJob): Promise<string> {
+    await this.waitForReady();
+
+    const queue = this.queueManager.getQueue(QueueName.EXTERNAL_FILE_SYNC);
+    if (!queue) {
+      throw new Error('External file sync queue not initialized');
+    }
+
+    // Each webhook creates a unique job. The sync_status guard in DeltaSyncService
+    // prevents truly concurrent execution, and the delta cursor mechanism makes
+    // back-to-back delta queries safe (second query returns 0 changes if nothing new).
+    const job = await queue.add(
+      'delta-sync',
+      data,
+      {
+        priority: JOB_PRIORITY.EXTERNAL_FILE_SYNC,
+      }
+    );
+
+    this.log.info({
+      jobId: job.id,
+      scopeId: data.scopeId,
+      connectionId: data.connectionId,
+      triggerType: data.triggerType,
+    }, 'External file sync job enqueued');
 
     return job.id || '';
   }

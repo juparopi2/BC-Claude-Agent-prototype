@@ -120,7 +120,7 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   }, [file, deleteFiles, actionError]);
 
   const isAlreadyMentioned = mentions.some((m) => m.fileId === file.id);
-  const isExternalFile = !file.isFolder && file.sourceType !== 'local';
+  const isExternalFile = file.sourceType !== 'local';
 
   const handleUseAsContext = useCallback(() => {
     if (isAlreadyMentioned) return;

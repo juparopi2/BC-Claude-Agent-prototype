@@ -211,6 +211,12 @@ export class WorkerRegistry {
         return DEFAULT_CONCURRENCY.FILE_PIPELINE_COMPLETE;
       case QueueName.DLQ:
         return DEFAULT_CONCURRENCY.DLQ;
+      case QueueName.FILE_MAINTENANCE:
+        return DEFAULT_CONCURRENCY.FILE_MAINTENANCE;
+      case QueueName.EXTERNAL_FILE_SYNC:
+        return DEFAULT_CONCURRENCY.EXTERNAL_FILE_SYNC;
+      case QueueName.SUBSCRIPTION_MGMT:
+        return DEFAULT_CONCURRENCY.SUBSCRIPTION_MGMT;
       default:
         return 1;
     }

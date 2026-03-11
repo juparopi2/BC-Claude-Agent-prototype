@@ -131,6 +131,12 @@ const envSchema = z.object({
   QUEUE_FILE_CHUNKING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_EMBEDDING_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
   QUEUE_CITATION_CONCURRENCY: z.string().default('5').transform(Number).pipe(z.number().min(1).max(20)),
+
+  // Graph Webhook / Sync Configuration (PRD-108)
+  GRAPH_WEBHOOK_BASE_URL: z.string().url().optional(),
+  SYNC_POLLING_INTERVAL_MINUTES: z.string().default('30').transform(Number).pipe(z.number().min(5).max(1440)),
+  SUBSCRIPTION_RENEWAL_BUFFER_HOURS: z.string().default('48').transform(Number).pipe(z.number().min(1).max(168)),
+  SUBSCRIPTION_MAX_DURATION_DAYS: z.string().default('29').transform(Number).pipe(z.number().min(1).max(30)),
 });
 
 /**

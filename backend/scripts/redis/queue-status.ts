@@ -52,6 +52,9 @@ const ALL_QUEUE_NAMES = [
   'v2-file-chunk',
   'v2-file-embed',
   'v2-file-pipeline-complete',
+  // External sync queues (PRD-108)
+  'external-file-sync',
+  'subscription-mgmt',
 ];
 
 // ============================================================================

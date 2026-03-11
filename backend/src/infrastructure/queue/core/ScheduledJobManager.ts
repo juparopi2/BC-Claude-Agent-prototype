@@ -39,6 +39,7 @@ export class ScheduledJobManager {
   async initializeScheduledJobs(): Promise<void> {
     await this.initializeUsageAggregationJobs();
     await this.initializeMaintenanceJobs();
+    await this.initializeSyncJobs();
   }
 
   /**
@@ -168,6 +169,67 @@ export class ScheduledJobManager {
       });
     } catch (error) {
       this.log.error('Failed to initialize maintenance scheduled jobs', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - scheduled jobs are optional
+    }
+  }
+
+  /**
+   * Initialize sync scheduled jobs (PRD-108)
+   *
+   * - Subscription renewal: every 12 hours
+   * - Polling fallback: every 30 minutes
+   */
+  private async initializeSyncJobs(): Promise<void> {
+    const queue = this.getQueue(QueueName.SUBSCRIPTION_MGMT);
+    if (!queue) {
+      this.log.warn('Subscription management queue not available for scheduled jobs');
+      return;
+    }
+
+    try {
+      await this.removeExistingRepeatableJobs(queue);
+
+      // Subscription renewal (every 12 hours)
+      await queue.add(
+        JOB_NAMES.SUBSCRIPTION_MGMT.RENEW,
+        { type: 'renew-subscriptions' as const },
+        {
+          repeat: { pattern: CRON_PATTERNS.EVERY_12_HOURS },
+          jobId: JOB_NAMES.SUBSCRIPTION_MGMT.RENEW,
+        }
+      );
+
+      // Polling fallback (every 30 minutes)
+      await queue.add(
+        JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
+        { type: 'poll-delta' as const },
+        {
+          repeat: { pattern: CRON_PATTERNS.EVERY_30_MIN },
+          jobId: JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
+        }
+      );
+
+      // Immediate poll on startup — catch missed changes without waiting 30 min
+      await queue.add(
+        JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
+        { type: 'poll-delta' as const },
+        {
+          jobId: `poll-delta-startup-${Date.now()}`,
+          delay: 10_000,
+        }
+      );
+      this.log.info('Enqueued immediate startup poll-delta job');
+
+      this.log.info('Scheduled sync jobs initialized (PRD-108)', {
+        jobs: [
+          JOB_NAMES.SUBSCRIPTION_MGMT.RENEW,
+          JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
+        ],
+      });
+    } catch (error) {
+      this.log.error('Failed to initialize sync scheduled jobs', {
         error: error instanceof Error ? error.message : String(error),
       });
       // Don't throw - scheduled jobs are optional

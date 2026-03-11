@@ -186,6 +186,28 @@ export class QueueManager {
       removeOnFail: JOB_RETENTION.FILE_CLEANUP.failed,
     });
 
+    // External File Sync Queue (PRD-108)
+    this.createQueue(QueueName.EXTERNAL_FILE_SYNC, {
+      attempts: DEFAULT_BACKOFF.EXTERNAL_FILE_SYNC.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.EXTERNAL_FILE_SYNC.type,
+        delay: DEFAULT_BACKOFF.EXTERNAL_FILE_SYNC.delay,
+      },
+      removeOnComplete: JOB_RETENTION.DEFAULT.completed,
+      removeOnFail: JOB_RETENTION.DEFAULT.failed,
+    });
+
+    // Subscription Management Queue (PRD-108)
+    this.createQueue(QueueName.SUBSCRIPTION_MGMT, {
+      attempts: DEFAULT_BACKOFF.SUBSCRIPTION_MGMT.attempts,
+      backoff: {
+        type: DEFAULT_BACKOFF.SUBSCRIPTION_MGMT.type,
+        delay: DEFAULT_BACKOFF.SUBSCRIPTION_MGMT.delay,
+      },
+      removeOnComplete: JOB_RETENTION.DEFAULT.completed,
+      removeOnFail: JOB_RETENTION.DEFAULT.failed,
+    });
+
     this.log.info('All queues initialized', {
       queues: Array.from(this.queues.keys()),
     });

@@ -5,6 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec tsx src/server.ts",
+    "dev:tunnel": "bash scripts/dev-tunnel.sh",
     "build": "swc src -d dist --strip-leading-paths && tsc-alias",
     "build:tsc": "tsc && tsc-alias",
     "build:mcp": "cd mcp-server && npm run build",

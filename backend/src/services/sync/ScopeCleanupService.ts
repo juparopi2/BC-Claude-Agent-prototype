@@ -65,6 +65,19 @@ export class ScopeCleanupService {
       throw new ScopeCurrentlySyncingError(scopeId);
     }
 
+    // PRD-108: Delete Graph subscription before removing scope
+    if (scope.subscription_id) {
+      try {
+        const { getSubscriptionManager } = await import('@/services/sync/SubscriptionManager');
+        await getSubscriptionManager().deleteSubscription(scopeId);
+      } catch (subErr) {
+        const subErrInfo = subErr instanceof Error
+          ? { message: subErr.message, name: subErr.name }
+          : { value: String(subErr) };
+        logger.warn({ error: subErrInfo, scopeId }, 'Subscription deletion failed (non-fatal)');
+      }
+    }
+
     // 3. Fetch files belonging to this scope
     const files = await repo.findFilesByScopeId(scopeId);
     const fileIds = files.map((f) => f.id);

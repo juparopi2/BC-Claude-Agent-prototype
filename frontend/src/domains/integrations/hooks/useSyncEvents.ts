@@ -10,6 +10,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import { useSyncStatusStore } from '../stores/syncStatusStore';
+import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { useFiles } from '@/src/domains/files';
 import { SYNC_WS_EVENTS, type SyncWebSocketEvent } from '@bc-agent/shared';
 import { toast } from 'sonner';
@@ -22,11 +23,17 @@ import { toast } from 'sonner';
  */
 export function useSyncEvents(): void {
   const setSyncStatus = useSyncStatusStore((s) => s.setSyncStatus);
+  const setLastSyncedAt = useSyncStatusStore((s) => s.setLastSyncedAt);
+  const setSyncError = useSyncStatusStore((s) => s.setSyncError);
+  const invalidateTreeFolder = useFolderTreeStore((s) => s.invalidateTreeFolder);
   const { refreshCurrentFolder } = useFiles();
 
   // Use refs to avoid re-subscribing on every render
   const refreshRef = useRef(refreshCurrentFolder);
   const setSyncStatusRef = useRef(setSyncStatus);
+  const setLastSyncedAtRef = useRef(setLastSyncedAt);
+  const setSyncErrorRef = useRef(setSyncError);
+  const invalidateTreeFolderRef = useRef(invalidateTreeFolder);
 
   useEffect(() => {
     refreshRef.current = refreshCurrentFolder;
@@ -36,11 +43,28 @@ export function useSyncEvents(): void {
     setSyncStatusRef.current = setSyncStatus;
   }, [setSyncStatus]);
 
+  useEffect(() => {
+    setLastSyncedAtRef.current = setLastSyncedAt;
+  }, [setLastSyncedAt]);
+
+  useEffect(() => {
+    setSyncErrorRef.current = setSyncError;
+  }, [setSyncError]);
+
+  useEffect(() => {
+    invalidateTreeFolderRef.current = invalidateTreeFolder;
+  }, [invalidateTreeFolder]);
+
   const handleSyncEvent = useCallback((event: SyncWebSocketEvent) => {
     switch (event.type) {
       case SYNC_WS_EVENTS.SYNC_COMPLETED as 'sync:completed':
         setSyncStatusRef.current(event.scopeId, 'idle');
+        setLastSyncedAtRef.current(event.scopeId, new Date().toISOString());
         refreshRef.current();
+        // Invalidate all cached folder tree entries to force re-fetch
+        for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
+          invalidateTreeFolderRef.current(key);
+        }
         toast.success('Sync completed', {
           description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from OneDrive`,
         });
@@ -48,6 +72,7 @@ export function useSyncEvents(): void {
 
       case SYNC_WS_EVENTS.SYNC_ERROR as 'sync:error':
         setSyncStatusRef.current(event.scopeId, 'error');
+        setSyncErrorRef.current(event.scopeId, event.error);
         toast.error('Sync failed', {
           description: event.error,
         });
@@ -55,6 +80,30 @@ export function useSyncEvents(): void {
 
       case SYNC_WS_EVENTS.SYNC_PROGRESS as 'sync:progress':
         setSyncStatusRef.current(event.scopeId, 'syncing', event.percentage);
+        break;
+
+      case SYNC_WS_EVENTS.SYNC_FILE_ADDED as 'sync:file_added':
+        refreshRef.current();
+        toast.info('File synced', {
+          description: `"${event.fileName}" added from OneDrive`,
+        });
+        break;
+
+      case SYNC_WS_EVENTS.SYNC_FILE_UPDATED as 'sync:file_updated':
+        refreshRef.current();
+        toast.info('File updated', {
+          description: `"${event.fileName}" re-processing`,
+        });
+        break;
+
+      case SYNC_WS_EVENTS.SYNC_FILE_REMOVED as 'sync:file_removed':
+        refreshRef.current();
+        break;
+
+      case SYNC_WS_EVENTS.SUBSCRIPTION_ERROR as 'connection:subscription_error':
+        toast.error('Sync subscription error', {
+          description: event.error,
+        });
         break;
     }
   }, []);

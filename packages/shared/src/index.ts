@@ -296,6 +296,11 @@ export type {
   SyncCompletedPayload,
   SyncErrorPayload,
   SyncWebSocketEvent,
+  SyncFileAddedPayload,
+  SyncFileUpdatedPayload,
+  SyncFileRemovedPayload,
+  SubscriptionRenewedPayload,
+  SubscriptionErrorPayload,
 
   // Connection types (PRD-100)
   ConnectionSummary,

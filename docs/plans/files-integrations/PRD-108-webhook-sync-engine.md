@@ -1,10 +1,11 @@
 # PRD-108: Real-Time Sync Engine (Change Notifications)
 
 **Phase**: Webhooks
-**Status**: Planned
+**Status**: COMPLETED (with post-implementation fixes — see Sections 13 and 14)
 **Prerequisites**: PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 6-8 days
 **Created**: 2026-03-05
+**Completed**: 2026-03-10
 
 ---
 
@@ -246,7 +247,9 @@ interface ExternalFileSyncJobData {
 5. Emit `sync:completed` WebSocket event
 6. On error: update `connection_scopes.sync_status = 'error'`, emit `sync:error`
 
-**Deduplication**: If multiple webhook notifications arrive for the same scope within a short window, use BullMQ job ID `sync--{scopeId}` to prevent duplicate processing. BullMQ will reject duplicate job IDs.
+**Deduplication**: If multiple webhook notifications arrive for the same scope within a short window, use BullMQ job ID `delta-sync--{scopeId}` to prevent duplicate processing. BullMQ will reject duplicate job IDs.
+
+> **Note**: The job ID uses `--` as separator, not `:`. BullMQ forbids `:` in custom job IDs because Redis uses `:` as a key namespace separator (see Section 13, Bug #2).
 
 ### 4.5 SubscriptionRenewalWorker
 
@@ -510,7 +513,9 @@ SUBSCRIPTION_MAX_DURATION_DAYS=29
 | Subscription expires without renewal (cron failure) | Polling fallback every 30 min catches missed changes. Manual "Sync Now" as escape hatch. |
 | Delta token expires (410 Gone) | Catch 410, clear deltaLink, restart full enumeration for scope |
 | Modified file re-processing leaves stale embeddings | Delete ALL chunks/embeddings BEFORE re-processing. Atomic: mark file as 'queued' before deletion. |
-| Concurrent notifications for same scope | BullMQ job dedup via `sync--{scopeId}` job ID |
+| Concurrent notifications for same scope | Each webhook creates a unique BullMQ job; `sync_status === 'syncing'` guard + delta cursor idempotency prevent conflicts (see Section 14, Bug #7) |
+| Delta cursor URLs are absolute | Graph `@odata.deltaLink` and `@odata.nextLink` are full absolute URLs — must be passed verbatim to fetch, never prepend the Graph API base URL (see Section 13, Bug #3) |
+| Overlapping scopes on same connection | Adding parent + child folders as separate scopes causes `connection_scope_id` reassignment during sync. Files from parent delta get reassigned to child scopes, making parent appear empty. Users should add only the top-level folder; sub-folders are included automatically by the folder-scoped delta query. |
 
 ---
 
@@ -543,3 +548,276 @@ When a user disconnects and reconnects to the same OneDrive scope (or creates a 
 3. Set `pipeline_status = 'ready'` directly, skipping the processing pipeline
 
 **Decision**: Deferred — this optimization requires careful handling of chunk/embedding ownership across connections and is better addressed alongside PRD-108's content change detection logic, which already compares `content_hash_external` (eTag). The infrastructure for "skip processing if content is identical" aligns naturally with the "skip processing if content hasn't changed" logic in `DeltaSyncService.processChanges()`.
+
+---
+
+## 11. Implementation Summary (2026-03-10)
+
+### New Files (5)
+
+| File | Purpose |
+|------|---------|
+| `backend/src/services/sync/SubscriptionManager.ts` | Graph subscription lifecycle (create/renew/delete). `clientState` generated via `crypto.randomBytes(64).toString('hex').toUpperCase()`. Singleton: `getSubscriptionManager()`. |
+| `backend/src/services/sync/DeltaSyncService.ts` | Incremental delta sync. `syncDelta()` returns `DeltaSyncResult { newFiles, updatedFiles, deletedFiles, skipped }`. Handles new/modified/deleted files and folders. Modified files: clear embeddings + re-process. |
+| `backend/src/routes/webhooks.ts` | Public webhook endpoint (no auth). `POST /graph`: validation handshake (200 text/plain) + notification processing (202 + async enqueue). `POST /graph/lifecycle`: handles reauthorizationRequired, subscriptionRemoved, missed. |
+| `backend/src/infrastructure/queue/workers/ExternalFileSyncWorker.ts` | BullMQ worker for `EXTERNAL_FILE_SYNC` queue. Dynamic import of DeltaSyncService. |
+| `backend/src/infrastructure/queue/workers/SubscriptionRenewalWorker.ts` | BullMQ worker for `SUBSCRIPTION_MGMT` queue. Two job types: `renew-subscriptions` + `poll-delta`. |
+
+### Modified Files (17)
+
+| File | Changes |
+|------|---------|
+| `packages/shared/src/constants/sync-events.ts` | Added 5 events: SYNC_FILE_ADDED, SYNC_FILE_UPDATED, SYNC_FILE_REMOVED, SUBSCRIPTION_RENEWED, SUBSCRIPTION_ERROR |
+| `packages/shared/src/types/onedrive.types.ts` | Added 5 payload interfaces + extended SyncWebSocketEvent union |
+| `packages/shared/src/types/index.ts` + `src/index.ts` | Re-exported new payload types |
+| `backend/prisma/schema.prisma` | Added `client_state String? @db.NVarChar(200)` to connection_scopes |
+| `backend/src/services/connectors/onedrive/GraphHttpClient.ts` | Added `post<T>()`, `patch<T>()`, `delete()` methods |
+| `backend/src/infrastructure/queue/constants/queue.constants.ts` | EXTERNAL_FILE_SYNC + SUBSCRIPTION_MGMT queues, cron patterns, concurrency, backoff, lock config, job priorities |
+| `backend/src/infrastructure/queue/types/jobs.types.ts` | ExternalFileSyncJob + SubscriptionMgmtJob interfaces |
+| `backend/src/infrastructure/config/environment.ts` | GRAPH_WEBHOOK_BASE_URL, SYNC_POLLING_INTERVAL_MINUTES, SUBSCRIPTION_RENEWAL_BUFFER_HOURS, SUBSCRIPTION_MAX_DURATION_DAYS |
+| `backend/src/infrastructure/queue/MessageQueue.ts` | Imported/registered new workers, added `addExternalFileSyncJob()` with jobId dedup |
+| `backend/src/infrastructure/queue/core/QueueManager.ts` | createQueue for both new queues |
+| `backend/src/infrastructure/queue/core/WorkerRegistry.ts` | Default concurrency for new queues |
+| `backend/src/infrastructure/queue/core/ScheduledJobManager.ts` | `initializeSyncJobs()`: renew every 12h, poll every 30m |
+| `backend/src/services/sync/InitialSyncService.ts` | Fire-and-forget subscription creation post-sync (if GRAPH_WEBHOOK_BASE_URL set) |
+| `backend/src/routes/connections.ts` | "Sync Now" uses DeltaSyncService if scope has cursor, else InitialSyncService |
+| `backend/src/services/sync/ScopeCleanupService.ts` | Deletes Graph subscription on scope removal |
+| `backend/src/domains/connections/ConnectionRepository.ts` | Added subscription_id to ScopeRow + select clauses |
+| `backend/src/server.ts` | Registered `/api/webhooks` route (public, no auth) |
+| `frontend/src/infrastructure/socket/SocketClient.ts` | 5 new event listeners for sync/subscription events |
+| `frontend/src/domains/integrations/stores/syncStatusStore.ts` | Added lastSyncedAt + error fields and actions |
+| `frontend/src/domains/integrations/hooks/useSyncEvents.ts` | Handlers for file_added/updated/removed + subscription_error |
+
+### Key Design Decisions
+
+1. **DeltaSyncService separate from InitialSyncService** — Different concerns (incremental vs full enumeration)
+2. **BullMQ jobId dedup** — `delta-sync--${scopeId}` prevents concurrent processing
+3. **Polling fallback every 30 min** — Safety net for missed webhooks (1 RU/scope if no changes)
+4. **Fire-and-forget subscription creation** — Non-fatal; polling covers the gap
+5. **Modified file = clear embeddings first** — Delete ALL chunks/embeddings BEFORE re-processing
+6. **Dynamic imports** throughout to avoid circular dependencies
+
+---
+
+## 12. Local Development & Debugging Guide
+
+### 12.1 Dev Tunnel Setup
+
+The webhook endpoint must be publicly reachable. For local development, use Azure Dev Tunnels:
+
+```bash
+npm run dev:tunnel
+```
+
+This starts the backend dev server and opens a persistent dev tunnel. **Critical**: the tunnel must use `--protocol http` (not `https`) because the local Node.js server speaks plain HTTP. The tunnel terminates TLS and forwards HTTP to localhost.
+
+The server performs a POST self-test 5 seconds after startup. Look for:
+- `"Webhook endpoint reachable"` — tunnel is working
+- `"Webhook self-test failed"` — check tunnel status, firewall, or port
+
+### 12.2 Debugging with LOG_SERVICES
+
+Filter backend logs to webhook/sync services:
+
+```bash
+LOG_SERVICES=WebhookRoutes,SubscriptionManager,DeltaSyncService,ExternalFileSyncWorker,SubscriptionRenewalWorker,InitialSyncService,GraphHttpClient npm run dev
+```
+
+### 12.3 Log File Location
+
+Persistent logs are written to `backend/logs/app.log`. This file is useful for post-hoc debugging when the console scrollback is lost.
+
+### 12.4 Common Failure Modes
+
+| Symptom | Diagnosis |
+|---------|-----------|
+| Tunnel returns 502 | `--protocol https` in dev-tunnel.sh tells tunnel the local service speaks HTTPS; backend is HTTP. Use `--protocol http`. |
+| Graph API returns 404 `ResourceNotFound` with `"Invalid version: v1.0https:"` | Delta cursor URL is being double-prefixed with base URL. See Section 13, Bug #3. |
+| BullMQ throws `ERR invalid characters in job ID` | Job ID contains `:` which is forbidden. Use `--` as separator. See Section 13, Bug #2. |
+| Subscription creation fails with "URL not reachable" | `GRAPH_WEBHOOK_BASE_URL` is not set or the tunnel is not running. |
+| Delta sync returns 410 Gone | Delta token has expired. Clear `last_sync_cursor` and re-run initial sync for the scope. |
+| Files from parent scope reassigned to child scope | Overlapping scopes on same connection. See Risks table. |
+
+---
+
+## 13. Post-Implementation Bug Fixes (2026-03-10)
+
+Bugs discovered during end-to-end testing after initial implementation.
+
+### Bug #1: Dev tunnel returns 502 (FIXED)
+
+**Root cause**: `dev-tunnel.sh` used `--protocol https`, which told the Azure Dev Tunnel that the local service speaks HTTPS. The backend serves plain HTTP on localhost.
+
+**Fix**: Changed `--protocol https` to `--protocol http` in `backend/scripts/dev-tunnel.sh`.
+
+**Evidence**: After fix, tunnel correctly forwards `POST /api/webhooks/graph` and webhook self-test passes.
+
+### Bug #2: BullMQ jobId with colon (FIXED)
+
+**Root cause**: The deduplication job ID was `delta-sync:${scopeId}`. BullMQ uses Redis under the hood, and Redis uses `:` as a key namespace separator. BullMQ explicitly forbids `:` in custom job IDs.
+
+**Fix**: Changed job ID format from `delta-sync:${scopeId}` to `delta-sync--${scopeId}` in `MessageQueue.addExternalFileSyncJob()`.
+
+**Lesson learned**: Never use `:` in BullMQ job IDs. Use `--` as an alternative separator.
+
+### Bug #3: Delta query URL doubled (FIXED)
+
+**Root cause**: `GraphHttpClient.get()` always prepended `BASE_URL` (`https://graph.microsoft.com/v1.0`) to the path. But Microsoft Graph `@odata.deltaLink` and `@odata.nextLink` cursors are **full absolute URLs**. When `DeltaSyncService` passed `scope.last_sync_cursor` (an absolute URL) through `OneDriveService.executeFolderDeltaQuery()` to `GraphHttpClient.get()`, the result was a doubled URL:
+
+```
+https://graph.microsoft.com/v1.0https://graph.microsoft.com/v1.0/drives/...
+```
+
+Graph API returned 404 with `"Invalid version: v1.0https:"`.
+
+**Fix**: Added `absoluteUrl` parameter to `GraphHttpClient.get()` (the infrastructure already existed in `fetchWithRetry()` and was used by `getWithPagination()`). Updated `OneDriveService.executeDeltaQuery()` and `executeFolderDeltaQuery()` to pass `absoluteUrl: true` when using a stored deltaLink.
+
+**Files changed**:
+- `backend/src/services/connectors/onedrive/GraphHttpClient.ts` — `get()` now accepts optional `absoluteUrl` param
+- `backend/src/services/connectors/onedrive/OneDriveService.ts` — Both delta methods pass `true` when using absolute cursor URLs
+
+**Official docs confirm**: Microsoft Graph delta links are always full absolute URLs (source: [driveItem-delta.md](https://github.com/microsoftgraph/microsoft-graph-docs-contrib/blob/main/api-reference/v1.0/api/driveitem-delta.md)).
+
+### Bug #4: Delta sync creates files at root folder (FIXED)
+
+**Root cause**: `DeltaSyncService` did not implement the `externalToInternalId` folder mapping pattern from `InitialSyncService`. New files and folders created during delta sync had `parent_folder_id = NULL`, placing them at the root level regardless of their actual location in OneDrive.
+
+**Fix**:
+1. Extracted folder hierarchy resolution logic into shared `FolderHierarchyResolver.ts` utility (5 functions: `buildFolderMap`, `ensureScopeRootFolder`, `resolveParentFolderId`, `sortFoldersByDepth`, `upsertFolder`)
+2. Refactored `DeltaSyncService` to build folder map, process changes in order (deletions → folders sorted by depth → files), and resolve `parent_folder_id` for all items
+3. Refactored `InitialSyncService` to use the same shared utility (identical behavior, unified code)
+4. Updated file records also get `parent_folder_id` updated (handles file moves)
+
+**Files changed**:
+- `backend/src/services/sync/FolderHierarchyResolver.ts` (new) — shared folder resolution logic
+- `backend/src/services/sync/DeltaSyncService.ts` — restructured change processing with three-phase approach
+- `backend/src/services/sync/InitialSyncService.ts` — delegated folder logic to shared utility
+
+---
+
+## 14. Post-Implementation Bug Fixes — Round 2 (2026-03-10)
+
+Bugs discovered during real-world OneDrive delete testing. The symptom: a file deleted in OneDrive disappears in real-time (WebSocket event works) but **reappears after page refresh**.
+
+### Bug #5: `deletion_status` not set on delta sync deletions (CRITICAL — FIXED)
+
+**Root cause**: `DeltaSyncService` soft-delete only set `deleted_at`:
+
+```typescript
+data: { deleted_at: new Date() }  // Missing deletion_status!
+```
+
+But the frontend file listing API (`FileRepository.findMany()`) filters by `deletion_status: null` — NOT by `deleted_at`. Since `deletion_status` was never set by delta sync, deleted files remained visible in all queries after page refresh.
+
+The existing `SoftDeleteService` (used for manual `DELETE /api/files`) correctly sets `deletion_status = 'pending'` first.
+
+**Fix**: Added `deletion_status: 'pending'` to both soft-delete paths in `DeltaSyncService`:
+1. Direct file deletion (line ~302): `data: { deleted_at: new Date(), deletion_status: 'pending' }`
+2. Child file deletion inside folder deletion (line ~252): same
+
+**File changed**: `backend/src/services/sync/DeltaSyncService.ts`
+
+### Bug #6: No embedding/chunk cleanup for deleted files (MEDIUM — FIXED)
+
+**Root cause**: When `DeltaSyncService` deleted a file, it did NOT:
+1. Delete vector embeddings from AI Search (`VectorSearchService.deleteChunksForFile()`)
+2. Delete `file_chunks` records from DB
+
+Compare with modified files (which DO clean up embeddings) and `SoftDeleteService` (which does full cleanup). This left orphaned embeddings in AI Search, meaning RAG queries could still return results from deleted files.
+
+**Fix**: Added embedding + chunk cleanup before each soft-delete in `DeltaSyncService`:
+```typescript
+// Clean up embeddings + chunks (same pattern as modified files)
+try {
+  await VectorSearchService.getInstance().deleteChunksForFile(fileId, userId);
+} catch (vecErr) { /* log warn, don't abort */ }
+await prisma.file_chunks.deleteMany({ where: { file_id: fileId } });
+```
+
+Applied in both paths: direct file deletion AND child files of deleted folders.
+
+**File changed**: `backend/src/services/sync/DeltaSyncService.ts`
+
+### Bug #7: BullMQ dedup silently drops concurrent webhooks (LOW — FIXED)
+
+**Root cause**: `MessageQueue.addExternalFileSyncJob()` used `jobId: delta-sync--${scopeId}`. If a job with this ID was already queued/active, BullMQ silently discarded the new one. This meant if two webhooks arrived within the sync execution window (~500ms-2s), the second was lost — its changes would only be picked up by the 30-min polling fallback.
+
+**Fix**: Removed fixed jobId entirely. Each webhook now creates a unique job (BullMQ auto-generates IDs). The `sync_status === 'syncing'` guard in `DeltaSyncService` prevents truly concurrent execution, but the second job remains in the queue and runs after the first completes. The delta cursor mechanism makes this safe — the second query simply returns 0 changes if nothing new happened.
+
+**File changed**: `backend/src/infrastructure/queue/MessageQueue.ts`
+
+**Note**: Updated Section 8, Risk table entry for "Concurrent notifications for same scope" — dedup is no longer via jobId but via delta cursor idempotency.
+
+### Logging Improvements (added alongside bug fixes)
+
+Added structured logging across the webhook/sync pipeline for better observability:
+
+| File | New Logging |
+|------|-------------|
+| `backend/src/routes/webhooks.ts` | Full notification payload (subscriptionId, changeType, resource) on webhook receipt |
+| `backend/src/infrastructure/queue/MessageQueue.ts` | Job enqueue details (jobId, scopeId, triggerType) |
+| `backend/src/services/sync/DeltaSyncService.ts` | Delta change categorization summary (deletions/folders/files), per-deletion DB lookup result, per-deletion soft-delete confirmation |
+| `backend/src/services/connectors/onedrive/OneDriveService.ts` | Raw deleted items with `deleted` facet from Graph API delta response |
+
+**Recommended LOG_SERVICES for debugging**:
+```bash
+LOG_SERVICES=WebhookRoutes,SubscriptionManager,DeltaSyncService,ExternalFileSyncWorker,SubscriptionRenewalWorker,InitialSyncService,GraphHttpClient,FolderHierarchyResolver,MessageQueue,OneDriveService npm run dev
+```
+
+---
+
+## 15. Post-Implementation Bug Fixes — Round 3 (2026-03-11)
+
+Bugs discovered during real-world testing with file/folder add/delete in OneDrive.
+
+### Bug #8: "undefined" file names on deleted delta items (HIGH — FIXED)
+
+**Root cause**: Microsoft Graph API deleted delta items only contain `id` and a `deleted` facet — **no `name` field**. In `OneDriveService.mapDriveItem()`, `String(item.name)` produced the literal string `"undefined"` when `item.name` was absent. This propagated to logs, WebSocket events, and frontend toasts.
+
+**Fix**:
+1. `OneDriveService.ts` — `mapDriveItem()`: Changed `String(item.name)` to `item.name != null ? String(item.name) : ''`
+2. `DeltaSyncService.ts` — Added `name` to the deletion DB lookup `select` clause and used `item.name || existing.name` as fallback for WebSocket events, so the name stored during initial sync is used when Graph omits it
+
+### Bug #9: Folder deletion FK constraint violation (HIGH — FIXED)
+
+**Root cause**: When deleting a folder, `DeltaSyncService` only soft-deleted immediate child **files** (`is_folder: false`) then attempted to hard-delete the folder. If the folder had **subfolders**, those records still referenced it via `parent_folder_id` with `onDelete: NoAction`, causing a FK constraint violation.
+
+Additionally, Graph API only sends a delete event for the **top-level folder** — subfolders are NOT individually reported as deleted.
+
+**Fix**: Replaced flat child-file-only logic with recursive descendant collection:
+1. `collectDescendants()` recursively finds all files and subfolders under the deleted folder
+2. All descendant files are soft-deleted (with embedding + chunk cleanup)
+3. All descendant subfolders are hard-deleted bottom-up (deepest first to respect FK ordering)
+4. The folder itself is hard-deleted last
+
+**File changed**: `backend/src/services/sync/DeltaSyncService.ts`
+
+### Bug #10: "undefined files synced from OneDrive" toast (MEDIUM — FIXED)
+
+**Root cause**: `DeltaSyncService` emitted `SYNC_COMPLETED` with `{ newFiles, updatedFiles, deletedFiles, skipped }` but the `SyncCompletedPayload` type expects `{ totalFiles }`. The frontend read `event.totalFiles` → `undefined` → toast showed "undefined files synced from OneDrive".
+
+`InitialSyncService` correctly sends `totalFiles`.
+
+**Fix**: Added `totalFiles: result.newFiles + result.updatedFiles + result.deletedFiles` to the `SYNC_COMPLETED` payload. Extra fields (`newFiles`, `updatedFiles`, etc.) kept for log visibility.
+
+**File changed**: `backend/src/services/sync/DeltaSyncService.ts`
+
+### Bug #11: Breadcrumb & file tree don't update after delta sync (LOW — FIXED)
+
+**Root cause**: `useSyncEvents` hook called `refreshCurrentFolder()` on sync events, which only refreshes the file list for the current folder. It never invalidated the `treeFolders` cache in `folderTreeStore`, so the sidebar folder tree and breadcrumb did not reflect changes from delta sync.
+
+**Fix**: On `SYNC_COMPLETED`, invalidate all cached entries in `folderTreeStore.treeFolders` via `invalidateTreeFolder()` for each cached key. This forces re-fetch on next expand without clearing navigation state (`currentFolderId`, `folderPath`, `expandedFolderIds`).
+
+**File changed**: `frontend/src/domains/integrations/hooks/useSyncEvents.ts`
+
+### Bug #12: Folder deletion blocked by FK constraint on soft-deleted children (HIGH — FIXED)
+
+**Root cause**: When deleting a folder, Phase 1 soft-deletes all descendant files by setting `deleted_at` and `deletion_status: 'pending'`, but does NOT null out `parent_folder_id`. When Phase 3 attempts to hard-delete the folder record, the FK constraint (`FK__files__parent_fo__41B8C09B`, `onDelete: NoAction`) blocks the delete because soft-deleted children still reference the folder.
+
+Additionally, when a folder is deleted in OneDrive, the delta response often includes both the folder AND its individual child files as separate deletion items. After the folder deletion handler already soft-deletes all descendants, the individual file items are processed again redundantly.
+
+**Fix**:
+1. Added `parent_folder_id: null` to the descendant file soft-delete data, releasing the FK reference before the folder is hard-deleted
+2. Added `deletion_status` to the deletion lookup `select` clause and a guard to skip files already soft-deleted (e.g., processed as part of a folder deletion earlier in the same batch)
+
+**File changed**: `backend/src/services/sync/DeltaSyncService.ts`

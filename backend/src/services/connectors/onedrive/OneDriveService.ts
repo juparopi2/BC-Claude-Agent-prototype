@@ -38,7 +38,7 @@ const logger = createChildLogger({ service: 'OneDriveService' });
 function mapDriveItem(item: Record<string, unknown>): ExternalFileItem {
   return {
     id: String(item.id),
-    name: String(item.name),
+    name: item.name != null ? String(item.name) : '',
     isFolder: !!item.folder,
     mimeType: item.file
       ? ((item.file as Record<string, unknown>).mimeType != null
@@ -273,8 +273,8 @@ export class OneDriveService {
     let raw: Record<string, unknown>;
 
     if (deltaLink) {
-      // deltaLink is an absolute URL — use it directly
-      raw = await getGraphHttpClient().get<Record<string, unknown>>(deltaLink, token);
+      // deltaLink is an absolute URL — use it directly (Graph delta/nextLink cursors are full URLs)
+      raw = await getGraphHttpClient().get<Record<string, unknown>>(deltaLink, token, true);
     } else {
       const { driveId } = await getConnectionDriveInfo(connectionId);
       raw = await getGraphHttpClient().get<Record<string, unknown>>(
@@ -291,6 +291,10 @@ export class OneDriveService {
       // Deleted items have a `deleted` facet set
       const isDeleted = typeof item.deleted === 'object' && item.deleted !== null;
       const changeType: DeltaChange['changeType'] = isDeleted ? 'deleted' : 'modified';
+
+      if (isDeleted) {
+        logger.debug({ externalId: externalItem.id, name: externalItem.name, deletedFacet: item.deleted }, 'Delta item: DELETED');
+      }
 
       return { item: externalItem, changeType };
     });
@@ -341,7 +345,7 @@ export class OneDriveService {
 
     if (deltaLink) {
       // deltaLink is an absolute URL — use it directly (already scoped to the folder)
-      raw = await getGraphHttpClient().get<Record<string, unknown>>(deltaLink, token);
+      raw = await getGraphHttpClient().get<Record<string, unknown>>(deltaLink, token, true);
     } else {
       const { driveId } = await getConnectionDriveInfo(connectionId);
       raw = await getGraphHttpClient().get<Record<string, unknown>>(
@@ -358,6 +362,10 @@ export class OneDriveService {
       // Deleted items have a `deleted` facet set
       const isDeleted = typeof item.deleted === 'object' && item.deleted !== null;
       const changeType: DeltaChange['changeType'] = isDeleted ? 'deleted' : 'modified';
+
+      if (isDeleted) {
+        logger.debug({ externalId: externalItem.id, name: externalItem.name, deletedFacet: item.deleted }, 'Delta item: DELETED (folder-scoped)');
+      }
 
       return { item: externalItem, changeType };
     });

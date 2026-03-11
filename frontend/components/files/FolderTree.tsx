@@ -14,12 +14,14 @@ import { FolderTreeItem } from './FolderTreeItem';
 import { CONNECTION_STATUS, FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 
+const EMPTY_OD_FOLDERS: ParsedFile[] = [];
+
 interface FolderTreeProps {
   className?: string;
 }
 
 export function FolderTree({ className }: FolderTreeProps) {
-  const { currentFolderId, rootFolders, navigateToFolder, initFolderTree } = useFolderNavigation();
+  const { currentFolderId, rootFolders, navigateToFolder, initFolderTree, setTreeFolders, setLoadingFolder } = useFolderNavigation();
   const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
   const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
   const setSourceTypeFilter = useSortFilterStore((s) => s.setSourceTypeFilter);
@@ -28,36 +30,46 @@ export function FolderTree({ className }: FolderTreeProps) {
   const hasOneDrive = connections.some(
     (c) => c.provider === PROVIDER_ID.ONEDRIVE && c.status === CONNECTION_STATUS.CONNECTED
   );
+  const hasExternalConnection = connections.some(
+    (c) => c.status === CONNECTION_STATUS.CONNECTED
+  );
 
+  // Local Files collapsible state (expanded by default)
+  const [isLocalExpanded, setLocalExpanded] = useState(true);
   // PRD-107: OneDrive expandable tree state
   const [isOneDriveExpanded, setOneDriveExpanded] = useState(false);
-  const [odRootFolders, setOdRootFolders] = useState<ParsedFile[]>([]);
-  const [isLoadingOdFolders, setIsLoadingOdFolders] = useState(false);
+  const odRootFoldersFromStore = useFolderTreeStore((s) => s.treeFolders['onedrive-root']);
+  const odRootFolders = odRootFoldersFromStore ?? EMPTY_OD_FOLDERS;
+  const isOdRootLoaded = odRootFoldersFromStore !== undefined;
+  const isLoadingOdFolders = useFolderTreeStore((s) => s.loadingFolderIds.has('onedrive-root'));
   const isAnySyncing = useSyncStatusStore(selectIsAnySyncing);
 
-  // Load OneDrive root folders when expanded
+  // Load OneDrive root folders when expanded (store-backed, mirrors local files pattern)
   useEffect(() => {
     if (!isOneDriveExpanded || !hasOneDrive) return;
+    if (isOdRootLoaded) return;
+    if (isLoadingOdFolders) return;
 
     let cancelled = false;
     const loadOdFolders = async () => {
-      setIsLoadingOdFolders(true);
+      setLoadingFolder('onedrive-root', true);
       try {
         const fileApi = getFileApiClient();
         const result = await fileApi.getFiles({ folderId: null, sourceType: FILE_SOURCE_TYPE.ONEDRIVE });
         if (!cancelled && result.success) {
-          setOdRootFolders(result.data.files.filter((f) => f.isFolder));
+          setTreeFolders('onedrive-root', result.data.files.filter((f) => f.isFolder));
         }
       } catch (err) {
         console.error('Failed to load OneDrive folders:', err);
+        if (!cancelled) setTreeFolders('onedrive-root', []);
       } finally {
-        if (!cancelled) setIsLoadingOdFolders(false);
+        if (!cancelled) setLoadingFolder('onedrive-root', false);
       }
     };
     loadOdFolders();
 
     return () => { cancelled = true; };
-  }, [isOneDriveExpanded, hasOneDrive]);
+  }, [isOneDriveExpanded, hasOneDrive, isOdRootLoaded, isLoadingOdFolders, setLoadingFolder, setTreeFolders]);
 
   // Load root folders on mount and when favorites mode changes
   useEffect(() => {
@@ -89,39 +101,58 @@ export function FolderTree({ className }: FolderTreeProps) {
   return (
     <ScrollArea className={cn('h-full', className)}>
       <div className="p-2">
-        {/* Root item */}
-        <button
-          onClick={handleAllFiles}
-          className={cn(
-            'flex items-center gap-2 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors cursor-pointer',
-            currentFolderId === null && !sourceTypeFilter && 'bg-accent'
-          )}
-        >
-          {showFavoritesOnly ? (
-            <Star className="size-4 fill-amber-400 text-amber-400" />
-          ) : (
-            <Home className="size-4 text-muted-foreground" />
-          )}
-          <span className="text-sm font-medium">
-            {showFavoritesOnly ? 'Favorites' : 'All Files'}
-          </span>
-        </button>
-
-        {/* Folder tree — skeleton while loading, items when ready */}
-        <div className="mt-1">
-          {isRootLoading ? (
-            <FolderTreeSkeleton />
-          ) : (
-            rootFolders.map(folder => (
-              <FolderTreeItem
-                key={folder.id}
-                folder={folder}
-                level={0}
-                onSelect={handleSelect}
-              />
-            ))
-          )}
-        </div>
+        {/* Local Files — collapsible section */}
+        <Collapsible open={hasExternalConnection ? isLocalExpanded : true} onOpenChange={hasExternalConnection ? setLocalExpanded : undefined}>
+          <div className={cn(
+            'flex items-center w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors',
+            hasExternalConnection ? 'gap-1' : 'gap-2'
+          )}>
+            {hasExternalConnection && (
+              <CollapsibleTrigger asChild>
+                <button
+                  className="p-0.5 hover:bg-accent rounded cursor-pointer"
+                  aria-label={isLocalExpanded ? 'Collapse Local Files' : 'Expand Local Files'}
+                >
+                  {isLocalExpanded ? (
+                    <ChevronDown className="size-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="size-4 text-muted-foreground" />
+                  )}
+                </button>
+              </CollapsibleTrigger>
+            )}
+            <button
+              onClick={handleAllFiles}
+              className={cn(
+                'flex items-center gap-2 flex-1 cursor-pointer',
+                currentFolderId === null && !sourceTypeFilter && (hasExternalConnection ? 'font-semibold' : 'bg-accent rounded')
+              )}
+            >
+              {showFavoritesOnly ? (
+                <Star className="size-4 fill-amber-400 text-amber-400" />
+              ) : (
+                <Home className="size-4 text-muted-foreground" />
+              )}
+              <span className="text-sm font-medium">
+                {showFavoritesOnly ? 'Favorites' : (hasExternalConnection ? 'Local Files' : 'All Files')}
+              </span>
+            </button>
+          </div>
+          <CollapsibleContent>
+            {isRootLoading ? (
+              <FolderTreeSkeleton />
+            ) : (
+              rootFolders.map(folder => (
+                <FolderTreeItem
+                  key={folder.id}
+                  folder={folder}
+                  level={hasExternalConnection ? 1 : 0}
+                  onSelect={handleSelect}
+                />
+              ))
+            )}
+          </CollapsibleContent>
+        </Collapsible>
 
         {/* OneDrive root (when connected) — PRD-107 */}
         {hasOneDrive && (

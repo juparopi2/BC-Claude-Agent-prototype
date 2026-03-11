@@ -338,6 +338,8 @@ export class FileContextPreparer implements IFileContextPreparer {
             deletionStatus: null,
             deletedAt: null,
             fileModifiedAt: null,
+            sourceType: '',
+            externalUrl: null,
           } as ParsedFile,
           source: 'semantic_search',
           score: result.score,

@@ -53,6 +53,9 @@ const ALL_QUEUES = [
   'event-processing',
   'usage-aggregation',
   'citation-persistence',
+  // External sync queues (PRD-108)
+  'external-file-sync',
+  'subscription-mgmt',
 ];
 
 function parseArgs(): { dryRun: boolean; statsOnly: boolean; allQueues: boolean; flushHistory: boolean } {

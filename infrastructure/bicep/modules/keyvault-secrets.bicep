@@ -137,6 +137,9 @@ param azureAudioEndpoint string
 @secure()
 param azureAudioKey string
 
+@description('Public base URL for Graph webhook notifications (e.g. Container App FQDN). Set after first Container App deployment.')
+param graphWebhookBaseUrl string = ''
+
 // ============================================================
 // COMPUTED VALUES
 // ============================================================
@@ -397,5 +400,13 @@ resource secretAzureAudioKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   name: 'AZURE-AUDIO-KEY'
   properties: {
     value: azureAudioKey
+  }
+}
+
+resource secretGraphWebhookBaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(graphWebhookBaseUrl)) {
+  parent: keyVault
+  name: 'Graph-WebhookBaseUrl'
+  properties: {
+    value: graphWebhookBaseUrl
   }
 }

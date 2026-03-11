@@ -25,6 +25,8 @@ export enum QueueName {
   FILE_PIPELINE_COMPLETE = 'file-pipeline-complete',
   DLQ = 'dead-letter-queue',
   FILE_MAINTENANCE = 'maintenance',
+  EXTERNAL_FILE_SYNC = 'external-file-sync',
+  SUBSCRIPTION_MGMT = 'subscription-mgmt',
 }
 
 /**
@@ -55,6 +57,11 @@ export const JOB_NAMES = {
     ORPHAN_CLEANUP: 'orphan-cleanup',
     BATCH_TIMEOUT: 'batch-timeout',
   },
+  EXTERNAL_FILE_SYNC: 'delta-sync',
+  SUBSCRIPTION_MGMT: {
+    RENEW: 'renew-subscriptions',
+    POLL: 'poll-delta',
+  },
 } as const;
 
 /**
@@ -78,6 +85,10 @@ export const CRON_PATTERNS = {
   EVERY_15_MIN: '*/15 * * * *',
   /** Every hour at :00 (batch timeout) */
   HOURLY: '0 * * * *',
+  /** Every 12 hours */
+  EVERY_12_HOURS: '0 */12 * * *',
+  /** Every 30 minutes */
+  EVERY_30_MIN: '*/30 * * * *',
 } as const;
 
 /**
@@ -99,6 +110,8 @@ export const DEFAULT_CONCURRENCY = {
   FILE_PIPELINE_COMPLETE: 10,
   DLQ: 1,
   FILE_MAINTENANCE: 1,
+  EXTERNAL_FILE_SYNC: 5,
+  SUBSCRIPTION_MGMT: 2,
 } as const;
 
 /**
@@ -131,6 +144,8 @@ export const DEFAULT_BACKOFF = {
   FILE_PIPELINE_COMPLETE: { type: 'exponential' as const, delay: 1000, attempts: 2 },
   DLQ: { type: 'exponential' as const, delay: 10000, attempts: 1 },
   FILE_MAINTENANCE: { type: 'exponential' as const, delay: 5000, attempts: 2 },
+  EXTERNAL_FILE_SYNC: { type: 'exponential' as const, delay: 5000, attempts: 3 },
+  SUBSCRIPTION_MGMT: { type: 'exponential' as const, delay: 10000, attempts: 3 },
 } as const;
 
 /**
@@ -182,6 +197,8 @@ export const JOB_PRIORITY = {
   FILE_MAINTENANCE: 10,
   CITATION_PERSISTENCE: 4,
   USAGE_AGGREGATION: 5,
+  EXTERNAL_FILE_SYNC: 3,
+  SUBSCRIPTION_MGMT: 8,
 } as const;
 
 /**
@@ -313,4 +330,6 @@ export const LOCK_CONFIG: Record<QueueName, ExtendedLockConfig> = {
   [QueueName.EVENT_PROCESSING]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
   [QueueName.USAGE_AGGREGATION]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
   [QueueName.CITATION_PERSISTENCE]: { lockDuration: LOCK_DURATION.SHORT, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
+  [QueueName.EXTERNAL_FILE_SYNC]: { lockDuration: LOCK_DURATION.LONG, maxStalledCount: MAX_STALLED_COUNT.TOLERANT },
+  [QueueName.SUBSCRIPTION_MGMT]: { lockDuration: LOCK_DURATION.MEDIUM, maxStalledCount: MAX_STALLED_COUNT.DEFAULT },
 } as const;

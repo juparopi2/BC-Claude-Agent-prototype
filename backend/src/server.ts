@@ -51,6 +51,7 @@ import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import connectionsRoutes from './routes/connections';
 import onedriveAuthRoutes from './routes/onedrive-auth';
+import webhookRoutes from './routes/webhooks';
 import uploadHealthRoutes from '@/routes/uploads/health.routes';
 import duplicateDetectionRoutes from '@/routes/uploads/duplicate-detection.routes';
 import folderDuplicateDetectionRoutes from '@/routes/uploads/folder-duplicate-detection.routes';
@@ -288,6 +289,10 @@ async function initializeApp(): Promise<void> {
       console.warn('⚠️  Agent Orchestrator: ANTHROPIC_API_KEY not configured');
     }
     console.log('');
+
+    if (env.GRAPH_WEBHOOK_BASE_URL) {
+      console.log(`🔗 Webhook endpoint: ${env.GRAPH_WEBHOOK_BASE_URL}/api/webhooks/graph`);
+    }
 
     console.log('✅ All services initialized successfully\n');
   } catch (error) {
@@ -807,6 +812,11 @@ function configureRoutes(): void {
       sendInternalError(res, ErrorCode.DATABASE_ERROR);
     }
   });
+
+  // Webhook routes (PRD-108) - PUBLIC (no user auth, validated via clientState)
+  if (isDatabaseAvailable) {
+    app.use('/api/webhooks', webhookRoutes);
+  }
 
   // Auth routes - Microsoft OAuth (requires database)
   if (isDatabaseAvailable) {
@@ -1362,6 +1372,25 @@ async function startServer(): Promise<void> {
       console.log(`   WebSocket: ws://localhost:${env.PORT}`);
       console.log(`   Health: http://localhost:${env.PORT}/health`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+      // Non-blocking webhook tunnel self-test (dev only)
+      if (!isProd && env.GRAPH_WEBHOOK_BASE_URL) {
+        setTimeout(async () => {
+          const testUrl = `${env.GRAPH_WEBHOOK_BASE_URL}/api/webhooks/graph?validationToken=self-test`;
+          try {
+            const resp = await fetch(testUrl, { method: 'POST', signal: AbortSignal.timeout(10_000) });
+            const body = await resp.text();
+            if (resp.ok && body === 'self-test') {
+              console.log('✅ Webhook endpoint reachable through tunnel');
+            } else {
+              console.warn(`⚠️  Webhook self-test: HTTP ${resp.status}, body="${body.slice(0, 50)}"`);
+            }
+          } catch (err) {
+            console.warn(`⚠️  Webhook endpoint unreachable through tunnel: ${err instanceof Error ? err.message : err}`);
+            console.warn('   Graph subscriptions will fail. Polling fallback handles sync every 30 min.');
+          }
+        }, 5_000);
+      }
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

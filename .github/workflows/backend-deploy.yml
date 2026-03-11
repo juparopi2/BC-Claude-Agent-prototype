@@ -126,7 +126,8 @@ jobs:
               azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
               azure-audio-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
               azure-audio-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
-              applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system
+              applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
+              graph-webhook-base-url=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
           # Get frontend URL for CORS configuration
@@ -194,7 +195,11 @@ jobs:
               MAX_CONTEXT_TOKENS=100000 \
               QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
               QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
-              QUEUE_EMBEDDING_CONCURRENCY=3
+              QUEUE_EMBEDDING_CONCURRENCY=3 \
+              GRAPH_WEBHOOK_BASE_URL=secretref:graph-webhook-base-url \
+              SYNC_POLLING_INTERVAL_MINUTES=30 \
+              SUBSCRIPTION_RENEWAL_BUFFER_HOURS=48 \
+              SUBSCRIPTION_MAX_DURATION_DAYS=29
 
           # Update ingress configuration for the backend
           az containerapp ingress update \
@@ -231,7 +236,8 @@ jobs:
               azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
               azure-audio-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
               azure-audio-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
-              applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system
+              applicationinsights-connectionstring=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
+              graph-webhook-base-url=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
           echo "✅ Secrets configured from Key Vault"
 
       - name: Update Container App (if exists)
@@ -301,7 +307,11 @@ jobs:
               MAX_CONTEXT_TOKENS=100000 \
               QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
               QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
-              QUEUE_EMBEDDING_CONCURRENCY=3
+              QUEUE_EMBEDDING_CONCURRENCY=3 \
+              GRAPH_WEBHOOK_BASE_URL=secretref:graph-webhook-base-url \
+              SYNC_POLLING_INTERVAL_MINUTES=30 \
+              SUBSCRIPTION_RENEWAL_BUFFER_HOURS=48 \
+              SUBSCRIPTION_MAX_DURATION_DAYS=29
 
       - name: Configure Ingress
         run: |

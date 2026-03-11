@@ -391,6 +391,11 @@ export type {
   SyncCompletedPayload,
   SyncErrorPayload,
   SyncWebSocketEvent,
+  SyncFileAddedPayload,
+  SyncFileUpdatedPayload,
+  SyncFileRemovedPayload,
+  SubscriptionRenewedPayload,
+  SubscriptionErrorPayload,
 } from './onedrive.types';
 
 // Connection types (PRD-100)

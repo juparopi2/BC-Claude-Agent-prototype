@@ -14,5 +14,7 @@ export type {
   FileChunkingJob,
   CitationPersistenceJob,
   FileCleanupJob,
+  ExternalFileSyncJob,
+  SubscriptionMgmtJob,
   AnyJobData,
 } from './jobs.types';

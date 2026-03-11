@@ -87,7 +87,46 @@ export interface SyncErrorPayload {
   error: string;
 }
 
+export interface SyncFileAddedPayload {
+  connectionId: string;
+  scopeId: string;
+  fileId: string;
+  fileName: string;
+  sourceType: string;
+}
+
+export interface SyncFileUpdatedPayload {
+  connectionId: string;
+  scopeId: string;
+  fileId: string;
+  fileName: string;
+}
+
+export interface SyncFileRemovedPayload {
+  connectionId: string;
+  scopeId: string;
+  fileId: string;
+  fileName: string;
+}
+
+export interface SubscriptionRenewedPayload {
+  connectionId: string;
+  scopeId: string;
+  expiresAt: string;
+}
+
+export interface SubscriptionErrorPayload {
+  connectionId: string;
+  scopeId: string;
+  error: string;
+}
+
 export type SyncWebSocketEvent =
   | { type: 'sync:progress' } & SyncProgress
   | { type: 'sync:completed' } & SyncCompletedPayload
-  | { type: 'sync:error' } & SyncErrorPayload;
+  | { type: 'sync:error' } & SyncErrorPayload
+  | { type: 'sync:file_added' } & SyncFileAddedPayload
+  | { type: 'sync:file_updated' } & SyncFileUpdatedPayload
+  | { type: 'sync:file_removed' } & SyncFileRemovedPayload
+  | { type: 'connection:subscription_renewed' } & SubscriptionRenewedPayload
+  | { type: 'connection:subscription_error' } & SubscriptionErrorPayload;

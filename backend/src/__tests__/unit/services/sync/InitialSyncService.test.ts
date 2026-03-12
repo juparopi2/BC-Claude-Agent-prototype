@@ -64,6 +64,17 @@ vi.mock('@/services/connectors/onedrive', () => ({
   })),
 }));
 
+// Mock SharePoint service (PRD-111)
+const mockSPExecuteDeltaQuery = vi.hoisted(() => vi.fn());
+const mockSPExecuteFolderDeltaQuery = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/connectors/sharepoint', () => ({
+  getSharePointService: vi.fn(() => ({
+    executeDeltaQuery: mockSPExecuteDeltaQuery,
+    executeFolderDeltaQuery: mockSPExecuteFolderDeltaQuery,
+  })),
+}));
+
 // Mock connections domain
 const mockUpdateScope = vi.hoisted(() => vi.fn());
 const mockFindScopeById = vi.hoisted(() => vi.fn());
@@ -129,6 +140,7 @@ function defaultScopeRow(overrides?: Partial<{
   scope_type: string;
   scope_resource_id: string | null;
   scope_display_name: string | null;
+  remote_drive_id: string | null;
 }>) {
   return {
     id: SCOPE_ID,
@@ -141,6 +153,7 @@ function defaultScopeRow(overrides?: Partial<{
     last_sync_at: null,
     last_sync_error: null,
     last_sync_cursor: null,
+    remote_drive_id: overrides?.remote_drive_id ?? null,
     item_count: 0,
     created_at: new Date(),
   };
@@ -225,6 +238,8 @@ describe('InitialSyncService', () => {
     mockExecuteFolderDeltaQuery.mockReset();
     mockGetItemMetadata.mockReset();
     mockUpdateScope.mockReset();
+    mockSPExecuteDeltaQuery.mockReset();
+    mockSPExecuteFolderDeltaQuery.mockReset();
     mockFindScopeById.mockReset();
     mockFindExclusionScopesByConnection.mockReset();
     mockAddFileProcessingFlow.mockReset();
@@ -1266,6 +1281,7 @@ describe('InitialSyncService', () => {
   // ==========================================================================
 
   const REMOTE_DRIVE_ID = 'REMOTE-DRIVE-001';
+  const SP_DRIVE_ID = 'SP-DRIVE-ABC123';
 
   describe('PRD-110 — shared scope behavior', () => {
     it('shared scope uses remote_drive_id as external_drive_id for created files', async () => {
@@ -1436,6 +1452,118 @@ describe('InitialSyncService', () => {
         external_drive_id: DRIVE_ID,
         connection_id: CONNECTION_ID,
       });
+    });
+  });
+
+  // ==========================================================================
+  // PRD-111: SharePoint sync paths
+  // ==========================================================================
+
+  describe('PRD-111 — SharePoint sync paths', () => {
+    it('SharePoint folder scope resolves driveId from remote_drive_id', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: 'SP Folder',
+          remote_drive_id: REMOTE_DRIVE_ID,
+        })
+      );
+
+      mockConnectionsFindUnique.mockResolvedValue({
+        microsoft_drive_id: null,
+        provider: 'sharepoint',
+      });
+
+      mockSPExecuteFolderDeltaQuery.mockResolvedValue({
+        changes: [makeFileChange('sp-file-1', 'sharepoint-doc.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Should use SharePoint service, not OneDrive service
+      expect(mockSPExecuteFolderDeltaQuery).toHaveBeenCalledWith(
+        CONNECTION_ID,
+        REMOTE_DRIVE_ID,
+        FOLDER_RESOURCE_ID
+      );
+      expect(mockExecuteFolderDeltaQuery).not.toHaveBeenCalled();
+      expect(mockExecuteDeltaQuery).not.toHaveBeenCalled();
+    });
+
+    it('SharePoint folder scope with null remote_drive_id throws descriptive error', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({
+          scope_type: 'folder',
+          scope_resource_id: FOLDER_RESOURCE_ID,
+          scope_display_name: 'SP Folder',
+          remote_drive_id: null,
+        })
+      );
+
+      mockConnectionsFindUnique.mockResolvedValue({
+        microsoft_drive_id: null,
+        provider: 'sharepoint',
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // The error should be caught internally (fire-and-forget), so scope should be marked as error
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          syncStatus: 'error',
+          lastSyncError: expect.stringContaining('Cannot resolve driveId'),
+        })
+      );
+    });
+
+    it('SharePoint pagination uses SharePoint service (not OneDrive)', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({
+          scope_type: 'library',
+          scope_resource_id: SP_DRIVE_ID,
+          scope_display_name: 'Documents',
+          remote_drive_id: null,
+        })
+      );
+
+      mockConnectionsFindUnique.mockResolvedValue({
+        microsoft_drive_id: null,
+        provider: 'sharepoint',
+      });
+
+      // First page has nextPageLink
+      mockSPExecuteDeltaQuery
+        .mockResolvedValueOnce({
+          changes: [makeFileChange('sp-page1-file', 'page1.pdf')],
+          deltaLink: null,
+          hasMore: true,
+          nextPageLink: 'https://graph.microsoft.com/v1.0/drives/SP-DRIVE/root/delta?skiptoken=abc',
+        })
+        .mockResolvedValueOnce({
+          changes: [makeFileChange('sp-page2-file', 'page2.pdf')],
+          deltaLink: DELTA_LINK,
+          hasMore: false,
+          nextPageLink: null,
+        });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Should call SharePoint service twice (initial + pagination), never OneDrive
+      expect(mockSPExecuteDeltaQuery).toHaveBeenCalledTimes(2);
+      expect(mockExecuteDeltaQuery).not.toHaveBeenCalled();
+
+      // Second call should pass the nextPageLink
+      expect(mockSPExecuteDeltaQuery).toHaveBeenNthCalledWith(
+        2,
+        CONNECTION_ID,
+        SP_DRIVE_ID,
+        'https://graph.microsoft.com/v1.0/drives/SP-DRIVE/root/delta?skiptoken=abc'
+      );
     });
   });
 });

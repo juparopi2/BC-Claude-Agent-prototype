@@ -22,7 +22,7 @@ export interface SharePointLibrary {
   displayName: string;
   description: string | null;
   webUrl: string;
-  itemCount: number;
+  itemCount: number | null;
   sizeBytes: number;
   isSystemLibrary: boolean;
   siteId: string;

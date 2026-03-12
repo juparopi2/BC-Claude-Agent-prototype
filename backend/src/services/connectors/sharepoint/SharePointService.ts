@@ -170,7 +170,7 @@ export class SharePointService {
           displayName: String(drive.name ?? ''),
           description: drive.description != null ? String(drive.description) : null,
           webUrl: String(drive.webUrl ?? ''),
-          itemCount: 0,
+          itemCount: typeof quota?.fileCount === 'number' ? Number(quota.fileCount) : null,
           sizeBytes: Number(quota?.used ?? 0),
           isSystemLibrary: isSystemLibrary(drive),
           siteId,

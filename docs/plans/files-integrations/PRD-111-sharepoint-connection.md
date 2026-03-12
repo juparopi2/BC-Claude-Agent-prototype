@@ -771,3 +771,47 @@ Renamed the two conflicting `GRAPH_SCOPES` objects:
 - `backend/microsoft.types.ts` → `AUTH_BASE_SCOPES` (OIDC scopes: `openid`, `profile`, etc.) — now unexported
 
 Connector code now uses `GRAPH_API_SCOPES` from shared package instead of hardcoded strings.
+
+### 14.3 `driveId: null` — Folder Scopes Missing `remoteDriveId` (2026-03-12)
+
+**Symptom:** SharePoint sync fails with `drives/null/items/.../delta` → 400 error for folder scopes.
+
+**Root cause:** The frontend `SharePointWizard` had the `driveId` available in `selectedFolders` state but did NOT include `remoteDriveId` in the batch scope payload sent to the API. The backend resolution logic in `InitialSyncService` and `DeltaSyncService` fell through to `null`.
+
+**Fix:**
+1. Frontend: Added `remoteDriveId: info.driveId` to folder scope objects in `SharePointWizard.tsx`
+2. Backend: Added explicit null guard for `effectiveDriveId` in both `InitialSyncService` and `DeltaSyncService` that throws a descriptive error instead of silently passing `null`
+
+### 14.4 Pagination Loop Using OneDrive Service for SharePoint (2026-03-12)
+
+**Symptom:** Multi-page delta queries for SharePoint libraries silently used the OneDrive service for pagination, which does not pass the explicit `driveId` required by SharePoint.
+
+**Root cause:** The `while (nextPageLink)` pagination loops in both `InitialSyncService` and `DeltaSyncService` unconditionally called `getOneDriveService().executeDeltaQuery()` regardless of the connection provider.
+
+**Fix:** Added provider-aware branching in both pagination loops: SharePoint connections use `getSharePointService().executeDeltaQuery(connectionId, effectiveDriveId, nextPageLink)`, OneDrive connections continue using the existing path.
+
+### 14.5 `itemCount` Hardcoded to 0 (2026-03-12)
+
+**Symptom:** Libraries in the SharePoint wizard always showed "0 items, {size}".
+
+**Root cause:** `SharePointService.getLibraries()` hardcoded `itemCount: 0`. The Graph API `/sites/{siteId}/drives` response includes `quota.fileCount` (tenant-dependent).
+
+**Fix:**
+1. Changed `itemCount` type from `number` to `number | null` in `SharePointLibrary` interface
+2. Backend extracts `quota.fileCount` when available, falls back to `null`
+3. Frontend conditionally displays count only when non-null
+
+### 14.6 Files Hidden in Wizard Folder Tree (2026-03-12)
+
+**Symptom:** Only folders were visible when expanding libraries in the SharePoint wizard. Files were fetched from the API but filtered out before rendering.
+
+**Root cause:** Three `.filter(item => item.isFolder)` calls in `SharePointWizard.tsx` (in `handleToggleLibraryExpand`, `handleToggleFolderExpand`, and children rendering) plus a `return null` guard in `LibFolderNode` for non-folder items.
+
+**Fix:**
+1. Removed all three folder-only filters
+2. Added file leaf node rendering in `LibFolderNode` with typed file icons (reusing `file-type-utils`), file name, and size display
+3. Files are non-expandable and non-selectable (display-only)
+
+### 14.7 Tri-State Selection Deferred (2026-03-12)
+
+OneDrive's `ConnectionWizard` implements full include/exclude cascade with `getEffectiveCheckState()` and recursive traversal. SharePoint uses simple on/off toggles per folder for now. Deferred to [PRD-115](./PRD-115-sharepoint-scope-inheritance.md) as a separate PR.

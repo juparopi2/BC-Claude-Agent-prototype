@@ -112,6 +112,13 @@ export class InitialSyncService {
         ?? (connection.provider === 'sharepoint' && scope.scope_type === 'library' ? scope.scope_resource_id : null)
         ?? connection.microsoft_drive_id;
 
+      if (!effectiveDriveId) {
+        throw new Error(
+          `Cannot resolve driveId for scope ${scopeId} (provider=${connection.provider}, ` +
+          `type=${scope.scope_type}). SharePoint folder scopes require remote_drive_id. Re-add the scope to fix.`
+        );
+      }
+
       // Step 3: Execute delta query — scope-aware routing
       const allChanges: DeltaChange[] = [];
       let deltaLink: string | null = null;
@@ -148,7 +155,12 @@ export class InitialSyncService {
       while (nextPageLink) {
         logger.debug({ connectionId, scopeId, collectedSoFar: allChanges.length }, 'Following delta nextPageLink');
         // nextPageLink is an absolute URL already scoped — works for both root and folder delta
-        page = await getOneDriveService().executeDeltaQuery(connectionId, nextPageLink);
+        if (connection.provider === 'sharepoint') {
+          const { getSharePointService } = await import('@/services/connectors/sharepoint');
+          page = await getSharePointService().executeDeltaQuery(connectionId, effectiveDriveId, nextPageLink);
+        } else {
+          page = await getOneDriveService().executeDeltaQuery(connectionId, nextPageLink);
+        }
         allChanges.push(...page.changes);
         if (page.deltaLink) {
           deltaLink = page.deltaLink;

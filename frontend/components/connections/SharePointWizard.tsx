@@ -40,6 +40,7 @@ import { toast } from 'sonner'
 import type { TreeNodeData, SelectedScope, SyncState, ScopeProgressEntry, AuthInitiateResponse, SyncStatusResponse } from './wizard-utils'
 import { findNode, sortItems, formatFileSize } from './wizard-utils'
 import { SitePickerGrid } from './sharepoint/SitePickerGrid'
+import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 
 // ============================================
 // Types
@@ -82,7 +83,24 @@ interface LibFolderNodeProps {
 function LibFolderNode({ node, depth, selectedFolders, onToggleFolder, onToggleExpand }: LibFolderNodeProps) {
   const { item } = node
 
-  if (!item.isFolder) return null
+  if (!item.isFolder) {
+    const iconType = getFileIconType(item.name, item.mimeType ?? undefined)
+    const colors = fileTypeColors[iconType]
+    return (
+      <div
+        className="flex items-center gap-1.5 py-1 pr-2 rounded-md select-none"
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+      >
+        <span className="size-4 shrink-0" />
+        <span className="size-4 shrink-0" />
+        <FileTypeIcon iconType={iconType} className={`size-4 shrink-0 ${colors?.icon ?? 'text-muted-foreground'}`} />
+        <span className="text-sm truncate flex-1 text-muted-foreground">{item.name}</span>
+        {item.sizeBytes != null && item.sizeBytes > 0 && (
+          <span className="text-xs text-muted-foreground/60 shrink-0">{formatFileSize(item.sizeBytes)}</span>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -125,7 +143,7 @@ function LibFolderNode({ node, depth, selectedFolders, onToggleFolder, onToggleE
 
       {node.isExpanded && node.children && (
         <div>
-          {node.children.filter(c => c.item.isFolder).map(child => (
+          {node.children.map(child => (
             <LibFolderNode
               key={child.item.id}
               node={child}
@@ -540,9 +558,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
       const data = await response.json() as FolderListResult
       const sorted = sortItems(data.items)
-      const nodes: TreeNodeData[] = sorted.filter(item => item.isFolder).map(item => ({
+      const nodes: TreeNodeData[] = sorted.map(item => ({
         item,
-        children: null,
+        children: item.isFolder ? null : [],
         isExpanded: false,
         isLoading: false,
       }))
@@ -660,9 +678,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
       const data = await response.json() as FolderListResult
       const sorted = sortItems(data.items)
-      const children: TreeNodeData[] = sorted.filter(item => item.isFolder).map(item => ({
+      const children: TreeNodeData[] = sorted.map(item => ({
         item,
-        children: null,
+        children: item.isFolder ? null : [],
         isExpanded: false,
         isLoading: false,
       }))
@@ -825,6 +843,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
           scopePath?: string | null
           scopeSiteId?: string
           scopeMode?: 'include' | 'exclude'
+          remoteDriveId?: string
         }> = []
         const toRemove: string[] = []
 
@@ -865,6 +884,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
             scopePath: `${info.siteName} / ${info.libraryName}${info.path ? ` / ${info.path}` : ''}`,
             scopeSiteId: info.siteId,
             scopeMode: 'include',
+            remoteDriveId: info.driveId,
           })
         }
 
@@ -1118,7 +1138,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                             <div className="flex-1 min-w-0">
                               <span className="text-sm">{lib.displayName}</span>
                               <span className="text-xs text-muted-foreground ml-2">
-                                {lib.itemCount} items, {formatFileSize(lib.sizeBytes)}
+                                {lib.itemCount != null ? `${lib.itemCount} items, ` : ''}{formatFileSize(lib.sizeBytes)}
                               </span>
                             </div>
                           </div>

@@ -546,6 +546,24 @@ The system uses **synchronous execution** (not streaming). Valid event types:
 
 **Other providers**: OpenAI and Google have no known mutual exclusions.
 
+### 11.8 Express 5 Optional Route Parameters (`path-to-regexp` v8)
+
+Express 5 uses `path-to-regexp` v8, where optional parameter syntax changed from Express 4. When making a route segment optional (both the `/` and the parameter), you MUST wrap the slash inside the optional group.
+
+```typescript
+// ❌ WRONG: {: folderId} makes only the VALUE optional — the preceding `/` is still required.
+// `/browse` returns 404, only `/browse/` or `/browse/something` match.
+router.get('/:id/browse/{:folderId}', handler);
+
+// ✅ CORRECT: {/:folderId} makes the entire `/folderId` segment optional.
+// `/browse`, `/browse/`, and `/browse/something` all match.
+router.get('/:id/browse{/:folderId}', handler);
+```
+
+**Key difference**: `{:param}` = optional value, slash required. `{/:param}` = optional segment (slash + value).
+
+This applies to ALL Express 5 routes with optional trailing parameters. Always verify both the "without trailing slash" and "with value" cases in tests.
+
 ---
 
 ## 12. Logging Pattern - Service Context

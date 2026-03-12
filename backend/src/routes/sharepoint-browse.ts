@@ -112,11 +112,11 @@ router.get(
 );
 
 // ============================================================================
-// GET /:id/sites/:siteId/libraries/:driveId/browse/{:folderId} — Browse folder
+// GET /:id/sites/:siteId/libraries/:driveId/browse{/:folderId} — Browse folder
 // ============================================================================
 
 router.get(
-  '/:id/sites/:siteId/libraries/:driveId/browse/{:folderId}',
+  '/:id/sites/:siteId/libraries/:driveId/browse{/:folderId}',
   authenticateMicrosoft,
   async (req: Request, res: Response): Promise<void> => {
     try {

@@ -381,9 +381,18 @@ describe('SharePoint Browse Routes — PRD-111 (sites / libraries / browse)', ()
   // GET /:id/sites/:siteId/libraries/:driveId/browse — Browse folder
   // ==========================================================================
   describe('GET /:id/sites/:siteId/libraries/:driveId/browse (root and folder)', () => {
-    it('browses root when no folderId provided — calls browseFolder with undefined folderId', async () => {
-      // The route uses Express 5 optional param syntax {/:folderId}, so the root
-      // browse URL requires a trailing slash: /browse/ (folderId undefined)
+    it('browses root without trailing slash — the primary frontend call pattern', async () => {
+      // Express 5 optional group {/:folderId} makes the entire /folderId segment
+      // optional, so /browse (no trailing slash) matches with folderId=undefined.
+      const res = await request(app)
+        .get(`/api/connections/${CONNECTION_ID}/sites/${SITE_ID}/libraries/${DRIVE_ID}/browse`)
+        .expect(200);
+
+      expect(res.body).toEqual(enrichedFolderResult);
+      expect(mockBrowseFolder).toHaveBeenCalledWith(CONNECTION_ID, DRIVE_ID, undefined, undefined);
+    });
+
+    it('browses root with trailing slash — also matches the optional group', async () => {
       const res = await request(app)
         .get(`/api/connections/${CONNECTION_ID}/sites/${SITE_ID}/libraries/${DRIVE_ID}/browse/`)
         .expect(200);

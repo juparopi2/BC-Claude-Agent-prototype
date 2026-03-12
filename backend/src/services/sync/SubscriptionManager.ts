@@ -99,8 +99,19 @@ export class SubscriptionManager {
     if (!connection) {
       throw new Error(`Connection not found: ${connectionId}`);
     }
-    if (!connection.microsoft_drive_id) {
-      throw new Error(`Connection ${connectionId} has no microsoft_drive_id`);
+
+    // PRD-111: Resolve driveId from scope level (SharePoint library) or connection level (OneDrive)
+    let driveId: string | null = null;
+    if (scope.scope_type === 'library') {
+      driveId = scope.scope_resource_id;
+    } else if (scope.remote_drive_id) {
+      driveId = scope.remote_drive_id;
+    } else if (connection.microsoft_drive_id) {
+      driveId = connection.microsoft_drive_id;
+    }
+
+    if (!driveId) {
+      throw new Error(`Cannot resolve driveId for subscription on scope ${scopeId} (connection ${connectionId})`);
     }
 
     // 3. Generate clientState (64-byte hex UPPERCASE)
@@ -118,7 +129,7 @@ export class SubscriptionManager {
 
     const requestBody = {
       changeType: 'updated',
-      resource: `drives/${connection.microsoft_drive_id}/root`,
+      resource: `drives/${driveId}/root`,
       notificationUrl: `${webhookBase}/api/webhooks/graph`,
       lifecycleNotificationUrl: `${webhookBase}/api/webhooks/graph/lifecycle`,
       expirationDateTime,

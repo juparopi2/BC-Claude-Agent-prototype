@@ -51,6 +51,8 @@ import agentsRoutes from './routes/agents';
 import analyticsRoutes from './routes/analytics';
 import connectionsRoutes from './routes/connections';
 import onedriveAuthRoutes from './routes/onedrive-auth';
+import sharepointAuthRoutes from './routes/sharepoint-auth';
+import sharepointBrowseRoutes from './routes/sharepoint-browse';
 import webhookRoutes from './routes/webhooks';
 import uploadHealthRoutes from '@/routes/uploads/health.routes';
 import duplicateDetectionRoutes from '@/routes/uploads/duplicate-detection.routes';
@@ -852,6 +854,10 @@ function configureRoutes(): void {
     app.use('/api/connections', connectionsRoutes);
     // OneDrive OAuth flow (PRD-101)
     app.use('/api', onedriveAuthRoutes);
+    // SharePoint OAuth flow (PRD-111)
+    app.use('/api', sharepointAuthRoutes);
+    // SharePoint site/library browsing (PRD-111)
+    app.use('/api/connections', sharepointBrowseRoutes);
   }
 
   // Agent registry endpoint (PRD-011)

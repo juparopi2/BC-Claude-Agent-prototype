@@ -304,6 +304,12 @@ export type {
   ConnectionExpiredPayload,
   ConnectionDisconnectedPayload,
 
+  // SharePoint types (PRD-111)
+  SharePointSite,
+  SharePointLibrary,
+  SharePointSiteListResult,
+  SharePointLibraryListResult,
+
   // Connection types (PRD-100)
   ConnectionSummary,
   ConnectionScopeDetail,
@@ -620,6 +626,12 @@ export {
   createConnectionSchema,
   updateConnectionSchema,
   connectionIdParamSchema,
+
+  // SharePoint schemas (PRD-111)
+  siteIdParamSchema,
+  libraryBrowseParamSchema,
+  siteSearchQuerySchema,
+  libraryListQuerySchema,
 
   // Citation Result schemas (PRD-071)
   CitationPassageSchema,

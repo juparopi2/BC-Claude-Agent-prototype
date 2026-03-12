@@ -62,6 +62,7 @@ export interface ScopeBatchInput {
     scopePath?: string;
     remoteDriveId?: string;
     scopeMode?: 'include' | 'exclude';
+    scopeSiteId?: string;
   }>;
   remove: string[];
 }

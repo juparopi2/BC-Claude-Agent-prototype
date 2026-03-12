@@ -57,6 +57,7 @@ export interface ScopeRow {
   subscription_id: string | null;
   remote_drive_id: string | null;
   scope_mode: string;
+  scope_site_id: string | null;
   created_at: Date;
 }
 
@@ -218,6 +219,7 @@ export class ConnectionRepository {
         subscription_id: true,
         remote_drive_id: true,
         scope_mode: true,
+        scope_site_id: true,
         created_at: true,
       },
       orderBy: { created_at: 'asc' },
@@ -243,6 +245,7 @@ export class ConnectionRepository {
       scopePath?: string;
       remoteDriveId?: string;
       scopeMode?: string;
+      scopeSiteId?: string;
     }
   ): Promise<string> {
     const id = randomUUID().toUpperCase();
@@ -259,6 +262,7 @@ export class ConnectionRepository {
         scope_path: data.scopePath ?? null,
         remote_drive_id: data.remoteDriveId ?? null,
         scope_mode: data.scopeMode ?? 'include',
+        scope_site_id: data.scopeSiteId ?? null,
         sync_status: 'idle',
         item_count: 0,
       },
@@ -319,6 +323,7 @@ export class ConnectionRepository {
         subscription_id: true,
         remote_drive_id: true,
         scope_mode: true,
+        scope_site_id: true,
         created_at: true,
       },
     });
@@ -357,6 +362,7 @@ export class ConnectionRepository {
         subscription_id: true,
         remote_drive_id: true,
         scope_mode: true,
+        scope_site_id: true,
         created_at: true,
       },
       orderBy: { created_at: 'asc' },
@@ -401,6 +407,7 @@ export class ConnectionRepository {
         cs.subscription_id,
         cs.remote_drive_id,
         cs.scope_mode,
+        cs.scope_site_id,
         cs.created_at,
         CAST(COUNT(f.id) AS INT) AS file_count
       FROM connection_scopes cs
@@ -410,7 +417,7 @@ export class ConnectionRepository {
         cs.id, cs.connection_id, cs.scope_type, cs.scope_resource_id,
         cs.scope_display_name, cs.scope_path, cs.sync_status, cs.last_sync_at,
         cs.last_sync_error, cs.last_sync_cursor, cs.item_count, cs.subscription_id,
-        cs.remote_drive_id, cs.scope_mode, cs.created_at
+        cs.remote_drive_id, cs.scope_mode, cs.scope_site_id, cs.created_at
       ORDER BY cs.created_at ASC
     `;
 

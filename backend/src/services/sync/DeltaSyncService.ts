@@ -112,15 +112,17 @@ export class DeltaSyncService {
       // Step 4: Load connection info (need microsoft_drive_id)
       const connection = await prisma.connections.findUnique({
         where: { id: connectionId },
-        select: { microsoft_drive_id: true },
+        select: { microsoft_drive_id: true, provider: true },
       });
 
       if (!connection) {
         throw new Error(`Connection not found: ${connectionId}`);
       }
 
-      // PRD-110: Resolve effective drive ID — shared scopes use remote_drive_id
-      const effectiveDriveId = scope.remote_drive_id ?? connection.microsoft_drive_id;
+      // PRD-111: Resolve effective drive ID
+      const effectiveDriveId = scope.remote_drive_id
+        ?? (connection.provider === 'sharepoint' && scope.scope_type === 'library' ? scope.scope_resource_id : null)
+        ?? connection.microsoft_drive_id;
 
       // Step 5: Execute delta query across all pages
       const allChanges: DeltaChange[] = [];
@@ -128,19 +130,25 @@ export class DeltaSyncService {
 
       let page: DeltaQueryResult;
 
-      if (scope.scope_type === 'folder' && scope.scope_resource_id) {
-        logger.info(
-          { connectionId, scopeId, folderId: scope.scope_resource_id },
-          'Starting folder-scoped delta with cursor'
-        );
-        page = await getOneDriveService().executeFolderDeltaQuery(
-          connectionId,
-          scope.scope_resource_id,
-          scope.last_sync_cursor
-        );
+      // PRD-111: Provider-aware delta dispatch
+      if (connection.provider === 'sharepoint') {
+        const { getSharePointService } = await import('@/services/connectors/sharepoint');
+        const spService = getSharePointService();
+        if (scope.scope_type === 'folder' && scope.scope_resource_id) {
+          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id, driveId: effectiveDriveId }, 'Starting SharePoint folder-scoped delta with cursor');
+          page = await spService.executeFolderDeltaQuery(connectionId, effectiveDriveId!, scope.scope_resource_id, scope.last_sync_cursor);
+        } else {
+          logger.info({ connectionId, scopeId, driveId: effectiveDriveId }, 'Starting SharePoint library-scoped delta with cursor');
+          page = await spService.executeDeltaQuery(connectionId, effectiveDriveId!, scope.last_sync_cursor);
+        }
       } else {
-        logger.info({ connectionId, scopeId }, 'Starting root-scoped delta with cursor');
-        page = await getOneDriveService().executeDeltaQuery(connectionId, scope.last_sync_cursor);
+        if (scope.scope_type === 'folder' && scope.scope_resource_id) {
+          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id }, 'Starting folder-scoped delta with cursor');
+          page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id, scope.last_sync_cursor);
+        } else {
+          logger.info({ connectionId, scopeId }, 'Starting root-scoped delta with cursor');
+          page = await getOneDriveService().executeDeltaQuery(connectionId, scope.last_sync_cursor);
+        }
       }
 
       allChanges.push(...page.changes);
@@ -487,7 +495,9 @@ export class DeltaSyncService {
               scopeId,
               fileId: existing.id,
               fileName: item.name,
-              sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+              sourceType: connection.provider === 'sharepoint'
+                ? FILE_SOURCE_TYPE.SHAREPOINT
+                : FILE_SOURCE_TYPE.ONEDRIVE,
             });
 
             result.updatedFiles++;
@@ -505,7 +515,9 @@ export class DeltaSyncService {
                 size_bytes: BigInt(item.sizeBytes ?? 0),
                 blob_path: null,
                 is_folder: false,
-                source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+                source_type: connection.provider === 'sharepoint'
+                  ? FILE_SOURCE_TYPE.SHAREPOINT
+                  : FILE_SOURCE_TYPE.ONEDRIVE,
                 external_id: item.id,
                 external_drive_id: effectiveDriveId,
                 connection_id: connectionId,
@@ -536,7 +548,9 @@ export class DeltaSyncService {
               scopeId,
               fileId,
               fileName: item.name,
-              sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+              sourceType: connection.provider === 'sharepoint'
+                ? FILE_SOURCE_TYPE.SHAREPOINT
+                : FILE_SOURCE_TYPE.ONEDRIVE,
             });
 
             result.newFiles++;

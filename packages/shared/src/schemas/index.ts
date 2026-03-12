@@ -412,6 +412,24 @@ export type {
   ConnectionIdParam,
 } from './connection.schemas';
 
+// ============================================
+// SharePoint Schemas (PRD-111)
+// ============================================
+
+export {
+  siteIdParamSchema,
+  libraryBrowseParamSchema,
+  siteSearchQuerySchema,
+  libraryListQuerySchema,
+} from './sharepoint.schemas';
+
+export type {
+  SiteIdParam,
+  LibraryBrowseParam,
+  SiteSearchQuery,
+  LibraryListQuery,
+} from './sharepoint.schemas';
+
 /**
  * Re-export Zod for consumers who need to extend schemas
  */

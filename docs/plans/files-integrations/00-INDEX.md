@@ -53,8 +53,9 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-108](./PRD-108-webhook-sync-engine.md) | Real-Time Sync Engine (Webhooks) | **COMPLETED** |
 | [PRD-109](./PRD-109-settings-disconnect.md) | Settings Connections Tab & Full Disconnect | **COMPLETED** |
 | [PRD-110](./PRD-110-shared-files-browsing.md) | OneDrive "Shared With Me" Browsing | **COMPLETED** |
-| [PRD-111](./PRD-111-sharepoint-connection.md) | SharePoint Connection | Planned |
+| [PRD-111](./PRD-111-sharepoint-connection.md) | SharePoint Connection — Backend | **COMPLETED** |
 | [PRD-112](./PRD-112-scope-selection-inheritance.md) | Scope Selection Inheritance | **COMPLETED** |
+| [PRD-113](./PRD-113-sharepoint-frontend.md) | SharePoint Frontend — Wizard, Browsing & Unified Views | Planned |
 
 ### Dependency Chain
 
@@ -88,10 +89,15 @@ PRD-107 (OneDrive UX Polish) ── COMPLETED
    │
    ├──→ PRD-110 (Shared Files) ── COMPLETED
    │
-   └──→ PRD-112 (Scope Selection Inheritance)
+   ├──→ PRD-112 (Scope Selection Inheritance) ── COMPLETED
+   │
+   └──→ PRD-111 (SharePoint Backend) ── COMPLETED
+         │
+         v
+       PRD-113 (SharePoint Frontend) ── Planned
 ```
 
-PRD-100 through PRD-107 form the completed OneDrive foundation. Three independent tracks can now proceed in parallel: Webhooks (PRD-108 → PRD-111 SharePoint), Settings Disconnect (PRD-109), Shared Files (PRD-110), and Scope Selection Inheritance (PRD-112).
+PRD-100 through PRD-107 form the completed OneDrive foundation. PRD-108 through PRD-112 are all completed. The remaining work is SharePoint: PRD-111 (backend) → PRD-113 (frontend).
 
 ### Renumbering History (2026-03-09)
 

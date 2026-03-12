@@ -98,15 +98,19 @@ export class InitialSyncService {
       // Step 2: Fetch connection info (need microsoft_drive_id)
       const connection = await prisma.connections.findUnique({
         where: { id: connectionId },
-        select: { microsoft_drive_id: true },
+        select: { microsoft_drive_id: true, provider: true },
       });
 
       if (!connection) {
         throw new Error(`Connection not found: ${connectionId}`);
       }
 
-      // PRD-110: Resolve effective drive ID — shared scopes use remote_drive_id
-      const effectiveDriveId = scope.remote_drive_id ?? connection.microsoft_drive_id;
+      // PRD-111: Resolve effective drive ID
+      // SharePoint library scopes: scope_resource_id IS the driveId
+      // OneDrive: fall back to connection-level microsoft_drive_id
+      const effectiveDriveId = scope.remote_drive_id
+        ?? (connection.provider === 'sharepoint' && scope.scope_type === 'library' ? scope.scope_resource_id : null)
+        ?? connection.microsoft_drive_id;
 
       // Step 3: Execute delta query — scope-aware routing
       const allChanges: DeltaChange[] = [];
@@ -116,12 +120,25 @@ export class InitialSyncService {
       // First call: route based on scope_type
       let page: DeltaQueryResult;
 
-      if (scope.scope_type === 'folder' && scope.scope_resource_id) {
-        logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id }, 'Starting folder-scoped delta');
-        page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id);
+      // PRD-111: Provider-aware delta dispatch
+      if (connection.provider === 'sharepoint') {
+        const { getSharePointService } = await import('@/services/connectors/sharepoint');
+        const spService = getSharePointService();
+        if (scope.scope_type === 'folder' && scope.scope_resource_id) {
+          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id, driveId: effectiveDriveId }, 'Starting SharePoint folder-scoped delta');
+          page = await spService.executeFolderDeltaQuery(connectionId, effectiveDriveId!, scope.scope_resource_id);
+        } else {
+          logger.info({ connectionId, scopeId, driveId: effectiveDriveId }, 'Starting SharePoint library-scoped delta');
+          page = await spService.executeDeltaQuery(connectionId, effectiveDriveId!);
+        }
       } else {
-        logger.info({ connectionId, scopeId }, 'Starting root-scoped delta');
-        page = await getOneDriveService().executeDeltaQuery(connectionId);
+        if (scope.scope_type === 'folder' && scope.scope_resource_id) {
+          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id }, 'Starting folder-scoped delta');
+          page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id);
+        } else {
+          logger.info({ connectionId, scopeId }, 'Starting root-scoped delta');
+          page = await getOneDriveService().executeDeltaQuery(connectionId);
+        }
       }
 
       allChanges.push(...page.changes);
@@ -302,7 +319,9 @@ export class InitialSyncService {
                     size_bytes: BigInt(item.sizeBytes ?? 0),
                     blob_path: null,
                     is_folder: false,
-                    source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+                    source_type: connection.provider === 'sharepoint'
+                      ? FILE_SOURCE_TYPE.SHAREPOINT
+                      : FILE_SOURCE_TYPE.ONEDRIVE,
                     external_id: item.id,
                     external_drive_id: effectiveDriveId,
                     connection_id: connectionId,
@@ -461,7 +480,7 @@ export class InitialSyncService {
       // 2. Fetch connection's microsoft_drive_id
       const connection = await prisma.connections.findUnique({
         where: { id: connectionId },
-        select: { microsoft_drive_id: true },
+        select: { microsoft_drive_id: true, provider: true },
       });
 
       if (!connection) {
@@ -507,7 +526,9 @@ export class InitialSyncService {
             size_bytes: BigInt(item.sizeBytes ?? 0),
             blob_path: null,
             is_folder: false,
-            source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+            source_type: connection.provider === 'sharepoint'
+              ? FILE_SOURCE_TYPE.SHAREPOINT
+              : FILE_SOURCE_TYPE.ONEDRIVE,
             external_id: item.id,
             external_drive_id: effectiveDriveId,
             connection_id: connectionId,

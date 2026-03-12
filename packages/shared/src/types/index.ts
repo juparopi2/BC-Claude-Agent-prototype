@@ -481,3 +481,11 @@ export type {
   OrphanCleanupMetrics,
   BatchTimeoutMetrics,
 } from './upload-dashboard.types';
+
+// SharePoint types (PRD-111)
+export type {
+  SharePointSite,
+  SharePointLibrary,
+  SharePointSiteListResult,
+  SharePointLibraryListResult,
+} from './sharepoint.types';

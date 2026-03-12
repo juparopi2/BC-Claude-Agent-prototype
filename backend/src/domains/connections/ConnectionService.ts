@@ -284,6 +284,7 @@ export class ConnectionService {
         scopePath: scopeInput.scopePath,
         remoteDriveId: scopeInput.remoteDriveId,
         scopeMode: scopeInput.scopeMode,
+        scopeSiteId: scopeInput.scopeSiteId,
       });
 
       const scopeRow = await repo.findScopeById(scopeId);
@@ -294,6 +295,15 @@ export class ConnectionService {
       if (scopeInput.scopeMode === 'exclude') {
         // PRD-112: Exclusion scopes don't trigger sync — clean up existing file if present
         cleanupService.removeFileByExternalId(normalizedConnectionId, scopeInput.scopeResourceId, normalizedUserId);
+      } else if (scopeInput.scopeType === 'site') {
+        // PRD-111: Site-scope expansion — enumerate libraries and create child library scopes
+        this._expandSiteScope(normalizedConnectionId, scopeId, scopeInput.scopeResourceId, scopeInput.scopeDisplayName ?? '', normalizedUserId)
+          .catch((err) => {
+            const errorInfo = err instanceof Error
+              ? { message: err.message, name: err.name }
+              : { value: String(err) };
+            logger.error({ error: errorInfo, connectionId: normalizedConnectionId, scopeId }, 'Site-scope expansion failed');
+          });
       } else {
         // Fire-and-forget sync for the new include scope
         initialSyncService.syncScope(normalizedConnectionId, scopeId, normalizedUserId);
@@ -454,6 +464,57 @@ export class ConnectionService {
   // ============================================================================
   // Private helpers
   // ============================================================================
+
+  /**
+   * PRD-111: Expand a site-scope into individual library scopes.
+   * Enumerates non-system libraries from SharePoint and creates one
+   * 'library' scope per library, then triggers initial sync for each.
+   */
+  private async _expandSiteScope(
+    connectionId: string,
+    parentScopeId: string,
+    siteId: string,
+    siteName: string,
+    userId: string
+  ): Promise<void> {
+    logger.info({ connectionId, parentScopeId, siteId }, 'Expanding site scope into library scopes');
+
+    const { getSharePointService } = await import('@/services/connectors/sharepoint');
+    const spService = getSharePointService();
+    const repo = getConnectionRepository();
+    const initialSyncService = getInitialSyncService();
+
+    const MAX_LIBRARIES = 20;
+
+    const result = await spService.getLibraries(connectionId, siteId, false);
+    const libraries = result.libraries.slice(0, MAX_LIBRARIES);
+
+    for (const lib of libraries) {
+      const libScopeId = await repo.createScope(connectionId, {
+        scopeType: 'library',
+        scopeResourceId: lib.driveId,
+        scopeDisplayName: lib.displayName,
+        scopePath: `${siteName} / ${lib.displayName}`,
+        scopeSiteId: siteId,
+      });
+
+      // Fire-and-forget sync for each library scope
+      initialSyncService.syncScope(connectionId, libScopeId, userId);
+    }
+
+    // Mark parent site scope as idle with library count
+    await repo.updateScope(parentScopeId, {
+      syncStatus: 'idle',
+      itemCount: libraries.length,
+      lastSyncAt: new Date(),
+      lastSyncError: null,
+    });
+
+    logger.info(
+      { connectionId, parentScopeId, siteId, libraryCount: libraries.length },
+      'Site scope expanded into library scopes'
+    );
+  }
 
   /**
    * Map a DB row to the public-facing ConnectionSummary shape.

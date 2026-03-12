@@ -24,9 +24,10 @@ import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import type { ExternalFileItem, FolderListResult, ConnectionScopeDetail, ConnectionScopeWithStats, ScopeBatchResult } from '@bc-agent/shared'
-import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, SUPPORTED_EXTENSIONS_DISPLAY } from '@bc-agent/shared'
+import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, SUPPORTED_EXTENSIONS_DISPLAY, CONNECTION_STATUS } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
+import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
 import { toast } from 'sonner'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 import { ScopeDiffView } from './ScopeDiffView'
@@ -330,7 +331,14 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   useEffect(() => {
     if (initialConnectionId) {
       setConnectionId(initialConnectionId)
-      setStep('browse')
+      const connection = useIntegrationListStore.getState().connections.find(
+        (c) => c.id === initialConnectionId
+      )
+      if (connection?.status === CONNECTION_STATUS.EXPIRED) {
+        setStep('connect')
+      } else {
+        setStep('browse')
+      }
     }
   }, [initialConnectionId])
 
@@ -409,6 +417,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       if (data.status === 'connected' && data.connectionId) {
         setConnectionId(data.connectionId)
         setStep('browse')
+        useIntegrationListStore.getState().fetchConnections()
       } else if (data.status === 'requires_consent' && data.authUrl) {
         window.location.href = data.authUrl
       } else {
@@ -1008,13 +1017,16 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
   const handleDone = useCallback(() => {
     fetchConnections()
+    useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root')
     onClose()
   }, [fetchConnections, onClose])
 
   const handleClose = useCallback(() => {
     stopPolling()
+    fetchConnections()
+    useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root')
     onClose()
-  }, [stopPolling, onClose])
+  }, [stopPolling, fetchConnections, onClose])
 
   // ============================================
   // Render

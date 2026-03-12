@@ -13,7 +13,7 @@ import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { useFiles, useFolderNavigation, useFileProcessingEvents } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useSyncEvents } from '@/src/domains/integrations';
+import { useSyncEvents, useConnectionHealth } from '@/src/domains/integrations';
 import { FileToolbar } from './FileToolbar';
 import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';
@@ -38,6 +38,9 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
 
   // Activate WebSocket listeners for sync status updates (PRD-107)
   useSyncEvents();
+
+  // Proactive health monitoring for external connections (Layer 3)
+  useConnectionHealth();
 
   // Load files on mount and when folder changes
   useEffect(() => {

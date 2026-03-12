@@ -21,7 +21,7 @@ const DISABLED_PROVIDERS = new Set<ProviderId>([
 export default function RightPanel() {
   const [panelWidth, setPanelWidth] = useState<number>(Infinity);
   const panelRef = useRef<HTMLDivElement>(null);
-  const { connections, openWizard, wizardOpen, closeWizard, wizardProviderId, wizardInitialConnectionId } = useIntegrations();
+  const { connections, fetchConnections, openWizard, wizardOpen, closeWizard, wizardProviderId, wizardInitialConnectionId } = useIntegrations();
 
   // Controlled tab state for programmatic switching
   const [activeTab, setActiveTab] = useState('files');
@@ -54,11 +54,13 @@ export default function RightPanel() {
     if (connected === 'onedrive' && connectionId) {
       // OneDrive OAuth success — switch to connections tab and open wizard at browse step
       setActiveTab('connections');
+      fetchConnections();
       openWizard(PROVIDER_ID.ONEDRIVE, connectionId);
       router.replace(pathname);
     } else if (connected === 'sharepoint' && connectionId) {
       // SharePoint OAuth success — switch to connections tab and open wizard at sites step
       setActiveTab('connections');
+      fetchConnections();
       openWizard(PROVIDER_ID.SHAREPOINT, connectionId);
       router.replace(pathname);
     } else if (onedriveError) {

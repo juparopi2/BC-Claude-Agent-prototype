@@ -64,10 +64,13 @@ function makeConnection(overrides: Partial<ConnectionSummary> = {}): ConnectionS
 // TESTS
 // ============================================================================
 
+const mockFetchConnections = vi.fn().mockResolvedValue(undefined);
+
 const defaultIntegrations = {
   connections: [],
   isLoading: false,
   error: null,
+  fetchConnections: mockFetchConnections,
   wizardOpen: false,
   wizardProviderId: null,
   wizardInitialConnectionId: null,
@@ -176,5 +179,29 @@ describe('ConnectionsTab', () => {
     await user.click(screen.getByText('Disconnect'));
 
     expect(screen.getByTestId('disconnect-modal')).toBeTruthy();
+  });
+
+  it('expired connection shows "Expired" badge', () => {
+    vi.mocked(useIntegrations).mockReturnValue({
+      ...defaultIntegrations,
+      connections: [makeConnection({ status: 'expired' })],
+    });
+
+    render(<ConnectionsTab />);
+
+    expect(screen.getByText('Expired')).toBeTruthy();
+    expect(screen.queryByText('Connected')).toBeNull();
+  });
+
+  it('expired connection still shows Configure and Disconnect buttons', () => {
+    vi.mocked(useIntegrations).mockReturnValue({
+      ...defaultIntegrations,
+      connections: [makeConnection({ status: 'expired' })],
+    });
+
+    render(<ConnectionsTab />);
+
+    expect(screen.getByText('Configure')).toBeTruthy();
+    expect(screen.getByText('Disconnect')).toBeTruthy();
   });
 });

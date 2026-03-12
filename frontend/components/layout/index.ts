@@ -15,4 +15,5 @@ export { default as LeftPanel } from './LeftPanel';
 export { default as RightPanel } from './RightPanel';
 export { ConnectionStatusBanner } from './ConnectionStatusBanner';
 export type { ConnectionStatusBannerProps } from './ConnectionStatusBanner';
+export { IntegrationHealthBanner } from './IntegrationHealthBanner';
 export { GlobalBanners } from './GlobalBanners';

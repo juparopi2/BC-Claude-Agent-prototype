@@ -56,6 +56,7 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-111](./PRD-111-sharepoint-connection.md) | SharePoint Connection — Backend | **COMPLETED** |
 | [PRD-112](./PRD-112-scope-selection-inheritance.md) | Scope Selection Inheritance | **COMPLETED** |
 | [PRD-113](./PRD-113-sharepoint-frontend.md) | SharePoint Frontend — Wizard, Browsing & Unified Views | Planned |
+| [PRD-114](./PRD-114-state-audit.md) | State Management Audit | Cross-store consistency contracts for 26 Zustand stores | Proposed |
 
 ### Dependency Chain
 

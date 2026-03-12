@@ -517,6 +517,31 @@ export class ConnectionService {
   }
 
   /**
+   * Fire-and-forget: persist detected token expiration to DB and notify via WebSocket.
+   */
+  private persistExpiredStatus(connectionId: string, userId: string): void {
+    const repo = getConnectionRepository();
+    repo.update(connectionId, {
+      status: 'expired',
+      lastError: 'Token expired — re-authentication required',
+      lastErrorAt: new Date(),
+    }).then(async () => {
+      try {
+        const { isSocketServiceInitialized, getSocketIO } = await import('@/services/websocket/SocketService');
+        const { SYNC_WS_EVENTS } = await import('@bc-agent/shared');
+        if (isSocketServiceInitialized()) {
+          getSocketIO().to(`user:${userId}`).emit(SYNC_WS_EVENTS.CONNECTION_EXPIRED, { connectionId });
+        }
+      } catch { /* socket not available in tests */ }
+    }).catch((err: unknown) => {
+      const errorInfo = err instanceof Error
+        ? { message: err.message, name: err.name }
+        : { value: String(err) };
+      logger.warn({ error: errorInfo, connectionId }, 'Failed to persist expired status');
+    });
+  }
+
+  /**
    * Map a DB row to the public-facing ConnectionSummary shape.
    */
   private toSummary(row: ConnectionRow, scopeCount: number, fileCount: number): ConnectionSummary {
@@ -528,6 +553,8 @@ export class ConnectionService {
       new Date(row.token_expires_at).getTime() < Date.now()
     ) {
       effectiveStatus = 'expired' as ConnectionStatus;
+      // Persist the expiration detected at presentation time (fire-and-forget)
+      this.persistExpiredStatus(row.id, row.user_id);
     }
 
     return {

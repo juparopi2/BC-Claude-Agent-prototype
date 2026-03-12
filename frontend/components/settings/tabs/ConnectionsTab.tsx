@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Building2, Cloud, Globe, BarChart3, Loader2, Settings, Unplug, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { useIntegrations } from '@/src/domains/integrations/hooks/useIntegrations';
 import { DisconnectConfirmModal } from '@/components/connections/DisconnectConfirmModal';
 import {
@@ -88,8 +89,16 @@ export function ConnectionsTab() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{displayName}</span>
                   {isConnected && (
-                    <Badge variant="outline" className="text-xs text-green-600 border-green-200 bg-green-50 dark:text-green-400 dark:border-green-800 dark:bg-green-950">
-                      Connected
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'text-xs',
+                        connection!.status === CONNECTION_STATUS.EXPIRED
+                          ? 'text-amber-600 border-amber-200 bg-amber-50 dark:text-amber-400 dark:border-amber-800 dark:bg-amber-950'
+                          : 'text-green-600 border-green-200 bg-green-50 dark:text-green-400 dark:border-green-800 dark:bg-green-950'
+                      )}
+                    >
+                      {connection!.status === CONNECTION_STATUS.EXPIRED ? 'Expired' : 'Connected'}
                     </Badge>
                   )}
                   {!isConnectable && !isConnected && (

@@ -27,5 +27,5 @@ export function useIntegrations() {
     }
   }, [hasFetched, fetchConnections]);
 
-  return { connections, isLoading, error, wizardOpen, wizardProviderId, wizardInitialConnectionId, openWizard, closeWizard };
+  return { connections, isLoading, error, fetchConnections, wizardOpen, wizardProviderId, wizardInitialConnectionId, openWizard, closeWizard };
 }

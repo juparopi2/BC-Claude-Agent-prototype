@@ -14,6 +14,7 @@ import { useCallback } from 'react';
 import { useAuthStore } from '@/src/domains/auth';
 import { SessionExpiryBanner } from '@/components/auth/SessionExpiryBanner';
 import { ConnectionStatusBanner } from './ConnectionStatusBanner';
+import { IntegrationHealthBanner } from './IntegrationHealthBanner';
 import {
   useConnectionStore,
   selectShouldShowBanner,
@@ -48,6 +49,9 @@ export function GlobalBanners() {
     <div className="fixed top-0 left-0 right-0 z-50 flex flex-col">
       {/* Connection status banner - stacked at top */}
       <ConnectionStatusBanner className="relative" />
+
+      {/* Integration health banner - stacked below connection banner if visible */}
+      <IntegrationHealthBanner className="relative" />
 
       {/* Session expiry banner - stacked below connection banner if visible */}
       <SessionExpiryBanner

@@ -34,7 +34,7 @@ export function FolderTree({ className }: FolderTreeProps) {
   const isOneDriveExpired = oneDriveConnection?.status === CONNECTION_STATUS.EXPIRED;
   const showOneDriveSection = hasOneDrive || isOneDriveExpired;
   const hasExternalConnection = connections.some(
-    (c) => c.status === CONNECTION_STATUS.CONNECTED
+    (c) => c.status === CONNECTION_STATUS.CONNECTED || c.status === CONNECTION_STATUS.EXPIRED
   );
 
   // Local Files collapsible state (expanded by default)

@@ -33,9 +33,10 @@ import type {
   SharePointSiteListResult,
   SharePointLibraryListResult,
 } from '@bc-agent/shared'
-import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID } from '@bc-agent/shared'
+import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, CONNECTION_STATUS } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
+import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
 import { toast } from 'sonner'
 import type { TreeNodeData, SelectedScope, SyncState, ScopeProgressEntry, AuthInitiateResponse, SyncStatusResponse } from './wizard-utils'
 import { findNode, sortItems, formatFileSize } from './wizard-utils'
@@ -219,7 +220,14 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   useEffect(() => {
     if (initialConnectionId) {
       setConnectionId(initialConnectionId)
-      setStep('sites')
+      const connection = useIntegrationListStore.getState().connections.find(
+        (c) => c.id === initialConnectionId
+      )
+      if (connection?.status === CONNECTION_STATUS.EXPIRED) {
+        setStep('connect')
+      } else {
+        setStep('sites')
+      }
     }
   }, [initialConnectionId])
 
@@ -249,6 +257,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
       if (data.status === 'connected' && data.connectionId) {
         setConnectionId(data.connectionId)
         setStep('sites')
+        useIntegrationListStore.getState().fetchConnections()
       } else if (data.status === 'requires_consent' && data.authUrl) {
         window.location.href = data.authUrl
       } else {
@@ -951,13 +960,16 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
   const handleDone = useCallback(() => {
     fetchConnections()
+    useFolderTreeStore.getState().invalidateTreeFolder('sharepoint-root')
     onClose()
   }, [fetchConnections, onClose])
 
   const handleClose = useCallback(() => {
     stopPolling()
+    fetchConnections()
+    useFolderTreeStore.getState().invalidateTreeFolder('sharepoint-root')
     onClose()
-  }, [stopPolling, onClose])
+  }, [stopPolling, fetchConnections, onClose])
 
   // ============================================
   // Selection summary for libraries step

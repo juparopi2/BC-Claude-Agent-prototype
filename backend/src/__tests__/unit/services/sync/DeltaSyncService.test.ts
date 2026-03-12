@@ -283,7 +283,7 @@ describe('DeltaSyncService', () => {
       });
     });
 
-    it('marks scope as syncing first, then idle on completion', async () => {
+    it('marks scope as syncing first, then synced on completion', async () => {
       await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
 
       expect(mockUpdateScope).toHaveBeenNthCalledWith(
@@ -294,7 +294,7 @@ describe('DeltaSyncService', () => {
       expect(mockUpdateScope).toHaveBeenNthCalledWith(
         2,
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
     });
 
@@ -470,7 +470,7 @@ describe('DeltaSyncService', () => {
       // Regardless of whether findFirst found an existing folder, the sync should complete
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
     });
   });
@@ -693,6 +693,172 @@ describe('DeltaSyncService', () => {
         SP_DRIVE_ID,
         'https://graph.microsoft.com/v1.0/drives/SP-DRIVE/root/delta?skiptoken=abc'
       );
+    });
+  });
+
+  // ==========================================================================
+  // PRD-117: Processing counters and status
+  // ==========================================================================
+
+  describe('PRD-117 — processingTotal and processingStatus', () => {
+    it('sets processingTotal = newFiles + updatedFiles and processingStatus = "processing"', async () => {
+      // 1 new file + 1 updated file
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [
+          makeFileChange('new-file-1', 'new.pdf'),
+          makeFileChange('upd-file-1', 'updated.pdf', { eTag: 'etag-changed' }),
+        ],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      // First file: not found in DB (new)
+      mockFilesFindFirst.mockResolvedValueOnce(null);
+      // Second file: existing with different eTag (update)
+      mockFilesFindFirst.mockResolvedValueOnce({
+        id: 'EXISTING-FILE-ID',
+        content_hash_external: 'etag-old',
+      });
+
+      const result = await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
+
+      expect(result.newFiles).toBe(1);
+      expect(result.updatedFiles).toBe(1);
+
+      // processingTotal = newFiles + updatedFiles = 2
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 2,
+          processingCompleted: 0,
+          processingFailed: 0,
+          processingStatus: 'processing',
+        })
+      );
+    });
+
+    it('sets processingStatus = "completed" when no files need processing', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 0,
+          processingStatus: 'completed',
+        })
+      );
+    });
+
+    it('sets processingStatus = "processing" when only new files (no updates)', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [makeFileChange('new-1', 'a.pdf'), makeFileChange('new-2', 'b.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      // Both files are new
+      mockFilesFindFirst.mockResolvedValue(null);
+
+      const result = await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
+
+      expect(result.newFiles).toBe(2);
+      expect(result.updatedFiles).toBe(0);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 2,
+          processingStatus: 'processing',
+        })
+      );
+    });
+
+    it('sets processingStatus = "processing" when only updated files (no new)', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [makeFileChange('upd-1', 'changed.pdf', { eTag: 'new-etag' })],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      mockFilesFindFirst.mockResolvedValue({
+        id: 'EXISTING-1',
+        content_hash_external: 'old-etag',
+      });
+
+      const result = await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
+
+      expect(result.updatedFiles).toBe(1);
+      expect(result.newFiles).toBe(0);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 1,
+          processingStatus: 'processing',
+        })
+      );
+    });
+
+    it('skipped files (same eTag) do not count toward processingTotal', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [makeFileChange('same-1', 'unchanged.pdf', { eTag: 'same-etag' })],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      // Same eTag — no content change
+      mockFilesFindFirst.mockResolvedValue({
+        id: 'EXISTING-1',
+        content_hash_external: 'same-etag',
+      });
+
+      const result = await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
+
+      expect(result.skipped).toBe(1);
+      expect(result.updatedFiles).toBe(0);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 0,
+          processingStatus: 'completed',
+        })
+      );
+    });
+
+    it('includes both processingTotal and deltaLink in the final updateScope call', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [makeFileChange('f1', 'doc.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      mockFilesFindFirst.mockResolvedValue(null);
+
+      await service.syncDelta(CONNECTION_ID, SCOPE_ID, USER_ID, 'manual');
+
+      // The second updateScope call (after sync) includes both cursor and processing counters
+      const secondCall = mockUpdateScope.mock.calls[1];
+      expect(secondCall![1]).toMatchObject({
+        syncStatus: 'synced',
+        lastSyncCursor: DELTA_LINK,
+        processingTotal: 1,
+        processingCompleted: 0,
+        processingFailed: 0,
+        processingStatus: 'processing',
+      });
     });
   });
 });

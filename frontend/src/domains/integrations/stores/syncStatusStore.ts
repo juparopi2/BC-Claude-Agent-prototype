@@ -11,8 +11,11 @@
 import { create } from 'zustand';
 
 interface SyncEntry {
-  status: 'syncing' | 'idle' | 'error';
+  status: 'syncing' | 'processing' | 'idle' | 'error';
   percentage: number;
+  processingTotal: number;
+  processingCompleted: number;
+  processingFailed: number;
   lastSyncedAt?: string;
   error?: string;
 }
@@ -40,6 +43,7 @@ interface SyncStatusActions {
   setSyncStatus(scopeId: string, status: SyncEntry['status'], percentage?: number): void;
   setLastSyncedAt(scopeId: string, date: string): void;
   setSyncError(scopeId: string, error: string): void;
+  setProcessingProgress(scopeId: string, data: { total: number; completed: number; failed: number }): void;
   reset(): void;
   // PRD-116: Operation actions
   startOperation(op: Omit<SyncOperation, 'status' | 'createdAt' | 'dismissed'>): void;
@@ -57,7 +61,14 @@ export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()(
     set((state) => ({
       activeSyncs: {
         ...state.activeSyncs,
-        [scopeId]: { status, percentage },
+        [scopeId]: {
+          ...state.activeSyncs[scopeId],
+          status,
+          percentage,
+          processingTotal: state.activeSyncs[scopeId]?.processingTotal ?? 0,
+          processingCompleted: state.activeSyncs[scopeId]?.processingCompleted ?? 0,
+          processingFailed: state.activeSyncs[scopeId]?.processingFailed ?? 0,
+        },
       },
     })),
 
@@ -83,6 +94,25 @@ export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()(
         },
       },
     })),
+
+  setProcessingProgress: (scopeId, data) =>
+    set((state) => {
+      const totalDone = data.completed + data.failed;
+      const percentage = data.total > 0 ? Math.round((totalDone / data.total) * 100) : 0;
+      return {
+        activeSyncs: {
+          ...state.activeSyncs,
+          [scopeId]: {
+            ...state.activeSyncs[scopeId],
+            status: 'processing' as const,
+            percentage,
+            processingTotal: data.total,
+            processingCompleted: data.completed,
+            processingFailed: data.failed,
+          },
+        },
+      };
+    }),
 
   reset: () => set({ activeSyncs: {}, operations: new Map() }),
 
@@ -117,10 +147,10 @@ export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()(
 
       const op = state.operations.get(targetKey)!;
 
-      // Check if all scopes in the operation are done (not syncing)
+      // Check if all scopes in the operation are done (not syncing or processing)
       const allDone = op.scopeIds.every((id) => {
         const entry = state.activeSyncs[id];
-        return !entry || entry.status !== 'syncing';
+        return !entry || (entry.status !== 'syncing' && entry.status !== 'processing');
       });
 
       if (!allDone) return {};
@@ -172,7 +202,7 @@ export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()(
  * Selector: whether any scope is currently syncing
  */
 export function selectIsAnySyncing(state: SyncStatusState): boolean {
-  return Object.values(state.activeSyncs).some((s) => s.status === 'syncing');
+  return Object.values(state.activeSyncs).some((s) => s.status === 'syncing' || s.status === 'processing');
 }
 
 /**

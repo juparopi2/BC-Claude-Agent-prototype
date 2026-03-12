@@ -34,7 +34,7 @@
     "test:integration:clean": "npm run cache:clear && npm run test:integration",
     "test:e2e:clean": "npm run cache:clear && npm run test:e2e",
     "lint": "eslint src/**/*.ts",
-    "type-check": "git diff --name-only --diff-filter=d HEAD~1 | grep '\\.ts$' | xargs -r npx tsc --noEmit",
+    "type-check": "node scripts/type-check.mjs",
     "verify": "npm run build",
     "verify:all": "npm run build && npm run lint && npm run type-check && npm run test:all",
     "prepush": "npm run verify",

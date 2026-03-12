@@ -173,6 +173,11 @@ model connection_scopes {
   scope_site_id             String?      @db.NVarChar(500)
   created_at                DateTime     @default(dbgenerated("getutcdate()"))
   updated_at                DateTime     @default(dbgenerated("getutcdate()"))
+  /// CHECK: CK_connection_scopes_processing_status (idle, processing, completed, partial_failure) OR NULL
+  processing_total          Int          @default(0)
+  processing_completed      Int          @default(0)
+  processing_failed         Int          @default(0)
+  processing_status         String?      @db.NVarChar(30)
   connections               connections  @relation(fields: [connection_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_connection_scopes_connection")
 
   @@index([connection_id], map: "IX_connection_scopes_connection")
@@ -323,6 +328,7 @@ model files {
   @@index([user_id, source_type], map: "IX_files_source_type")
   @@index([user_id, parent_folder_id, name], map: "IX_files_user_folder")
   @@index([user_id, content_hash], map: "IX_files_user_content_hash")
+  @@index([user_id, file_modified_at(sort: Desc)], map: "IX_files_user_modified_date")
   /// Replaced by filtered unique index UQ_files_connection_external in DB (PRD-104)
   /// Prisma cannot represent filtered indexes, so this @@index is omitted.
   /// The DB-level filtered unique index enforces uniqueness where both columns are NOT NULL.

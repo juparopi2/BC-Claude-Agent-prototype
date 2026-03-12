@@ -58,6 +58,8 @@ Each PRD delivers backend functionality WITH its corresponding UI slice for E2E 
 | [PRD-113](./PRD-113-sharepoint-frontend.md) | SharePoint Frontend — Wizard, Browsing & Unified Views | Planned |
 | [PRD-114](./PRD-114-state-audit.md) | State Management Audit | Cross-store consistency contracts for 26 Zustand stores | Proposed |
 | [PRD-115](./PRD-115-sharepoint-scope-inheritance.md) | SharePoint Scope Selection Inheritance | Tri-state selection parity with OneDrive | Proposed |
+| [PRD-116](./PRD-116-scope-sync-atomicity.md) | Scope Batch Creation Atomicity & Sync Reliability | **COMPLETED** |
+| [PRD-117](./PRD-117-sync-processing-pipeline-unification.md) | Sync Processing Pipeline Unification & Completion Fidelity | **COMPLETED** |
 
 ### Dependency Chain
 
@@ -99,7 +101,7 @@ PRD-107 (OneDrive UX Polish) ── COMPLETED
        PRD-113 (SharePoint Frontend) ── Planned
 ```
 
-PRD-100 through PRD-107 form the completed OneDrive foundation. PRD-108 through PRD-112 are all completed. The remaining work is SharePoint: PRD-111 (backend) → PRD-113 (frontend).
+PRD-100 through PRD-107 form the completed OneDrive foundation. PRD-108 through PRD-112 and PRD-116–PRD-117 are all completed. The remaining work is SharePoint frontend (PRD-113) and state audit (PRD-114).
 
 ### Renumbering History (2026-03-09)
 

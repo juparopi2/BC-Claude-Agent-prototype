@@ -34,6 +34,7 @@ const mockFilesFindFirst = vi.hoisted(() => vi.fn());
 const mockFilesFindMany = vi.hoisted(() => vi.fn());
 const mockFilesCreate = vi.hoisted(() => vi.fn());
 const mockFilesUpdate = vi.hoisted(() => vi.fn());
+const mockTransaction = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
@@ -46,6 +47,10 @@ vi.mock('@/infrastructure/database/prisma', () => ({
       create: mockFilesCreate,
       update: mockFilesUpdate,
     },
+    // PRD-117 / PRD-104: InitialSyncService wraps per-batch DB writes in a transaction.
+    // The mock executes the callback immediately with the prisma mock itself as `tx`,
+    // so mockFilesFindFirst / mockFilesCreate etc. are still intercepted inside the callback.
+    $transaction: mockTransaction,
   },
 }));
 
@@ -237,15 +242,30 @@ describe('InitialSyncService', () => {
     mockExecuteDeltaQuery.mockReset();
     mockExecuteFolderDeltaQuery.mockReset();
     mockGetItemMetadata.mockReset();
+    mockGetItemMetadataFromDrive.mockReset();
     mockUpdateScope.mockReset();
     mockSPExecuteDeltaQuery.mockReset();
     mockSPExecuteFolderDeltaQuery.mockReset();
     mockFindScopeById.mockReset();
     mockFindExclusionScopesByConnection.mockReset();
     mockAddFileProcessingFlow.mockReset();
+    mockTransaction.mockReset();
 
     // Default: no exclusion scopes
     mockFindExclusionScopesByConnection.mockResolvedValue([]);
+
+    // PRD-104: $transaction executes callback immediately using prisma mock as `tx`.
+    // This allows mockFilesFindFirst/mockFilesCreate to be intercepted inside the transaction.
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const txProxy = {
+        files: {
+          findFirst: mockFilesFindFirst,
+          create: mockFilesCreate,
+          update: mockFilesUpdate,
+        },
+      };
+      return fn(txProxy);
+    });
 
     __resetInitialSyncService();
     service = new InitialSyncService();
@@ -398,7 +418,7 @@ describe('InitialSyncService', () => {
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({
-          syncStatus: 'idle',
+          syncStatus: 'synced',
           itemCount: 2,
           lastSyncError: null,
         })
@@ -423,7 +443,7 @@ describe('InitialSyncService', () => {
       expect(mockUpdateScope).toHaveBeenNthCalledWith(
         2,
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
     });
 
@@ -464,7 +484,7 @@ describe('InitialSyncService', () => {
       // itemCount only counts files, not folders
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle', itemCount: 1 })
+        expect.objectContaining({ syncStatus: 'synced', itemCount: 1 })
       );
     });
 
@@ -482,7 +502,7 @@ describe('InitialSyncService', () => {
       expect(mockAddFileProcessingFlow).not.toHaveBeenCalled();
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle', itemCount: 0 })
+        expect.objectContaining({ syncStatus: 'synced', itemCount: 0 })
       );
     });
   });
@@ -519,7 +539,7 @@ describe('InitialSyncService', () => {
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle', itemCount: 2 })
+        expect.objectContaining({ syncStatus: 'synced', itemCount: 2 })
       );
     });
 
@@ -579,7 +599,7 @@ describe('InitialSyncService', () => {
       expect(mockFilesCreate).toHaveBeenCalledTimes(3);
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle', itemCount: 3 })
+        expect.objectContaining({ syncStatus: 'synced', itemCount: 3 })
       );
     });
   });
@@ -892,7 +912,7 @@ describe('InitialSyncService', () => {
       // Sync still completes successfully
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
     });
 
@@ -997,14 +1017,14 @@ describe('InitialSyncService', () => {
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
 
       expect(mockFilesCreate).toHaveBeenCalledTimes(3);
 
       const scopeUpdateCalls = mockUpdateScope.mock.calls as Array<[string, Record<string, unknown>]>;
       const finalUpdate = scopeUpdateCalls[scopeUpdateCalls.length - 1]!;
-      expect(finalUpdate[1]).toMatchObject({ syncStatus: 'idle' });
+      expect(finalUpdate[1]).toMatchObject({ syncStatus: 'synced' });
     });
 
     it('still enqueues successfully created files when some fail', async () => {
@@ -1026,7 +1046,7 @@ describe('InitialSyncService', () => {
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
 
       expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
@@ -1160,7 +1180,7 @@ describe('InitialSyncService', () => {
       expect(mockFilesCreate).not.toHaveBeenCalled();
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle', itemCount: 0 })
+        expect.objectContaining({ syncStatus: 'synced', itemCount: 0 })
       );
     });
 
@@ -1268,7 +1288,7 @@ describe('InitialSyncService', () => {
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({
-          syncStatus: 'idle',
+          syncStatus: 'synced',
           itemCount: 1,
           lastSyncError: null,
         })
@@ -1372,7 +1392,7 @@ describe('InitialSyncService', () => {
       expect(mockFilesCreate).toHaveBeenCalledTimes(1);
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'idle' })
+        expect.objectContaining({ syncStatus: 'synced' })
       );
     });
 
@@ -1563,6 +1583,179 @@ describe('InitialSyncService', () => {
         CONNECTION_ID,
         SP_DRIVE_ID,
         'https://graph.microsoft.com/v1.0/drives/SP-DRIVE/root/delta?skiptoken=abc'
+      );
+    });
+  });
+
+  // ==========================================================================
+  // PRD-117: Processing counters and status
+  // ==========================================================================
+
+  describe('PRD-117 — processingTotal and processingStatus', () => {
+    it('sets processingTotal = new files enqueued and processingStatus = "processing"', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [
+          makeFileChange('f1', 'a.pdf'),
+          makeFileChange('f2', 'b.pdf'),
+          makeFileChange('f3', 'c.pdf'),
+        ],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      // All files are new
+      mockFilesFindFirst.mockResolvedValue(null);
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // 3 new files enqueued → processingTotal = 3
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 3,
+          processingCompleted: 0,
+          processingFailed: 0,
+          processingStatus: 'processing',
+        })
+      );
+    });
+
+    it('sets processingStatus = "completed" when no new files are enqueued', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 0,
+          processingStatus: 'completed',
+        })
+      );
+    });
+
+    it('only counts newly created files (not re-synced existing files) toward processingTotal', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [
+          makeFileChange('new-file', 'new.pdf'),
+          makeFileChange('existing-file', 'existing.pdf'),
+        ],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      // First file: new; second file: already exists (not re-enqueued)
+      mockFilesFindFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'EXISTING-ID', pipeline_status: 'ready' });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Only 1 new file was enqueued
+      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 1,
+          processingStatus: 'processing',
+        })
+      );
+    });
+
+    it('includes processingTotal and processingStatus alongside cursor and item count', async () => {
+      mockExecuteDeltaQuery.mockResolvedValue({
+        changes: [makeFileChange('file-1', 'doc.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
+
+      mockFilesFindFirst.mockResolvedValue(null);
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // The final updateScope call should include all PRD-117 fields alongside existing fields
+      const calls = mockUpdateScope.mock.calls as Array<[string, Record<string, unknown>]>;
+      const finalCall = calls[calls.length - 1]!;
+
+      expect(finalCall[1]).toMatchObject({
+        syncStatus: 'synced',
+        itemCount: 1,
+        lastSyncCursor: DELTA_LINK,
+        lastSyncError: null,
+        processingTotal: 1,
+        processingCompleted: 0,
+        processingFailed: 0,
+        processingStatus: 'processing',
+      });
+    });
+
+    it('file-level sync sets processingTotal=1 when a new file is enqueued', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({ scope_type: 'file', scope_resource_id: 'ext-file-id' })
+      );
+      mockGetItemMetadata.mockResolvedValue({
+        id: 'ext-file-id',
+        name: 'single.pdf',
+        isFolder: false,
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        lastModifiedAt: '2024-01-01T00:00:00Z',
+        webUrl: 'https://example.com/single.pdf',
+        eTag: '"etag-new"',
+        parentId: null,
+        parentPath: null,
+      });
+      mockFilesFindFirst.mockResolvedValue(null); // New file
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 1,
+          processingCompleted: 0,
+          processingFailed: 0,
+          processingStatus: 'processing',
+        })
+      );
+    });
+
+    it('file-level sync sets processingTotal=0 and processingStatus="completed" for existing file', async () => {
+      mockFindScopeById.mockResolvedValue(
+        defaultScopeRow({ scope_type: 'file', scope_resource_id: 'ext-file-id' })
+      );
+      mockGetItemMetadata.mockResolvedValue({
+        id: 'ext-file-id',
+        name: 'existing.pdf',
+        isFolder: false,
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        lastModifiedAt: '2024-01-01T00:00:00Z',
+        webUrl: 'https://example.com/existing.pdf',
+        eTag: '"etag-old"',
+        parentId: null,
+        parentPath: null,
+      });
+      // File already exists in DB
+      mockFilesFindFirst.mockResolvedValue({ id: 'EXISTING-FILE', pipeline_status: 'ready' });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({
+          processingTotal: 0,
+          processingStatus: 'completed',
+        })
       );
     });
   });

@@ -30,6 +30,7 @@ export function useSyncEvents(): void {
   const setSyncStatus = useSyncStatusStore((s) => s.setSyncStatus);
   const setLastSyncedAt = useSyncStatusStore((s) => s.setLastSyncedAt);
   const setSyncError = useSyncStatusStore((s) => s.setSyncError);
+  const setProcessingProgress = useSyncStatusStore((s) => s.setProcessingProgress);
   const invalidateTreeFolder = useFolderTreeStore((s) => s.invalidateTreeFolder);
   const { refreshCurrentFolder } = useFiles();
 
@@ -38,6 +39,7 @@ export function useSyncEvents(): void {
   const setSyncStatusRef = useRef(setSyncStatus);
   const setLastSyncedAtRef = useRef(setLastSyncedAt);
   const setSyncErrorRef = useRef(setSyncError);
+  const setProcessingProgressRef = useRef(setProcessingProgress);
   const invalidateTreeFolderRef = useRef(invalidateTreeFolder);
 
   useEffect(() => {
@@ -57,6 +59,10 @@ export function useSyncEvents(): void {
   }, [setSyncError]);
 
   useEffect(() => {
+    setProcessingProgressRef.current = setProcessingProgress;
+  }, [setProcessingProgress]);
+
+  useEffect(() => {
     invalidateTreeFolderRef.current = invalidateTreeFolder;
   }, [invalidateTreeFolder]);
 
@@ -68,20 +74,39 @@ export function useSyncEvents(): void {
   const handleSyncEvent = useCallback((event: SyncWebSocketEvent) => {
     switch (event.type) {
       case SYNC_WS_EVENTS.SYNC_COMPLETED as 'sync:completed': {
-        setSyncStatusRef.current(event.scopeId, 'idle');
-        setLastSyncedAtRef.current(event.scopeId, new Date().toISOString());
-        refreshRef.current();
-        // Invalidate all cached folder tree entries to force re-fetch
-        for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
-          invalidateTreeFolderRef.current(key);
-        }
-        // Notify the operation tracker
-        useSyncStatusStore.getState().completeScope(event.scopeId);
-        // Suppress toast when SyncProgressPanel is handling it
-        if (!selectHasActiveOperations(useSyncStatusStore.getState())) {
-          toast.success('Sync completed', {
-            description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from ${getProviderName(event.connectionId)}`,
-          });
+        // Check if there are files that need processing (PRD-117)
+        const processingTotal = event.processingTotal ?? 0;
+
+        if (processingTotal > 0) {
+          // Two-phase: discovery complete, but processing still pending
+          setSyncStatusRef.current(event.scopeId, 'processing');
+          setLastSyncedAtRef.current(event.scopeId, new Date().toISOString());
+          refreshRef.current();
+          for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
+            invalidateTreeFolderRef.current(key);
+          }
+          // Do NOT call completeScope() yet — wait for processing:completed
+          if (!selectHasActiveOperations(useSyncStatusStore.getState())) {
+            toast.info('Sync discovered files', {
+              description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} found — processing for search...`,
+            });
+          }
+        } else {
+          setSyncStatusRef.current(event.scopeId, 'idle');
+          setLastSyncedAtRef.current(event.scopeId, new Date().toISOString());
+          refreshRef.current();
+          // Invalidate all cached folder tree entries to force re-fetch
+          for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
+            invalidateTreeFolderRef.current(key);
+          }
+          // Notify the operation tracker
+          useSyncStatusStore.getState().completeScope(event.scopeId);
+          // Suppress toast when SyncProgressPanel is handling it
+          if (!selectHasActiveOperations(useSyncStatusStore.getState())) {
+            toast.success('Sync completed', {
+              description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from ${getProviderName(event.connectionId)}`,
+            });
+          }
         }
         break;
       }
@@ -103,6 +128,26 @@ export function useSyncEvents(): void {
       case SYNC_WS_EVENTS.SYNC_PROGRESS as 'sync:progress':
         setSyncStatusRef.current(event.scopeId, 'syncing', event.percentage);
         break;
+
+      case SYNC_WS_EVENTS.PROCESSING_PROGRESS as 'processing:progress':
+        setProcessingProgressRef.current(event.scopeId, {
+          total: event.total,
+          completed: event.completed,
+          failed: event.failed,
+        });
+        break;
+
+      case SYNC_WS_EVENTS.PROCESSING_COMPLETED as 'processing:completed': {
+        setSyncStatusRef.current(event.scopeId, 'idle');
+        useSyncStatusStore.getState().completeScope(event.scopeId);
+        refreshRef.current();
+        if (!selectHasActiveOperations(useSyncStatusStore.getState())) {
+          toast.success('Files ready for search', {
+            description: `${event.totalReady} file${event.totalReady !== 1 ? 's' : ''} processed${event.totalFailed > 0 ? ` (${event.totalFailed} failed)` : ''}`,
+          });
+        }
+        break;
+      }
 
       case SYNC_WS_EVENTS.SYNC_FILE_ADDED as 'sync:file_added':
         refreshRef.current();

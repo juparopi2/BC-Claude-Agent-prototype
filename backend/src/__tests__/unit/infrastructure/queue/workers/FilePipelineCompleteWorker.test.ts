@@ -1,11 +1,19 @@
 /**
- * Unit tests for FilePipelineCompleteWorker (PRD-04)
+ * Unit tests for FilePipelineCompleteWorker (PRD-04, PRD-117)
  *
- * Tests:
+ * PRD-04 tests:
  * 1. Success - batch not complete: file ready, processed_count < total_files
  * 2. Success - batch complete: file ready, processed_count >= total_files
  * 3. Failed file: file in 'failed' state, still increments counter
  * 4. Error handling: prisma throws → error is re-thrown
+ *
+ * PRD-117 tests (scope-aware processing tracking):
+ * 5. Increments processing_completed for successful sync files
+ * 6. Increments processing_failed for failed sync files
+ * 7. Detects scope completion and emits processing:completed WebSocket event
+ * 8. Sets partial_failure when some files failed
+ * 9. Does not touch scope counters for upload files (no connection_scope_id)
+ * 10. Emits processing:progress on every file completion
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -17,7 +25,18 @@ import { PIPELINE_STATUS } from '@bc-agent/shared';
 // ============================================================================
 
 // Hoisted mocks - available before module evaluation
-const { mockGetPipelineStatus, mockExecuteRaw, mockFindFirst, mockLogger } = vi.hoisted(() => {
+const {
+  mockGetPipelineStatus,
+  mockExecuteRaw,
+  mockExecuteRawUnsafe,
+  mockUploadBatchesFindFirst,
+  mockFilesFindFirst,
+  mockConnectionScopesFindFirst,
+  mockConnectionScopesUpdate,
+  mockLogger,
+  mockSocketTo,
+  mockSocketEmit,
+} = vi.hoisted(() => {
   const mockLoggerInstance = {
     info: vi.fn(),
     error: vi.fn(),
@@ -26,11 +45,21 @@ const { mockGetPipelineStatus, mockExecuteRaw, mockFindFirst, mockLogger } = vi.
     child: vi.fn(function(this: typeof mockLoggerInstance) { return this; }),
   };
 
+  const emitFn = vi.fn();
+  const toFn = vi.fn();
+  toFn.mockReturnValue({ emit: emitFn });
+
   return {
     mockGetPipelineStatus: vi.fn(),
     mockExecuteRaw: vi.fn(),
-    mockFindFirst: vi.fn(),
+    mockExecuteRawUnsafe: vi.fn(),
+    mockUploadBatchesFindFirst: vi.fn(),
+    mockFilesFindFirst: vi.fn(),
+    mockConnectionScopesFindFirst: vi.fn(),
+    mockConnectionScopesUpdate: vi.fn(),
     mockLogger: mockLoggerInstance,
+    mockSocketTo: toFn,
+    mockSocketEmit: emitFn,
   };
 });
 
@@ -47,10 +76,26 @@ vi.mock('@/services/files/repository/FileRepository', () => ({
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
     $executeRaw: mockExecuteRaw,
+    $executeRawUnsafe: mockExecuteRawUnsafe,
     upload_batches: {
-      findFirst: mockFindFirst,
+      findFirst: mockUploadBatchesFindFirst,
+    },
+    files: {
+      findFirst: mockFilesFindFirst,
+    },
+    connection_scopes: {
+      findFirst: mockConnectionScopesFindFirst,
+      update: mockConnectionScopesUpdate,
     },
   },
+}));
+
+// PRD-117: Mock SocketService for WebSocket emission tests
+vi.mock('@/services/websocket/SocketService', () => ({
+  isSocketServiceInitialized: vi.fn(() => true),
+  getSocketIO: vi.fn(() => ({
+    to: mockSocketTo,
+  })),
 }));
 
 import { FilePipelineCompleteWorker } from '@/infrastructure/queue/workers/FilePipelineCompleteWorker';
@@ -66,6 +111,19 @@ describe('FilePipelineCompleteWorker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     worker = new FilePipelineCompleteWorker({ logger: mockLogger });
+
+    // Default: file has no scope (upload file path)
+    mockFilesFindFirst.mockResolvedValue({ connection_scope_id: null });
+
+    // Default: batch has 5 of 10 processed (not complete)
+    mockUploadBatchesFindFirst.mockResolvedValue({
+      total_files: 10,
+      confirmed_count: 10,
+      processed_count: 5,
+    });
+
+    // Default: socket emit succeeds
+    mockSocketTo.mockReturnValue({ emit: mockSocketEmit });
   });
 
   function createMockJob(data: PipelineCompleteJobData): Job<PipelineCompleteJobData> {
@@ -74,6 +132,10 @@ describe('FilePipelineCompleteWorker', () => {
       data,
     } as Job<PipelineCompleteJobData>;
   }
+
+  // ==========================================================================
+  // PRD-04: Basic batch processing
+  // ==========================================================================
 
   it('should process file and update batch progress when batch is NOT complete', async () => {
     const jobData: PipelineCompleteJobData = {
@@ -86,13 +148,6 @@ describe('FilePipelineCompleteWorker', () => {
 
     // Mock file ready status
     mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
-
-    // Mock batch not complete (5 of 10 files processed)
-    mockFindFirst.mockResolvedValue({
-      total_files: 10,
-      confirmed_count: 10,
-      processed_count: 5,
-    });
 
     await worker.process(job);
 
@@ -107,7 +162,7 @@ describe('FilePipelineCompleteWorker', () => {
     );
 
     // Verify batch progress query
-    expect(mockFindFirst).toHaveBeenCalledWith({
+    expect(mockUploadBatchesFindFirst).toHaveBeenCalledWith({
       where: { id: TEST_BATCH_ID, user_id: TEST_USER_ID },
       select: { total_files: true, confirmed_count: true, processed_count: true },
     });
@@ -141,7 +196,7 @@ describe('FilePipelineCompleteWorker', () => {
     mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
 
     // Mock batch complete (10 of 10 files processed)
-    mockFindFirst.mockResolvedValue({
+    mockUploadBatchesFindFirst.mockResolvedValue({
       total_files: 10,
       confirmed_count: 10,
       processed_count: 10,
@@ -182,13 +237,6 @@ describe('FilePipelineCompleteWorker', () => {
 
     // Mock file failed status
     mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.FAILED);
-
-    // Mock batch progress
-    mockFindFirst.mockResolvedValue({
-      total_files: 10,
-      confirmed_count: 10,
-      processed_count: 3,
-    });
 
     await worker.process(job);
 
@@ -239,5 +287,161 @@ describe('FilePipelineCompleteWorker', () => {
       }),
       'Pipeline-complete worker failed',
     );
+  });
+
+  // ==========================================================================
+  // PRD-117: Scope-aware processing tracking
+  // ==========================================================================
+
+  describe('PRD-117 — scope-aware processing tracking', () => {
+    const TEST_SCOPE_ID = 'SCOP-AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE';
+    const TEST_CONN_ID = 'CONN-11111111-2222-3333-4444-555566667777';
+
+    function createSyncJob() {
+      return createMockJob({ fileId: TEST_FILE_ID, batchId: TEST_BATCH_ID, userId: TEST_USER_ID });
+    }
+
+    function defaultScopeCounters(overrides?: Partial<{
+      processing_total: number;
+      processing_completed: number;
+      processing_failed: number;
+    }>) {
+      return {
+        processing_total: overrides?.processing_total ?? 5,
+        processing_completed: overrides?.processing_completed ?? 2,
+        processing_failed: overrides?.processing_failed ?? 0,
+        connection_id: TEST_CONN_ID,
+      };
+    }
+
+    it('should increment processing_completed for successful sync files', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: TEST_SCOPE_ID });
+      mockConnectionScopesFindFirst.mockResolvedValue(defaultScopeCounters({
+        processing_total: 5,
+        processing_completed: 2,
+        processing_failed: 0,
+      }));
+
+      await worker.process(createSyncJob());
+
+      expect(mockExecuteRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('processing_completed'),
+        TEST_SCOPE_ID
+      );
+    });
+
+    it('should increment processing_failed for failed sync files', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.FAILED);
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: TEST_SCOPE_ID });
+      mockConnectionScopesFindFirst.mockResolvedValue(defaultScopeCounters({
+        processing_total: 5,
+        processing_completed: 2,
+        processing_failed: 1,
+      }));
+
+      await worker.process(createSyncJob());
+
+      expect(mockExecuteRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('processing_failed'),
+        TEST_SCOPE_ID
+      );
+    });
+
+    it('should not touch scope counters for upload files (no connection_scope_id)', async () => {
+      // Upload files have no connection_scope_id
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: null });
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+
+      await worker.process(createSyncJob());
+
+      // Should NOT call $executeRawUnsafe for scope tracking
+      expect(mockExecuteRawUnsafe).not.toHaveBeenCalled();
+      expect(mockConnectionScopesFindFirst).not.toHaveBeenCalled();
+    });
+
+    it('should read scope counters for every sync file completion (prerequisite for progress reporting)', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: TEST_SCOPE_ID });
+      mockConnectionScopesFindFirst.mockResolvedValue(defaultScopeCounters({
+        processing_total: 10,
+        processing_completed: 5,
+        processing_failed: 1,
+      }));
+
+      await worker.process(createSyncJob());
+
+      // scope counters should be read after every file completion
+      expect(mockConnectionScopesFindFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: TEST_SCOPE_ID },
+          select: expect.objectContaining({
+            processing_total: true,
+            processing_completed: true,
+            processing_failed: true,
+            connection_id: true,
+          }),
+        })
+      );
+    });
+
+    it('should detect scope completion and update processing_status to "completed" in DB', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: TEST_SCOPE_ID });
+      // After incrementing, total processed = completed(3) + failed(0) = 3 = total(3)
+      mockConnectionScopesFindFirst.mockResolvedValue(defaultScopeCounters({
+        processing_total: 3,
+        processing_completed: 3,
+        processing_failed: 0,
+      }));
+
+      await worker.process(createSyncJob());
+
+      // Should update processing_status to 'completed' in the database
+      expect(mockConnectionScopesUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: TEST_SCOPE_ID },
+          data: expect.objectContaining({ processing_status: 'completed' }),
+        })
+      );
+    });
+
+    it('should set partial_failure status when all files done but some failed', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.FAILED);
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: TEST_SCOPE_ID });
+      // completed(2) + failed(1) = 3 = total(3): all done with failures
+      mockConnectionScopesFindFirst.mockResolvedValue(defaultScopeCounters({
+        processing_total: 3,
+        processing_completed: 2,
+        processing_failed: 1,
+      }));
+
+      await worker.process(createSyncJob());
+
+      expect(mockConnectionScopesUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ processing_status: 'partial_failure' }),
+        })
+      );
+    });
+
+    it('should not mark scope complete when processing is still in progress', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+      mockFilesFindFirst.mockResolvedValue({ connection_scope_id: TEST_SCOPE_ID });
+      // Only 2 of 5 total completed — not done yet
+      mockConnectionScopesFindFirst.mockResolvedValue(defaultScopeCounters({
+        processing_total: 5,
+        processing_completed: 2,
+        processing_failed: 0,
+      }));
+
+      await worker.process(createSyncJob());
+
+      // Should NOT update processing_status (not done yet)
+      expect(mockConnectionScopesUpdate).not.toHaveBeenCalled();
+
+      // Scope counters should still be read for progress tracking
+      expect(mockConnectionScopesFindFirst).toHaveBeenCalledTimes(1);
+    });
   });
 });

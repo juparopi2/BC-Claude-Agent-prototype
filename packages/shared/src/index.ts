@@ -306,6 +306,10 @@ export type {
   ConnectionExpiredPayload,
   ConnectionDisconnectedPayload,
 
+  // Sync Processing Event types (PRD-117)
+  ProcessingProgressPayload,
+  ProcessingCompletedPayload,
+
   // SharePoint types (PRD-111)
   SharePointSite,
   SharePointLibrary,

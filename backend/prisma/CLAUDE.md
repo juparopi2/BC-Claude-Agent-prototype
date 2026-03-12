@@ -71,6 +71,7 @@ The following constraints exist in Azure SQL and are documented as `///` comment
 | `connection_scopes` | `CK_connection_scopes_scope_type` | `scope_type` | root, folder, file, site, library |
 | `connection_scopes` | `CK_connection_scopes_sync_status` | `sync_status` | idle, sync_queued, syncing, synced, error |
 | `connection_scopes` | `CK_connection_scopes_scope_mode` | `scope_mode` | include, exclude |
+| `connection_scopes` | `CK_connection_scopes_processing_status` | `processing_status` | idle, processing, completed, partial_failure (or NULL) |
 | `files` | `CK_files_source_type` | `source_type` | local, onedrive, sharepoint |
 
 ### How to Update CHECK Constraints

@@ -29,8 +29,8 @@ const logger = createChildLogger({ service: 'FolderHierarchyResolver' });
 // ============================================================================
 
 /**
- * Maps a OneDrive external folder ID (Graph API item.id) to the corresponding
- * internal DB folder UUID (UPPERCASE).
+ * Maps a Microsoft Graph external folder ID (item.id) to the corresponding
+ * internal DB folder UUID (UPPERCASE). Used by both OneDrive and SharePoint.
  */
 export type FolderIdMap = Map<string, string>;
 
@@ -71,11 +71,12 @@ export interface UpsertFolderParams {
  * parent resolution works correctly even for folders that were synced in a
  * previous run.
  */
-export async function buildFolderMap(connectionId: string): Promise<FolderIdMap> {
+export async function buildFolderMap(connectionId: string, provider: string): Promise<FolderIdMap> {
   const existingFolders = await prisma.files.findMany({
     where: {
       connection_id: connectionId,
       is_folder: true,
+      source_type: provider === 'sharepoint' ? FILE_SOURCE_TYPE.SHAREPOINT : FILE_SOURCE_TYPE.ONEDRIVE,
     },
     select: { id: true, external_id: true },
   });

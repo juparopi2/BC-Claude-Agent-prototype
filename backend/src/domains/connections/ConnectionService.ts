@@ -652,6 +652,10 @@ export class ConnectionService {
       itemCount: row.item_count,
       createdAt: row.created_at.toISOString(),
       scopeMode: (row.scope_mode ?? 'include') as 'include' | 'exclude',
+      processingTotal: row.processing_total,
+      processingCompleted: row.processing_completed,
+      processingFailed: row.processing_failed,
+      processingStatus: row.processing_status,
     };
   }
 

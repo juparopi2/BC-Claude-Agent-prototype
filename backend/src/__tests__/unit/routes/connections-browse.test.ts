@@ -27,7 +27,7 @@ const {
   mockListFolder,
   mockListSharedWithMe,
   mockListSharedFolder,
-  mockSyncScope,
+  mockAddInitialSyncJob,
 } = vi.hoisted(() => ({
   mockGetConnection: vi.fn(),
   mockListScopes: vi.fn(),
@@ -36,7 +36,7 @@ const {
   mockListFolder: vi.fn(),
   mockListSharedWithMe: vi.fn(),
   mockListSharedFolder: vi.fn(),
-  mockSyncScope: vi.fn(),
+  mockAddInitialSyncJob: vi.fn(),
 }));
 
 // ============================================================================
@@ -119,9 +119,10 @@ vi.mock('@/services/connectors/onedrive', () => ({
   })),
 }));
 
-vi.mock('@/services/sync/InitialSyncService', () => ({
-  getInitialSyncService: vi.fn(() => ({
-    syncScope: mockSyncScope,
+vi.mock('@/infrastructure/queue', () => ({
+  getMessageQueue: vi.fn(() => ({
+    addInitialSyncJob: mockAddInitialSyncJob,
+    addExternalFileSyncJob: vi.fn().mockResolvedValue('sync-job-id-ext'),
   })),
 }));
 
@@ -241,7 +242,7 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
     mockListSharedFolder.mockResolvedValue(sampleFolderResult);
     mockCreateScope.mockResolvedValue(SCOPE_ID);
     mockFindScopeById.mockResolvedValue(sampleScope);
-    mockSyncScope.mockResolvedValue(undefined);
+    mockAddInitialSyncJob.mockResolvedValue('sync-job-id-123');
   });
 
   // ==========================================================================
@@ -569,21 +570,23 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
   // POST /:id/scopes/:scopeId/sync — Trigger initial sync
   // ==========================================================================
   describe('POST /:id/scopes/:scopeId/sync', () => {
-    it('returns 202 with { status: "started" } and calls syncScope', async () => {
+    it('returns 202 with { status: "started" } and enqueues an initial sync job', async () => {
       const res = await request(app)
         .post(`/api/connections/${CONNECTION_ID}/scopes/${SCOPE_ID}/sync`)
         .expect(202);
 
-      expect(res.body).toEqual({ status: 'started' });
-      expect(mockSyncScope).toHaveBeenCalledWith(CONNECTION_ID, SCOPE_ID, USER_ID);
+      expect(res.body).toMatchObject({ status: 'started' });
+      expect(mockAddInitialSyncJob).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId: CONNECTION_ID, scopeId: SCOPE_ID, userId: USER_ID })
+      );
     });
 
-    it('does not await syncScope (fire-and-forget) — response returns immediately', async () => {
-      // syncScope is async but we should still get 202 even if it resolves later
+    it('enqueues sync job and returns 202 immediately', async () => {
+      // addInitialSyncJob is awaited but the response should still return 202
       let syncCalled = false;
-      mockSyncScope.mockImplementation(() => {
+      mockAddInitialSyncJob.mockImplementation(async () => {
         syncCalled = true;
-        return Promise.resolve();
+        return 'sync-job-id-123';
       });
 
       const res = await request(app)
@@ -591,7 +594,7 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
         .expect(202);
 
       expect(res.body.status).toBe('started');
-      // syncScope was still called (fire-and-forget means we don't await)
+      // addInitialSyncJob was called to enqueue the job
       expect(syncCalled).toBe(true);
     });
 
@@ -603,7 +606,7 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
         .expect(404);
 
       expect(res.body.code).toBe('NOT_FOUND');
-      expect(mockSyncScope).not.toHaveBeenCalled();
+      expect(mockAddInitialSyncJob).not.toHaveBeenCalled();
     });
 
     it('returns 403 when scope belongs to a different connection', async () => {
@@ -617,7 +620,7 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
         .expect(403);
 
       expect(res.body.code).toBe('FORBIDDEN');
-      expect(mockSyncScope).not.toHaveBeenCalled();
+      expect(mockAddInitialSyncJob).not.toHaveBeenCalled();
     });
 
     it('verifies connection ownership before triggering sync', async () => {
@@ -647,7 +650,9 @@ describe('Connections Routes — PRD-101 (browse / scopes / sync)', () => {
         .expect(202);
 
       expect(mockFindScopeById).toHaveBeenCalledWith(SCOPE_ID);
-      expect(mockSyncScope).toHaveBeenCalledWith(CONNECTION_ID, SCOPE_ID, USER_ID);
+      expect(mockAddInitialSyncJob).toHaveBeenCalledWith(
+        expect.objectContaining({ connectionId: CONNECTION_ID, scopeId: SCOPE_ID, userId: USER_ID })
+      );
     });
 
     it('returns 400 when connection ID is not a valid UUID', async () => {

@@ -185,7 +185,7 @@ export class DeltaSyncService {
       );
 
       // Step 5b: Build folder hierarchy map for parent resolution
-      const folderMap = await buildFolderMap(connectionId);
+      const folderMap = await buildFolderMap(connectionId, connection.provider);
 
       if (scope.scope_type === 'folder' && scope.scope_resource_id) {
         await ensureScopeRootFolder({
@@ -489,6 +489,7 @@ export class DeltaSyncService {
                 external_modified_at: item.lastModifiedAt
                   ? new Date(item.lastModifiedAt)
                   : null,
+                file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
                 content_hash_external: item.eTag ?? null,
                 parent_folder_id: parentFolderId,
                 pipeline_status: 'queued',
@@ -540,6 +541,7 @@ export class DeltaSyncService {
                 external_modified_at: item.lastModifiedAt
                   ? new Date(item.lastModifiedAt)
                   : null,
+                file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
                 content_hash_external: item.eTag ?? null,
                 parent_folder_id: parentFolderId,
                 pipeline_status: 'queued',
@@ -588,12 +590,18 @@ export class DeltaSyncService {
         }
       }
 
+      const processingTotal = result.newFiles + result.updatedFiles;
+
       // Step 7: Persist new deltaLink and mark scope synced
       await repo.updateScope(scopeId, {
         syncStatus: 'synced',
         lastSyncAt: new Date(),
         lastSyncError: null,
         lastSyncCursor: deltaLink,
+        processingTotal,
+        processingCompleted: 0,
+        processingFailed: 0,
+        processingStatus: processingTotal > 0 ? 'processing' : 'completed',
       });
 
       logger.info(
@@ -619,6 +627,7 @@ export class DeltaSyncService {
         updatedFiles: result.updatedFiles,
         deletedFiles: result.deletedFiles,
         skipped: result.skipped,
+        processingTotal,
       });
 
       // Step 9: Return result

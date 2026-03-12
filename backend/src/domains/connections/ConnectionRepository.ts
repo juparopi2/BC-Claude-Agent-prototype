@@ -60,6 +60,10 @@ export interface ScopeRow {
   scope_mode: string;
   scope_site_id: string | null;
   created_at: Date;
+  processing_total: number;
+  processing_completed: number;
+  processing_failed: number;
+  processing_status: string | null;
 }
 
 // ============================================================================
@@ -121,6 +125,10 @@ export function createScopeWriter(client: PrismaClientLike = prisma) {
       lastSyncError: string | null;
       lastSyncCursor: string | null;
       itemCount: number;
+      processingTotal: number;
+      processingCompleted: number;
+      processingFailed: number;
+      processingStatus: string | null;
     }>): Promise<void> {
       logger.debug({ scopeId, fields: Object.keys(data) }, 'Updating connection scope');
 
@@ -132,6 +140,10 @@ export function createScopeWriter(client: PrismaClientLike = prisma) {
           ...(data.lastSyncError !== undefined && { last_sync_error: data.lastSyncError }),
           ...(data.lastSyncCursor !== undefined && { last_sync_cursor: data.lastSyncCursor }),
           ...(data.itemCount !== undefined && { item_count: data.itemCount }),
+          ...(data.processingTotal !== undefined && { processing_total: data.processingTotal }),
+          ...(data.processingCompleted !== undefined && { processing_completed: data.processingCompleted }),
+          ...(data.processingFailed !== undefined && { processing_failed: data.processingFailed }),
+          ...(data.processingStatus !== undefined && { processing_status: data.processingStatus }),
           updated_at: new Date(),
         },
       });
@@ -304,6 +316,10 @@ export class ConnectionRepository {
         scope_mode: true,
         scope_site_id: true,
         created_at: true,
+        processing_total: true,
+        processing_completed: true,
+        processing_failed: true,
+        processing_status: true,
       },
       orderBy: { created_at: 'asc' },
     });
@@ -338,6 +354,10 @@ export class ConnectionRepository {
       lastSyncError: string | null;
       lastSyncCursor: string | null;
       itemCount: number;
+      processingTotal: number;
+      processingCompleted: number;
+      processingFailed: number;
+      processingStatus: string | null;
     }>
   ): Promise<void> {
     return this.defaultScopeWriter.updateScope(scopeId, data);
@@ -369,6 +389,10 @@ export class ConnectionRepository {
         scope_mode: true,
         scope_site_id: true,
         created_at: true,
+        processing_total: true,
+        processing_completed: true,
+        processing_failed: true,
+        processing_status: true,
       },
     });
 
@@ -408,6 +432,10 @@ export class ConnectionRepository {
         scope_mode: true,
         scope_site_id: true,
         created_at: true,
+        processing_total: true,
+        processing_completed: true,
+        processing_failed: true,
+        processing_status: true,
       },
       orderBy: { created_at: 'asc' },
     });
@@ -453,6 +481,10 @@ export class ConnectionRepository {
         cs.scope_mode,
         cs.scope_site_id,
         cs.created_at,
+        cs.processing_total,
+        cs.processing_completed,
+        cs.processing_failed,
+        cs.processing_status,
         CAST(COUNT(f.id) AS INT) AS file_count
       FROM connection_scopes cs
       LEFT JOIN files f ON f.connection_scope_id = cs.id
@@ -461,7 +493,8 @@ export class ConnectionRepository {
         cs.id, cs.connection_id, cs.scope_type, cs.scope_resource_id,
         cs.scope_display_name, cs.scope_path, cs.sync_status, cs.last_sync_at,
         cs.last_sync_error, cs.last_sync_cursor, cs.item_count, cs.subscription_id,
-        cs.remote_drive_id, cs.scope_mode, cs.scope_site_id, cs.created_at
+        cs.remote_drive_id, cs.scope_mode, cs.scope_site_id, cs.created_at,
+        cs.processing_total, cs.processing_completed, cs.processing_failed, cs.processing_status
       ORDER BY cs.created_at ASC
     `;
 

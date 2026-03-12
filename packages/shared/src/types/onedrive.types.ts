@@ -7,6 +7,8 @@
  * @module @bc-agent/shared/types
  */
 
+import type { ProcessingProgressPayload, ProcessingCompletedPayload } from './sync-processing-events.types';
+
 /**
  * Information about a OneDrive drive (personal or business).
  */
@@ -89,6 +91,7 @@ export interface SyncCompletedPayload {
   connectionId: string;
   scopeId: string;
   totalFiles: number;
+  processingTotal?: number;
 }
 
 export interface SyncErrorPayload {
@@ -149,4 +152,6 @@ export type SyncWebSocketEvent =
   | { type: 'connection:subscription_renewed' } & SubscriptionRenewedPayload
   | { type: 'connection:subscription_error' } & SubscriptionErrorPayload
   | { type: 'connection:expired' } & ConnectionExpiredPayload
-  | { type: 'connection:disconnected' } & ConnectionDisconnectedPayload;
+  | { type: 'connection:disconnected' } & ConnectionDisconnectedPayload
+  | { type: 'processing:progress' } & ProcessingProgressPayload
+  | { type: 'processing:completed' } & ProcessingCompletedPayload;

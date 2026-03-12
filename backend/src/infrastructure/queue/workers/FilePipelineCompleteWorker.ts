@@ -16,8 +16,8 @@
 
 import type { Job } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
-import { PIPELINE_STATUS } from '@bc-agent/shared';
-import type { PipelineStatus } from '@bc-agent/shared';
+import { PIPELINE_STATUS, SYNC_WS_EVENTS } from '@bc-agent/shared';
+import type { PipelineStatus, ProcessingProgressPayload, ProcessingCompletedPayload } from '@bc-agent/shared';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 
 const DEFAULT_LOGGER = createChildLogger({ service: 'FilePipelineCompleteWorker' });
@@ -69,6 +69,51 @@ export class FilePipelineCompleteWorker {
         WHERE id = ${batchId}
           AND user_id = ${userId}
       `;
+
+      // PRD-117: Scope-aware processing tracking
+      const fileRecord = await prisma.files.findFirst({
+        where: { id: fileId, user_id: userId },
+        select: { connection_scope_id: true },
+      });
+
+      if (fileRecord?.connection_scope_id) {
+        const scopeId = fileRecord.connection_scope_id;
+        const isSuccess = finalStatus === PIPELINE_STATUS.READY;
+        const incrementCol = isSuccess ? 'processing_completed' : 'processing_failed';
+
+        await prisma.$executeRawUnsafe(
+          `UPDATE connection_scopes SET ${incrementCol} = ${incrementCol} + 1, updated_at = GETUTCDATE() WHERE id = @P1`,
+          scopeId
+        );
+
+        // Read scope counters to check completion
+        const scope = await prisma.connection_scopes.findFirst({
+          where: { id: scopeId },
+          select: {
+            processing_total: true,
+            processing_completed: true,
+            processing_failed: true,
+            connection_id: true,
+          },
+        });
+
+        if (scope) {
+          const totalProcessed = (scope.processing_completed ?? 0) + (scope.processing_failed ?? 0);
+          const isAllDone = totalProcessed >= (scope.processing_total ?? 0) && (scope.processing_total ?? 0) > 0;
+
+          // Emit progress event
+          this.emitScopeProgress(userId, scopeId, scope);
+
+          if (isAllDone) {
+            const processingStatus = (scope.processing_failed ?? 0) > 0 ? 'partial_failure' : 'completed';
+            await prisma.connection_scopes.update({
+              where: { id: scopeId },
+              data: { processing_status: processingStatus, updated_at: new Date() },
+            });
+            this.emitScopeCompleted(userId, scopeId, scope);
+          }
+        }
+      }
 
       // 3. Read batch progress
       const batch = await prisma.upload_batches.findFirst({
@@ -133,6 +178,64 @@ export class FilePipelineCompleteWorker {
         { event: 'batch:completed', batchId, userId, totalFiles },
         'Batch completed event',
       );
+    }
+  }
+
+  /**
+   * PRD-117: Emit processing progress for scope-aware tracking.
+   */
+  private emitScopeProgress(
+    userId: string,
+    scopeId: string,
+    scope: { processing_total: number; processing_completed: number; processing_failed: number; connection_id: string }
+  ): void {
+    try {
+      const { isSocketServiceInitialized, getSocketIO } = require('@/services/websocket/SocketService');
+      if (!isSocketServiceInitialized()) return;
+
+      const total = scope.processing_total ?? 0;
+      const completed = (scope.processing_completed ?? 0) + (scope.processing_failed ?? 0);
+
+      const payload: ProcessingProgressPayload = {
+        connectionId: scope.connection_id,
+        scopeId,
+        total,
+        completed: scope.processing_completed ?? 0,
+        failed: scope.processing_failed ?? 0,
+        percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+      };
+
+      getSocketIO().to(`user:${userId}`).emit(SYNC_WS_EVENTS.PROCESSING_PROGRESS, payload);
+    } catch (err) {
+      // Non-fatal: socket may not be available
+      this.log.debug({ error: err instanceof Error ? err.message : String(err), userId, scopeId }, 'Failed to emit processing progress');
+    }
+  }
+
+  /**
+   * PRD-117: Emit processing completed for scope-aware tracking.
+   */
+  private emitScopeCompleted(
+    userId: string,
+    scopeId: string,
+    scope: { processing_total: number; processing_completed: number; processing_failed: number; connection_id: string }
+  ): void {
+    try {
+      const { isSocketServiceInitialized, getSocketIO } = require('@/services/websocket/SocketService');
+      if (!isSocketServiceInitialized()) return;
+
+      const payload: ProcessingCompletedPayload = {
+        connectionId: scope.connection_id,
+        scopeId,
+        totalProcessed: (scope.processing_completed ?? 0) + (scope.processing_failed ?? 0),
+        totalReady: scope.processing_completed ?? 0,
+        totalFailed: scope.processing_failed ?? 0,
+      };
+
+      getSocketIO().to(`user:${userId}`).emit(SYNC_WS_EVENTS.PROCESSING_COMPLETED, payload);
+    } catch (err) {
+      // Non-fatal: socket may not be available
+      this.log.debug({ error: err instanceof Error ? err.message : String(err), userId, scopeId }, 'Failed to emit processing completed');
     }
   }
 }

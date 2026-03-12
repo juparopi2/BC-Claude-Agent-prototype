@@ -402,6 +402,12 @@ export type {
   ConnectionDisconnectedPayload,
 } from './onedrive.types';
 
+// Sync Processing Event types (PRD-117)
+export type {
+  ProcessingProgressPayload,
+  ProcessingCompletedPayload,
+} from './sync-processing-events.types';
+
 // Connection types (PRD-100)
 export type {
   ConnectionSummary,

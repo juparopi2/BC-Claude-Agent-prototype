@@ -125,7 +125,7 @@ describe('FolderHierarchyResolver', () => {
     it('returns an empty map when no folders exist in the DB', async () => {
       mockFilesFindMany.mockResolvedValue([]);
 
-      const map = await buildFolderMap(CONNECTION_ID);
+      const map = await buildFolderMap(CONNECTION_ID, 'onedrive');
 
       expect(map).toBeInstanceOf(Map);
       expect(map.size).toBe(0);
@@ -140,6 +140,22 @@ describe('FolderHierarchyResolver', () => {
       );
     });
 
+    it('uses SHAREPOINT source_type when provider is sharepoint', async () => {
+      mockFilesFindMany.mockResolvedValue([]);
+
+      await buildFolderMap(CONNECTION_ID, 'sharepoint');
+
+      expect(mockFilesFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            connection_id: CONNECTION_ID,
+            is_folder: true,
+            source_type: FILE_SOURCE_TYPE.SHAREPOINT,
+          }),
+        })
+      );
+    });
+
     it('maps external_id to internal id for all folders returned by DB', async () => {
       mockFilesFindMany.mockResolvedValue([
         { id: 'INTERNAL-AAA', external_id: 'EXT-001' },
@@ -147,7 +163,7 @@ describe('FolderHierarchyResolver', () => {
         { id: 'INTERNAL-CCC', external_id: 'EXT-003' },
       ]);
 
-      const map = await buildFolderMap(CONNECTION_ID);
+      const map = await buildFolderMap(CONNECTION_ID, 'onedrive');
 
       expect(map.size).toBe(3);
       expect(map.get('EXT-001')).toBe('INTERNAL-AAA');
@@ -162,7 +178,7 @@ describe('FolderHierarchyResolver', () => {
         { id: 'INTERNAL-CCC', external_id: 'EXT-003' },
       ]);
 
-      const map = await buildFolderMap(CONNECTION_ID);
+      const map = await buildFolderMap(CONNECTION_ID, 'onedrive');
 
       expect(map.size).toBe(2);
       expect(map.has('EXT-001')).toBe(true);
@@ -270,6 +286,7 @@ describe('FolderHierarchyResolver', () => {
       scopeResourceId: 'SCOPE-RES-001',
       scopeDisplayName: 'My Scope Folder',
       microsoftDriveId: 'DRIVE-001',
+      provider: 'onedrive',
     };
 
     it('returns early without any DB call when scopeResourceId is already in the map', async () => {
@@ -356,6 +373,7 @@ describe('FolderHierarchyResolver', () => {
       scopeId: SCOPE_ID,
       userId: USER_ID,
       microsoftDriveId: 'DRIVE-001',
+      provider: 'onedrive',
     };
 
     it('updates name and parent_folder_id for an existing folder, adds it to folderMap', async () => {

@@ -223,7 +223,7 @@ export class InitialSyncService {
       // Build external-to-internal ID mapping for parent chain resolution
       // NOTE: Map and seeding are OUTSIDE the folderChanges guard because the scope
       // root folder and file parent resolution need the map even with zero subfolders.
-      const externalToInternalId = await buildFolderMap(connectionId);
+      const externalToInternalId = await buildFolderMap(connectionId, connection.provider);
 
       // PRD-112: Create the scope root folder itself (if folder-type scope).
       // The scope folder is filtered from delta results (it IS the scope, not a child),
@@ -289,6 +289,7 @@ export class InitialSyncService {
 
       const totalFiles = filteredFileChanges.length;
       let processedFiles = 0;
+      let newFilesEnqueued = 0;
 
       const messageQueue = getMessageQueue();
 
@@ -296,29 +297,32 @@ export class InitialSyncService {
       for (let i = 0; i < filteredFileChanges.length; i += BATCH_SIZE) {
         const batch = filteredFileChanges.slice(i, i + BATCH_SIZE);
 
-        await Promise.all(
-          batch.map(async (change) => {
+        // Phase A: Atomic DB writes inside a transaction.
+        // Individual file errors are caught per-item so one failure does not abort the batch.
+        const createdFiles = await prisma.$transaction(async (tx) => {
+          const results: Array<{ fileId: string; mimeType: string; fileName: string }> = [];
+
+          for (const change of batch) {
             const item = change.item;
 
             try {
-              // Check if file already exists (dedup via filtered unique index)
-              const existing = await prisma.files.findFirst({
+              const existing = await tx.files.findFirst({
                 where: { connection_id: connectionId, external_id: item.id },
                 select: { id: true, pipeline_status: true },
               });
 
               if (existing) {
-                // Resolve parent folder for existing file update
                 const parentFolderId = resolveParentFolderId(item.parentId, externalToInternalId);
 
                 // Update metadata only — do NOT touch pipeline_status to avoid re-processing
-                await prisma.files.update({
+                await tx.files.update({
                   where: { id: existing.id },
                   data: {
                     name: item.name,
                     mime_type: item.mimeType ?? 'application/octet-stream',
                     size_bytes: BigInt(item.sizeBytes ?? 0),
                     external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                    file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
                     content_hash_external: item.eTag ?? null,
                     parent_folder_id: parentFolderId,
                     connection_scope_id: scopeId,
@@ -326,13 +330,10 @@ export class InitialSyncService {
                   },
                 });
               } else {
-                // Resolve parent folder for new file creation
                 const parentFolderId = resolveParentFolderId(item.parentId, externalToInternalId);
-
-                // Create new file record
                 const fileId = randomUUID().toUpperCase();
 
-                await prisma.files.create({
+                await tx.files.create({
                   data: {
                     id: fileId,
                     user_id: userId,
@@ -350,6 +351,7 @@ export class InitialSyncService {
                     connection_scope_id: scopeId,
                     external_url: item.webUrl || null,
                     external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                    file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
                     content_hash_external: item.eTag ?? null,
                     parent_folder_id: parentFolderId,
                     pipeline_status: 'queued',
@@ -360,11 +362,8 @@ export class InitialSyncService {
                   },
                 });
 
-                // Only enqueue newly created files for processing
-                await messageQueue.addFileProcessingFlow({
+                results.push({
                   fileId,
-                  batchId: scopeId,
-                  userId,
                   mimeType: item.mimeType ?? 'application/octet-stream',
                   fileName: item.name,
                 });
@@ -378,8 +377,22 @@ export class InitialSyncService {
                 'Skipping file due to ingestion error'
               );
             }
-          })
-        );
+          }
+
+          return results;
+        }, { timeout: 30000 });
+
+        // Phase B: Queue dispatch after commit — only newly created files are enqueued.
+        for (const file of createdFiles) {
+          await messageQueue.addFileProcessingFlow({
+            fileId: file.fileId,
+            batchId: scopeId,
+            userId,
+            mimeType: file.mimeType,
+            fileName: file.fileName,
+          });
+        }
+        newFilesEnqueued += createdFiles.length;
 
         processedFiles += batch.length;
 
@@ -400,12 +413,16 @@ export class InitialSyncService {
         lastSyncAt: new Date(),
         lastSyncError: null,
         lastSyncCursor: deltaLink,
+        processingTotal: newFilesEnqueued,
+        processingCompleted: 0,
+        processingFailed: 0,
+        processingStatus: newFilesEnqueued > 0 ? 'processing' : 'completed',
       });
 
       logger.info({ connectionId, scopeId, totalFiles, processedFiles }, 'Initial sync completed');
 
       // Step 7: Emit sync:completed
-      this.emitCompleted(userId, { connectionId, scopeId, totalFiles });
+      this.emitCompleted(userId, { connectionId, scopeId, totalFiles, processingTotal: newFilesEnqueued });
 
       // PRD-108: Create Graph subscription for webhook notifications
       // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
@@ -513,6 +530,8 @@ export class InitialSyncService {
       const effectiveDriveId = scope.remote_drive_id ?? connection.microsoft_drive_id;
 
       // 3. Check if file already exists (dedup via filtered unique index)
+      let wasNewFileEnqueued = false;
+
       const existing = await prisma.files.findFirst({
         where: { connection_id: connectionId, external_id: item.id },
         select: { id: true, pipeline_status: true },
@@ -529,6 +548,7 @@ export class InitialSyncService {
             mime_type: item.mimeType ?? 'application/octet-stream',
             size_bytes: BigInt(item.sizeBytes ?? 0),
             external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+            file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
             content_hash_external: item.eTag ?? null,
             connection_scope_id: scopeId,
             last_synced_at: new Date(),
@@ -557,6 +577,7 @@ export class InitialSyncService {
             connection_scope_id: scopeId,
             external_url: item.webUrl || null,
             external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+            file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
             content_hash_external: item.eTag ?? null,
             pipeline_status: 'queued',
             processing_retry_count: 0,
@@ -575,6 +596,7 @@ export class InitialSyncService {
           mimeType: item.mimeType ?? 'application/octet-stream',
           fileName: item.name,
         });
+        wasNewFileEnqueued = true;
       }
 
       // 4. Update scope as complete
@@ -584,12 +606,16 @@ export class InitialSyncService {
         itemCount: 1,
         lastSyncAt: new Date(),
         lastSyncError: null,
+        processingTotal: wasNewFileEnqueued ? 1 : 0,
+        processingCompleted: 0,
+        processingFailed: 0,
+        processingStatus: wasNewFileEnqueued ? 'processing' : 'completed',
       });
 
       logger.info({ connectionId, scopeId, fileId, fileName: item.name }, 'File-level sync completed');
 
       // 6. Emit sync:completed
-      this.emitCompleted(userId, { connectionId, scopeId, totalFiles: 1 });
+      this.emitCompleted(userId, { connectionId, scopeId, totalFiles: 1, processingTotal: wasNewFileEnqueued ? 1 : 0 });
 
       // PRD-108: Create Graph subscription for webhook notifications
       // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
@@ -664,7 +690,7 @@ export class InitialSyncService {
 
   private emitCompleted(
     userId: string,
-    data: { connectionId: string; scopeId: string; totalFiles: number }
+    data: { connectionId: string; scopeId: string; totalFiles: number; processingTotal?: number }
   ): void {
     if (!isSocketServiceInitialized()) {
       logger.debug({ userId }, 'SocketService not available — skipping sync:completed emission');

@@ -29,6 +29,8 @@ import type {
   SubscriptionRenewedPayload,
   SubscriptionErrorPayload,
   ConnectionExpiredPayload,
+  ProcessingProgressPayload,
+  ProcessingCompletedPayload,
 } from '@bc-agent/shared';
 import { FILE_WS_CHANNELS, JOB_WS_CHANNELS, FOLDER_WS_CHANNELS, SYNC_WS_EVENTS } from '@bc-agent/shared';
 import type { SocketConnectOptions, JoinSessionOptions, PendingMessage } from './types';
@@ -528,6 +530,8 @@ export class SocketClient {
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SUBSCRIPTION_RENEWED);
     this.socket.removeAllListeners(SYNC_WS_EVENTS.SUBSCRIPTION_ERROR);
     this.socket.removeAllListeners(SYNC_WS_EVENTS.CONNECTION_EXPIRED);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.PROCESSING_PROGRESS);
+    this.socket.removeAllListeners(SYNC_WS_EVENTS.PROCESSING_COMPLETED);
 
     // Connection events
     this.socket.on('connect', () => {
@@ -727,6 +731,22 @@ export class SocketClient {
     // Connection expired events
     this.socket.on(SYNC_WS_EVENTS.CONNECTION_EXPIRED, (data: ConnectionExpiredPayload) => {
       const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.CONNECTION_EXPIRED as 'connection:expired', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    // Processing progress events (PRD-117)
+    this.socket.on(SYNC_WS_EVENTS.PROCESSING_PROGRESS, (data: ProcessingProgressPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.PROCESSING_PROGRESS as 'processing:progress', ...data };
+      this.syncEventListeners.forEach((callback) => {
+        try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
+      });
+    });
+
+    // Processing completed events (PRD-117)
+    this.socket.on(SYNC_WS_EVENTS.PROCESSING_COMPLETED, (data: ProcessingCompletedPayload) => {
+      const event: SyncWebSocketEvent = { type: SYNC_WS_EVENTS.PROCESSING_COMPLETED as 'processing:completed', ...data };
       this.syncEventListeners.forEach((callback) => {
         try { callback(event); } catch (err) { console.error('[SocketClient] Error in sync event handler:', err); }
       });

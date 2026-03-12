@@ -107,7 +107,7 @@ export function SessionExpiryBanner({
   const handleExtend = useCallback(async () => {
     setIsExtending(true);
     try {
-      const success = await checkAuth();
+      const success = await checkAuth({ silent: true });
       if (success) {
         await refresh();
         // Reconnect socket after session extension

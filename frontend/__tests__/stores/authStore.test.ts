@@ -22,6 +22,7 @@ describe('AuthStore', () => {
         user: null,
         isAuthenticated: false,
         isLoading: true,
+        isRefreshing: false,
         error: null,
         lastChecked: null,
         authFailureReason: null,
@@ -58,6 +59,37 @@ describe('AuthStore', () => {
       expect(state.error).toBe('Authentication required');
       expect(state.authFailureReason).toBe('not_authenticated');
       expect(state.isLoading).toBe(false);
+    });
+
+    it('should set isRefreshing (not isLoading) when silent: true', async () => {
+      // Start with isLoading: false to verify it stays false
+      act(() => {
+        useAuthStore.setState({ isLoading: false });
+      });
+
+      let loadingDuringCheck = false;
+      let refreshingDuringCheck = false;
+
+      // Subscribe to state changes to capture mid-flight values
+      const unsub = useAuthStore.subscribe((state) => {
+        if (state.isRefreshing) refreshingDuringCheck = true;
+        if (state.isLoading && !state.isAuthenticated) loadingDuringCheck = true;
+      });
+
+      await act(async () => {
+        const isAuth = await useAuthStore.getState().checkAuth({ silent: true });
+        expect(isAuth).toBe(true);
+      });
+
+      unsub();
+
+      const state = useAuthStore.getState();
+      expect(state.isAuthenticated).toBe(true);
+      expect(state.isLoading).toBe(false);
+      expect(state.isRefreshing).toBe(false);
+      expect(refreshingDuringCheck).toBe(true);
+      // isLoading should NOT have been set to true during silent check
+      expect(loadingDuringCheck).toBe(false);
     });
 
     it('should handle session expired with session_expired reason', async () => {

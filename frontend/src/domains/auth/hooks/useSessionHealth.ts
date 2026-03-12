@@ -121,6 +121,8 @@ export function useSessionHealth(
   const shouldCheckOnVisibleRef = useRef(false);
   // Track previous visibility state to detect transitions
   const prevVisibleRef = useRef(true);
+  // Track whether initial health fetch has been triggered (prevents remount loop)
+  const hasInitiallyFetchedRef = useRef(false);
 
   // Get auth state
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -192,9 +194,9 @@ export function useSessionHealth(
           });
 
           if (refreshResponse.ok) {
-            // Refresh successful, update auth state and clear failure flag
+            // Refresh successful, update auth state silently (no full-screen spinner)
             setRefreshFailed(false);
-            await checkAuthRef.current();
+            await checkAuthRef.current({ silent: true });
           } else {
             // Refresh failed, but token not expired yet - log and notify
             console.warn('[useSessionHealth] Proactive token refresh failed:', refreshResponse.status);
@@ -220,6 +222,8 @@ export function useSessionHealth(
   // Single useEffect handles both polling and visibility changes
   useEffect(() => {
     if (!enabled || !isAuthenticated) {
+      // Reset initial fetch tracking when disabled/unauthenticated
+      hasInitiallyFetchedRef.current = false;
       return;
     }
 
@@ -240,8 +244,9 @@ export function useSessionHealth(
       fetchHealth();
     }
 
-    // Initial fetch (only if we haven't fetched yet)
-    if (health === null) {
+    // Initial fetch (only once per mount, not on every re-render)
+    if (!hasInitiallyFetchedRef.current) {
+      hasInitiallyFetchedRef.current = true;
       fetchHealth();
     }
 
@@ -251,7 +256,7 @@ export function useSessionHealth(
     return () => {
       clearInterval(intervalId);
     };
-  }, [enabled, isAuthenticated, pollInterval, fetchHealth, isTabVisible, health]);
+  }, [enabled, isAuthenticated, pollInterval, fetchHealth, isTabVisible]);
 
   // Compute derived values
   const isExpiring = health?.status === AUTH_SESSION_STATUS.EXPIRING;

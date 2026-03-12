@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react';
 const PUBLIC_ROUTES = ['/login', '/'];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, checkAuth, connectSocket } = useAuthStore();
+  const { isAuthenticated, checkAuth, connectSocket } = useAuthStore();
   const pathname = usePathname();
   const router = useRouter();
   const [isInitialized, setIsInitialized] = useState(false);
@@ -29,16 +29,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []); // Only run on mount - checkAuth and connectSocket from Zustand are stable
 
   useEffect(() => {
-    if (!isInitialized || isLoading) return;
+    if (!isInitialized) return;
 
     const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
 
     if (!isAuthenticated && !isPublicRoute) {
       router.push('/login');
     }
-  }, [isAuthenticated, isLoading, isInitialized, pathname, router]);
+  }, [isAuthenticated, isInitialized, pathname, router]);
 
-  if (!isInitialized || isLoading) {
+  if (!isInitialized) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

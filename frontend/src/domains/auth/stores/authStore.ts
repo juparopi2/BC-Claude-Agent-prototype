@@ -30,6 +30,8 @@ export interface AuthState {
   isAuthenticated: boolean;
   /** Loading state during auth check */
   isLoading: boolean;
+  /** Silent refresh in progress (does not unmount children) */
+  isRefreshing: boolean;
   /** Auth error message */
   error: string | null;
   /** Last auth check timestamp */
@@ -43,7 +45,7 @@ export interface AuthState {
  */
 export interface AuthActions {
   /** Check current auth status (deduplicated - concurrent calls share the same promise) */
-  checkAuth: () => Promise<boolean>;
+  checkAuth: (options?: { silent?: boolean }) => Promise<boolean>;
   /** Connect socket and join user room (idempotent - safe to call multiple times) */
   connectSocket: () => Promise<void>;
   /** Set user profile */
@@ -71,6 +73,7 @@ const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
   isLoading: true, // Start loading to check auth on mount
+  isRefreshing: false,
   error: null,
   lastChecked: null,
   authFailureReason: null,
@@ -92,14 +95,21 @@ export const useAuthStore = create<AuthStore>()(
       (set, get) => ({
         ...initialState,
 
-        checkAuth: async () => {
+        checkAuth: async (options) => {
           // Deduplicate concurrent calls - share the same promise
           if (checkAuthPromise !== null) {
             return checkAuthPromise;
           }
 
+          const silent = options?.silent ?? false;
+
           checkAuthPromise = (async (): Promise<boolean> => {
-            set({ isLoading: true, error: null, authFailureReason: null });
+            // Silent mode: set isRefreshing (no UI unmount). Normal mode: set isLoading.
+            if (silent) {
+              set({ isRefreshing: true, error: null, authFailureReason: null });
+            } else {
+              set({ isLoading: true, error: null, authFailureReason: null });
+            }
 
             const api = getApiClient();
             const result = await api.checkAuth();
@@ -110,6 +120,7 @@ export const useAuthStore = create<AuthStore>()(
                 isAuthenticated: authenticated,
                 user: user || null,
                 isLoading: false,
+                isRefreshing: false,
                 lastChecked: Date.now(),
                 authFailureReason: null,
               });
@@ -128,6 +139,7 @@ export const useAuthStore = create<AuthStore>()(
                 isAuthenticated: false,
                 user: null,
                 isLoading: false,
+                isRefreshing: false,
                 error: result.error.message,
                 lastChecked: Date.now(),
                 authFailureReason,
@@ -207,14 +219,13 @@ export const useAuthStore = create<AuthStore>()(
           return api.getLogoutUrl();
         },
 
-        reset: () => set({ ...initialState, isLoading: false }),
+        reset: () => set({ ...initialState, isLoading: false, isRefreshing: false }),
       }),
       {
         name: 'bc-agent-auth',
-        // Persist user, isAuthenticated, and authFailureReason
+        // Persist user and authFailureReason (isAuthenticated is derived from checkAuth on mount)
         partialize: (state) => ({
           user: state.user,
-          isAuthenticated: state.isAuthenticated,
           authFailureReason: state.authFailureReason,
         }),
       }

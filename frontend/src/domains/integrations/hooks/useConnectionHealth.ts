@@ -14,11 +14,12 @@ import { CONNECTION_STATUS } from '@bc-agent/shared';
 const DEFAULT_POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 export function useConnectionHealth(): void {
-  const connections = useIntegrationListStore((s) => s.connections);
-  const fetchConnections = useIntegrationListStore((s) => s.fetchConnections);
-  const hasActiveConnections = connections.some(
-    (c) => c.status === CONNECTION_STATUS.CONNECTED || c.status === CONNECTION_STATUS.EXPIRED
+  const hasActiveConnections = useIntegrationListStore((s) =>
+    s.connections.some(
+      (c) => c.status === CONNECTION_STATUS.CONNECTED || c.status === CONNECTION_STATUS.EXPIRED
+    )
   );
+  const fetchConnections = useIntegrationListStore((s) => s.fetchConnections);
 
   useEffect(() => {
     if (!hasActiveConnections) return;

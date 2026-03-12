@@ -15,7 +15,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { timingSafeCompare } from '@/shared/utils/session-ownership';
-import { getConnectionRepository } from './ConnectionRepository';
+import { getConnectionRepository, createScopeWriter } from './ConnectionRepository';
 import type { ConnectionRow, ScopeRow } from './ConnectionRepository';
 import type {
   ConnectionSummary,
@@ -285,22 +285,19 @@ export class ConnectionService {
     }));
 
     const createdScopeIds: string[] = await prisma.$transaction(async (tx) => {
+      const scopeWriter = createScopeWriter(tx);
       const ids: string[] = [];
       for (const scopeInput of scopeCreationInputs) {
-        const scopeId = await repo.createScope(normalizedConnectionId, scopeInput);
-
-        // Set sync_queued for non-exclude scopes (exclude scopes stay idle)
-        if (scopeInput.scopeMode !== 'exclude') {
-          await tx.connection_scopes.update({
-            where: { id: scopeId },
-            data: { sync_status: 'sync_queued' },
-          });
-        }
-
+        // Set syncStatus at creation time — avoids separate update round-trip
+        const syncStatus = scopeInput.scopeMode !== 'exclude' ? 'sync_queued' : 'idle';
+        const scopeId = await scopeWriter.createScope(normalizedConnectionId, {
+          ...scopeInput,
+          syncStatus,
+        });
         ids.push(scopeId);
       }
       return ids;
-    });
+    }, { timeout: 15000 });
 
     // Build response
     const added: Array<ConnectionScopeDetail & { syncJobId?: string }> = [];
@@ -552,10 +549,8 @@ export class ConnectionService {
         scopeDisplayName: lib.displayName,
         scopePath: `${siteName} / ${lib.displayName}`,
         scopeSiteId: siteId,
+        syncStatus: 'sync_queued',
       });
-
-      // PRD-116: Set sync_queued and enqueue via BullMQ instead of fire-and-forget
-      await repo.updateScope(libScopeId, { syncStatus: 'sync_queued' });
 
       try {
         await messageQueue.addInitialSyncJob({

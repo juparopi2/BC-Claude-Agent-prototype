@@ -16,6 +16,7 @@
 import { randomUUID } from 'crypto';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
+import type { PrismaClientLike } from '@/infrastructure/database/prisma';
 
 const logger = createChildLogger({ service: 'ConnectionRepository' });
 
@@ -59,6 +60,88 @@ export interface ScopeRow {
   scope_mode: string;
   scope_site_id: string | null;
   created_at: Date;
+}
+
+// ============================================================================
+// Scope Create Input
+// ============================================================================
+
+/**
+ * Input for creating a scope — includes optional syncStatus to set at creation
+ * time, avoiding the two-step create-then-update anti-pattern.
+ */
+export interface ScopeCreateInput {
+  scopeType: string;
+  scopeResourceId: string;
+  scopeDisplayName: string;
+  scopePath?: string;
+  remoteDriveId?: string;
+  scopeMode?: string;
+  scopeSiteId?: string;
+  syncStatus?: string;
+}
+
+// ============================================================================
+// Scoped Writer Factory
+// ============================================================================
+
+/**
+ * Creates a scoped writer for scope write operations.
+ * Use inside prisma.$transaction() for atomic batch operations,
+ * or call without arguments for standalone writes via global client.
+ */
+export function createScopeWriter(client: PrismaClientLike = prisma) {
+  return {
+    async createScope(connectionId: string, data: ScopeCreateInput): Promise<string> {
+      const id = randomUUID().toUpperCase();
+      logger.debug({ connectionId, scopeType: data.scopeType }, 'Creating connection scope');
+
+      await client.connection_scopes.create({
+        data: {
+          id,
+          connection_id: connectionId,
+          scope_type: data.scopeType,
+          scope_resource_id: data.scopeResourceId,
+          scope_display_name: data.scopeDisplayName,
+          scope_path: data.scopePath ?? null,
+          remote_drive_id: data.remoteDriveId ?? null,
+          scope_mode: data.scopeMode ?? 'include',
+          scope_site_id: data.scopeSiteId ?? null,
+          sync_status: data.syncStatus ?? 'idle',
+          item_count: 0,
+        },
+      });
+
+      return id;
+    },
+
+    async updateScope(scopeId: string, data: Partial<{
+      syncStatus: string;
+      lastSyncAt: Date;
+      lastSyncError: string | null;
+      lastSyncCursor: string | null;
+      itemCount: number;
+    }>): Promise<void> {
+      logger.debug({ scopeId, fields: Object.keys(data) }, 'Updating connection scope');
+
+      await client.connection_scopes.update({
+        where: { id: scopeId },
+        data: {
+          ...(data.syncStatus !== undefined && { sync_status: data.syncStatus }),
+          ...(data.lastSyncAt !== undefined && { last_sync_at: data.lastSyncAt }),
+          ...(data.lastSyncError !== undefined && { last_sync_error: data.lastSyncError }),
+          ...(data.lastSyncCursor !== undefined && { last_sync_cursor: data.lastSyncCursor }),
+          ...(data.itemCount !== undefined && { item_count: data.itemCount }),
+          updated_at: new Date(),
+        },
+      });
+    },
+
+    async deleteScopeById(scopeId: string): Promise<void> {
+      logger.debug({ scopeId }, 'Deleting connection scope');
+      await client.connection_scopes.delete({ where: { id: scopeId } });
+    },
+  };
 }
 
 // ============================================================================
@@ -232,47 +315,20 @@ export class ConnectionRepository {
     }));
   }
 
+  private defaultScopeWriter = createScopeWriter();
+
   /**
    * Create a new connection_scope record.
    * Returns the new scope ID (UPPERCASE).
+   * Delegates to createScopeWriter() with global Prisma client.
    */
-  async createScope(
-    connectionId: string,
-    data: {
-      scopeType: string;
-      scopeResourceId: string;
-      scopeDisplayName: string;
-      scopePath?: string;
-      remoteDriveId?: string;
-      scopeMode?: string;
-      scopeSiteId?: string;
-    }
-  ): Promise<string> {
-    const id = randomUUID().toUpperCase();
-
-    logger.debug({ connectionId, scopeType: data.scopeType }, 'Creating connection scope');
-
-    await prisma.connection_scopes.create({
-      data: {
-        id,
-        connection_id: connectionId,
-        scope_type: data.scopeType,
-        scope_resource_id: data.scopeResourceId,
-        scope_display_name: data.scopeDisplayName,
-        scope_path: data.scopePath ?? null,
-        remote_drive_id: data.remoteDriveId ?? null,
-        scope_mode: data.scopeMode ?? 'include',
-        scope_site_id: data.scopeSiteId ?? null,
-        sync_status: 'idle',
-        item_count: 0,
-      },
-    });
-
-    return id;
+  async createScope(connectionId: string, data: ScopeCreateInput): Promise<string> {
+    return this.defaultScopeWriter.createScope(connectionId, data);
   }
 
   /**
    * Update a scope's sync state fields.
+   * Delegates to createScopeWriter() with global Prisma client.
    */
   async updateScope(
     scopeId: string,
@@ -284,19 +340,7 @@ export class ConnectionRepository {
       itemCount: number;
     }>
   ): Promise<void> {
-    logger.debug({ scopeId, fields: Object.keys(data) }, 'Updating connection scope');
-
-    await prisma.connection_scopes.update({
-      where: { id: scopeId },
-      data: {
-        ...(data.syncStatus !== undefined && { sync_status: data.syncStatus }),
-        ...(data.lastSyncAt !== undefined && { last_sync_at: data.lastSyncAt }),
-        ...(data.lastSyncError !== undefined && { last_sync_error: data.lastSyncError }),
-        ...(data.lastSyncCursor !== undefined && { last_sync_cursor: data.lastSyncCursor }),
-        ...(data.itemCount !== undefined && { item_count: data.itemCount }),
-        updated_at: new Date(),
-      },
-    });
+    return this.defaultScopeWriter.updateScope(scopeId, data);
   }
 
   /**
@@ -448,13 +492,10 @@ export class ConnectionRepository {
 
   /**
    * Hard-delete a single connection scope (PRD-105).
+   * Delegates to createScopeWriter() with global Prisma client.
    */
   async deleteScopeById(scopeId: string): Promise<void> {
-    logger.debug({ scopeId }, 'Deleting connection scope');
-
-    await prisma.connection_scopes.delete({
-      where: { id: scopeId },
-    });
+    return this.defaultScopeWriter.deleteScopeById(scopeId);
   }
 
   /**

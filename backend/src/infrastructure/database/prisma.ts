@@ -1,6 +1,9 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { PrismaMssql } from '@prisma/adapter-mssql';
 import { createChildLogger } from '@/shared/utils/logger';
+
+/** Prisma client that works both in and out of transactions. */
+export type PrismaClientLike = PrismaClient | Prisma.TransactionClient;
 
 const prismaLogger = createChildLogger({ service: 'Prisma' });
 

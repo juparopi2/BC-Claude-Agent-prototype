@@ -174,3 +174,37 @@ Evaluate whether the batch endpoint should only create scopes and return scope I
 - Delta sync changes (already well-architected)
 - Webhook subscription management (working correctly)
 - Frontend scope selection UI (separate PRD)
+
+---
+
+## 8. Post-Implementation Bug: Transaction Timeout (Fixed 2026-03-12)
+
+### 8.1 Symptom
+
+When adding 4+ scopes in a single batch (e.g., selecting multiple SharePoint libraries), the server crashed with:
+1. **Transaction timeout** — exceeded the 5000ms default
+2. **EREQINPROG** unhandled rejection — rollback fired while a query was still in-flight
+
+### 8.2 Root Cause
+
+`batchUpdateScopes()` wrapped scope creation in `prisma.$transaction(async (tx) => {...})`, but `repo.createScope()` used the **global Prisma client** instead of the transaction client `tx`. This caused:
+
+- **Creates** via global `prisma` on connection pool A
+- **Updates** via `tx` on connection pool B (the transaction connection)
+- With 4 scopes × 2 ops = 8 sequential round-trips across 2 DB connections → exceeded 5000ms timeout
+- No actual atomicity — creates via global `prisma` were not rolled back on failure
+
+### 8.3 Fix: Scoped Repository Factory
+
+Introduced `createScopeWriter(client)` factory in `ConnectionRepository.ts`:
+
+- Accepts a `PrismaClientLike` (either global `PrismaClient` or `Prisma.TransactionClient`)
+- All scope write operations (create, update, delete) go through the provided client
+- Existing `ConnectionRepository` class methods delegate to the factory with default global client
+- Transaction callers pass `createScopeWriter(tx)` to ensure all operations use the transaction connection
+
+Additional improvements:
+- `syncStatus` is set at creation time (eliminates the separate `update()` round-trip)
+- DB round-trips cut from 8 to 4 for a 4-scope batch
+- Explicit `timeout: 15000` on the transaction as safety margin
+- Same fix applied to `_expandSiteScope()` which had the same two-step anti-pattern

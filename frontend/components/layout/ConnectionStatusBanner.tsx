@@ -36,6 +36,7 @@ export function ConnectionStatusBanner({
   className,
 }: ConnectionStatusBannerProps) {
   const status = useConnectionStore((s) => s.status);
+  const failureOrigin = useConnectionStore((s) => s.failureOrigin);
   const message = useConnectionStore(selectConnectionMessage);
   const shouldShow = useConnectionStore(selectShouldShowBanner);
 
@@ -47,10 +48,12 @@ export function ConnectionStatusBanner({
       await socketClient.connect({ url: env.wsUrl });
     } catch (error) {
       console.error('[ConnectionStatusBanner] Retry failed:', error);
-      useConnectionStore.getState().setFailed(
-        error instanceof Error ? error.message : 'Retry failed'
-      );
+      useConnectionStore.getState().setFailed('retry');
     }
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    window.location.reload();
   }, []);
 
   // Don't render if not needed
@@ -60,6 +63,7 @@ export function ConnectionStatusBanner({
 
   const isFailed = status === 'failed';
   const isConnecting = status === 'connecting' || status === 'reconnecting';
+  const showRefreshButton = isFailed && failureOrigin === 'retry';
 
   // Determine if using relative or fixed positioning
   const isRelative = className?.includes('relative');
@@ -94,21 +98,37 @@ export function ConnectionStatusBanner({
       {/* Message */}
       <span className="text-sm font-medium">{message}</span>
 
-      {/* Retry Button (only show when failed) */}
+      {/* Action buttons (only show when failed) */}
       {isFailed && (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleRetry}
-          className={cn(
-            'ml-2',
-            'bg-white/20 hover:bg-white/30',
-            'text-white border-white/30'
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleRetry}
+            className={cn(
+              'ml-2',
+              'bg-white/20 hover:bg-white/30',
+              'text-white border-white/30'
+            )}
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+            Try again
+          </Button>
+
+          {showRefreshButton && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRefresh}
+              className={cn(
+                'bg-white/20 hover:bg-white/30',
+                'text-white border-white/30'
+              )}
+            >
+              Refresh page
+            </Button>
           )}
-        >
-          <RefreshCw className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-          Retry
-        </Button>
+        </>
       )}
     </div>
   );

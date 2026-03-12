@@ -19,6 +19,9 @@ export type ConnectionStatus =
   | 'reconnecting'
   | 'failed';
 
+/** Why a connection failure occurred — used to select the appropriate user-facing message */
+export type FailureOrigin = 'initial' | 'connection_lost' | 'retry';
+
 /**
  * Connection store state
  */
@@ -33,8 +36,10 @@ export interface ConnectionState {
   reconnectAttempt: number;
   /** Maximum reconnection attempts before failing */
   maxReconnectAttempts: number;
-  /** Last connection error message */
+  /** Last connection error message (internal use only, not shown to users) */
   lastError: string | null;
+  /** Why the failure occurred — drives contextual user-facing messages */
+  failureOrigin: FailureOrigin | null;
   /** Timestamp of last successful connection */
   lastConnectedAt: number | null;
   /** Timestamp of last disconnection */
@@ -48,13 +53,13 @@ export interface ConnectionActions {
   /** Set connected state */
   setConnected: () => void;
   /** Set disconnected state */
-  setDisconnected: (error?: string) => void;
+  setDisconnected: () => void;
   /** Set reconnecting state with attempt number */
   setReconnecting: (attempt: number) => void;
   /** Set connecting state (initial connection) */
   setConnecting: () => void;
-  /** Set failed state (exhausted all retry attempts) */
-  setFailed: (error?: string) => void;
+  /** Set failed state with the origin of the failure */
+  setFailed: (origin?: FailureOrigin) => void;
   /** Reset to initial disconnected state */
   reset: () => void;
   /** Update max reconnect attempts */
@@ -73,6 +78,7 @@ const initialState: ConnectionState = {
   reconnectAttempt: 0,
   maxReconnectAttempts: 5,
   lastError: null,
+  failureOrigin: null,
   lastConnectedAt: null,
   lastDisconnectedAt: null,
 };
@@ -91,17 +97,17 @@ export const useConnectionStore = create<ConnectionStore>()(
         isReconnecting: false,
         reconnectAttempt: 0,
         lastError: null,
+        failureOrigin: null,
         lastConnectedAt: Date.now(),
       }),
 
-    setDisconnected: (error?: string) =>
-      set((state) => ({
+    setDisconnected: () =>
+      set({
         status: 'disconnected',
         isConnected: false,
         isReconnecting: false,
-        lastError: error ?? state.lastError,
         lastDisconnectedAt: Date.now(),
-      })),
+      }),
 
     setReconnecting: (attempt: number) =>
       set({
@@ -120,12 +126,13 @@ export const useConnectionStore = create<ConnectionStore>()(
         lastError: null,
       }),
 
-    setFailed: (error?: string) =>
+    setFailed: (origin?: FailureOrigin) =>
       set((state) => ({
         status: 'failed',
         isConnected: false,
         isReconnecting: false,
-        lastError: error ?? 'Connection failed after maximum retry attempts',
+        lastError: 'connection-failed',
+        failureOrigin: origin ?? null,
         lastDisconnectedAt: Date.now(),
         reconnectAttempt: state.maxReconnectAttempts,
       })),
@@ -143,15 +150,20 @@ export const useConnectionStore = create<ConnectionStore>()(
 export const selectConnectionMessage = (state: ConnectionStore): string | null => {
   switch (state.status) {
     case 'connecting':
-      return 'Connecting to server...';
+      return 'Connecting...';
     case 'reconnecting':
-      return `Reconnecting... (attempt ${state.reconnectAttempt}/${state.maxReconnectAttempts})`;
+      return 'Restoring connection...';
     case 'failed':
-      return state.lastError ?? 'Could not connect to server';
+      if (state.failureOrigin === 'connection_lost') {
+        return 'Connection lost. Please check your internet and try again.';
+      }
+      if (state.failureOrigin === 'retry') {
+        return 'Still unable to connect. Please refresh the page.';
+      }
+      return 'Unable to connect. Check your internet connection and try again.';
     case 'disconnected':
-      // Only show message if was previously connected
       if (state.lastConnectedAt !== null) {
-        return 'Disconnected from server';
+        return 'Restoring connection...';
       }
       return null;
     default:

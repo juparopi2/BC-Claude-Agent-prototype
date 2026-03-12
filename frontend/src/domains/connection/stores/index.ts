@@ -13,4 +13,5 @@ export {
   type ConnectionActions,
   type ConnectionStore,
   type ConnectionStatus,
+  type FailureOrigin,
 } from './connectionStore';

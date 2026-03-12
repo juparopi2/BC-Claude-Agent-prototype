@@ -150,7 +150,7 @@ export class SocketClient {
 
       const onConnectError = (error: Error) => {
         console.error('[SocketClient] Socket.IO connect error:', error.message);
-        useConnectionStore.getState().setFailed(error.message);
+        useConnectionStore.getState().setFailed('initial');
         this.notifyConnectionChange(false);
         reject(error);
       };
@@ -548,13 +548,14 @@ export class SocketClient {
     this.socket.on('disconnect', (reason) => {
       // Don't update store if this is an intentional disconnect (io client disconnect)
       if (reason !== 'io client disconnect') {
-        useConnectionStore.getState().setDisconnected(reason);
+        useConnectionStore.getState().setDisconnected();
       }
       this.notifyConnectionChange(false);
     });
 
     this.socket.on('connect_error', (error) => {
-      useConnectionStore.getState().setFailed(error.message);
+      console.error('[SocketClient] connect_error:', error.message);
+      useConnectionStore.getState().setFailed('connection_lost');
       this.notifyConnectionChange(false);
     });
 
@@ -570,9 +571,7 @@ export class SocketClient {
     });
 
     this.socket.io.on('reconnect_failed', () => {
-      useConnectionStore.getState().setFailed(
-        `Could not reconnect after ${this.maxReconnectAttempts} attempts`
-      );
+      useConnectionStore.getState().setFailed('connection_lost');
     });
 
     // Agent events

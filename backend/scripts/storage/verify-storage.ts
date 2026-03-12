@@ -543,19 +543,35 @@ async function verifySearchSection(
     return { hasErrors: false, hasWarnings: true };
   }
 
-  // Fetch all search documents for user
+  // Fetch all search documents for user using paginated search
   const searchDocs: SearchDoc[] = [];
   try {
-    const results = await searchClient.search('*', {
-      select: ['chunkId', 'fileId', 'userId', 'chunkIndex', 'mimeType', 'content', 'isImage', 'fileStatus'],
-      filter: `userId eq '${userId}'`,
-      top: 10000,
-    });
+    const PAGE_SIZE = 500;
+    let skip = 0;
 
-    for await (const result of results.results) {
-      if (result.document) {
-        searchDocs.push(result.document);
+    while (true) {
+      const results = await searchClient.search('*', {
+        select: ['chunkId', 'fileId', 'userId', 'chunkIndex', 'mimeType', 'content', 'isImage', 'fileStatus'],
+        filter: `userId eq '${userId}'`,
+        top: PAGE_SIZE,
+        skip,
+        includeTotalCount: skip === 0,
+      });
+
+      if (skip === 0 && results.count !== undefined) {
+        console.log(`  Scanning search index (${results.count} documents)...`);
       }
+
+      let batchCount = 0;
+      for await (const result of results.results) {
+        if (result.document) {
+          searchDocs.push(result.document);
+          batchCount++;
+        }
+      }
+
+      if (batchCount < PAGE_SIZE) break;
+      skip += PAGE_SIZE;
     }
   } catch (error) {
     const errorInfo = error instanceof Error
@@ -625,7 +641,11 @@ async function verifySearchSection(
 
   // Helper to report field coverage with severity
   function reportFieldCoverage(fieldName: string, populated: number, total: number, expectedPercent: number = 100): void {
-    const percent = total > 0 ? ((populated / total) * 100).toFixed(1) : '0.0';
+    if (total === 0) {
+      printStatus(`${fieldName}`, `0 / 0 (N/A)`);
+      return;
+    }
+    const percent = ((populated / total) * 100).toFixed(1);
     const severity = parseFloat(percent) >= expectedPercent ? 'ok' : parseFloat(percent) === 0 ? 'error' : 'warn';
     printStatus(`${fieldName}`, `${populated} / ${total} (${percent}%)`, severity);
     if (severity === 'error') {

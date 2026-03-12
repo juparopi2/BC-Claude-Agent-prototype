@@ -217,7 +217,7 @@ async function deleteSearchDocumentsBatch(
 ): Promise<number> {
   if (!searchClient || chunkIds.length === 0) return 0;
 
-  const BATCH_SIZE = 100;
+  const BATCH_SIZE = 1000; // Azure Search supports up to 1000 per batch
   let deleted = 0;
 
   for (let i = 0; i < chunkIds.length; i += BATCH_SIZE) {
@@ -567,24 +567,65 @@ async function runOrphanCleanup(
       console.log('Skipping: --all mode not supported for search orphan cleanup');
     } else {
       try {
-        const searchResults = await searchClient.search('*', {
-          select: ['chunkId', 'fileId', 'userId'],
-          filter: `userId eq '${userId}'`,
-          top: 10000,
-        });
+        // Step 1: Collect all search docs for this user using paginated search
+        const PAGE_SIZE = 500;
+        let skip = 0;
+        const docsByFileId = new Map<string, string[]>(); // fileId -> chunkId[]
 
-        const orphanChunkIds: string[] = [];
-
-        for await (const doc of searchResults.results) {
-          if (!doc.document.fileId) continue;
-
-          const fileExists = await prisma.files.findUnique({
-            where: { id: doc.document.fileId },
-            select: { id: true },
+        console.log('Scanning search index...');
+        while (true) {
+          const searchResults = await searchClient.search('*', {
+            select: ['chunkId', 'fileId'] as any,
+            filter: `userId eq '${userId}'`,
+            top: PAGE_SIZE,
+            skip,
+            includeTotalCount: skip === 0,
           });
 
-          if (!fileExists) {
-            orphanChunkIds.push(doc.document.chunkId);
+          if (skip === 0 && searchResults.count !== undefined) {
+            console.log(`  Total documents in index for user: ${searchResults.count}`);
+          }
+
+          let batchCount = 0;
+          for await (const doc of searchResults.results) {
+            const fileId = doc.document.fileId;
+            const chunkId = doc.document.chunkId;
+            if (!fileId || !chunkId) continue;
+
+            if (!docsByFileId.has(fileId)) {
+              docsByFileId.set(fileId, []);
+            }
+            docsByFileId.get(fileId)!.push(chunkId);
+            batchCount++;
+          }
+
+          console.log(`  Page ${Math.floor(skip / PAGE_SIZE) + 1}: ${batchCount} docs`);
+          if (batchCount < PAGE_SIZE) break;
+          skip += PAGE_SIZE;
+        }
+
+        // Step 2: Batch-check which fileIds still exist in DB
+        const allFileIds = [...docsByFileId.keys()];
+        console.log(`  Unique file IDs in search: ${allFileIds.length}`);
+
+        const BATCH_SIZE = 100;
+        const existingFileIds = new Set<string>();
+        for (let i = 0; i < allFileIds.length; i += BATCH_SIZE) {
+          const batch = allFileIds.slice(i, i + BATCH_SIZE);
+          const existing = await prisma.files.findMany({
+            where: { id: { in: batch } },
+            select: { id: true },
+          });
+          existing.forEach(f => existingFileIds.add(f.id));
+        }
+
+        // Step 3: Identify orphan chunks (fileId not in DB)
+        const orphanChunkIds: string[] = [];
+        const orphanFileIds: string[] = [];
+        for (const [fileId, chunkIds] of docsByFileId.entries()) {
+          if (!existingFileIds.has(fileId)) {
+            orphanChunkIds.push(...chunkIds);
+            orphanFileIds.push(fileId);
           }
         }
 
@@ -593,7 +634,7 @@ async function runOrphanCleanup(
         if (orphanChunkIds.length === 0) {
           console.log('No orphan search documents found.');
         } else {
-          console.log(`Found ${orphanChunkIds.length} orphan search documents`);
+          console.log(`Found ${orphanChunkIds.length} orphan search documents across ${orphanFileIds.length} deleted file(s)`);
 
           if (dryRun) {
             console.log(`[DRY RUN] Would delete ${orphanChunkIds.length} orphan search docs`);
@@ -685,12 +726,14 @@ async function runOrphanCleanup(
   console.log('\n--- 3.3: Orphan Chunks ---');
   try {
     if (dryRun) {
-      const orphanChunks = await prisma.$queryRaw<{ count: number }[]>`
-        SELECT COUNT(*) as count
-        FROM file_chunks
-        WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.id = file_chunks.file_id)
-        ${userId ? prisma.$queryRaw`AND file_id IN (SELECT id FROM files WHERE user_id = ${userId})` : prisma.$queryRaw``}
-      `;
+      const orphanChunks = userId
+        ? await prisma.$queryRaw<{ count: number }[]>`
+            SELECT COUNT(*) as count FROM file_chunks
+            WHERE user_id = ${userId}
+            AND NOT EXISTS (SELECT 1 FROM files f WHERE f.id = file_chunks.file_id)`
+        : await prisma.$queryRaw<{ count: number }[]>`
+            SELECT COUNT(*) as count FROM file_chunks
+            WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.id = file_chunks.file_id)`;
 
       const count = orphanChunks[0]?.count ?? 0;
       result.itemsFound += count;
@@ -702,11 +745,14 @@ async function runOrphanCleanup(
         result.succeeded += count;
       }
     } else {
-      const deleteResult = await prisma.$executeRaw`
-        DELETE FROM file_chunks
-        WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.id = file_chunks.file_id)
-        ${userId ? prisma.$queryRaw`AND file_id IN (SELECT id FROM files WHERE user_id = ${userId})` : prisma.$queryRaw``}
-      `;
+      const deleteResult = userId
+        ? await prisma.$executeRaw`
+            DELETE FROM file_chunks
+            WHERE user_id = ${userId}
+            AND NOT EXISTS (SELECT 1 FROM files f WHERE f.id = file_chunks.file_id)`
+        : await prisma.$executeRaw`
+            DELETE FROM file_chunks
+            WHERE NOT EXISTS (SELECT 1 FROM files f WHERE f.id = file_chunks.file_id)`;
 
       result.itemsFound += deleteResult;
       result.succeeded += deleteResult;

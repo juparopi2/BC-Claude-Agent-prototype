@@ -208,3 +208,71 @@ Additional improvements:
 - DB round-trips cut from 8 to 4 for a 4-scope batch
 - Explicit `timeout: 15000` on the transaction as safety margin
 - Same fix applied to `_expandSiteScope()` which had the same two-step anti-pattern
+
+---
+
+## 9. Post-Implementation Bug: Concurrent Token Fetch Race Condition (Fixed 2026-03-12)
+
+### 9.1 Symptom
+
+When a user adds 3+ SharePoint folder scopes in a single batch, the BullMQ initial-sync workers start concurrently. 2 out of 3 (or more) fail with:
+
+```
+Error: Connection not found: 05BBE052-0286-4ACB-9412-C28C11CFA9F8
+    at GraphTokenManager.getValidToken (GraphTokenManager.ts:81:13)
+    at SharePointService.executeFolderDeltaQuery (SharePointService.ts:275:19)
+    at InitialSyncService._runSync (InitialSyncService.ts:144:18)
+```
+
+The connection exists in the database — earlier browsing calls and the `_runSync` connection lookup at line 107 all succeed. Only the concurrent `getValidToken` calls fail.
+
+### 9.2 Root Cause
+
+The `PrismaMssql` adapter (backed by the `mssql` connection pool) intermittently returns `null` from `findUnique` when multiple workers issue the exact same query against the same row simultaneously. The sequence:
+
+1. `batchUpdateScopes()` creates 3 scopes in a transaction, enqueues 3 BullMQ jobs post-commit
+2. 3 `ExternalFileSyncWorker` instances pick up the jobs nearly simultaneously (~0ms apart)
+3. Each `_runSync` call fetches the connection at line 107 → succeeds (sequential timing with scope updates)
+4. Each `_runSync` calls `SharePointService.executeFolderDeltaQuery` → `getValidToken(connectionId)` → `prisma.connections.findUnique` at line 68
+5. 3 concurrent `findUnique` queries against the same `connections` row: 2 return `null`, 1 succeeds
+
+The DB connection pool (`max: 10`) was also undersized for the concurrent load pattern (3 sync workers × multiple queries each + UI browsing/listing queries).
+
+### 9.3 Fix: Singleflight Pattern + Pool Increase
+
+**1. Singleflight in `GraphTokenManager.getValidToken()`** (`backend/src/services/connectors/GraphTokenManager.ts`)
+
+Added an `inflightTokenRequests` Map that deduplicates concurrent calls for the same `connectionId`. When multiple callers request the same token simultaneously, they share a single in-flight DB query instead of each issuing a separate one:
+
+```typescript
+private inflightTokenRequests = new Map<string, Promise<string>>();
+
+async getValidToken(connectionId: string): Promise<string> {
+  const inflight = this.inflightTokenRequests.get(connectionId);
+  if (inflight) return inflight;
+
+  const promise = this._getValidTokenImpl(connectionId);
+  this.inflightTokenRequests.set(connectionId, promise);
+  try {
+    return await promise;
+  } finally {
+    this.inflightTokenRequests.delete(connectionId);
+  }
+}
+```
+
+Benefits:
+- 3 concurrent calls → 1 DB query (shared result)
+- No stale data concerns (no long-lived cache, result shared only during in-flight window)
+- Also reduces DB load for delta pagination (each page used to call `getValidToken` separately)
+
+**2. DB pool increase** (`backend/src/infrastructure/database/prisma.ts`)
+
+Increased `PrismaMssql` pool `max` from 10 to 30 to accommodate concurrent sync workers + UI queries.
+
+### 9.4 Architectural Lesson
+
+When BullMQ workers run concurrently against the same connection, any shared resource lookup (`getValidToken`, `findUnique` on connections) becomes a concurrency hotspot. The singleflight pattern should be applied to any singleton service method that:
+- Is called from concurrent BullMQ workers
+- Queries the same row by the same key
+- Returns an immutable or short-lived result (like a decrypted token)

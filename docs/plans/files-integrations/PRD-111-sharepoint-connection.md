@@ -700,7 +700,7 @@ The scope schemas (`createScopesSchema`, `batchScopesSchema`) are provider-agnos
 |---|---|---|
 | `GraphApiContentProvider` | **100% reuse** | Same `/drives/{id}/items/{id}/content` |
 | `ContentProviderFactory` | **100% reuse** | Already routes `'sharepoint'` |
-| `GraphTokenManager` | **100% reuse** | Any connection record |
+| `GraphTokenManager` | **100% reuse** | Any connection record. Singleflight pattern added for concurrent sync workers (§14.9) |
 | `GraphHttpClient` | **100% reuse** | Any Graph API call |
 | `GraphRateLimiter` | **100% reuse** | Per-tenant limiting |
 | `InitialSyncService` | **100% reuse** | Works with any driveId |
@@ -828,3 +828,15 @@ This caused a race condition in `ensureScopeRootFolder` where two concurrent `_r
 **Fix (frontend):** Removed the redundant `/sync` POST calls from both wizards. The batch endpoint already triggers sync for each new include scope.
 
 **Fix (backend, defense-in-depth):** `ensureScopeRootFolder` in `FolderHierarchyResolver.ts` now catches Prisma P2002 (unique constraint violation) errors, re-queries the existing folder, and continues gracefully instead of crashing.
+
+### 14.9 Concurrent Token Fetch — "Connection not found" (2026-03-12)
+
+**Symptom:** When adding 3+ SharePoint folder scopes, 2 of 3 initial syncs failed with `Error: Connection not found: {connectionId}` from `GraphTokenManager.getValidToken`, despite the connection existing in the DB.
+
+**Root cause:** The `PrismaMssql` adapter intermittently returns `null` from `findUnique` when 3+ BullMQ `ExternalFileSyncWorker` instances issue the exact same query against the same `connections` row simultaneously. The DB pool (`max: 10`) was also undersized for the concurrent load (3 sync workers × multiple queries + UI requests).
+
+**Fix:**
+1. Added **singleflight pattern** to `GraphTokenManager.getValidToken()` — concurrent calls for the same `connectionId` share a single in-flight DB query via an `inflightTokenRequests` Map
+2. Increased `PrismaMssql` pool `max` from 10 to 30
+
+See [PRD-116 §9](./PRD-116-scope-sync-atomicity.md#9-post-implementation-bug-concurrent-token-fetch-race-condition-fixed-2026-03-12) for full analysis.

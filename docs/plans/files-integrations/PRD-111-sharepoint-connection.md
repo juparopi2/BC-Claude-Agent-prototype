@@ -1,7 +1,7 @@
 # PRD-111: SharePoint Connection — Backend
 
 **Phase**: SharePoint
-**Status**: Planned
+**Status**: Implemented (commit 5ac405c, 2026-03-11)
 **Prerequisites**: PRD-108 (Webhook Sync Engine), PRD-110 (Shared Files), PRD-112 (Scope Exclusion)
 **Estimated Effort**: 4-5 days (backend only)
 **Created**: 2026-03-05

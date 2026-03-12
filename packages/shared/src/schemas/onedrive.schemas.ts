@@ -20,6 +20,7 @@ export const createScopesSchema = z.object({
       scopePath: z.string().max(1000).nullish(),
       remoteDriveId: z.string().max(200).optional(),
       scopeMode: z.enum(['include', 'exclude']).default('include').optional(),
+      scopeSiteId: z.string().max(500).optional(),
     })
   ).min(1, 'At least one scope is required').max(50, 'Maximum 50 scopes per request'),
 });
@@ -48,6 +49,7 @@ export const batchScopesSchema = z.object({
       scopePath: z.string().max(1000).nullish(),
       remoteDriveId: z.string().max(200).optional(),
       scopeMode: z.enum(['include', 'exclude']).default('include').optional(),
+      scopeSiteId: z.string().max(500).optional(),
     })
   ).max(50, 'Maximum 50 scopes to add per request').default([]),
   remove: z.array(

@@ -13,7 +13,7 @@ import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { useIntegrationListStore } from '../stores/integrationListStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { useFiles } from '@/src/domains/files';
-import { SYNC_WS_EVENTS, type SyncWebSocketEvent } from '@bc-agent/shared';
+import { SYNC_WS_EVENTS, PROVIDER_DISPLAY_NAME, type SyncWebSocketEvent } from '@bc-agent/shared';
 import { toast } from 'sonner';
 
 /**
@@ -56,6 +56,11 @@ export function useSyncEvents(): void {
     invalidateTreeFolderRef.current = invalidateTreeFolder;
   }, [invalidateTreeFolder]);
 
+  const getProviderName = useCallback((connectionId: string): string => {
+    const conn = useIntegrationListStore.getState().connections.find(c => c.id === connectionId);
+    return conn ? PROVIDER_DISPLAY_NAME[conn.provider as keyof typeof PROVIDER_DISPLAY_NAME] ?? 'external source' : 'external source';
+  }, []);
+
   const handleSyncEvent = useCallback((event: SyncWebSocketEvent) => {
     switch (event.type) {
       case SYNC_WS_EVENTS.SYNC_COMPLETED as 'sync:completed':
@@ -67,7 +72,7 @@ export function useSyncEvents(): void {
           invalidateTreeFolderRef.current(key);
         }
         toast.success('Sync completed', {
-          description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from OneDrive`,
+          description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from ${getProviderName(event.connectionId)}`,
         });
         break;
 
@@ -86,7 +91,7 @@ export function useSyncEvents(): void {
       case SYNC_WS_EVENTS.SYNC_FILE_ADDED as 'sync:file_added':
         refreshRef.current();
         toast.info('File synced', {
-          description: `"${event.fileName}" added from OneDrive`,
+          description: `"${event.fileName}" added from ${getProviderName(event.connectionId)}`,
         });
         break;
 
@@ -112,7 +117,8 @@ export function useSyncEvents(): void {
         useIntegrationListStore.getState().fetchConnections();
         // Invalidate cached OneDrive tree so fresh data loads after reconnection
         invalidateTreeFolderRef.current('onedrive-root');
-        toast.warning('OneDrive session expired', {
+        invalidateTreeFolderRef.current('sharepoint-root');
+        toast.warning(`${getProviderName(event.connectionId)} session expired`, {
           description: 'Please reconnect to continue syncing.',
         });
         break;
@@ -122,7 +128,7 @@ export function useSyncEvents(): void {
         useIntegrationListStore.getState().fetchConnections();
         break;
     }
-  }, []);
+  }, [getProviderName]);
 
   useEffect(() => {
     const client = getSocketClient();

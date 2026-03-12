@@ -30,7 +30,7 @@ const PROVIDER_DESCRIPTION: Record<string, string> = {
 };
 
 // Providers that support file sync connections
-const CONNECTABLE_PROVIDERS = new Set<string>(['onedrive']);
+const CONNECTABLE_PROVIDERS = new Set<string>(['onedrive', 'sharepoint']);
 
 export function ConnectionsTab() {
   const { connections, isLoading, openWizard } = useIntegrations();

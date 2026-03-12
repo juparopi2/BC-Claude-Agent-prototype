@@ -104,16 +104,17 @@ describe('ConnectionsTab', () => {
   it('shows "Coming soon" badge for non-connectable providers', () => {
     render(<ConnectionsTab />);
 
-    // Business Central, SharePoint, Power BI should show "Coming soon"
+    // Business Central, Power BI should show "Coming soon" (SharePoint is now connectable)
     const badges = screen.getAllByText('Coming soon');
-    expect(badges.length).toBe(3);
+    expect(badges.length).toBe(2);
   });
 
   it('shows Connect button for connectable unconnected providers', () => {
     render(<ConnectionsTab />);
 
-    // OneDrive is connectable, so should show Connect button
-    expect(screen.getByText('Connect')).toBeTruthy();
+    // OneDrive and SharePoint are connectable, so should show Connect buttons
+    const connectButtons = screen.getAllByText('Connect');
+    expect(connectButtons.length).toBe(2);
   });
 
   it('shows Configure and Disconnect buttons for connected providers', () => {
@@ -157,7 +158,9 @@ describe('ConnectionsTab', () => {
     const user = userEvent.setup();
 
     render(<ConnectionsTab />);
-    await user.click(screen.getByText('Connect'));
+    // Both OneDrive and SharePoint show Connect — click the first one (OneDrive)
+    const connectButtons = screen.getAllByText('Connect');
+    await user.click(connectButtons[0]);
 
     expect(mockOpenWizard).toHaveBeenCalledWith('onedrive');
   });

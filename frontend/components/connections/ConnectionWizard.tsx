@@ -30,6 +30,8 @@ import { useIntegrationListStore } from '@/src/domains/integrations'
 import { toast } from 'sonner'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 import { ScopeDiffView } from './ScopeDiffView'
+import type { TreeNodeData, SelectedScope, SyncState, ScopeProgressEntry, AuthInitiateResponse, SyncStatusResponse } from './wizard-utils'
+import { findNode, sortItems, formatFileSize } from './wizard-utils'
 
 // ============================================
 // Types
@@ -44,91 +46,10 @@ interface ConnectionWizardProps {
 
 type WizardStep = 'connect' | 'browse' | 'sync'
 
-type SyncState = 'idle' | 'syncing' | 'complete' | 'error'
-
-interface TreeNodeData {
-  item: ExternalFileItem
-  children: TreeNodeData[] | null
-  isExpanded: boolean
-  isLoading: boolean
-}
-
-interface SelectedScope {
-  id: string
-  name: string
-  path: string | null
-  isFolder: boolean
-  status: 'new' | 'existing' | 'removed'
-  existingScopeId?: string
-  fileCount?: number
-  remoteDriveId?: string
-  remoteItemId?: string
-  scopeMode?: 'include' | 'exclude'
-}
-
 type ExplicitSelection = 'include' | 'exclude'
 const SYNC_ALL_KEY = '__ROOT__'
 
-interface ScopeProgressEntry {
-  processedFiles: number
-  totalFiles: number
-  percentage: number
-}
-
-interface AuthInitiateResponse {
-  status: 'connected' | 'requires_consent'
-  connectionId?: string
-  authUrl?: string
-}
-
 type BrowseTab = 'my-files' | 'shared'
-
-interface SyncStatusResponse {
-  scopes: Array<{
-    id: string
-    syncStatus: string
-    itemCount: number
-    processedCount?: number
-  }>
-}
-
-// ============================================
-// Utility — find a node in the tree by id
-// ============================================
-
-function findNode(nodes: TreeNodeData[], id: string): TreeNodeData | null {
-  for (const node of nodes) {
-    if (node.item.id === id) return node
-    if (node.children) {
-      const found = findNode(node.children, id)
-      if (found) return found
-    }
-  }
-  return null
-}
-
-// ============================================
-// Utility — sort folders first, then files, both alphabetically
-// ============================================
-
-function sortItems(items: ExternalFileItem[]): ExternalFileItem[] {
-  return [...items].sort((a, b) => {
-    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1
-    return a.name.localeCompare(b.name)
-  })
-}
-
-// ============================================
-// Utility — format file size for display
-// ============================================
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(1024))
-  const size = bytes / Math.pow(1024, i)
-  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
 
 // ============================================
 // TreeNode — recursive folder/file row

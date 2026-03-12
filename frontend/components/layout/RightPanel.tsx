@@ -9,12 +9,12 @@ import { FileExplorer } from '@/components/files';
 import { PROVIDER_ID, PROVIDER_UI_ORDER, type ProviderId } from '@bc-agent/shared';
 import { useIntegrations, ConnectionCard } from '@/src/domains/integrations';
 import { ConnectionWizard } from '@/components/connections/ConnectionWizard';
+import { SharePointWizard } from '@/components/connections/SharePointWizard';
 import { toast } from 'sonner';
 
 // Providers that are not yet implemented (show as "Coming soon")
 const DISABLED_PROVIDERS = new Set<ProviderId>([
   PROVIDER_ID.BUSINESS_CENTRAL,
-  PROVIDER_ID.SHAREPOINT,
   PROVIDER_ID.POWER_BI,
 ]);
 
@@ -49,16 +49,27 @@ export default function RightPanel() {
     const connected = searchParams.get('connected');
     const connectionId = searchParams.get('connectionId');
     const onedriveError = searchParams.get('onedrive_error');
+    const sharepointError = searchParams.get('sharepoint_error');
 
     if (connected === 'onedrive' && connectionId) {
-      // OAuth success — switch to connections tab and open wizard at browse step
+      // OneDrive OAuth success — switch to connections tab and open wizard at browse step
       setActiveTab('connections');
       openWizard(PROVIDER_ID.ONEDRIVE, connectionId);
       router.replace(pathname);
+    } else if (connected === 'sharepoint' && connectionId) {
+      // SharePoint OAuth success — switch to connections tab and open wizard at sites step
+      setActiveTab('connections');
+      openWizard(PROVIDER_ID.SHAREPOINT, connectionId);
+      router.replace(pathname);
     } else if (onedriveError) {
-      // OAuth error — show toast
+      // OneDrive OAuth error — show toast
       setActiveTab('connections');
       toast.error(`OneDrive connection failed: ${onedriveError}`);
+      router.replace(pathname);
+    } else if (sharepointError) {
+      // SharePoint OAuth error — show toast
+      setActiveTab('connections');
+      toast.error(`SharePoint connection failed: ${sharepointError}`);
       router.replace(pathname);
     }
     // Run only once on mount
@@ -126,6 +137,13 @@ export default function RightPanel() {
 
       {wizardOpen && wizardProviderId === PROVIDER_ID.ONEDRIVE && (
         <ConnectionWizard
+          isOpen={wizardOpen}
+          onClose={closeWizard}
+          initialConnectionId={wizardInitialConnectionId}
+        />
+      )}
+      {wizardOpen && wizardProviderId === PROVIDER_ID.SHAREPOINT && (
+        <SharePointWizard
           isOpen={wizardOpen}
           onClose={closeWizard}
           initialConnectionId={wizardInitialConnectionId}

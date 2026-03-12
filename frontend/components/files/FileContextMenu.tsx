@@ -2,9 +2,11 @@
 
 import { useCallback, useState } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import {
   Download,
   ExternalLink,
+  Link2,
   Pencil,
   Star,
   StarOff,
@@ -154,10 +156,16 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
           )}
 
           {file.externalUrl && (
-            <ContextMenuItem onClick={() => window.open(file.externalUrl!, '_blank')}>
-              <ExternalLink className="size-4 mr-2" />
-              Open in OneDrive
-            </ContextMenuItem>
+            <>
+              <ContextMenuItem onClick={() => window.open(file.externalUrl!, '_blank')}>
+                <ExternalLink className="size-4 mr-2" />
+                {file.sourceType === FILE_SOURCE_TYPE.SHAREPOINT ? 'Open in SharePoint' : 'Open in OneDrive'}
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => { navigator.clipboard.writeText(file.externalUrl!); toast.success('Link copied'); }}>
+                <Link2 className="size-4 mr-2" />
+                Copy link
+              </ContextMenuItem>
+            </>
           )}
 
           {!file.isFolder && file.readinessState === 'failed' && (

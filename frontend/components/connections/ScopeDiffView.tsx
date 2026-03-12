@@ -2,17 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Plus, Minus, FolderSync, Ban } from 'lucide-react'
-
-interface SelectedScope {
-  id: string
-  name: string
-  path: string | null
-  isFolder: boolean
-  status: 'new' | 'existing' | 'removed'
-  existingScopeId?: string
-  fileCount?: number
-  scopeMode?: 'include' | 'exclude'
-}
+import type { SelectedScope } from './wizard-utils'
 
 interface ScopeDiffViewProps {
   selectedScopes: Map<string, SelectedScope>

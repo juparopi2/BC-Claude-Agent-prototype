@@ -815,3 +815,16 @@ Connector code now uses `GRAPH_API_SCOPES` from shared package instead of hardco
 ### 14.7 Tri-State Selection Deferred (2026-03-12)
 
 OneDrive's `ConnectionWizard` implements full include/exclude cascade with `getEffectiveCheckState()` and recursive traversal. SharePoint uses simple on/off toggles per folder for now. Deferred to [PRD-115](./PRD-115-sharepoint-scope-inheritance.md) as a separate PR.
+
+### 14.8 Duplicate Sync Trigger Fix
+
+Both SharePointWizard and ConnectionWizard (OneDrive) had a bug where selecting new include scopes triggered sync **twice**:
+
+1. `POST /scopes/batch` — backend `batchUpdateScopes()` creates scope AND calls `syncScope()` internally
+2. `POST /scopes/{id}/sync` — frontend explicitly called sync again after the batch response
+
+This caused a race condition in `ensureScopeRootFolder` where two concurrent `_runSync` calls both attempted to create the same root folder row, with the second failing on `UQ_files_connection_external` unique constraint.
+
+**Fix (frontend):** Removed the redundant `/sync` POST calls from both wizards. The batch endpoint already triggers sync for each new include scope.
+
+**Fix (backend, defense-in-depth):** `ensureScopeRootFolder` in `FolderHierarchyResolver.ts` now catches Prisma P2002 (unique constraint violation) errors, re-queries the existing folder, and continues gracefully instead of crashing.

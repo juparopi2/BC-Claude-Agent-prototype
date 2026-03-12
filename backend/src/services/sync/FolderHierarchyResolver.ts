@@ -129,35 +129,51 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
   }
 
   const scopeFolderId = randomUUID().toUpperCase();
-  await prisma.files.create({
-    data: {
-      id: scopeFolderId,
-      user_id: userId,
-      name: scopeDisplayName ?? 'OneDrive Folder',
-      mime_type: 'inode/directory',
-      size_bytes: BigInt(0),
-      blob_path: null,
-      is_folder: true,
-      source_type: FILE_SOURCE_TYPE.ONEDRIVE,
-      external_id: scopeResourceId,
-      external_drive_id: microsoftDriveId,
-      connection_id: connectionId,
-      connection_scope_id: scopeId,
-      external_url: null,
-      external_modified_at: null,
-      parent_folder_id: null,
-      pipeline_status: 'ready',
-      processing_retry_count: 0,
-      embedding_retry_count: 0,
-      is_favorite: false,
-    },
-  });
-  folderMap.set(scopeResourceId, scopeFolderId);
+  try {
+    await prisma.files.create({
+      data: {
+        id: scopeFolderId,
+        user_id: userId,
+        name: scopeDisplayName ?? 'OneDrive Folder',
+        mime_type: 'inode/directory',
+        size_bytes: BigInt(0),
+        blob_path: null,
+        is_folder: true,
+        source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+        external_id: scopeResourceId,
+        external_drive_id: microsoftDriveId,
+        connection_id: connectionId,
+        connection_scope_id: scopeId,
+        external_url: null,
+        external_modified_at: null,
+        parent_folder_id: null,
+        pipeline_status: 'ready',
+        processing_retry_count: 0,
+        embedding_retry_count: 0,
+        is_favorite: false,
+      },
+    });
+    folderMap.set(scopeResourceId, scopeFolderId);
 
-  logger.info(
-    { scopeId, scopeFolderId, name: scopeDisplayName },
-    'Created scope root folder'
-  );
+    logger.info(
+      { scopeId, scopeFolderId, name: scopeDisplayName },
+      'Created scope root folder'
+    );
+  } catch (err) {
+    // Race condition: concurrent sync already created this folder
+    if (err instanceof Error && 'code' in err && (err as { code: string }).code === 'P2002') {
+      const existing = await prisma.files.findFirst({
+        where: { connection_id: connectionId, external_id: scopeResourceId },
+        select: { id: true },
+      });
+      if (existing) {
+        folderMap.set(scopeResourceId, existing.id);
+        logger.debug({ scopeId, scopeResourceId }, 'Scope root folder already exists (concurrent create race)');
+        return;
+      }
+    }
+    throw err;
+  }
 }
 
 /**

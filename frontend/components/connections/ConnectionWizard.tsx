@@ -961,16 +961,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         )
 
         if (newIncludeScopes.length > 0) {
-          // Trigger sync for new include scopes
-          await Promise.all(
-            newIncludeScopes.map((scope) =>
-              fetch(
-                `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/${scope.id}/sync`,
-                { method: 'POST', credentials: 'include' }
-              )
-            )
-          )
-
+          // Sync already triggered by batch endpoint — just start polling
           const initProgress = new Map<string, ScopeProgressEntry>()
           for (const scope of newIncludeScopes) {
             initProgress.set(scope.id, { processedFiles: 0, totalFiles: 0, percentage: 0 })

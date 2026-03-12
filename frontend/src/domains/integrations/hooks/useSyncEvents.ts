@@ -13,8 +13,12 @@ import { useSyncStatusStore } from '../stores/syncStatusStore';
 import { useIntegrationListStore } from '../stores/integrationListStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { useFiles } from '@/src/domains/files';
-import { SYNC_WS_EVENTS, PROVIDER_DISPLAY_NAME, type SyncWebSocketEvent } from '@bc-agent/shared';
+import { SYNC_WS_EVENTS, PROVIDER_DISPLAY_NAME, CONNECTIONS_API, type SyncWebSocketEvent } from '@bc-agent/shared';
 import { toast } from 'sonner';
+import { env } from '@/lib/config/env';
+
+/** Prevents concurrent refresh attempts for the same connection. */
+const refreshingConnections = new Set<string>();
 
 /**
  * Hook for subscribing to sync WebSocket events.
@@ -112,16 +116,46 @@ export function useSyncEvents(): void {
         });
         break;
 
-      case SYNC_WS_EVENTS.CONNECTION_EXPIRED as 'connection:expired':
-        // Refresh connections to get the 'expired' status
-        useIntegrationListStore.getState().fetchConnections();
-        // Invalidate cached OneDrive tree so fresh data loads after reconnection
-        invalidateTreeFolderRef.current('onedrive-root');
-        invalidateTreeFolderRef.current('sharepoint-root');
-        toast.warning(`${getProviderName(event.connectionId)} session expired`, {
-          description: 'Please reconnect to continue syncing.',
-        });
+      case SYNC_WS_EVENTS.CONNECTION_EXPIRED as 'connection:expired': {
+        // Attempt silent token refresh before showing the reconnect banner
+        const connId = event.connectionId;
+
+        if (refreshingConnections.has(connId)) break;
+        refreshingConnections.add(connId);
+
+        (async () => {
+          try {
+            const resp = await fetch(
+              `${env.apiUrl}${CONNECTIONS_API.BASE}/${connId}/refresh`,
+              { method: 'POST', credentials: 'include' }
+            );
+
+            if (resp.ok) {
+              const data = await resp.json() as { status: string };
+              if (data.status === 'refreshed') {
+                await useIntegrationListStore.getState().fetchConnections();
+                toast.success('Connection restored', {
+                  description: `${getProviderName(connId)} session renewed automatically.`,
+                });
+                return;
+              }
+            }
+          } catch {
+            // Silent refresh failed — fall through to manual reconnect
+          } finally {
+            refreshingConnections.delete(connId);
+          }
+
+          // Fall through: refresh failed, show manual reconnect flow
+          useIntegrationListStore.getState().fetchConnections();
+          invalidateTreeFolderRef.current('onedrive-root');
+          invalidateTreeFolderRef.current('sharepoint-root');
+          toast.warning(`${getProviderName(connId)} session expired`, {
+            description: 'Please reconnect to continue syncing.',
+          });
+        })();
         break;
+      }
 
       case SYNC_WS_EVENTS.CONNECTION_DISCONNECTED:
         // Refresh connections list after a full disconnect

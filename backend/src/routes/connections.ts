@@ -9,6 +9,7 @@
  * - POST /api/connections          → create connection
  * - PATCH /api/connections/:id     → update connection
  * - DELETE /api/connections/:id    → disconnect/delete
+ * - POST /api/connections/:id/refresh → silent token refresh via login session
  * - GET /api/connections/:id/scopes → list scopes
  * - DELETE /api/connections/:id/scopes/:scopeId → delete scope (cascade files)
  * - POST /api/connections/:id/scopes/batch   → batch add/remove scopes
@@ -17,6 +18,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { ConfidentialClientApplication } from '@azure/msal-node';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { getConnectionService, ConnectionNotFoundError, ConnectionForbiddenError, ScopeCurrentlySyncingError } from '@/domains/connections';
 import { getConnectionRepository } from '@/domains/connections';
@@ -38,10 +40,15 @@ import {
   browseFolderQuerySchema,
   batchScopesSchema,
   isFileSyncSupported,
+  GRAPH_API_SCOPES,
 } from '@bc-agent/shared';
 import type { FolderListResult } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getInitialSyncService } from '@/services/sync/InitialSyncService';
+import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
+import { getGraphTokenManager } from '@/services/connectors/GraphTokenManager';
+import { prisma } from '@/infrastructure/database/prisma';
+import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
 
 const logger = createChildLogger({ service: 'ConnectionsRoutes' });
 const router = Router();
@@ -114,6 +121,39 @@ function handleDomainError(error: unknown, res: Response): boolean {
   }
   return false;
 }
+
+/**
+ * Build a fresh MSAL ConfidentialClientApplication backed by Redis cache.
+ * Same pattern as onedrive-auth.ts / sharepoint-auth.ts.
+ */
+function buildMsalClient(partitionKey: string): ConfidentialClientApplication {
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+  const authority =
+    process.env.MICROSOFT_AUTHORITY ??
+    `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID ?? 'common'}`;
+
+  if (!clientId || !clientSecret) {
+    throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be configured');
+  }
+
+  return new ConfidentialClientApplication({
+    auth: { clientId, clientSecret, authority },
+    cache: { cachePlugin: new MsalRedisCachePlugin(partitionKey) },
+  });
+}
+
+/** Scopes to request per provider during silent refresh. */
+const PROVIDER_SCOPES: Record<string, string[]> = {
+  onedrive: [GRAPH_API_SCOPES.FILES_READ_ALL],
+  sharepoint: [GRAPH_API_SCOPES.SITES_READ_ALL, GRAPH_API_SCOPES.FILES_READ_ALL],
+};
+
+/** Value for scopes_granted column per provider. */
+const PROVIDER_SCOPES_GRANTED: Record<string, string> = {
+  onedrive: GRAPH_API_SCOPES.FILES_READ_ALL,
+  sharepoint: `${GRAPH_API_SCOPES.SITES_READ_ALL} ${GRAPH_API_SCOPES.FILES_READ_ALL}`,
+};
 
 // ============================================================================
 // Routes
@@ -299,6 +339,116 @@ router.delete(
           connectionId: req.params.id,
         },
         'Failed to delete connection'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/connections/:id/refresh
+ * Attempt silent token refresh using the user's login session.
+ * Returns { status: 'refreshed' } or { status: 'requires_reauth' }.
+ */
+router.post(
+  '/:id/refresh',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const userId = req.userId!;
+
+      // Verify ownership and get provider info
+      const connection = await prisma.connections.findFirst({
+        where: { id: connectionId, user_id: userId },
+        select: { id: true, provider: true, scopes_granted: true },
+      });
+
+      if (!connection) {
+        sendNotFound(res, ErrorCode.NOT_FOUND);
+        return;
+      }
+
+      const scopes = PROVIDER_SCOPES[connection.provider];
+      if (!scopes) {
+        res.json({ status: 'requires_reauth', connectionId });
+        return;
+      }
+
+      // Extract login session credentials
+      const oauthSession = req.session?.microsoftOAuth as MicrosoftOAuthSession | undefined;
+      const homeAccountId = oauthSession?.homeAccountId;
+      const msalPartitionKey = oauthSession?.msalPartitionKey;
+
+      if (!homeAccountId || !msalPartitionKey) {
+        logger.info({ userId, connectionId }, 'No login session credentials for silent refresh');
+        res.json({ status: 'requires_reauth', connectionId });
+        return;
+      }
+
+      // Attempt silent token acquisition using login session MSAL cache
+      try {
+        const msalClient = buildMsalClient(msalPartitionKey);
+        const tokenCache = msalClient.getTokenCache();
+        const account = await tokenCache.getAccountByHomeId(homeAccountId);
+
+        if (!account) {
+          logger.info({ userId, connectionId }, 'MSAL account not found in login cache');
+          res.json({ status: 'requires_reauth', connectionId });
+          return;
+        }
+
+        const silentResult = await msalClient.acquireTokenSilent({ account, scopes });
+
+        if (!silentResult?.accessToken) {
+          res.json({ status: 'requires_reauth', connectionId });
+          return;
+        }
+
+        const expiresAt = silentResult.expiresOn ?? new Date(Date.now() + 3600 * 1000);
+
+        // Store refreshed tokens
+        const tokenManager = getGraphTokenManager();
+        await tokenManager.storeTokens(connectionId, {
+          accessToken: silentResult.accessToken,
+          expiresAt,
+        });
+
+        // Update MSAL metadata on the connection
+        await prisma.connections.update({
+          where: { id: connectionId },
+          data: {
+            msal_home_account_id: homeAccountId,
+            scopes_granted: PROVIDER_SCOPES_GRANTED[connection.provider] ?? connection.scopes_granted,
+            updated_at: new Date(),
+          },
+        });
+
+        logger.info({ userId, connectionId, provider: connection.provider }, 'Connection refreshed via silent acquisition');
+        res.json({ status: 'refreshed', connectionId });
+      } catch (silentError) {
+        const errorInfo = silentError instanceof Error
+          ? { message: silentError.message, name: silentError.name }
+          : { value: String(silentError) };
+        logger.info(
+          { userId, connectionId, error: errorInfo },
+          'Silent token refresh failed; requires re-authentication'
+        );
+        res.json({ status: 'requires_reauth', connectionId });
+      }
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to refresh connection token'
       );
       next(error);
     }

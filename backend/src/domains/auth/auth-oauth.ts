@@ -24,6 +24,7 @@ import { ErrorCode } from '@/shared/constants/errors';
 import { sendError } from '@/shared/utils/error-response';
 import { AUTH_TIME_MS } from '@bc-agent/shared';
 import { deleteMsalCache } from '@/domains/auth/oauth/MsalRedisCachePlugin';
+import { getEagerRedis } from '@/infrastructure/redis/redis';
 
 const logger = createChildLogger({ service: 'AuthOAuthRoutes' });
 
@@ -261,6 +262,28 @@ router.get('/callback', async (req: Request, res: Response) => {
       msalPartitionKey,  // sessionId used as MSAL cache partition key
       tokenExpiresAt: expiresAt.toISOString(),
     };
+
+    // Align MSAL cache partition key: copy cache from sessionId to homeAccountId
+    // so that GraphTokenManager (background workers) can find it via homeAccountId.
+    if (tokenResponse.homeAccountId && msalPartitionKey !== tokenResponse.homeAccountId) {
+      try {
+        const redis = getEagerRedis();
+        const cacheKey = `msal:token:${msalPartitionKey}`;
+        const cacheData = await redis.get(cacheKey);
+        if (cacheData) {
+          const newKey = `msal:token:${tokenResponse.homeAccountId}`;
+          await redis.setex(newKey, 90 * 24 * 60 * 60, cacheData);
+          // Update session to use homeAccountId going forward
+          microsoftSession.msalPartitionKey = tokenResponse.homeAccountId;
+          logger.info({ oldKey: msalPartitionKey, newKey: tokenResponse.homeAccountId },
+            'Aligned MSAL cache partition key to homeAccountId');
+        }
+      } catch (err) {
+        // Non-fatal: session-based refresh still works as fallback
+        logger.warn({ error: err instanceof Error ? err.message : String(err) },
+          'Failed to align MSAL cache partition key');
+      }
+    }
 
     // Store in express-session
     if (req.session) {

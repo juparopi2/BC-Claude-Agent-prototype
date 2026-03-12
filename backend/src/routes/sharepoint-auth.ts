@@ -21,6 +21,7 @@ import { ConfidentialClientApplication } from '@azure/msal-node';
 import { GRAPH_API_SCOPES } from '@bc-agent/shared';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
+import { getEagerRedis } from '@/infrastructure/redis/redis';
 import { getGraphTokenManager } from '@/services/connectors/GraphTokenManager';
 import { prisma } from '@/infrastructure/database/prisma';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -399,6 +400,22 @@ router.get(
           updated_at: new Date(),
         },
       });
+
+      // Align MSAL cache: copy to homeAccountId key for GraphTokenManager background refresh
+      if (homeAccountId && msalPartitionKey !== homeAccountId) {
+        try {
+          const redis = getEagerRedis();
+          const cacheData = await redis.get(`msal:token:${msalPartitionKey}`);
+          if (cacheData) {
+            await redis.setex(`msal:token:${homeAccountId}`, 90 * 24 * 60 * 60, cacheData);
+            logger.info({ oldKey: msalPartitionKey, newKey: homeAccountId },
+              'Aligned SharePoint MSAL cache partition key to homeAccountId');
+          }
+        } catch (err) {
+          logger.warn({ error: err instanceof Error ? err.message : String(err) },
+            'Failed to align SharePoint MSAL cache partition key');
+        }
+      }
 
       logger.info(
         { connectionId, homeAccountId, expiresAt },

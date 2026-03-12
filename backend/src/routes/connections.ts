@@ -46,6 +46,7 @@ import type { FolderListResult } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
 import { getInitialSyncService } from '@/services/sync/InitialSyncService';
 import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
+import { getEagerRedis } from '@/infrastructure/redis/redis';
 import { getGraphTokenManager } from '@/services/connectors/GraphTokenManager';
 import { prisma } from '@/infrastructure/database/prisma';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
@@ -425,6 +426,22 @@ router.post(
             updated_at: new Date(),
           },
         });
+
+        // Align MSAL cache: copy to homeAccountId key for GraphTokenManager background refresh
+        if (homeAccountId && msalPartitionKey !== homeAccountId) {
+          try {
+            const redis = getEagerRedis();
+            const cacheData = await redis.get(`msal:token:${msalPartitionKey}`);
+            if (cacheData) {
+              await redis.setex(`msal:token:${homeAccountId}`, 90 * 24 * 60 * 60, cacheData);
+              logger.info({ oldKey: msalPartitionKey, newKey: homeAccountId },
+                'Aligned MSAL cache partition key during connection refresh');
+            }
+          } catch (err) {
+            logger.warn({ error: err instanceof Error ? err.message : String(err) },
+              'Failed to align MSAL cache partition key during connection refresh');
+          }
+        }
 
         logger.info({ userId, connectionId, provider: connection.provider }, 'Connection refreshed via silent acquisition');
         res.json({ status: 'refreshed', connectionId });

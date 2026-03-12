@@ -110,7 +110,7 @@ export class GraphTokenManager {
             connection.msal_home_account_id,
             scopes,
             // Use homeAccountId as the MSAL cache partition key.
-            // The OneDrive OAuth callback stores tokens under this key.
+            // The login callback aligns the MSAL cache to this key after authentication.
             connection.msal_home_account_id
           );
 
@@ -245,8 +245,8 @@ export class GraphTokenManager {
    * @param homeAccountId    - MSAL homeAccountId stored on the connection.
    * @param scopes           - Scopes to request (e.g. ['Files.Read.All']).
    * @param msalPartitionKey - Redis cache partition key; we reuse homeAccountId
-   *                           since the OneDrive OAuth callback stores tokens
-   *                           under this same key.
+   *                           since the login callback aligns the MSAL cache to
+   *                           this key after authentication.
    * @returns Fresh access token string.
    * @throws Error if MSAL cannot find the account or silent acquisition fails.
    */

@@ -31,6 +31,7 @@ interface IntegrationListState {
 
 interface IntegrationListActions {
   fetchConnections: () => Promise<void>;
+  refreshConnection: (connectionId: string) => Promise<'refreshed' | 'requires_reauth' | 'error'>;
   reset: () => void;
   openWizard: (providerId: ProviderId, connectionId?: string) => void;
   closeWizard: () => void;
@@ -89,6 +90,30 @@ export const useIntegrationListStore = create<IntegrationListStore>((set, get) =
         error: error instanceof Error ? error.message : 'Failed to fetch connections',
         hasFetched: true,
       });
+    }
+  },
+
+  refreshConnection: async (connectionId: string) => {
+    try {
+      const response = await fetch(
+        `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/refresh`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+
+      if (!response.ok) {
+        return 'error';
+      }
+
+      const data = (await response.json()) as { status: string };
+      if (data.status === 'refreshed') return 'refreshed';
+      if (data.status === 'requires_reauth') return 'requires_reauth';
+      return 'error';
+    } catch {
+      return 'error';
     }
   },
 

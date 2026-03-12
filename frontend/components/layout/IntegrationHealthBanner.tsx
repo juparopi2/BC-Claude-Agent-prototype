@@ -1,22 +1,43 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuthHealth } from '@/src/domains/integrations';
 import { useIntegrationListStore } from '@/src/domains/integrations';
 import { PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
 import { OneDriveLogo, SharePointLogo } from '@/components/icons';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function IntegrationHealthBanner({ className }: { className?: string }) {
   const { hasDegradedConnectivity, expiredConnections } = useAuthHealth();
   const openWizard = useIntegrationListStore((s) => s.openWizard);
+  const refreshConnection = useIntegrationListStore((s) => s.refreshConnection);
+  const fetchConnections = useIntegrationListStore((s) => s.fetchConnections);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   if (!hasDegradedConnectivity) return null;
 
   const names = expiredConnections.map(
     (c) => PROVIDER_DISPLAY_NAME[c.provider] ?? c.provider
   ).join(', ');
+
+  const handleReconnect = async () => {
+    const first = expiredConnections[0];
+    if (!first) return;
+
+    setIsRefreshing(true);
+    try {
+      const result = await refreshConnection(first.id);
+      if (result === 'refreshed') {
+        await fetchConnections();
+      } else {
+        openWizard(first.provider, first.id);
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <div
@@ -41,11 +62,10 @@ export function IntegrationHealthBanner({ className }: { className?: string }) {
         variant="secondary"
         size="sm"
         className="ml-2 bg-white/20 hover:bg-white/30 text-amber-950 border-amber-700/30"
-        onClick={() => {
-          const first = expiredConnections[0];
-          if (first) openWizard(first.provider, first.id);
-        }}
+        disabled={isRefreshing}
+        onClick={handleReconnect}
       >
+        {isRefreshing ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
         Reconnect
       </Button>
     </div>

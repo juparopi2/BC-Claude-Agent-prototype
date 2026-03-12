@@ -26,6 +26,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendInternalError } from '@/shared/utils/error-response';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
+import { ONEDRIVE_CONSENT_SCOPES } from '@/types/microsoft.types';
 
 const logger = createChildLogger({ service: 'OnedriveAuth' });
 const router = Router();
@@ -34,7 +35,7 @@ const router = Router();
 // Constants
 // ---------------------------------------------------------------------------
 
-const ONEDRIVE_SCOPES = ['Files.Read.All', 'offline_access'];
+const ONEDRIVE_SCOPES = [...ONEDRIVE_CONSENT_SCOPES];
 
 /** Scopes stored in the `scopes_granted` column (space-separated, no offline_access). */
 const SCOPES_GRANTED_VALUE = 'Files.Read.All';

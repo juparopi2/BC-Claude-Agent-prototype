@@ -139,6 +139,9 @@ bash infrastructure/scripts/update-search-index-schema.sh
 
 # 4. Configure semantic search
 bash infrastructure/scripts/update-search-semantic-config.sh
+
+# 5. Configure App Registration (redirect URIs for OAuth)
+ENVIRONMENT=dev bash infrastructure/scripts/setup-app-registration.sh
 ```
 
 ### Post-Deploy: Graph Webhook URL (One-Time)
@@ -165,6 +168,30 @@ az containerapp revision restart \
 ```
 
 This only needs to be done once per environment. The FQDN is stable across deployments. Without this secret, webhook subscriptions are not created (the system falls back to polling-only sync).
+
+---
+
+## App Registration & OAuth Security Model
+
+Azure App Registrations are **Entra ID resources**, not ARM resources — Bicep cannot manage them. The script `infrastructure/scripts/setup-app-registration.sh` is the IaC equivalent for this component.
+
+### Incremental Consent Model
+
+The platform uses **incremental consent** (Microsoft's recommended pattern). Login requests only basic scopes; connector-specific scopes are requested on-demand when the user connects each service:
+
+| Moment | Scopes Requested | Redirect URI |
+|---|---|---|
+| Login | `openid`, `profile`, `email`, `offline_access`, `User.Read` | `/api/auth/callback` |
+| Connect OneDrive | `Files.Read.All` | `/api/auth/callback/onedrive` |
+| Connect SharePoint | `Sites.Read.All`, `Files.Read.All` | `/api/auth/callback/sharepoint` |
+| Connect Business Central | `Financials.ReadWrite.All` | Via `POST /api/auth/bc-consent` (no redirect) |
+
+### Adding a New Connector
+
+1. Define consent scopes in `backend/src/types/microsoft.types.ts`
+2. Create auth route with redirect URI `/api/auth/callback/{connector}`
+3. Run `setup-app-registration.sh` to register the new redirect URI
+4. The connector scopes do NOT need to be pre-registered as API permissions (dynamic consent)
 
 ---
 

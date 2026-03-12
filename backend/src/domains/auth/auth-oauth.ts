@@ -246,22 +246,8 @@ router.get('/callback', async (req: Request, res: Response) => {
     // Calculate token expiration
     const expiresAt = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
-    // Try to acquire Business Central token using silent refresh
-    try {
-      if (tokenResponse.homeAccountId) {
-        const bcToken = await oauthService.acquireBCTokenSilent(msalPartitionKey, tokenResponse.homeAccountId);
-        await bcTokenManager.storeBCToken(userId, bcToken);
-        logger.info('Acquired and stored Business Central token via silent refresh', { userId });
-      }
-    } catch (bcError) {
-      logger.warn('Failed to acquire Business Central token during login (user may need to grant consent)', {
-        userId,
-        error: bcError instanceof Error
-          ? { message: bcError.message, name: bcError.name }
-          : { value: String(bcError) },
-      });
-      // Continue without BC token - user will be prompted to grant consent later
-    }
+    // BC token acquisition is handled on-demand via POST /api/auth/bc-consent
+    // when the user explicitly connects Business Central (incremental consent).
 
     // Create Microsoft OAuth session
     // Store homeAccountId and msalPartitionKey for future token refreshes via acquireTokenSilent

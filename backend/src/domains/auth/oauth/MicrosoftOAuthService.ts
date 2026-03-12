@@ -10,7 +10,7 @@
  */
 
 import { ConfidentialClientApplication, AuthorizationUrlRequest, AuthorizationCodeRequest, Configuration, AccountInfo } from '@azure/msal-node';
-import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, ALL_SCOPES, BC_API_SCOPE } from '@/types/microsoft.types';
+import { MicrosoftOAuthConfig, OAuthTokenResponse, MicrosoftUserProfile, TokenAcquisitionResult, LOGIN_SCOPES, BC_API_SCOPE } from '@/types/microsoft.types';
 import { createChildLogger } from '@/shared/utils/logger';
 import { MsalRedisCachePlugin } from './MsalRedisCachePlugin';
 
@@ -545,8 +545,8 @@ export function createMicrosoftOAuthService(): MicrosoftOAuthService {
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
     tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
     redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:3002/api/auth/callback',
-    // Hardcoded scopes - always use the full set required for Graph + BC API
-    scopes: ALL_SCOPES,
+    // Login scopes only — connector scopes (BC, OneDrive, SharePoint) are requested on-demand
+    scopes: LOGIN_SCOPES,
   };
 
   if (!config.clientId || !config.clientSecret) {

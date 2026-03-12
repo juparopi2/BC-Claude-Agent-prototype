@@ -338,9 +338,6 @@ describe('Auth OAuth Routes', () => {
       // Insert new user
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // BC token acquisition fails via silent refresh (expected for new user)
-      mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('Consent required'));
-
       // Act
       const response = await agent
         .get(`/api/auth/callback?code=test-code&state=${state}`)
@@ -397,9 +394,6 @@ describe('Auth OAuth Routes', () => {
       // Update user
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // BC token fails (silent)
-      mockOAuthService.acquireBCTokenSilent.mockRejectedValueOnce(new Error('No BC consent'));
-
       // Act
       const response = await agent
         .get(`/api/auth/callback?code=test-code&state=${state}`)
@@ -419,7 +413,7 @@ describe('Auth OAuth Routes', () => {
       );
     });
 
-    it('should acquire and store BC token if available', async () => {
+    it('should NOT attempt BC token acquisition during callback (incremental consent)', async () => {
       // Arrange
       const app = createTestApp();
       const agent = request.agent(app);
@@ -452,21 +446,13 @@ describe('Auth OAuth Routes', () => {
       });
       mockExecuteQuery.mockResolvedValueOnce({ rowsAffected: [1] });
 
-      // BC token succeeds via silent refresh (new flow)
-      const bcToken = {
-        accessToken: 'bc-access-token',
-        expiresAt: new Date(Date.now() + 3600000),
-      };
-      mockOAuthService.acquireBCTokenSilent.mockResolvedValueOnce(bcToken);
-
       // Act
       await agent.get(`/api/auth/callback?code=test-code&state=${state}`).expect(302);
 
-      // Assert
-      // Verify only ONE code exchange happened (handleAuthCallbackWithCache)
-      expect(mockOAuthService.handleAuthCallbackWithCache).toHaveBeenCalledTimes(1);
-      expect(mockOAuthService.handleAuthCallback).not.toHaveBeenCalled();
-      expect(mockBCTokenManager.storeBCToken).toHaveBeenCalledWith('bc-user-id', bcToken);
+      // Assert — BC token should NOT be acquired during login callback
+      // BC consent is handled on-demand via POST /api/auth/bc-consent
+      expect(mockOAuthService.acquireBCTokenSilent).not.toHaveBeenCalled();
+      expect(mockBCTokenManager.storeBCToken).not.toHaveBeenCalled();
     });
 
     it('should handle callback failure gracefully', async () => {

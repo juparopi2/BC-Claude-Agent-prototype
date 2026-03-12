@@ -26,6 +26,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { ErrorCode } from '@/shared/constants/errors';
 import { sendInternalError } from '@/shared/utils/error-response';
 import type { MicrosoftOAuthSession } from '@/types/microsoft.types';
+import { SHAREPOINT_CONSENT_SCOPES } from '@/types/microsoft.types';
 
 const logger = createChildLogger({ service: 'SharepointAuth' });
 const router = Router();
@@ -34,7 +35,7 @@ const router = Router();
 // Constants
 // ---------------------------------------------------------------------------
 
-const SHAREPOINT_SCOPES = ['Sites.Read.All', 'Files.Read.All', 'offline_access'];
+const SHAREPOINT_SCOPES = [...SHAREPOINT_CONSENT_SCOPES];
 
 /** Scopes stored in the `scopes_granted` column (space-separated, no offline_access). */
 const SCOPES_GRANTED_VALUE = 'Sites.Read.All Files.Read.All';

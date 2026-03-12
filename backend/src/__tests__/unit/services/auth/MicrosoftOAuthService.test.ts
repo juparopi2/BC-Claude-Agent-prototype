@@ -16,7 +16,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../mocks/server';
 import { MicrosoftOAuthService } from '@/domains/auth/oauth/MicrosoftOAuthService';
 import type { MicrosoftOAuthConfig, OAuthTokenResponse, TokenAcquisitionResult, MicrosoftUserProfile } from '@/types/microsoft.types';
-import { BC_API_SCOPE, ALL_SCOPES } from '@/types/microsoft.types';
+import { BC_API_SCOPE, LOGIN_SCOPES, ALL_SCOPES } from '@/types/microsoft.types';
 
 // ============================================================================
 // MOCKS SETUP
@@ -64,7 +64,7 @@ describe('MicrosoftOAuthService', () => {
       clientSecret: 'test-client-secret',
       tenantId: 'test-tenant-id',
       redirectUri: 'http://localhost:3002/api/auth/callback',
-      scopes: ALL_SCOPES,
+      scopes: LOGIN_SCOPES,
     };
 
     service = new MicrosoftOAuthService(mockConfig);
@@ -89,26 +89,30 @@ describe('MicrosoftOAuthService', () => {
 
         expect(result).toBe(mockAuthUrl);
         expect(mockMsalClient.getAuthCodeUrl).toHaveBeenCalledWith({
-          scopes: ALL_SCOPES,
+          scopes: LOGIN_SCOPES,
           redirectUri: mockConfig.redirectUri,
           state,
           prompt: 'select_account',
         });
       });
 
-      it('should include required scopes (openid, profile, email, BC API)', async () => {
+      it('should include login scopes and NOT include connector-specific scopes', async () => {
         const mockAuthUrl = 'https://login.microsoftonline.com/test-tenant-id/oauth2/v2.0/authorize';
         mockMsalClient.getAuthCodeUrl.mockResolvedValue(mockAuthUrl);
 
         await service.getAuthCodeUrl('state-123');
 
         const callArgs = mockMsalClient.getAuthCodeUrl.mock.calls[0][0];
+        // Login scopes should be present
         expect(callArgs.scopes).toContain('openid');
         expect(callArgs.scopes).toContain('profile');
         expect(callArgs.scopes).toContain('email');
         expect(callArgs.scopes).toContain('offline_access');
         expect(callArgs.scopes).toContain('User.Read');
-        expect(callArgs.scopes).toContain(BC_API_SCOPE);
+        // Connector-specific scopes should NOT be in login
+        expect(callArgs.scopes).not.toContain(BC_API_SCOPE);
+        expect(callArgs.scopes).not.toContain('Files.Read.All');
+        expect(callArgs.scopes).not.toContain('Sites.Read.All');
       });
 
       it('should use correct redirect URI', async () => {
@@ -193,7 +197,7 @@ describe('MicrosoftOAuthService', () => {
 
         expect(mockMsalClient.acquireTokenByCode).toHaveBeenCalledWith({
           code: 'auth-code-123',
-          scopes: ALL_SCOPES,
+          scopes: LOGIN_SCOPES,
           redirectUri: mockConfig.redirectUri,
         });
       });
@@ -306,7 +310,7 @@ describe('MicrosoftOAuthService', () => {
 
         expect(mockMsalClient.acquireTokenByRefreshToken).toHaveBeenCalledWith({
           refreshToken: 'old-refresh-token',
-          scopes: ALL_SCOPES,
+          scopes: LOGIN_SCOPES,
         });
       });
 
@@ -555,7 +559,7 @@ describe('MicrosoftOAuthService', () => {
         clientId: 'test-client-id',
         tenantId: 'test-tenant-id',
         redirectUri: 'http://localhost:3002/api/auth/callback',
-        scopes: ALL_SCOPES,
+        scopes: LOGIN_SCOPES,
       });
 
       // Ensure clientSecret is NOT exposed

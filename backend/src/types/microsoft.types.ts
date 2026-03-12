@@ -124,13 +124,30 @@ export const GRAPH_SCOPES = {
 } as const;
 
 /**
- * All Required Scopes (Graph + Business Central)
+ * Login-only scopes (minimal permissions for user authentication)
+ *
+ * These scopes are requested during the initial Microsoft login.
+ * Connector-specific scopes (BC, OneDrive, SharePoint) are requested
+ * on-demand via incremental consent when the user connects each service.
  */
-export const ALL_SCOPES = [
+export const LOGIN_SCOPES = [
   GRAPH_SCOPES.OPENID,
   GRAPH_SCOPES.PROFILE,
   GRAPH_SCOPES.EMAIL,
   GRAPH_SCOPES.OFFLINE_ACCESS,
   GRAPH_SCOPES.USER_READ,
-  BC_API_SCOPE,
 ];
+
+/** @deprecated Use LOGIN_SCOPES instead. BC scope is now requested on-demand via incremental consent. */
+export const ALL_SCOPES = LOGIN_SCOPES;
+
+// ─── Connector-specific scopes (requested on-demand via incremental consent) ──
+
+/** OneDrive consent scopes — requested when user connects OneDrive. */
+export const ONEDRIVE_CONSENT_SCOPES = ['Files.Read.All', 'offline_access'] as const;
+
+/** SharePoint consent scopes — requested when user connects SharePoint. */
+export const SHAREPOINT_CONSENT_SCOPES = ['Sites.Read.All', 'Files.Read.All', 'offline_access'] as const;
+
+/** Business Central consent scopes — requested when user connects BC. */
+export const BC_CONSENT_SCOPES = [BC_API_SCOPE] as const;

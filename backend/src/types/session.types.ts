@@ -9,5 +9,10 @@ declare module 'express-session' {
      * Consumed and deleted by the /api/auth/callback/onedrive handler.
      */
     onedriveMsalPartitionKey?: string;
+    /**
+     * Temporary MSAL cache partition key stored during SharePoint OAuth initiation.
+     * Consumed and deleted by the /api/auth/callback/sharepoint handler.
+     */
+    sharepointMsalPartitionKey?: string;
   }
 }

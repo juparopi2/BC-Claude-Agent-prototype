@@ -246,6 +246,39 @@ A file uploaded locally has `files.source_type = 'local'` AND `citation.sourceTy
 7. **Tests before refactors**: Write tests covering existing behavior BEFORE modifying code.
 8. **Shared package as source of truth**: Cross-cutting types, constants, and classification logic in `@bc-agent/shared`.
 
+### 4.7 App Registration & OAuth Incremental Consent
+
+**Problema descubierto (2026-03-12):** SharePoint OAuth fallaba con `AADSTS50011` porque las redirect URIs
+de OneDrive y SharePoint no estaban registradas en la App Registration de Azure AD.
+
+**Causa raiz:** La App Registration es un recurso de Entra ID (no ARM), asi que Bicep no puede gestionarla.
+Solo las 2 URIs de login estaban registradas manualmente.
+
+**Solucion implementada:**
+- Script IaC: `infrastructure/scripts/setup-app-registration.sh` (idempotente, resuelve FQDN dinamicamente)
+- Ver `infrastructure/README.md` seccion "App Registration & OAuth Security Model" para detalles
+
+**Modelo de incremental consent:**
+
+| Momento | Scopes | Redirect URI |
+|---|---|---|
+| Login | `openid`, `profile`, `email`, `offline_access`, `User.Read` | `/api/auth/callback` |
+| Connect OneDrive | `Files.Read.All` | `/api/auth/callback/onedrive` |
+| Connect SharePoint | `Sites.Read.All`, `Files.Read.All` | `/api/auth/callback/sharepoint` |
+| Connect BC | `Financials.ReadWrite.All` | Via `POST /api/auth/bc-consent` |
+
+**Scope constants centralizados en:** `backend/src/types/microsoft.types.ts`
+(`LOGIN_SCOPES`, `ONEDRIVE_CONSENT_SCOPES`, `SHAREPOINT_CONSENT_SCOPES`, `BC_CONSENT_SCOPES`)
+
+**Scope strings centralizados en:** `@bc-agent/shared` → `GRAPH_API_SCOPES`
+(`FILES_READ_ALL`, `SITES_READ_ALL`)
+
+**Para agregar un nuevo conector:**
+1. Definir consent scopes en `microsoft.types.ts`
+2. Crear auth route con redirect URI `/api/auth/callback/{connector}`
+3. Correr `setup-app-registration.sh` para registrar la nueva redirect URI
+4. Los scopes del conector NO necesitan pre-registrarse (dynamic consent)
+
 ### 4.6 Risks & Mitigations
 
 | Risk | Probability | Impact | Mitigation |

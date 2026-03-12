@@ -747,3 +747,27 @@ The scope schemas (`createScopesSchema`, `batchScopesSchema`) are provider-agnos
 - SharePoint hub site metadata (no Graph API property — treated as regular sites)
 - Frontend UI (see [PRD-113](./PRD-113-sharepoint-frontend.md))
 - `/me/drive/sharedWithMe` → `/me/shares` migration (separate future PRD)
+
+---
+
+## 14. Post-Implementation Notes
+
+### 14.1 AADSTS50011 — Redirect URI Not Registered (2026-03-12)
+
+**Symptom:** SharePoint OAuth callback returned `AADSTS50011: The redirect URI 'https://app-bcagent-backend-dev.../api/auth/callback/sharepoint' specified in the request does not match the redirect URIs configured for the application`.
+
+**Root cause:** The Azure AD App Registration only had 2 redirect URIs registered (for the main login flow). OneDrive worked via the fast-path (`acquireTokenSilent`) which doesn't need a redirect URI, masking the missing registration. SharePoint required explicit consent for `Sites.Read.All`, triggering the full OAuth redirect which exposed the gap.
+
+**Fix:**
+1. Created `infrastructure/scripts/setup-app-registration.sh` — idempotent IaC for App Registration
+2. Removed BC scope from login flow (incremental consent: `LOGIN_SCOPES` without `Financials.ReadWrite.All`)
+3. Registered all 6 redirect URIs (3 localhost + 3 production)
+4. See `infrastructure/README.md` for ongoing App Registration management
+
+### 14.2 Scope Cleanup — GRAPH_SCOPES Naming Conflict (2026-03-12)
+
+Renamed the two conflicting `GRAPH_SCOPES` objects:
+- `@bc-agent/shared` → `GRAPH_API_SCOPES` (connector permission strings: `Files.Read.All`, `Sites.Read.All`)
+- `backend/microsoft.types.ts` → `AUTH_BASE_SCOPES` (OIDC scopes: `openid`, `profile`, etc.) — now unexported
+
+Connector code now uses `GRAPH_API_SCOPES` from shared package instead of hardcoded strings.

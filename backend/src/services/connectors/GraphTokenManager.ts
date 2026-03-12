@@ -14,6 +14,7 @@
 
 import crypto from 'crypto';
 import { ConfidentialClientApplication } from '@azure/msal-node';
+import { GRAPH_API_SCOPES } from '@bc-agent/shared';
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
 import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
@@ -96,7 +97,7 @@ export class GraphTokenManager {
       if (connection.msal_home_account_id) {
         const scopes = connection.scopes_granted
           ? connection.scopes_granted.split(' ').filter(Boolean)
-          : ['Files.Read.All'];
+          : [GRAPH_API_SCOPES.FILES_READ_ALL];
 
         try {
           logger.info(

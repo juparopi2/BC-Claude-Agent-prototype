@@ -9,6 +9,8 @@
  * are stored in SQL (encrypted). Token refresh is handled by acquireBCTokenSilent().
  */
 
+import { GRAPH_API_SCOPES } from '@bc-agent/shared';
+
 /**
  * Microsoft OAuth Configuration
  */
@@ -113,9 +115,10 @@ export interface MicrosoftOAuthSession {
 export const BC_API_SCOPE = 'https://api.businesscentral.dynamics.com/Financials.ReadWrite.All';
 
 /**
- * Microsoft Graph Scopes
+ * OpenID Connect base scopes for Microsoft Entra ID authentication.
+ * Used only within this module to build LOGIN_SCOPES.
  */
-export const GRAPH_SCOPES = {
+const AUTH_BASE_SCOPES = {
   OPENID: 'openid',
   PROFILE: 'profile',
   EMAIL: 'email',
@@ -131,11 +134,11 @@ export const GRAPH_SCOPES = {
  * on-demand via incremental consent when the user connects each service.
  */
 export const LOGIN_SCOPES = [
-  GRAPH_SCOPES.OPENID,
-  GRAPH_SCOPES.PROFILE,
-  GRAPH_SCOPES.EMAIL,
-  GRAPH_SCOPES.OFFLINE_ACCESS,
-  GRAPH_SCOPES.USER_READ,
+  AUTH_BASE_SCOPES.OPENID,
+  AUTH_BASE_SCOPES.PROFILE,
+  AUTH_BASE_SCOPES.EMAIL,
+  AUTH_BASE_SCOPES.OFFLINE_ACCESS,
+  AUTH_BASE_SCOPES.USER_READ,
 ];
 
 /** @deprecated Use LOGIN_SCOPES instead. BC scope is now requested on-demand via incremental consent. */
@@ -144,10 +147,10 @@ export const ALL_SCOPES = LOGIN_SCOPES;
 // ─── Connector-specific scopes (requested on-demand via incremental consent) ──
 
 /** OneDrive consent scopes — requested when user connects OneDrive. */
-export const ONEDRIVE_CONSENT_SCOPES = ['Files.Read.All', 'offline_access'] as const;
+export const ONEDRIVE_CONSENT_SCOPES = [GRAPH_API_SCOPES.FILES_READ_ALL, 'offline_access'] as const;
 
 /** SharePoint consent scopes — requested when user connects SharePoint. */
-export const SHAREPOINT_CONSENT_SCOPES = ['Sites.Read.All', 'Files.Read.All', 'offline_access'] as const;
+export const SHAREPOINT_CONSENT_SCOPES = [GRAPH_API_SCOPES.SITES_READ_ALL, GRAPH_API_SCOPES.FILES_READ_ALL, 'offline_access'] as const;
 
 /** Business Central consent scopes — requested when user connects BC. */
 export const BC_CONSENT_SCOPES = [BC_API_SCOPE] as const;

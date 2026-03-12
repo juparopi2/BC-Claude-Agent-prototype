@@ -18,6 +18,7 @@
 
 import { Router, Request, Response } from 'express';
 import { ConfidentialClientApplication } from '@azure/msal-node';
+import { GRAPH_API_SCOPES } from '@bc-agent/shared';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
 import { getGraphTokenManager } from '@/services/connectors/GraphTokenManager';
@@ -38,7 +39,7 @@ const router = Router();
 const ONEDRIVE_SCOPES = [...ONEDRIVE_CONSENT_SCOPES];
 
 /** Scopes stored in the `scopes_granted` column (space-separated, no offline_access). */
-const SCOPES_GRANTED_VALUE = 'Files.Read.All';
+const SCOPES_GRANTED_VALUE = GRAPH_API_SCOPES.FILES_READ_ALL;
 
 function getRedirectUri(): string {
   if (process.env.ONEDRIVE_REDIRECT_URI) {
@@ -220,7 +221,7 @@ router.post(
           if (account) {
             const silentResult = await msalClient.acquireTokenSilent({
               account,
-              scopes: ['Files.Read.All'],
+              scopes: [GRAPH_API_SCOPES.FILES_READ_ALL],
             });
 
             if (silentResult?.accessToken) {

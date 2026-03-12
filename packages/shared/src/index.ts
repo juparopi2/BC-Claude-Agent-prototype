@@ -534,9 +534,9 @@ export {
   SYNC_WS_EVENTS,
   type SyncWsEventType,
 
-  // Graph Scopes (PRD-101)
-  GRAPH_SCOPES,
-  type GraphScope,
+  // Graph API Scopes (PRD-101)
+  GRAPH_API_SCOPES,
+  type GraphApiScope,
 
   // Provider Constants (PRD-100)
   PROVIDER_ID,

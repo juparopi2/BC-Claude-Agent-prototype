@@ -111,10 +111,10 @@ export {
   type SyncWsEventType,
 } from './sync-events';
 
-// Graph Scopes (PRD-101)
+// Graph API Scopes (PRD-101)
 export {
-  GRAPH_SCOPES,
-  type GraphScope,
+  GRAPH_API_SCOPES,
+  type GraphApiScope,
 } from './graph-scopes';
 
 // Pipeline Status (PRD-01)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Check,
   Loader2,
@@ -19,10 +19,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
-import type { ExternalFileItem, FolderListResult, ConnectionScopeDetail, ConnectionScopeWithStats, ScopeBatchResult } from '@bc-agent/shared'
+import type { ExternalFileItem, FolderListResult, ConnectionScopeWithStats } from '@bc-agent/shared'
 import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, SUPPORTED_EXTENSIONS_DISPLAY, CONNECTION_STATUS } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
@@ -30,8 +29,9 @@ import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
 import { toast } from 'sonner'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 import { ScopeDiffView } from './ScopeDiffView'
-import type { TreeNodeData, SelectedScope, SyncState, ScopeProgressEntry, AuthInitiateResponse, SyncStatusResponse } from './wizard-utils'
+import type { TreeNodeData, SelectedScope, AuthInitiateResponse } from './wizard-utils'
 import { findNode, sortItems, formatFileSize } from './wizard-utils'
+import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOperation'
 
 // ============================================
 // Types
@@ -44,7 +44,7 @@ interface ConnectionWizardProps {
   initialConnectionId?: string | null
 }
 
-type WizardStep = 'connect' | 'browse' | 'sync'
+type WizardStep = 'connect' | 'browse'
 
 type ExplicitSelection = 'include' | 'exclude'
 const SYNC_ALL_KEY = '__ROOT__'
@@ -271,25 +271,14 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const [explicitSelections, setExplicitSelections] = useState<Map<string, ExplicitSelection>>(new Map())
   const isSyncAll = explicitSelections.get(SYNC_ALL_KEY) === 'include'
 
-  // Step 3: sync
-  const [syncState, setSyncState] = useState<SyncState>('idle')
-  const [scopeProgress, setScopeProgress] = useState<Map<string, ScopeProgressEntry>>(new Map())
-  const [syncError, setSyncError] = useState<string | null>(null)
   const [showDiff, setShowDiff] = useState(false)
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections)
 
   // ============================================
   // Reset on dialog close
   // ============================================
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current !== null) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
-    }
-  }, [])
 
   const resetWizard = useCallback(() => {
     setStep('connect')
@@ -309,11 +298,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setSharedLoadedOnce(false)
     setSharedNodeMap(new Map())
     setShowDiff(false)
-    setSyncState('idle')
-    setScopeProgress(new Map())
-    setSyncError(null)
-    stopPolling()
-  }, [stopPolling])
+    setIsSaving(false)
+  }, [])
 
   useEffect(() => {
     if (!isOpen) {
@@ -321,10 +307,6 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       return () => clearTimeout(t)
     }
   }, [isOpen, resetWizard])
-
-  useEffect(() => {
-    return () => stopPolling()
-  }, [stopPolling])
 
   // Skip to browse step if initialConnectionId is provided (post-OAuth)
   useEffect(() => {
@@ -772,251 +754,115 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   }, [getEffectiveCheckState, findNodeInMaps, isSyncAll])
 
   // ============================================
-  // Polling logic for sync status
+  // Close handler
   // ============================================
 
-  const startPolling = useCallback(
-    (connId: string, scopeIds: string[]) => {
-      stopPolling()
-
-      const poll = async () => {
-        try {
-          const response = await fetch(
-            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connId}/sync-status`,
-            { credentials: 'include' }
-          )
-          if (!response.ok) return
-
-          const data = await response.json() as SyncStatusResponse
-          const scopes = data.scopes ?? []
-
-          const relevantScopes = scopes.filter((s) => scopeIds.includes(s.id))
-          if (relevantScopes.length === 0) return
-
-          const newProgress = new Map<string, ScopeProgressEntry>()
-          let allDone = true
-          let hasError = false
-
-          for (const scope of relevantScopes) {
-            const processed = scope.processedCount ?? 0
-            const total = scope.itemCount ?? 0
-            const pct = total > 0 ? Math.round((processed / total) * 100) : 0
-
-            newProgress.set(scope.id, {
-              processedFiles: processed,
-              totalFiles: total,
-              percentage: pct,
-            })
-
-            if (scope.syncStatus === 'syncing') allDone = false
-            if (scope.syncStatus === 'error') hasError = true
-          }
-
-          setScopeProgress(newProgress)
-
-          if (hasError) {
-            stopPolling()
-            setSyncState('error')
-            setSyncError('One or more items failed to sync')
-            return
-          }
-
-          if (allDone) {
-            stopPolling()
-            setSyncState('complete')
-            useIntegrationListStore.getState().fetchConnections()
-          }
-        } catch {
-          // Non-fatal — keep polling
-        }
-      }
-
-      pollIntervalRef.current = setInterval(poll, 2000)
-      void poll()
-    },
-    [stopPolling]
-  )
-
-  // ============================================
-  // Step 3: Trigger sync when entering sync step
-  // ============================================
-
-  useEffect(() => {
-    if (step !== 'sync' || !connectionId || syncState !== 'idle') return
-
-    const runSync = async () => {
-      setSyncState('syncing')
-      setSyncError(null)
-
-      try {
-        // PRD-112: Build toAdd/toRemove from explicitSelections
-        const existingScopeMap = new Map<string, ConnectionScopeWithStats>()
-        for (const scope of existingScopes) {
-          if (scope.scopeResourceId) {
-            existingScopeMap.set(scope.scopeResourceId, scope)
-          }
-          // Also map root scopes
-          if (scope.scopeType === 'root') {
-            existingScopeMap.set(SYNC_ALL_KEY, scope)
-          }
-        }
-
-        const toAdd: Array<{
-          scopeType: string
-          scopeResourceId: string
-          scopeDisplayName: string
-          scopePath?: string | null
-          remoteDriveId?: string
-          scopeMode?: 'include' | 'exclude'
-        }> = []
-        const toRemove: string[] = []
-
-        for (const [resourceId, mode] of explicitSelections) {
-          if (resourceId === SYNC_ALL_KEY) {
-            if (mode === 'include') {
-              const hasExistingRoot = existingScopes.some(s => s.scopeType === 'root')
-              if (!hasExistingRoot) {
-                toAdd.push({
-                  scopeType: 'root',
-                  scopeResourceId: 'root',
-                  scopeDisplayName: 'All Files',
-                  scopeMode: 'include',
-                })
-              }
-            }
-            continue
-          }
-
-          const existingScope = existingScopeMap.get(resourceId)
-
-          if (mode === 'include') {
-            if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
-              const node = findNodeInMaps(resourceId)
-              toAdd.push({
-                scopeType: node?.item.isFolder ? 'folder' : 'file',
-                scopeResourceId: resourceId,
-                scopeDisplayName: node?.item.name ?? resourceId,
-                scopePath: node?.item.parentPath,
-                remoteDriveId: node?.item.remoteDriveId,
-                scopeMode: 'include',
-              })
-              // If there was an existing exclude scope, remove it
-              if (existingScope && (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
-                toRemove.push(existingScope.id)
-              }
-            }
-          } else if (mode === 'exclude') {
-            if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode !== 'exclude') {
-              const node = findNodeInMaps(resourceId)
-              toAdd.push({
-                scopeType: node?.item.isFolder ? 'folder' : 'file',
-                scopeResourceId: resourceId,
-                scopeDisplayName: node?.item.name ?? resourceId,
-                scopePath: node?.item.parentPath,
-                scopeMode: 'exclude',
-              })
-            }
-          }
-        }
-
-        // Existing scopes no longer in explicitSelections → remove
-        for (const scope of existingScopes) {
-          if (scope.scopeResourceId && !explicitSelections.has(scope.scopeResourceId)) {
-            if (scope.scopeType === 'root' && !explicitSelections.has(SYNC_ALL_KEY)) {
-              toRemove.push(scope.id)
-            } else if (scope.scopeType !== 'root') {
-              // When switching to Sync All, remove individual include scopes (superseded by root)
-              if (isSyncAll && (scope as { scopeMode?: string }).scopeMode !== 'exclude') {
-                toRemove.push(scope.id)
-              } else if (!isSyncAll) {
-                toRemove.push(scope.id)
-              }
-            }
-          }
-        }
-
-        if (toAdd.length === 0 && toRemove.length === 0) {
-          setSyncState('complete')
-          return
-        }
-
-        const batchResponse = await fetch(
-          `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/batch`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ add: toAdd, remove: toRemove }),
-          }
-        )
-
-        if (!batchResponse.ok) {
-          const body = await batchResponse.json().catch(() => ({})) as { message?: string }
-          throw new Error(body.message ?? `Failed to update scopes: HTTP ${batchResponse.status}`)
-        }
-
-        const batchResult = await batchResponse.json() as ScopeBatchResult
-        const newIncludeScopes = (batchResult.added ?? []).filter(
-          s => (s as { scopeMode?: string }).scopeMode !== 'exclude'
-        )
-
-        if (newIncludeScopes.length > 0) {
-          // Sync already triggered by batch endpoint — just start polling
-          const initProgress = new Map<string, ScopeProgressEntry>()
-          for (const scope of newIncludeScopes) {
-            initProgress.set(scope.id, { processedFiles: 0, totalFiles: 0, percentage: 0 })
-          }
-          setScopeProgress(initProgress)
-          startPolling(connectionId, newIncludeScopes.map((s) => s.id))
-        } else {
-          // Only exclusions/removals — done immediately
-          setSyncState('complete')
-          useIntegrationListStore.getState().fetchConnections()
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Sync failed'
-        setSyncError(message)
-        setSyncState('error')
-        toast.error(message)
-      }
-    }
-
-    void runSync()
-  }, [step, connectionId, syncState, explicitSelections, existingScopes, startPolling, findNodeInMaps, isSyncAll])
-
-  // ============================================
-  // Derived — aggregate progress across scopes
-  // ============================================
-
-  const aggregatedProgress = (() => {
-    let totalProcessed = 0
-    let totalFiles = 0
-
-    for (const entry of scopeProgress.values()) {
-      totalProcessed += entry.processedFiles
-      totalFiles += entry.totalFiles
-    }
-
-    const percentage = totalFiles > 0 ? Math.round((totalProcessed / totalFiles) * 100) : 0
-    return { totalProcessed, totalFiles, percentage }
-  })()
-
-  // ============================================
-  // Done / Close handlers
-  // ============================================
-
-  const handleDone = useCallback(() => {
+  const handleClose = useCallback(() => {
     fetchConnections()
     useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root')
     onClose()
   }, [fetchConnections, onClose])
 
-  const handleClose = useCallback(() => {
-    stopPolling()
-    fetchConnections()
-    useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root')
-    onClose()
-  }, [stopPolling, fetchConnections, onClose])
+  // ============================================
+  // PRD-116: Build toAdd/toRemove from explicitSelections and trigger sync
+  // ============================================
+
+  const buildAndTriggerSync = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!connectionId) return { success: false, error: 'No connection ID' }
+
+    const existingScopeMap = new Map<string, ConnectionScopeWithStats>()
+    for (const scope of existingScopes) {
+      if (scope.scopeResourceId) {
+        existingScopeMap.set(scope.scopeResourceId, scope)
+      }
+      if (scope.scopeType === 'root') {
+        existingScopeMap.set(SYNC_ALL_KEY, scope)
+      }
+    }
+
+    const toAdd: Array<{
+      scopeType: string
+      scopeResourceId: string
+      scopeDisplayName: string
+      scopePath?: string
+      remoteDriveId?: string
+      scopeMode?: 'include' | 'exclude'
+    }> = []
+    const toRemove: string[] = []
+
+    for (const [resourceId, mode] of explicitSelections) {
+      if (resourceId === SYNC_ALL_KEY) {
+        if (mode === 'include') {
+          const hasExistingRoot = existingScopes.some(s => s.scopeType === 'root')
+          if (!hasExistingRoot) {
+            toAdd.push({
+              scopeType: 'root',
+              scopeResourceId: 'root',
+              scopeDisplayName: 'All Files',
+              scopeMode: 'include',
+            })
+          }
+        }
+        continue
+      }
+
+      const existingScope = existingScopeMap.get(resourceId)
+
+      if (mode === 'include') {
+        if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
+          const node = findNodeInMaps(resourceId)
+          toAdd.push({
+            scopeType: node?.item.isFolder ? 'folder' : 'file',
+            scopeResourceId: resourceId,
+            scopeDisplayName: node?.item.name ?? resourceId,
+            scopePath: node?.item.parentPath ?? undefined,
+            remoteDriveId: node?.item.remoteDriveId,
+            scopeMode: 'include',
+          })
+          if (existingScope && (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
+            toRemove.push(existingScope.id)
+          }
+        }
+      } else if (mode === 'exclude') {
+        if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode !== 'exclude') {
+          const node = findNodeInMaps(resourceId)
+          toAdd.push({
+            scopeType: node?.item.isFolder ? 'folder' : 'file',
+            scopeResourceId: resourceId,
+            scopeDisplayName: node?.item.name ?? resourceId,
+            scopePath: node?.item.parentPath ?? undefined,
+            scopeMode: 'exclude',
+          })
+        }
+      }
+    }
+
+    // Existing scopes no longer in explicitSelections → remove
+    for (const scope of existingScopes) {
+      if (scope.scopeResourceId && !explicitSelections.has(scope.scopeResourceId)) {
+        if (scope.scopeType === 'root' && !explicitSelections.has(SYNC_ALL_KEY)) {
+          toRemove.push(scope.id)
+        } else if (scope.scopeType !== 'root') {
+          if (isSyncAll && (scope as { scopeMode?: string }).scopeMode !== 'exclude') {
+            toRemove.push(scope.id)
+          } else if (!isSyncAll) {
+            toRemove.push(scope.id)
+          }
+        }
+      }
+    }
+
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      return { success: true }
+    }
+
+    return triggerSyncOperation({
+      connectionId,
+      providerId: 'onedrive',
+      toAdd,
+      toRemove,
+    })
+  }, [connectionId, existingScopes, explicitSelections, findNodeInMaps, isSyncAll])
 
   // ============================================
   // Render
@@ -1195,9 +1041,18 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             {isReconfiguring && showDiff && (
               <ScopeDiffView
                 selectedScopes={selectedScopes}
-                onConfirm={() => {
+                onConfirm={async () => {
                   setShowDiff(false)
-                  setStep('sync')
+                  if (!connectionId) return
+                  setIsSaving(true)
+                  const result = await buildAndTriggerSync()
+                  setIsSaving(false)
+                  if (result.success) {
+                    useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root')
+                    onClose()
+                  } else {
+                    toast.error('Failed to start sync', { description: result.error })
+                  }
                 }}
                 onCancel={() => setShowDiff(false)}
               />
@@ -1206,7 +1061,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             {!showDiff && (
               <DialogFooter>
                 <Button
-                  onClick={() => {
+                  disabled={(!isReconfiguring && explicitSelections.size === 0) || isSaving}
+                  onClick={async () => {
                     if (isReconfiguring) {
                       const values = Array.from(selectedScopes.values())
                       const hasChanges = explicitSelections.size > 0 || values.some((s) => s.status === 'new' || s.status === 'removed')
@@ -1216,82 +1072,23 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
                         onClose()
                       }
                     } else {
-                      setStep('sync')
+                      if (!connectionId) return
+                      setIsSaving(true)
+                      const result = await buildAndTriggerSync()
+                      setIsSaving(false)
+                      if (result.success) {
+                        useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root')
+                        onClose()
+                      } else {
+                        toast.error('Failed to start sync', { description: result.error })
+                      }
                     }
                   }}
-                  disabled={!isReconfiguring && explicitSelections.size === 0}
                 >
-                  {isReconfiguring ? 'Save Changes' : 'Continue'}
+                  {isSaving ? (
+                    <><Loader2 className="size-4 animate-spin mr-2" />Saving...</>
+                  ) : isReconfiguring ? 'Save Changes' : 'Save & Sync'}
                 </Button>
-              </DialogFooter>
-            )}
-          </>
-        )}
-
-        {/* ---- Step: sync ---- */}
-        {step === 'sync' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>{isReconfiguring ? 'Updating Scopes' : 'Syncing Files'}</DialogTitle>
-              <DialogDescription>
-                {syncState === 'complete'
-                  ? isReconfiguring
-                    ? 'Your sync scopes have been updated successfully.'
-                    : 'Your OneDrive items have been synced successfully.'
-                  : syncState === 'error'
-                    ? 'An error occurred while syncing.'
-                    : isReconfiguring
-                      ? 'Applying scope changes...'
-                      : 'Importing files from your selected OneDrive items.'}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex flex-col items-center gap-4 py-4">
-              {syncState === 'complete' && (
-                <>
-                  <div className="size-16 rounded-full bg-green-50 dark:bg-green-950 flex items-center justify-center">
-                    <Check className="size-8 text-green-600" />
-                  </div>
-                  <p className="text-sm font-medium text-green-700 dark:text-green-400">
-                    Sync complete!
-                  </p>
-                </>
-              )}
-
-              {syncState === 'error' && (
-                <>
-                  <p className="text-sm text-destructive text-center">{syncError}</p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setSyncState('idle')
-                      setSyncError(null)
-                      setScopeProgress(new Map())
-                    }}
-                  >
-                    Retry
-                  </Button>
-                </>
-              )}
-
-              {(syncState === 'idle' || syncState === 'syncing') && (
-                <>
-                  <Loader2 className="size-8 animate-spin text-muted-foreground" />
-                  <div className="w-full space-y-2">
-                    <Progress value={aggregatedProgress.percentage} className="h-2" />
-                    <p className="text-xs text-center text-muted-foreground">
-                      {aggregatedProgress.totalFiles > 0
-                        ? `Syncing... ${aggregatedProgress.totalProcessed} / ${aggregatedProgress.totalFiles} files`
-                        : 'Preparing sync...'}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {syncState === 'complete' && (
-              <DialogFooter>
-                <Button onClick={handleDone}>Done</Button>
               </DialogFooter>
             )}
           </>

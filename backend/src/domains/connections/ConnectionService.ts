@@ -29,7 +29,8 @@ import type { ConnectionStatus, SyncStatus } from '@bc-agent/shared';
 import type { CreateConnectionInput, UpdateConnectionInput } from '@bc-agent/shared/schemas';
 import type { ConnectionScopeWithStats, ScopeBatchInput, ScopeBatchResult } from '@bc-agent/shared';
 import { getScopeCleanupService } from '@/services/sync/ScopeCleanupService';
-import { getInitialSyncService } from '@/services/sync/InitialSyncService';
+import { prisma } from '@/infrastructure/database/prisma';
+import { getMessageQueue } from '@/infrastructure/queue';
 
 const logger = createChildLogger({ service: 'ConnectionService' });
 
@@ -262,7 +263,7 @@ export class ConnectionService {
 
     this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
 
-    // Process removes first
+    // Phase 1: Process removes (outside transaction — external side effects)
     const removed: Array<{ scopeId: string; filesDeleted: number }> = [];
     const cleanupService = getScopeCleanupService();
 
@@ -272,25 +273,57 @@ export class ConnectionService {
       removed.push(result);
     }
 
-    // Process adds
-    const added: ConnectionScopeWithStats[] = [];
-    const initialSyncService = getInitialSyncService();
+    // Phase 2: Create scopes atomically inside transaction
+    const scopeCreationInputs = input.add.map((scopeInput) => ({
+      scopeType: scopeInput.scopeType,
+      scopeResourceId: scopeInput.scopeResourceId,
+      scopeDisplayName: scopeInput.scopeDisplayName,
+      scopePath: scopeInput.scopePath,
+      remoteDriveId: scopeInput.remoteDriveId,
+      scopeMode: scopeInput.scopeMode,
+      scopeSiteId: scopeInput.scopeSiteId,
+    }));
 
-    for (const scopeInput of input.add) {
-      const scopeId = await repo.createScope(normalizedConnectionId, {
-        scopeType: scopeInput.scopeType,
-        scopeResourceId: scopeInput.scopeResourceId,
-        scopeDisplayName: scopeInput.scopeDisplayName,
-        scopePath: scopeInput.scopePath,
-        remoteDriveId: scopeInput.remoteDriveId,
-        scopeMode: scopeInput.scopeMode,
-        scopeSiteId: scopeInput.scopeSiteId,
-      });
+    const createdScopeIds: string[] = await prisma.$transaction(async (tx) => {
+      const ids: string[] = [];
+      for (const scopeInput of scopeCreationInputs) {
+        const scopeId = await repo.createScope(normalizedConnectionId, scopeInput);
+
+        // Set sync_queued for non-exclude scopes (exclude scopes stay idle)
+        if (scopeInput.scopeMode !== 'exclude') {
+          await tx.connection_scopes.update({
+            where: { id: scopeId },
+            data: { sync_status: 'sync_queued' },
+          });
+        }
+
+        ids.push(scopeId);
+      }
+      return ids;
+    });
+
+    // Build response
+    const added: Array<ConnectionScopeDetail & { syncJobId?: string }> = [];
+
+    for (let i = 0; i < createdScopeIds.length; i++) {
+      const scopeId = createdScopeIds[i]!;
 
       const scopeRow = await repo.findScopeById(scopeId);
-      if (scopeRow) {
-        added.push({ ...this.toScopeDetail(scopeRow), fileCount: 0 });
-      }
+      if (!scopeRow) continue;
+
+      const detail: ConnectionScopeDetail & { syncJobId?: string } = {
+        ...this.toScopeDetail(scopeRow),
+      };
+
+      added.push(detail);
+    }
+
+    // Phase 3: Post-transaction — enqueue sync jobs
+    const messageQueue = getMessageQueue();
+
+    for (let i = 0; i < createdScopeIds.length; i++) {
+      const scopeId = createdScopeIds[i]!;
+      const scopeInput = input.add[i]!;
 
       if (scopeInput.scopeMode === 'exclude') {
         // PRD-112: Exclusion scopes don't trigger sync — clean up existing file if present
@@ -305,8 +338,31 @@ export class ConnectionService {
             logger.error({ error: errorInfo, connectionId: normalizedConnectionId, scopeId }, 'Site-scope expansion failed');
           });
       } else {
-        // Fire-and-forget sync for the new include scope
-        initialSyncService.syncScope(normalizedConnectionId, scopeId, normalizedUserId);
+        // PRD-116: Enqueue initial sync job via BullMQ
+        try {
+          const syncJobId = await messageQueue.addInitialSyncJob({
+            scopeId,
+            connectionId: normalizedConnectionId,
+            userId: normalizedUserId,
+          });
+          // Attach syncJobId to the response
+          const addedEntry = added.find(a => a.id === scopeId);
+          if (addedEntry) {
+            addedEntry.syncJobId = syncJobId;
+          }
+        } catch (err) {
+          const errorInfo = err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+          logger.error({ error: errorInfo, connectionId: normalizedConnectionId, scopeId }, 'Failed to enqueue initial sync job');
+          // Mark scope as error if enqueue fails
+          try {
+            await repo.updateScope(scopeId, {
+              syncStatus: 'error',
+              lastSyncError: 'Failed to enqueue sync job',
+            });
+          } catch { /* best effort */ }
+        }
       }
     }
 
@@ -482,7 +538,7 @@ export class ConnectionService {
     const { getSharePointService } = await import('@/services/connectors/sharepoint');
     const spService = getSharePointService();
     const repo = getConnectionRepository();
-    const initialSyncService = getInitialSyncService();
+    const messageQueue = getMessageQueue();
 
     const MAX_LIBRARIES = 20;
 
@@ -498,8 +554,22 @@ export class ConnectionService {
         scopeSiteId: siteId,
       });
 
-      // Fire-and-forget sync for each library scope
-      initialSyncService.syncScope(connectionId, libScopeId, userId);
+      // PRD-116: Set sync_queued and enqueue via BullMQ instead of fire-and-forget
+      await repo.updateScope(libScopeId, { syncStatus: 'sync_queued' });
+
+      try {
+        await messageQueue.addInitialSyncJob({
+          scopeId: libScopeId,
+          connectionId,
+          userId,
+        });
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        logger.error({ error: errorInfo, connectionId, scopeId: libScopeId }, 'Failed to enqueue initial sync for library scope');
+        await repo.updateScope(libScopeId, { syncStatus: 'error', lastSyncError: 'Failed to enqueue sync job' });
+      }
     }
 
     // Mark parent site scope as idle with library count

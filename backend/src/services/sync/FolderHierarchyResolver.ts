@@ -46,6 +46,7 @@ export interface EnsureScopeRootParams {
   scopeDisplayName: string | null;
   microsoftDriveId: string | null;
   folderMap: FolderIdMap;
+  provider: string;
 }
 
 export interface UpsertFolderParams {
@@ -55,6 +56,7 @@ export interface UpsertFolderParams {
   userId: string;
   microsoftDriveId: string | null;
   folderMap: FolderIdMap;
+  provider: string;
 }
 
 // ============================================================================
@@ -74,7 +76,6 @@ export async function buildFolderMap(connectionId: string): Promise<FolderIdMap>
     where: {
       connection_id: connectionId,
       is_folder: true,
-      source_type: FILE_SOURCE_TYPE.ONEDRIVE,
     },
     select: { id: true, external_id: true },
   });
@@ -112,6 +113,7 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
     scopeDisplayName,
     microsoftDriveId,
     folderMap,
+    provider,
   } = params;
 
   if (folderMap.has(scopeResourceId)) {
@@ -134,12 +136,12 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
       data: {
         id: scopeFolderId,
         user_id: userId,
-        name: scopeDisplayName ?? 'OneDrive Folder',
+        name: scopeDisplayName ?? (provider === 'sharepoint' ? 'SharePoint Folder' : 'OneDrive Folder'),
         mime_type: 'inode/directory',
         size_bytes: BigInt(0),
         blob_path: null,
         is_folder: true,
-        source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+        source_type: provider === 'sharepoint' ? FILE_SOURCE_TYPE.SHAREPOINT : FILE_SOURCE_TYPE.ONEDRIVE,
         external_id: scopeResourceId,
         external_drive_id: microsoftDriveId,
         connection_id: connectionId,
@@ -220,7 +222,7 @@ export function sortFoldersByDepth(folderChanges: DeltaChange[]): DeltaChange[] 
  * @returns The internal folder UUID (UPPERCASE).
  */
 export async function upsertFolder(params: UpsertFolderParams): Promise<string> {
-  const { item, connectionId, scopeId, userId, microsoftDriveId, folderMap } = params;
+  const { item, connectionId, scopeId, userId, microsoftDriveId, folderMap, provider } = params;
 
   const parentFolderId = resolveParentFolderId(item.parentId, folderMap);
 
@@ -265,7 +267,7 @@ export async function upsertFolder(params: UpsertFolderParams): Promise<string> 
         size_bytes: BigInt(0),
         blob_path: null,
         is_folder: true,
-        source_type: FILE_SOURCE_TYPE.ONEDRIVE,
+        source_type: provider === 'sharepoint' ? FILE_SOURCE_TYPE.SHAREPOINT : FILE_SOURCE_TYPE.ONEDRIVE,
         external_id: item.id,
         external_drive_id: microsoftDriveId,
         connection_id: connectionId,

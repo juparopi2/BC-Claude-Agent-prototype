@@ -112,28 +112,83 @@ Scripts for diagnosing and repairing OneDrive/SharePoint connector sync issues.
 
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
-| `diagnose-sync.ts` | Inspect scopes, file hierarchy, stuck syncs, orphaned files | `--userId`, `--connectionId`, `--scopeId`, `--verbose` |
+| `diagnose-sync.ts` | Inspect scopes, file hierarchy, stuck syncs, orphaned files | `--userId`, `--connectionId`, `--scopeId`, `--verbose`, `--health`, `--source-type` |
+| `verify-sync.ts` | Cross-system sync verification: DB → Blob → AI Search pipeline | `--userId`, `--scope`, `--section`, `--health` |
 | `fix-stuck-scopes.ts` | Reset scopes stuck in 'syncing' status | `--userId`, `--connectionId`, `--dry-run`, `--fix`, `--reset-to-idle` |
+| `cleanup-connections.ts` | Full cleanup of connections + files + Azure resources for e2e testing | `--userId`, `--provider onedrive\|sharepoint\|all`, `--dry-run`, `--confirm` |
 | `cleanup-duplicate-files.sql` | Deduplicate files before adding unique constraint | (run manually via SSMS) |
 | `cleanup-user-onedrive-files.sql` | Remove ALL OneDrive files for a specific user | (run manually via SSMS) |
 
 ### Sync Diagnostic Workflow
 
+Use `diagnose-sync.ts` to inspect the scope and file hierarchy, and `verify-sync.ts` to verify
+the full pipeline (DB → Blob → AI Search). They are complementary: diagnose-sync focuses on
+connection/scope/folder-tree health, while verify-sync focuses on pipeline status across systems.
+
 ```bash
-# 1. Check scope status for a user
+# ── Quick health check (start here) ──────────────────────────────────────────
+
+# Compact summary of connections, scopes, and file pipeline status
+npx tsx scripts/connectors/diagnose-sync.ts --userId <ID> --health
+
+# Same summary from verify-sync (slightly more detail on pipeline stages)
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --health
+
+# ── Detailed scope inspection ────────────────────────────────────────────────
+
+# 1. Check all connections and scopes for a user
 npx tsx scripts/connectors/diagnose-sync.ts --userId <ID>
 
 # 2. Inspect a specific scope with file listing
 npx tsx scripts/connectors/diagnose-sync.ts --scopeId <ID> --verbose
 
-# 3. Preview stuck scopes
+# 3. Filter file analysis to a specific provider
+npx tsx scripts/connectors/diagnose-sync.ts --userId <ID> --source-type sharepoint
+
+# ── Full pipeline verification ───────────────────────────────────────────────
+
+# 4. Run all verification sections (sql + blob + search + pipeline)
+npx tsx scripts/connectors/verify-sync.ts --userId <ID>
+
+# 5. Run only the SQL section (fast, DB-only)
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --section sql
+
+# 6. Check pipeline funnel and stuck/failed files
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --section pipeline
+
+# 7. Verify chunk counts for ready files
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --section search
+
+# 8. Check blob path presence for synced files
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --section blob
+
+# 9. Narrow all verification to a single scope
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --scope <SCOPE-ID>
+
+# ── Remediation ──────────────────────────────────────────────────────────────
+
+# 10. Preview stuck scopes
 npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --dry-run
 
-# 4. Reset stuck scopes to error (can re-sync from ConnectionWizard)
+# 11. Reset stuck scopes to error (can re-sync from ConnectionWizard)
 npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --fix
 
-# 5. Or reset to idle for immediate re-sync
+# 12. Or reset to idle for immediate re-sync
 npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --fix --reset-to-idle
+
+# ── Full Cleanup (e2e testing) ───────────────────────────────────────────────
+
+# 13. Preview what will be deleted (dry-run is default)
+npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider all
+
+# 14. Clean up SharePoint only (files, scopes, connection, Azure resources)
+npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider sharepoint --confirm
+
+# 15. Clean up OneDrive only
+npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider onedrive --confirm
+
+# 16. Nuclear: clean up everything (OneDrive + SharePoint)
+npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider all --confirm
 ```
 
 ---

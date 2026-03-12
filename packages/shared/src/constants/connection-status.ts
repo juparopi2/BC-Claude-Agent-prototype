@@ -23,7 +23,9 @@ export type ConnectionStatus = (typeof CONNECTION_STATUS)[keyof typeof CONNECTIO
 // ============================================
 export const SYNC_STATUS = {
   IDLE: 'idle',
+  SYNC_QUEUED: 'sync_queued',
   SYNCING: 'syncing',
+  SYNCED: 'synced',
   ERROR: 'error',
 } as const;
 

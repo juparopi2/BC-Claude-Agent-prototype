@@ -146,8 +146,11 @@ export function FolderTree({ className }: FolderTreeProps) {
   }, [setSourceTypeFilter, navigateToFolder]);
 
   const handleOneDriveFolderSelect = useCallback((folderId: string, folder: ParsedFile) => {
+    if (sourceTypeFilter !== FILE_SOURCE_TYPE.ONEDRIVE) {
+      setSourceTypeFilter(FILE_SOURCE_TYPE.ONEDRIVE);
+    }
     navigateToFolder(folderId, folder);
-  }, [navigateToFolder]);
+  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter]);
 
   const handleSharePointClick = useCallback(() => {
     setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
@@ -155,8 +158,11 @@ export function FolderTree({ className }: FolderTreeProps) {
   }, [setSourceTypeFilter, navigateToFolder]);
 
   const handleSharePointFolderSelect = useCallback((folderId: string, folder: ParsedFile) => {
+    if (sourceTypeFilter !== FILE_SOURCE_TYPE.SHAREPOINT) {
+      setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
+    }
     navigateToFolder(folderId, folder);
-  }, [navigateToFolder]);
+  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter]);
 
   return (
     <ScrollArea className={cn('h-full', className)}>

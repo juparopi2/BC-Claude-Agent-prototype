@@ -196,6 +196,7 @@ export class DeltaSyncService {
           scopeDisplayName: scope.scope_display_name,
           microsoftDriveId: effectiveDriveId,
           folderMap,
+          provider: connection.provider,
         });
       }
 
@@ -418,6 +419,7 @@ export class DeltaSyncService {
             userId,
             microsoftDriveId: effectiveDriveId,
             folderMap,
+            provider: connection.provider,
           });
         } catch (folderErr) {
           const errorInfo =
@@ -586,9 +588,9 @@ export class DeltaSyncService {
         }
       }
 
-      // Step 7: Persist new deltaLink and mark scope idle
+      // Step 7: Persist new deltaLink and mark scope synced
       await repo.updateScope(scopeId, {
-        syncStatus: 'idle',
+        syncStatus: 'synced',
         lastSyncAt: new Date(),
         lastSyncError: null,
         lastSyncCursor: deltaLink,

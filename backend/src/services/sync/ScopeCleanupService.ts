@@ -60,8 +60,8 @@ export class ScopeCleanupService {
       throw new Error(`Scope ${scopeId} does not belong to connection ${connectionId}`);
     }
 
-    // 2. Guard: block removal if scope is currently syncing
-    if (scope.sync_status === 'syncing') {
+    // 2. Guard: block removal if scope is currently syncing or queued
+    if (scope.sync_status === 'syncing' || scope.sync_status === 'sync_queued') {
       throw new ScopeCurrentlySyncingError(scopeId);
     }
 

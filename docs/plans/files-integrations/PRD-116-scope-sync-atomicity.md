@@ -1,7 +1,16 @@
 # PRD-116: Scope Batch Creation Atomicity & Sync Reliability
 
-## Status: Proposed
+## Status: Completed
 ## Priority: P2 (post-SharePoint stabilization)
+## Implemented: 2026-03-12
+
+### Implementation Notes
+- **Shared types**: `SYNC_STATUS` extended with `sync_queued` and `synced` in `packages/shared/src/constants/connection-status.ts`
+- **DB CHECK constraint**: Updated via `backend/scripts/database/update-sync-status-check.ts`
+- **BullMQ**: `addInitialSyncJob()` in `MessageQueue.ts`, `ExternalFileSyncWorker` routes `triggerType='initial'` to `InitialSyncService.syncScopeAsync()`
+- **Atomicity**: `ConnectionService.batchUpdateScopes()` uses `prisma.$transaction()` for all scope creates; scopes start as `sync_queued`; BullMQ jobs enqueued post-transaction
+- **Non-blocking UI**: `SyncProgressPanel` replaces blocking modal; `triggerSyncOperation()` module-level function with polling
+- **Diagnostic scripts**: `verify-sync.ts` (cross-system verification) and enhanced `diagnose-sync.ts` (--health, --source-type, pipeline breakdown)
 
 ---
 

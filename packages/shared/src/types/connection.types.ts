@@ -71,7 +71,7 @@ export interface ScopeBatchInput {
  * Result of a batch scope operation (PRD-105).
  */
 export interface ScopeBatchResult {
-  added: ConnectionScopeDetail[];
+  added: Array<ConnectionScopeDetail & { syncJobId?: string }>;
   removed: Array<{ scopeId: string; filesDeleted: number }>;
 }
 

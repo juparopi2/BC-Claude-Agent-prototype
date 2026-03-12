@@ -74,6 +74,14 @@ export class InitialSyncService {
   }
 
   /**
+   * Async version of syncScope — awaits completion.
+   * Used by BullMQ ExternalFileSyncWorker for queued initial syncs (PRD-116).
+   */
+  async syncScopeAsync(connectionId: string, scopeId: string, userId: string): Promise<void> {
+    await this._runSync(connectionId, scopeId, userId);
+  }
+
+  /**
    * Internal async implementation of syncScope.
    * All failures update the scope status and emit a sync:error event.
    */
@@ -229,6 +237,7 @@ export class InitialSyncService {
           scopeDisplayName: scope.scope_display_name,
           microsoftDriveId: effectiveDriveId,
           folderMap: externalToInternalId,
+          provider: connection.provider,
         });
       }
 
@@ -262,6 +271,7 @@ export class InitialSyncService {
               userId,
               microsoftDriveId: effectiveDriveId,
               folderMap: externalToInternalId,
+              provider: connection.provider,
             });
           } catch (folderErr) {
             const errorInfo = folderErr instanceof Error
@@ -385,7 +395,7 @@ export class InitialSyncService {
 
       // Step 6: Save deltaLink as last_sync_cursor
       await repo.updateScope(scopeId, {
-        syncStatus: 'idle',
+        syncStatus: 'synced',
         itemCount: totalFiles,
         lastSyncAt: new Date(),
         lastSyncError: null,
@@ -480,7 +490,7 @@ export class InitialSyncService {
         logger.info({ scopeId, fileName: item.name, mimeType: item.mimeType }, 'Skipping unsupported file type');
         const repo = getConnectionRepository();
         await repo.updateScope(scopeId, {
-          syncStatus: 'idle',
+          syncStatus: 'synced',
           itemCount: 0,
           lastSyncAt: new Date(),
           lastSyncError: null,
@@ -570,7 +580,7 @@ export class InitialSyncService {
       // 4. Update scope as complete
       const repo = getConnectionRepository();
       await repo.updateScope(scopeId, {
-        syncStatus: 'idle',
+        syncStatus: 'synced',
         itemCount: 1,
         lastSyncAt: new Date(),
         lastSyncError: null,

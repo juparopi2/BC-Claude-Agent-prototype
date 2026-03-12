@@ -564,6 +564,29 @@ router.get('/:id/browse{/:folderId}', handler);
 
 This applies to ALL Express 5 routes with optional trailing parameters. Always verify both the "without trailing slash" and "with value" cases in tests.
 
+### 11.9 Zustand Selectors That Return Derived Values (`useShallow`)
+
+When a Zustand selector returns a **derived** array or object (via `.filter()`, `.map()`, `Array.from()`, `Object.values()`, spread, etc.), it creates a **new reference** on every call. Zustand uses `Object.is` for equality, so `newArray !== oldArray` → re-render → new selector call → **infinite loop**.
+
+**Symptom**: React error `The result of getSnapshot should be cached to avoid an infinite loop`.
+
+```typescript
+// ❌ WRONG: selectVisibleOperations returns a new array every call → infinite loop
+const operations = useSyncStatusStore(selectVisibleOperations);
+
+// ✅ CORRECT: useShallow does shallow comparison of array elements
+import { useShallow } from 'zustand/react/shallow';
+const operations = useSyncStatusStore(useShallow(selectVisibleOperations));
+```
+
+**Rule**: ANY selector that returns a derived value (not a direct state slice) MUST be wrapped with `useShallow`. This includes:
+- `Array.from(state.map.values()).filter(...)`
+- `Object.values(state.record).map(...)`
+- `[...state.array].sort(...)`
+- `{ ...state.obj, computed: value }`
+
+**Existing examples**: `BatchUploadProgressPanel.tsx`, `ApprovalDialog.tsx`, `useUploadProgress.ts`.
+
 ---
 
 ## 12. Logging Pattern - Service Context

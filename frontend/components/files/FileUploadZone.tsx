@@ -14,6 +14,7 @@ import { useBatchUpload } from '@/src/domains/files/hooks/useBatchUpload';
 import { DuplicateFileModal } from '@/components/files/DuplicateFileModal';
 import { DuplicateFolderModal } from '@/components/files/DuplicateFolderModal';
 import { BatchUploadProgressPanel } from '@/components/files/BatchUploadProgressPanel';
+import { SyncProgressPanel } from '@/components/connections/SyncProgressPanel';
 
 const MAX_CONCURRENT_BATCHES = 5;
 
@@ -223,6 +224,9 @@ export function FileUploadZone({
 
       {/* Batch upload progress panel (floating, bottom-right) */}
       <BatchUploadProgressPanel onCancel={(batchKey) => cancelBatch(batchKey)} />
+
+      {/* Sync progress panel (floating, bottom-right) */}
+      <SyncProgressPanel />
     </div>
   );
 }

@@ -1,14 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
-  Check,
   Loader2,
   ChevronRight,
   ChevronDown,
   BookOpen,
   Folder,
-  AlertTriangle,
 } from 'lucide-react'
 import { SharePointLogo } from '@/components/icons'
 import {
@@ -20,13 +18,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
 import type {
-  ExternalFileItem,
   FolderListResult,
   ConnectionScopeWithStats,
-  ScopeBatchResult,
   SharePointSite,
   SharePointLibrary,
   SharePointSiteListResult,
@@ -37,10 +32,11 @@ import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
 import { toast } from 'sonner'
-import type { TreeNodeData, SelectedScope, SyncState, ScopeProgressEntry, AuthInitiateResponse, SyncStatusResponse } from './wizard-utils'
+import type { TreeNodeData, AuthInitiateResponse } from './wizard-utils'
 import { findNode, sortItems, formatFileSize } from './wizard-utils'
 import { SitePickerGrid } from './sharepoint/SitePickerGrid'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
+import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOperation'
 
 // ============================================
 // Types
@@ -52,7 +48,7 @@ interface SharePointWizardProps {
   initialConnectionId?: string | null
 }
 
-type SPWizardStep = 'connect' | 'sites' | 'libraries' | 'sync'
+type SPWizardStep = 'connect' | 'sites' | 'libraries'
 
 interface LibraryWithState extends SharePointLibrary {
   isSelected: boolean
@@ -189,18 +185,8 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   // Step 3: Existing scopes (for reconfigure)
   const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
 
-  // Step 4: Sync
-  const [syncState, setSyncState] = useState<SyncState>('idle')
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const [scopeProgress, setScopeProgress] = useState<Map<string, ScopeProgressEntry>>(new Map())
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
-    }
-  }, [])
+  // Step 3: Saving state for the "Save & Sync" button
+  const [isSaving, setIsSaving] = useState(false)
 
   const resetWizard = useCallback(() => {
     setStep('connect')
@@ -216,11 +202,8 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     setSelectedLibraries(new Set())
     setSelectedFolders(new Map())
     setExistingScopes([])
-    setSyncState('idle')
-    setSyncError(null)
-    setScopeProgress(new Map())
-    stopPolling()
-  }, [stopPolling])
+    setIsSaving(false)
+  }, [])
 
   useEffect(() => {
     if (!isOpen) {
@@ -228,10 +211,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
       return () => clearTimeout(t)
     }
   }, [isOpen, resetWizard])
-
-  useEffect(() => {
-    return () => stopPolling()
-  }, [stopPolling])
 
   // Skip to sites step if initialConnectionId is provided (post-OAuth)
   useEffect(() => {
@@ -758,228 +737,16 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     }
   }, [siteLibraries])
 
-  // ============================================
-  // Polling logic
-  // ============================================
-
-  const startPolling = useCallback(
-    (connId: string, scopeIds: string[]) => {
-      stopPolling()
-
-      const poll = async () => {
-        try {
-          const response = await fetch(
-            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connId}/sync-status`,
-            { credentials: 'include' }
-          )
-          if (!response.ok) return
-
-          const data = await response.json() as SyncStatusResponse
-          const scopes = data.scopes ?? []
-          const relevantScopes = scopes.filter(s => scopeIds.includes(s.id))
-          if (relevantScopes.length === 0) return
-
-          const newProgress = new Map<string, ScopeProgressEntry>()
-          let allDone = true
-          let hasError = false
-
-          for (const scope of relevantScopes) {
-            const processed = scope.processedCount ?? 0
-            const total = scope.itemCount ?? 0
-            const pct = total > 0 ? Math.round((processed / total) * 100) : 0
-
-            newProgress.set(scope.id, {
-              processedFiles: processed,
-              totalFiles: total,
-              percentage: pct,
-            })
-
-            if (scope.syncStatus === 'syncing') allDone = false
-            if (scope.syncStatus === 'error') hasError = true
-          }
-
-          setScopeProgress(newProgress)
-
-          if (hasError) {
-            stopPolling()
-            setSyncState('error')
-            setSyncError('One or more items failed to sync')
-            return
-          }
-
-          if (allDone) {
-            stopPolling()
-            setSyncState('complete')
-            useIntegrationListStore.getState().fetchConnections()
-          }
-        } catch {
-          // Non-fatal — keep polling
-        }
-      }
-
-      pollIntervalRef.current = setInterval(poll, 2000)
-      void poll()
-    },
-    [stopPolling]
-  )
-
-  // ============================================
-  // Step 4: Trigger sync
-  // ============================================
-
-  useEffect(() => {
-    if (step !== 'sync' || !connectionId || syncState !== 'idle') return
-
-    const runSync = async () => {
-      setSyncState('syncing')
-      setSyncError(null)
-
-      try {
-        // Build scope additions
-        const toAdd: Array<{
-          scopeType: string
-          scopeResourceId: string
-          scopeDisplayName: string
-          scopePath?: string | null
-          scopeSiteId?: string
-          scopeMode?: 'include' | 'exclude'
-          remoteDriveId?: string
-        }> = []
-        const toRemove: string[] = []
-
-        // Existing scope IDs for comparison
-        const existingScopeResourceIds = new Set(
-          existingScopes.map(s => s.scopeResourceId).filter(Boolean)
-        )
-
-        // Add selected libraries
-        for (const driveId of selectedLibraries) {
-          if (existingScopeResourceIds.has(driveId)) continue
-
-          // Find the library details
-          for (const [siteId, siteEntry] of siteLibraries) {
-            const lib = siteEntry.libraries.find(l => l.driveId === driveId)
-            if (lib) {
-              toAdd.push({
-                scopeType: 'library',
-                scopeResourceId: driveId,
-                scopeDisplayName: lib.displayName,
-                scopePath: `${siteEntry.site.displayName} / ${lib.displayName}`,
-                scopeSiteId: siteId,
-                scopeMode: 'include',
-              })
-              break
-            }
-          }
-        }
-
-        // Add selected folders
-        for (const [folderId, info] of selectedFolders) {
-          if (existingScopeResourceIds.has(folderId)) continue
-
-          toAdd.push({
-            scopeType: 'folder',
-            scopeResourceId: folderId,
-            scopeDisplayName: info.name,
-            scopePath: `${info.siteName} / ${info.libraryName}${info.path ? ` / ${info.path}` : ''}`,
-            scopeSiteId: info.siteId,
-            scopeMode: 'include',
-            remoteDriveId: info.driveId,
-          })
-        }
-
-        // Remove existing scopes that are no longer selected
-        for (const scope of existingScopes) {
-          if (!scope.scopeResourceId) continue
-          const isStillSelected =
-            selectedLibraries.has(scope.scopeResourceId) ||
-            selectedFolders.has(scope.scopeResourceId)
-          if (!isStillSelected) {
-            toRemove.push(scope.id)
-          }
-        }
-
-        if (toAdd.length === 0 && toRemove.length === 0) {
-          setSyncState('complete')
-          return
-        }
-
-        const batchResponse = await fetch(
-          `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes/batch`,
-          {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ add: toAdd, remove: toRemove }),
-          }
-        )
-
-        if (!batchResponse.ok) {
-          const body = await batchResponse.json().catch(() => ({})) as { message?: string }
-          throw new Error(body.message ?? `Failed to update scopes: HTTP ${batchResponse.status}`)
-        }
-
-        const batchResult = await batchResponse.json() as ScopeBatchResult
-        const newIncludeScopes = (batchResult.added ?? []).filter(
-          s => (s as { scopeMode?: string }).scopeMode !== 'exclude'
-        )
-
-        if (newIncludeScopes.length > 0) {
-          // Sync already triggered by batch endpoint — just start polling
-          const initProgress = new Map<string, ScopeProgressEntry>()
-          for (const scope of newIncludeScopes) {
-            initProgress.set(scope.id, { processedFiles: 0, totalFiles: 0, percentage: 0 })
-          }
-          setScopeProgress(initProgress)
-          startPolling(connectionId, newIncludeScopes.map(s => s.id))
-        } else {
-          setSyncState('complete')
-          useIntegrationListStore.getState().fetchConnections()
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Sync failed'
-        setSyncError(message)
-        setSyncState('error')
-        toast.error(message)
-      }
-    }
-
-    void runSync()
-  }, [step, connectionId, syncState, selectedLibraries, selectedFolders, existingScopes, siteLibraries, startPolling])
-
-  // ============================================
-  // Derived — aggregate progress
-  // ============================================
-
-  const aggregatedProgress = (() => {
-    let totalProcessed = 0
-    let totalFiles = 0
-
-    for (const entry of scopeProgress.values()) {
-      totalProcessed += entry.processedFiles
-      totalFiles += entry.totalFiles
-    }
-
-    const percentage = totalFiles > 0 ? Math.round((totalProcessed / totalFiles) * 100) : 0
-    return { totalProcessed, totalFiles, percentage }
-  })()
 
   // ============================================
   // Done / Close
   // ============================================
 
-  const handleDone = useCallback(() => {
+  const handleClose = useCallback(() => {
     fetchConnections()
     useFolderTreeStore.getState().invalidateTreeFolder('sharepoint-root')
     onClose()
   }, [fetchConnections, onClose])
-
-  const handleClose = useCallback(() => {
-    stopPolling()
-    fetchConnections()
-    useFolderTreeStore.getState().invalidateTreeFolder('sharepoint-root')
-    onClose()
-  }, [stopPolling, fetchConnections, onClose])
 
   // ============================================
   // Selection summary for libraries step
@@ -1175,74 +942,93 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                 Back
               </Button>
               <Button
-                onClick={() => setStep('sync')}
-                disabled={totalSelectedItems === 0}
+                onClick={async () => {
+                  if (!connectionId) return
+                  setIsSaving(true)
+
+                  // Build scope additions
+                  const toAdd: Array<{
+                    scopeType: string
+                    scopeResourceId: string
+                    scopeDisplayName: string
+                    scopePath?: string
+                    scopeSiteId?: string
+                    scopeMode?: 'include' | 'exclude'
+                    remoteDriveId?: string
+                  }> = []
+                  const toRemove: string[] = []
+
+                  // Existing scope IDs for comparison
+                  const existingScopeResourceIds = new Set(
+                    existingScopes.map(s => s.scopeResourceId).filter(Boolean)
+                  )
+
+                  // Add selected libraries
+                  for (const driveId of selectedLibraries) {
+                    if (existingScopeResourceIds.has(driveId)) continue
+                    for (const [siteId, siteEntry] of siteLibraries) {
+                      const lib = siteEntry.libraries.find(l => l.driveId === driveId)
+                      if (lib) {
+                        toAdd.push({
+                          scopeType: 'library',
+                          scopeResourceId: driveId,
+                          scopeDisplayName: lib.displayName,
+                          scopePath: `${siteEntry.site.displayName} / ${lib.displayName}`,
+                          scopeSiteId: siteId,
+                          scopeMode: 'include',
+                        })
+                        break
+                      }
+                    }
+                  }
+
+                  // Add selected folders
+                  for (const [folderId, info] of selectedFolders) {
+                    if (existingScopeResourceIds.has(folderId)) continue
+                    toAdd.push({
+                      scopeType: 'folder',
+                      scopeResourceId: folderId,
+                      scopeDisplayName: info.name,
+                      scopePath: `${info.siteName} / ${info.libraryName}${info.path ? ` / ${info.path}` : ''}`,
+                      scopeSiteId: info.siteId,
+                      scopeMode: 'include',
+                      remoteDriveId: info.driveId,
+                    })
+                  }
+
+                  // Remove existing scopes that are no longer selected
+                  for (const scope of existingScopes) {
+                    if (!scope.scopeResourceId) continue
+                    const isStillSelected =
+                      selectedLibraries.has(scope.scopeResourceId) ||
+                      selectedFolders.has(scope.scopeResourceId)
+                    if (!isStillSelected) {
+                      toRemove.push(scope.id)
+                    }
+                  }
+
+                  const result = await triggerSyncOperation({
+                    connectionId,
+                    providerId: 'sharepoint',
+                    toAdd,
+                    toRemove,
+                  })
+
+                  setIsSaving(false)
+
+                  if (result.success) {
+                    useFolderTreeStore.getState().invalidateTreeFolder('sharepoint-root')
+                    onClose()
+                  } else {
+                    toast.error('Failed to start sync', { description: result.error })
+                  }
+                }}
+                disabled={totalSelectedItems === 0 || isSaving}
               >
-                Start Sync
+                {isSaving ? (
+                  <><Loader2 className="size-4 animate-spin mr-2" />Saving...</>
+                ) : 'Save & Sync'}
               </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {/* ---- Step: sync ---- */}
-        {step === 'sync' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>Syncing SharePoint Files</DialogTitle>
-              <DialogDescription>
-                {syncState === 'complete'
-                  ? 'Your SharePoint libraries have been synced successfully.'
-                  : syncState === 'error'
-                    ? 'There was a problem syncing your files.'
-                    : 'Please wait while your selected libraries are synced...'}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="flex flex-col items-center gap-4 py-6">
-              {syncState === 'syncing' && (
-                <>
-                  <Loader2 className="size-8 text-[#038387] animate-spin" />
-                  <Progress value={aggregatedProgress.percentage} className="w-full" />
-                  <p className="text-sm text-muted-foreground">
-                    {aggregatedProgress.totalFiles > 0
-                      ? `${aggregatedProgress.totalProcessed} of ${aggregatedProgress.totalFiles} files synced (${aggregatedProgress.percentage}%)`
-                      : 'Starting sync...'}
-                  </p>
-                </>
-              )}
-
-              {syncState === 'complete' && (
-                <>
-                  <div className="size-16 rounded-full bg-green-50 dark:bg-green-950 flex items-center justify-center">
-                    <Check className="size-8 text-green-600 dark:text-green-400" />
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Your files are now available for the {AGENT_DISPLAY_NAME[AGENT_ID.RAG_AGENT]} agent.
-                  </p>
-                </>
-              )}
-
-              {syncState === 'error' && (
-                <>
-                  <div className="size-16 rounded-full bg-red-50 dark:bg-red-950 flex items-center justify-center">
-                    <AlertTriangle className="size-8 text-red-600 dark:text-red-400" />
-                  </div>
-                  <p className="text-sm text-destructive">{syncError}</p>
-                </>
-              )}
-            </div>
-
-            <DialogFooter>
-              {syncState === 'complete' && (
-                <Button onClick={handleDone} className="bg-[#038387] hover:bg-[#026c6f] text-white">
-                  Done
-                </Button>
-              )}
-              {syncState === 'error' && (
-                <Button variant="outline" onClick={handleClose}>
-                  Close
-                </Button>
-              )}
             </DialogFooter>
           </>
         )}

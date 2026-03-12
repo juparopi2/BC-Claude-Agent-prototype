@@ -25,24 +25,30 @@ export class ExternalFileSyncWorker {
 
     this.log.info(
       { jobId: job.id, scopeId, connectionId, triggerType },
-      'Processing delta sync job'
+      triggerType === 'initial' ? 'Processing initial sync job' : 'Processing delta sync job'
     );
 
     try {
-      // Dynamic import to avoid circular dependency
-      const { getDeltaSyncService } = await import('@/services/sync/DeltaSyncService');
-      const result = await getDeltaSyncService().syncDelta(connectionId, scopeId, userId, triggerType);
+      if (triggerType === 'initial') {
+        // PRD-116: Route initial sync to InitialSyncService
+        const { getInitialSyncService } = await import('@/services/sync/InitialSyncService');
+        await getInitialSyncService().syncScopeAsync(connectionId, scopeId, userId);
+      } else {
+        // Existing delta sync path
+        const { getDeltaSyncService } = await import('@/services/sync/DeltaSyncService');
+        const result = await getDeltaSyncService().syncDelta(connectionId, scopeId, userId, triggerType);
 
-      this.log.info(
-        {
-          jobId: job.id,
-          scopeId,
-          connectionId,
-          triggerType,
-          ...result,
-        },
-        'Delta sync completed'
-      );
+        this.log.info(
+          {
+            jobId: job.id,
+            scopeId,
+            connectionId,
+            triggerType,
+            ...result,
+          },
+          'Delta sync completed'
+        );
+      }
     } catch (error) {
       const errorInfo = error instanceof Error
         ? { message: error.message, stack: error.stack, name: error.name }

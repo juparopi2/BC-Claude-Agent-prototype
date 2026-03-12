@@ -227,7 +227,7 @@ export interface ExternalFileSyncJob {
   scopeId: string;
   connectionId: string;
   userId: string;
-  triggerType: 'webhook' | 'polling' | 'manual';
+  triggerType: 'webhook' | 'polling' | 'manual' | 'initial';
 }
 
 /**

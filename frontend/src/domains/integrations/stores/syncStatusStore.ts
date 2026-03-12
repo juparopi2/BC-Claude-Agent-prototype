@@ -1,8 +1,9 @@
 /**
- * Sync Status Store (PRD-107)
+ * Sync Status Store (PRD-107, PRD-116)
  *
  * Tracks active OneDrive/SharePoint sync operations for UI indicators.
  * Updated by useSyncEvents hook when WebSocket events arrive.
+ * Also tracks SyncOperations for the SyncProgressPanel (PRD-116).
  *
  * @module domains/integrations/stores/syncStatusStore
  */
@@ -16,8 +17,23 @@ interface SyncEntry {
   error?: string;
 }
 
+// ============================================
+// PRD-116: Operation tracking
+// ============================================
+
+export interface SyncOperation {
+  operationKey: string;       // `${connectionId}:${Date.now()}`
+  connectionId: string;
+  providerName: string;       // 'OneDrive' | 'SharePoint'
+  scopeIds: string[];
+  status: 'syncing' | 'complete' | 'error';
+  createdAt: number;
+  dismissed: boolean;
+}
+
 interface SyncStatusState {
   activeSyncs: Record<string, SyncEntry>;
+  operations: Map<string, SyncOperation>;
 }
 
 interface SyncStatusActions {
@@ -25,10 +41,17 @@ interface SyncStatusActions {
   setLastSyncedAt(scopeId: string, date: string): void;
   setSyncError(scopeId: string, error: string): void;
   reset(): void;
+  // PRD-116: Operation actions
+  startOperation(op: Omit<SyncOperation, 'status' | 'createdAt' | 'dismissed'>): void;
+  completeScope(scopeId: string): void;
+  failScope(scopeId: string, error: string): void;
+  dismissOperation(operationKey: string): void;
+  removeOperation(operationKey: string): void;
 }
 
 export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()((set) => ({
   activeSyncs: {},
+  operations: new Map(),
 
   setSyncStatus: (scopeId, status, percentage = 0) =>
     set((state) => ({
@@ -61,7 +84,88 @@ export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()(
       },
     })),
 
-  reset: () => set({ activeSyncs: {} }),
+  reset: () => set({ activeSyncs: {}, operations: new Map() }),
+
+  // PRD-116: Creates a new operation with status='syncing'
+  startOperation: (op) =>
+    set((state) => {
+      const next = new Map(state.operations);
+      next.set(op.operationKey, {
+        ...op,
+        status: 'syncing',
+        createdAt: Date.now(),
+        dismissed: false,
+      });
+      return { operations: next };
+    }),
+
+  // PRD-116: Finds the operation containing this scope.
+  // If all scopes in the operation are complete (no longer syncing in activeSyncs),
+  // sets operation status to 'complete'.
+  completeScope: (scopeId) =>
+    set((state) => {
+      // Find which operation contains this scope
+      let targetKey: string | null = null;
+      for (const [key, op] of state.operations) {
+        if (op.scopeIds.includes(scopeId)) {
+          targetKey = key;
+          break;
+        }
+      }
+
+      if (!targetKey) return {};
+
+      const op = state.operations.get(targetKey)!;
+
+      // Check if all scopes in the operation are done (not syncing)
+      const allDone = op.scopeIds.every((id) => {
+        const entry = state.activeSyncs[id];
+        return !entry || entry.status !== 'syncing';
+      });
+
+      if (!allDone) return {};
+
+      const next = new Map(state.operations);
+      next.set(targetKey, { ...op, status: 'complete' });
+      return { operations: next };
+    }),
+
+  // PRD-116: Finds the operation containing this scope and sets status to 'error'
+  failScope: (scopeId) =>
+    set((state) => {
+      let targetKey: string | null = null;
+      for (const [key, op] of state.operations) {
+        if (op.scopeIds.includes(scopeId)) {
+          targetKey = key;
+          break;
+        }
+      }
+
+      if (!targetKey) return {};
+
+      const op = state.operations.get(targetKey)!;
+      const next = new Map(state.operations);
+      next.set(targetKey, { ...op, status: 'error' });
+      return { operations: next };
+    }),
+
+  // PRD-116: Marks operation as dismissed (hidden from panel)
+  dismissOperation: (operationKey) =>
+    set((state) => {
+      const op = state.operations.get(operationKey);
+      if (!op) return {};
+      const next = new Map(state.operations);
+      next.set(operationKey, { ...op, dismissed: true });
+      return { operations: next };
+    }),
+
+  // PRD-116: Removes operation entirely
+  removeOperation: (operationKey) =>
+    set((state) => {
+      const next = new Map(state.operations);
+      next.delete(operationKey);
+      return { operations: next };
+    }),
 }));
 
 /**
@@ -69,4 +173,18 @@ export const useSyncStatusStore = create<SyncStatusState & SyncStatusActions>()(
  */
 export function selectIsAnySyncing(state: SyncStatusState): boolean {
   return Object.values(state.activeSyncs).some((s) => s.status === 'syncing');
+}
+
+/**
+ * PRD-116: Returns operations that are not dismissed
+ */
+export function selectVisibleOperations(state: SyncStatusState): SyncOperation[] {
+  return Array.from(state.operations.values()).filter((op) => !op.dismissed);
+}
+
+/**
+ * PRD-116: Returns true if any operation has status='syncing'
+ */
+export function selectHasActiveOperations(state: SyncStatusState): boolean {
+  return Array.from(state.operations.values()).some((op) => op.status === 'syncing');
 }

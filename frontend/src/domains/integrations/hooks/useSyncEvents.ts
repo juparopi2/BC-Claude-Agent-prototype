@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
-import { useSyncStatusStore } from '../stores/syncStatusStore';
+import { useSyncStatusStore, selectHasActiveOperations } from '../stores/syncStatusStore';
 import { useIntegrationListStore } from '../stores/integrationListStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { useFiles } from '@/src/domains/files';
@@ -67,7 +67,7 @@ export function useSyncEvents(): void {
 
   const handleSyncEvent = useCallback((event: SyncWebSocketEvent) => {
     switch (event.type) {
-      case SYNC_WS_EVENTS.SYNC_COMPLETED as 'sync:completed':
+      case SYNC_WS_EVENTS.SYNC_COMPLETED as 'sync:completed': {
         setSyncStatusRef.current(event.scopeId, 'idle');
         setLastSyncedAtRef.current(event.scopeId, new Date().toISOString());
         refreshRef.current();
@@ -75,18 +75,30 @@ export function useSyncEvents(): void {
         for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
           invalidateTreeFolderRef.current(key);
         }
-        toast.success('Sync completed', {
-          description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from ${getProviderName(event.connectionId)}`,
-        });
+        // Notify the operation tracker
+        useSyncStatusStore.getState().completeScope(event.scopeId);
+        // Suppress toast when SyncProgressPanel is handling it
+        if (!selectHasActiveOperations(useSyncStatusStore.getState())) {
+          toast.success('Sync completed', {
+            description: `${event.totalFiles} file${event.totalFiles !== 1 ? 's' : ''} synced from ${getProviderName(event.connectionId)}`,
+          });
+        }
         break;
+      }
 
-      case SYNC_WS_EVENTS.SYNC_ERROR as 'sync:error':
+      case SYNC_WS_EVENTS.SYNC_ERROR as 'sync:error': {
         setSyncStatusRef.current(event.scopeId, 'error');
         setSyncErrorRef.current(event.scopeId, event.error);
-        toast.error('Sync failed', {
-          description: event.error,
-        });
+        // Notify the operation tracker
+        useSyncStatusStore.getState().failScope(event.scopeId, event.error);
+        // Suppress toast when SyncProgressPanel is handling it
+        if (!selectHasActiveOperations(useSyncStatusStore.getState())) {
+          toast.error('Sync failed', {
+            description: event.error,
+          });
+        }
         break;
+      }
 
       case SYNC_WS_EVENTS.SYNC_PROGRESS as 'sync:progress':
         setSyncStatusRef.current(event.scopeId, 'syncing', event.percentage);

@@ -44,7 +44,6 @@ import {
 } from '@bc-agent/shared';
 import type { FolderListResult } from '@bc-agent/shared';
 import { getOneDriveService } from '@/services/connectors/onedrive';
-import { getInitialSyncService } from '@/services/sync/InitialSyncService';
 import { MsalRedisCachePlugin } from '@/domains/auth/oauth/MsalRedisCachePlugin';
 import { getEagerRedis } from '@/infrastructure/redis/redis';
 import { getGraphTokenManager } from '@/services/connectors/GraphTokenManager';
@@ -931,7 +930,7 @@ router.post(
 
 /**
  * POST /api/connections/:id/scopes/:scopeId/sync
- * Trigger initial sync for a specific scope.
+ * Trigger sync for a specific scope via BullMQ queue.
  */
 router.post(
   '/:id/scopes/:scopeId/sync',
@@ -965,29 +964,31 @@ router.post(
         return;
       }
 
-      // PRD-108: Use delta sync if scope has a cursor, otherwise initial sync
+      // PRD-116: Enqueue sync job via BullMQ instead of fire-and-forget
+      const { getMessageQueue } = await import('@/infrastructure/queue');
+      const messageQueue = getMessageQueue();
+      let syncJobId: string;
+
       if (scope.last_sync_cursor) {
-        import('@/services/sync/DeltaSyncService').then(({ getDeltaSyncService }) => {
-          getDeltaSyncService().syncDelta(connectionId, scopeId, userId, 'manual')
-            .catch((err) => {
-              const errorInfo = err instanceof Error
-                ? { message: err.message, name: err.name }
-                : { value: String(err) };
-              logger.error({ error: errorInfo, connectionId, scopeId }, 'Delta sync failed');
-            });
-        }).catch(() => {
-          // Fallback to initial sync if dynamic import fails
-          getInitialSyncService().syncScope(connectionId, scopeId, userId);
+        syncJobId = await messageQueue.addExternalFileSyncJob({
+          scopeId,
+          connectionId,
+          userId,
+          triggerType: 'manual',
         });
       } else {
-        getInitialSyncService().syncScope(connectionId, scopeId, userId);
+        syncJobId = await messageQueue.addInitialSyncJob({
+          scopeId,
+          connectionId,
+          userId,
+        });
       }
 
       logger.info(
-        { userId: userId.toUpperCase(), connectionId, scopeId },
-        'Sync triggered'
+        { userId: userId.toUpperCase(), connectionId, scopeId, syncJobId },
+        'Sync triggered via queue'
       );
-      res.status(202).json({ status: 'started' });
+      res.status(202).json({ status: 'started', syncJobId });
     } catch (error) {
       if (handleDomainError(error, res)) return;
 
@@ -999,7 +1000,7 @@ router.post(
           connectionId: req.params.id,
           scopeId: req.params.scopeId,
         },
-        'Failed to trigger initial sync'
+        'Failed to trigger sync'
       );
       next(error);
     }

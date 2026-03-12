@@ -625,6 +625,42 @@ export class MessageQueue {
   }
 
   /**
+   * Add Initial Sync Job (PRD-116)
+   *
+   * Enqueues an initial sync job for a newly created scope. Unlike delta-sync,
+   * initial sync performs a full enumeration of all files in the scope.
+   *
+   * @param data - Sync job payload with triggerType='initial'
+   * @returns BullMQ job ID
+   */
+  public async addInitialSyncJob(data: Omit<ExternalFileSyncJob, 'triggerType'>): Promise<string> {
+    await this.waitForReady();
+
+    const queue = this.queueManager.getQueue(QueueName.EXTERNAL_FILE_SYNC);
+    if (!queue) {
+      throw new Error('External file sync queue not initialized');
+    }
+
+    const jobData: ExternalFileSyncJob = { ...data, triggerType: 'initial' };
+
+    const job = await queue.add(
+      'initial-sync',
+      jobData,
+      {
+        priority: JOB_PRIORITY.EXTERNAL_FILE_SYNC,
+      }
+    );
+
+    this.log.info({
+      jobId: job.id,
+      scopeId: data.scopeId,
+      connectionId: data.connectionId,
+    }, 'Initial sync job enqueued');
+
+    return job.id || '';
+  }
+
+  /**
    * Add File Processing Flow (PRD-04)
    *
    * Creates a BullMQ Flow tree that guarantees sequential execution:

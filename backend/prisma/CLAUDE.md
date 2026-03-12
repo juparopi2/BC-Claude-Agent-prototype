@@ -70,6 +70,7 @@ The following constraints exist in Azure SQL and are documented as `///` comment
 | `connections` | `CK_connections_status` | `status` | disconnected, connected, expired, error |
 | `connection_scopes` | `CK_connection_scopes_scope_type` | `scope_type` | root, folder, file, site, library |
 | `connection_scopes` | `CK_connection_scopes_sync_status` | `sync_status` | idle, syncing, error |
+| `connection_scopes` | `CK_connection_scopes_scope_mode` | `scope_mode` | include, exclude |
 | `files` | `CK_files_source_type` | `source_type` | local, onedrive, sharepoint |
 
 ### How to Update CHECK Constraints

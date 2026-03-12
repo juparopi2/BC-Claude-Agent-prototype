@@ -677,8 +677,9 @@ router.post(
             scopeType: scope.scopeType,
             scopeResourceId: scope.scopeResourceId,
             scopeDisplayName: scope.scopeDisplayName,
-            scopePath: scope.scopePath,
+            scopePath: scope.scopePath ?? undefined,
             remoteDriveId: scope.remoteDriveId,
+            scopeMode: scope.scopeMode,
           });
           return repo.findScopeById(scopeId);
         })
@@ -730,7 +731,14 @@ router.post(
 
       const userId = req.userId!;
       const service = getConnectionService();
-      const result = await service.batchUpdateScopes(userId, connectionId, bodyResult.data);
+      const batchData = {
+        add: bodyResult.data.add.map((s) => ({
+          ...s,
+          scopePath: s.scopePath ?? undefined,
+        })),
+        remove: bodyResult.data.remove,
+      };
+      const result = await service.batchUpdateScopes(userId, connectionId, batchData);
 
       logger.info(
         { userId: userId.toUpperCase(), connectionId, addedCount: result.added.length, removedCount: result.removed.length },

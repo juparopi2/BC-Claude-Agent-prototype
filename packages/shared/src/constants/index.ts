@@ -98,9 +98,11 @@ export {
   CONNECTION_STATUS,
   SYNC_STATUS,
   FILE_SOURCE_TYPE,
+  SCOPE_MODE,
   type ConnectionStatus,
   type SyncStatus,
   type FileSourceType,
+  type ScopeMode,
 } from './connection-status';
 
 // Sync Events (PRD-101)

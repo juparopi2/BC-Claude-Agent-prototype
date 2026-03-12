@@ -283,6 +283,7 @@ export class ConnectionService {
         scopeDisplayName: scopeInput.scopeDisplayName,
         scopePath: scopeInput.scopePath,
         remoteDriveId: scopeInput.remoteDriveId,
+        scopeMode: scopeInput.scopeMode,
       });
 
       const scopeRow = await repo.findScopeById(scopeId);
@@ -290,8 +291,13 @@ export class ConnectionService {
         added.push({ ...this.toScopeDetail(scopeRow), fileCount: 0 });
       }
 
-      // Fire-and-forget sync for the new scope
-      initialSyncService.syncScope(normalizedConnectionId, scopeId, normalizedUserId);
+      if (scopeInput.scopeMode === 'exclude') {
+        // PRD-112: Exclusion scopes don't trigger sync — clean up existing file if present
+        cleanupService.removeFileByExternalId(normalizedConnectionId, scopeInput.scopeResourceId, normalizedUserId);
+      } else {
+        // Fire-and-forget sync for the new include scope
+        initialSyncService.syncScope(normalizedConnectionId, scopeId, normalizedUserId);
+      }
     }
 
     logger.info(
@@ -492,6 +498,7 @@ export class ConnectionService {
       lastSyncError: row.last_sync_error,
       itemCount: row.item_count,
       createdAt: row.created_at.toISOString(),
+      scopeMode: (row.scope_mode ?? 'include') as 'include' | 'exclude',
     };
   }
 

@@ -56,6 +56,7 @@ export interface ScopeRow {
   item_count: number;
   subscription_id: string | null;
   remote_drive_id: string | null;
+  scope_mode: string;
   created_at: Date;
 }
 
@@ -216,6 +217,7 @@ export class ConnectionRepository {
         item_count: true,
         subscription_id: true,
         remote_drive_id: true,
+        scope_mode: true,
         created_at: true,
       },
       orderBy: { created_at: 'asc' },
@@ -240,6 +242,7 @@ export class ConnectionRepository {
       scopeDisplayName: string;
       scopePath?: string;
       remoteDriveId?: string;
+      scopeMode?: string;
     }
   ): Promise<string> {
     const id = randomUUID().toUpperCase();
@@ -255,6 +258,7 @@ export class ConnectionRepository {
         scope_display_name: data.scopeDisplayName,
         scope_path: data.scopePath ?? null,
         remote_drive_id: data.remoteDriveId ?? null,
+        scope_mode: data.scopeMode ?? 'include',
         sync_status: 'idle',
         item_count: 0,
       },
@@ -314,6 +318,7 @@ export class ConnectionRepository {
         item_count: true,
         subscription_id: true,
         remote_drive_id: true,
+        scope_mode: true,
         created_at: true,
       },
     });
@@ -327,6 +332,41 @@ export class ConnectionRepository {
       id: row.id.toUpperCase(),
       connection_id: row.connection_id.toUpperCase(),
     };
+  }
+
+  /**
+   * Find all exclusion scopes for a connection (PRD-112).
+   */
+  async findExclusionScopesByConnection(connectionId: string): Promise<ScopeRow[]> {
+    logger.debug({ connectionId }, 'Fetching exclusion scopes for connection');
+
+    const rows = await prisma.connection_scopes.findMany({
+      where: { connection_id: connectionId, scope_mode: 'exclude' },
+      select: {
+        id: true,
+        connection_id: true,
+        scope_type: true,
+        scope_resource_id: true,
+        scope_display_name: true,
+        scope_path: true,
+        sync_status: true,
+        last_sync_at: true,
+        last_sync_error: true,
+        last_sync_cursor: true,
+        item_count: true,
+        subscription_id: true,
+        remote_drive_id: true,
+        scope_mode: true,
+        created_at: true,
+      },
+      orderBy: { created_at: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      ...row,
+      id: row.id.toUpperCase(),
+      connection_id: row.connection_id.toUpperCase(),
+    }));
   }
 
   /**
@@ -360,6 +400,7 @@ export class ConnectionRepository {
         cs.item_count,
         cs.subscription_id,
         cs.remote_drive_id,
+        cs.scope_mode,
         cs.created_at,
         CAST(COUNT(f.id) AS INT) AS file_count
       FROM connection_scopes cs
@@ -369,7 +410,7 @@ export class ConnectionRepository {
         cs.id, cs.connection_id, cs.scope_type, cs.scope_resource_id,
         cs.scope_display_name, cs.scope_path, cs.sync_status, cs.last_sync_at,
         cs.last_sync_error, cs.last_sync_cursor, cs.item_count, cs.subscription_id,
-        cs.remote_drive_id, cs.created_at
+        cs.remote_drive_id, cs.scope_mode, cs.created_at
       ORDER BY cs.created_at ASC
     `;
 

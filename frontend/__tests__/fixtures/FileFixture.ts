@@ -25,6 +25,7 @@ export const createMockParsedFile = (overrides: Partial<ParsedFile> = {}): Parse
   externalUrl: null,
   isFolder: false,
   isFavorite: false,
+  isShared: false,
   pipelineStatus: 'ready',
   readinessState: 'ready' as FileReadinessState,
   processingRetryCount: 0,

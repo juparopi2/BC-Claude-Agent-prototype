@@ -66,10 +66,13 @@ vi.mock('@/services/connectors/onedrive', () => ({
 const mockUpdateScope = vi.hoisted(() => vi.fn());
 const mockFindScopeById = vi.hoisted(() => vi.fn());
 
+const mockFindExclusionScopesByConnection = vi.hoisted(() => vi.fn());
+
 vi.mock('@/domains/connections', () => ({
   getConnectionRepository: vi.fn(() => ({
     updateScope: mockUpdateScope,
     findScopeById: mockFindScopeById,
+    findExclusionScopesByConnection: mockFindExclusionScopesByConnection,
   })),
 }));
 
@@ -207,9 +210,13 @@ describe('DeltaSyncService', () => {
     mockExecuteFolderDeltaQuery.mockReset();
     mockUpdateScope.mockReset();
     mockFindScopeById.mockReset();
+    mockFindExclusionScopesByConnection.mockReset();
     mockAddFileProcessingFlow.mockReset();
     mockSyncScope.mockReset();
     mockDeleteChunksForFile.mockReset();
+
+    // Default: no exclusion scopes
+    mockFindExclusionScopesByConnection.mockResolvedValue([]);
 
     __resetDeltaSyncService();
     service = new DeltaSyncService();

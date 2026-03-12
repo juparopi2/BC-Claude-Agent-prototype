@@ -41,6 +41,7 @@ export interface ConnectionScopeDetail {
   lastSyncError: string | null;
   itemCount: number;
   createdAt: string;
+  scopeMode: 'include' | 'exclude';
 }
 
 /**
@@ -60,6 +61,7 @@ export interface ScopeBatchInput {
     scopeDisplayName: string;
     scopePath?: string;
     remoteDriveId?: string;
+    scopeMode?: 'include' | 'exclude';
   }>;
   remove: string[];
 }

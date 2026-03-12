@@ -1,7 +1,7 @@
 # PRD-112: Scope Selection Inheritance & Granular Sync Control
 
 **Phase**: OneDrive Enhancement
-**Status**: PROPOSED
+**Status**: COMPLETED
 **Prerequisites**: PRD-105 (Scope Management), PRD-107 (OneDrive UX Polish)
 **Estimated Effort**: 5–7 days
 **Created**: 2026-03-09

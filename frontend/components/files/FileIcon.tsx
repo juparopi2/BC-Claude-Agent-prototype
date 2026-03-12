@@ -44,10 +44,14 @@ export function FileIcon({ file, className }: FileIconProps) {
     return (
       <span className="relative inline-flex flex-shrink-0">
         {icon}
-        <BadgeIcon
-          className="absolute -bottom-0.5 -right-1 size-3.5 drop-shadow-sm"
-          style={{ color: accentColor, fill: file.isShared ? undefined : accentColor, strokeWidth: 1.5 }}
-        />
+        {/* Background circle that masks the main icon, creating a cutout effect */}
+        <span className="absolute -bottom-0.5 -right-1 size-3.5 flex items-center justify-center">
+          <span className="absolute inset-[-1px] rounded-full bg-background" />
+          <BadgeIcon
+            className="relative size-3.5 drop-shadow-sm"
+            style={{ color: accentColor, fill: file.isShared ? accentColor : 'none', strokeWidth: file.isShared ? 2.5 : 3.5 }}
+          />
+        </span>
       </span>
     );
   }

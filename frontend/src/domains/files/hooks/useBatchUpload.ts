@@ -541,6 +541,7 @@ export function useBatchUpload(): UseBatchUploadReturn {
               sourceType: FILE_SOURCE_TYPE.LOCAL,
               externalUrl: null,
               isFavorite: false,
+              isShared: false,
               pipelineStatus: 'ready',
               readinessState: 'ready',
               processingRetryCount: 0,

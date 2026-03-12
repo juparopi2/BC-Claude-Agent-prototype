@@ -39,3 +39,13 @@ export const FILE_SOURCE_TYPE = {
 } as const;
 
 export type FileSourceType = (typeof FILE_SOURCE_TYPE)[keyof typeof FILE_SOURCE_TYPE];
+
+// ============================================
+// SCOPE MODE (for connection_scopes)
+// ============================================
+export const SCOPE_MODE = {
+  INCLUDE: 'include',
+  EXCLUDE: 'exclude',
+} as const;
+
+export type ScopeMode = (typeof SCOPE_MODE)[keyof typeof SCOPE_MODE];

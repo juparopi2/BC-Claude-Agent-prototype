@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { Plus, Minus, FolderSync } from 'lucide-react'
+import { Plus, Minus, FolderSync, Ban } from 'lucide-react'
 
 interface SelectedScope {
   id: string
@@ -11,6 +11,7 @@ interface SelectedScope {
   status: 'new' | 'existing' | 'removed'
   existingScopeId?: string
   fileCount?: number
+  scopeMode?: 'include' | 'exclude'
 }
 
 interface ScopeDiffViewProps {
@@ -21,7 +22,8 @@ interface ScopeDiffViewProps {
 
 export function ScopeDiffView({ selectedScopes, onConfirm, onCancel }: ScopeDiffViewProps) {
   const values = Array.from(selectedScopes.values())
-  const adding = values.filter((s) => s.status === 'new')
+  const adding = values.filter((s) => s.status === 'new' && s.scopeMode !== 'exclude')
+  const excluding = values.filter((s) => s.status === 'new' && s.scopeMode === 'exclude')
   const removing = values.filter((s) => s.status === 'removed')
   const unchanged = values.filter((s) => s.status === 'existing')
 
@@ -36,6 +38,18 @@ export function ScopeDiffView({ selectedScopes, onConfirm, onCancel }: ScopeDiff
             Adding ({adding.length})
           </p>
           {adding.map((s) => (
+            <p key={s.id} className="text-xs text-muted-foreground pl-4">{s.name}</p>
+          ))}
+        </div>
+      )}
+
+      {excluding.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+            <Ban className="size-3" />
+            Excluding ({excluding.length})
+          </p>
+          {excluding.map((s) => (
             <p key={s.id} className="text-xs text-muted-foreground pl-4">{s.name}</p>
           ))}
         </div>

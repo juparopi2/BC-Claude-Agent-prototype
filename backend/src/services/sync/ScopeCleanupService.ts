@@ -145,6 +145,59 @@ export class ScopeCleanupService {
 
     return { scopeId, filesDeleted: fileIds.length };
   }
+
+  /**
+   * Remove a single file by its external_id (PRD-112).
+   * Used when an exclusion scope is created for an already-synced file.
+   */
+  async removeFileByExternalId(
+    connectionId: string,
+    externalId: string,
+    userId: string
+  ): Promise<{ filesDeleted: number }> {
+    const file = await prisma.files.findFirst({
+      where: { connection_id: connectionId, external_id: externalId },
+      select: { id: true },
+    });
+
+    if (!file) {
+      return { filesDeleted: 0 };
+    }
+
+    // NULL out message_citations.file_id
+    await prisma.$executeRaw`
+      UPDATE message_citations
+      SET file_id = NULL
+      WHERE file_id = ${file.id}
+    `;
+
+    // Best-effort AI Search cleanup
+    try {
+      const vectorService = VectorSearchService.getInstance();
+      await vectorService.deleteChunksForFile(file.id, userId);
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      logger.warn(
+        { error: errorInfo, fileId: file.id, connectionId },
+        'AI Search cleanup failed for excluded file — continuing'
+      );
+    }
+
+    // Delete file_chunks
+    await prisma.file_chunks.deleteMany({ where: { file_id: file.id } });
+
+    // Delete file record
+    await prisma.files.delete({ where: { id: file.id } });
+
+    logger.info(
+      { connectionId, externalId, fileId: file.id },
+      'File removed due to exclusion scope'
+    );
+
+    return { filesDeleted: 1 };
+  }
 }
 
 // ============================================================================

@@ -153,13 +153,34 @@ export class InitialSyncService {
         logger.info({ connectionId, scopeId, skippedUnsupported }, 'Skipped unsupported file types');
       }
 
-      logger.info({ connectionId, scopeId, fileCount: fileChanges.length }, 'Files to ingest');
-
       // PRD-107: Extract folder changes for tree hierarchy storage
       // Filter out the scoped folder itself (Microsoft Graph includes it in delta results)
       const folderChanges = allChanges.filter(
         (c) => c.changeType !== 'deleted' && c.item.isFolder && c.item.id !== scope.scope_resource_id
       );
+
+      // PRD-112: Fetch exclusion scopes and filter out excluded items
+      const exclusions = await repo.findExclusionScopesByConnection(connectionId);
+      const excludedResourceIds = new Set(
+        exclusions.map(e => e.scope_resource_id).filter(Boolean) as string[]
+      );
+
+      const filteredFileChanges = excludedResourceIds.size > 0
+        ? fileChanges.filter(c => !excludedResourceIds.has(c.item.id))
+        : fileChanges;
+
+      const filteredFolderChanges = excludedResourceIds.size > 0
+        ? folderChanges.filter(c => !excludedResourceIds.has(c.item.id))
+        : folderChanges;
+
+      if (excludedResourceIds.size > 0) {
+        const excludedCount = (fileChanges.length - filteredFileChanges.length) + (folderChanges.length - filteredFolderChanges.length);
+        if (excludedCount > 0) {
+          logger.info({ connectionId, scopeId, excludedCount }, 'Filtered excluded items from initial sync');
+        }
+      }
+
+      logger.info({ connectionId, scopeId, fileCount: filteredFileChanges.length }, 'Files to ingest');
 
       // PRD-107: Upsert folders sorted by depth (parents before children)
       // Build external-to-internal ID mapping for parent chain resolution
@@ -182,10 +203,10 @@ export class InitialSyncService {
         });
       }
 
-      if (folderChanges.length > 0) {
+      if (filteredFolderChanges.length > 0) {
         // Sort by depth (count '/' in parentPath) — parents processed first
         // Defensive: null/undefined parentPath gets depth -1 (processed first as root-level items)
-        const sortedFolders = sortFoldersByDepth(folderChanges);
+        const sortedFolders = sortFoldersByDepth(filteredFolderChanges);
 
         logger.info(
           {
@@ -224,17 +245,17 @@ export class InitialSyncService {
           }
         }
 
-        logger.info({ connectionId, scopeId, folderCount: folderChanges.length }, 'Folders upserted');
+        logger.info({ connectionId, scopeId, folderCount: filteredFolderChanges.length }, 'Folders upserted');
       }
 
-      const totalFiles = fileChanges.length;
+      const totalFiles = filteredFileChanges.length;
       let processedFiles = 0;
 
       const messageQueue = getMessageQueue();
 
       // Step 5: Process in batches of BATCH_SIZE
-      for (let i = 0; i < fileChanges.length; i += BATCH_SIZE) {
-        const batch = fileChanges.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < filteredFileChanges.length; i += BATCH_SIZE) {
+        const batch = filteredFileChanges.slice(i, i + BATCH_SIZE);
 
         await Promise.all(
           batch.map(async (change) => {

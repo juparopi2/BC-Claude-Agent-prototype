@@ -183,8 +183,8 @@ export class DeltaSyncService {
 
       // 6a: Categorize changes
       const deletedChanges: DeltaChange[] = [];
-      const folderChanges: DeltaChange[] = [];
-      const fileChanges: DeltaChange[] = [];
+      let folderChanges: DeltaChange[] = [];
+      let fileChanges: DeltaChange[] = [];
 
       for (const change of allChanges) {
         if (change.changeType === 'deleted') {
@@ -196,6 +196,24 @@ export class DeltaSyncService {
           }
         } else {
           fileChanges.push(change);
+        }
+      }
+
+      // PRD-112: Exclusion filtering
+      const exclusions = await repo.findExclusionScopesByConnection(connectionId);
+      const excludedResourceIds = new Set(
+        exclusions.map(e => e.scope_resource_id).filter(Boolean) as string[]
+      );
+
+      if (excludedResourceIds.size > 0) {
+        const origFileCount = fileChanges.length;
+        const origFolderCount = folderChanges.length;
+        fileChanges = fileChanges.filter(c => !excludedResourceIds.has(c.item.id));
+        folderChanges = folderChanges.filter(c => !excludedResourceIds.has(c.item.id));
+
+        const excludedCount = (origFileCount - fileChanges.length) + (origFolderCount - folderChanges.length);
+        if (excludedCount > 0) {
+          logger.info({ connectionId, scopeId, excludedCount }, 'Filtered excluded items from delta');
         }
       }
 

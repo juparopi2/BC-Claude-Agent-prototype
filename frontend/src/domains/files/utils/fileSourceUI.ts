@@ -1,20 +1,23 @@
-import { Cloud, Globe, Home, type LucideIcon } from 'lucide-react';
+import { Home, type LucideIcon } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { FILE_SOURCE_TYPE, PROVIDER_DISPLAY_NAME, PROVIDER_ACCENT_COLOR, PROVIDER_ID } from '@bc-agent/shared';
 
+type IconComponent = LucideIcon | typeof OneDriveLogo;
+
 interface FileSourceUIConfig {
-  Icon: LucideIcon;
+  Icon: IconComponent;
   displayName: string;
   accentColor?: string;
 }
 
 const SOURCE_UI_MAP: Record<string, FileSourceUIConfig> = {
   [FILE_SOURCE_TYPE.ONEDRIVE]: {
-    Icon: Cloud,
+    Icon: OneDriveLogo,
     displayName: PROVIDER_DISPLAY_NAME[PROVIDER_ID.ONEDRIVE],
     accentColor: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE],
   },
   [FILE_SOURCE_TYPE.SHAREPOINT]: {
-    Icon: Globe,
+    Icon: SharePointLogo,
     displayName: PROVIDER_DISPLAY_NAME[PROVIDER_ID.SHAREPOINT],
     accentColor: PROVIDER_ACCENT_COLOR[PROVIDER_ID.SHAREPOINT],
   },

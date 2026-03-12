@@ -130,7 +130,6 @@ export const FolderTreeItem = memo(function FolderTreeItem({
               {folder.sourceType !== FILE_SOURCE_TYPE.LOCAL && sourceUI.accentColor && (
                 <sourceUI.Icon
                   className="absolute -bottom-0.5 -right-1 size-2.5"
-                  style={{ color: sourceUI.accentColor, fill: sourceUI.accentColor }}
                 />
               )}
             </span>

@@ -11,12 +11,12 @@
 
 import { useCallback, useMemo } from 'react';
 import {
-  Cloud,
   Mail,
   Globe,
   HardDrive,
   ChevronRight,
 } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { FileThumbnail } from './FileThumbnail';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -46,9 +46,9 @@ function SourceBadge({ sourceType }: { sourceType: SourceType }) {
   const config = useMemo(() => {
     switch (sourceType) {
       case 'sharepoint':
-        return { icon: Cloud, label: 'SharePoint', color: 'bg-blue-100 text-blue-700' };
+        return { icon: SharePointLogo, label: 'SharePoint', color: 'bg-teal-100 text-teal-700' };
       case 'onedrive':
-        return { icon: Cloud, label: 'OneDrive', color: 'bg-sky-100 text-sky-700' };
+        return { icon: OneDriveLogo, label: 'OneDrive', color: 'bg-sky-100 text-sky-700' };
       case 'email':
         return { icon: Mail, label: 'Email', color: 'bg-amber-100 text-amber-700' };
       case 'web':

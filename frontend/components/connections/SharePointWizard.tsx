@@ -2,16 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Globe,
   Check,
   Loader2,
   ChevronRight,
   ChevronDown,
   BookOpen,
   Folder,
-  FolderOpen,
   AlertTriangle,
 } from 'lucide-react'
+import { SharePointLogo } from '@/components/icons'
 import {
   Dialog,
   DialogContent,
@@ -114,9 +113,9 @@ function LibFolderNode({ node, depth, selectedFolders, onToggleFolder, onToggleE
         />
 
         {node.isExpanded ? (
-          <FolderOpen className="size-4 shrink-0 text-blue-500" />
+          <Folder className="size-4 shrink-0 text-amber-600" />
         ) : (
-          <Folder className="size-4 shrink-0 text-muted-foreground" />
+          <Folder className="size-4 shrink-0 text-amber-500" />
         )}
 
         <span className="text-sm truncate flex-1" onClick={() => onToggleExpand(item.id)}>
@@ -997,7 +996,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
             <div className="flex flex-col items-center gap-4 py-4">
               <div className="size-16 rounded-full bg-teal-50 dark:bg-teal-950 flex items-center justify-center">
-                <Globe className="size-8 text-[#038387]" />
+                <SharePointLogo className="size-8" />
               </div>
 
               <Button
@@ -1008,7 +1007,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                 {isConnecting ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Globe className="size-4" />
+                  <SharePointLogo className="size-4" />
                 )}
                 {isConnecting ? 'Connecting...' : 'Connect with Microsoft'}
               </Button>
@@ -1064,7 +1063,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                 <div key={siteId}>
                   {/* Site header */}
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border-b">
-                    <Globe className="size-4 text-[#038387]" />
+                    <SharePointLogo className="size-4" />
                     <span className="text-sm font-medium">{siteEntry.site.displayName}</span>
                   </div>
 

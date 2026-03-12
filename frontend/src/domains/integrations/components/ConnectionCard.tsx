@@ -1,6 +1,7 @@
 'use client';
 
-import { Building2, Cloud, Globe, BarChart3 } from 'lucide-react';
+import { Building2, BarChart3 } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import type { ConnectionSummary, ProviderId, ConnectionStatus } from '@bc-agent/shared';
 import {
@@ -14,8 +15,8 @@ import {
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Building2,
-  Cloud,
-  Globe,
+  OneDriveLogo,
+  SharePointLogo,
   BarChart3,
 };
 
@@ -49,7 +50,7 @@ interface ConnectionCardProps {
 export function ConnectionCard({ providerId, connection, disabled = false, onClick }: ConnectionCardProps) {
   const displayName = PROVIDER_DISPLAY_NAME[providerId];
   const iconName = PROVIDER_ICON[providerId];
-  const IconComponent = ICON_MAP[iconName] ?? Cloud;
+  const IconComponent = ICON_MAP[iconName] ?? Building2;
 
   const status: ConnectionStatus | 'coming_soon' = connection
     ? connection.status

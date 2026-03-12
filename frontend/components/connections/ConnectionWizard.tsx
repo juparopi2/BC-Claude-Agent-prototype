@@ -2,15 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Cloud,
   Check,
   Loader2,
   ChevronRight,
   ChevronDown,
   Folder,
-  FolderOpen,
   Users,
 } from 'lucide-react'
+import { OneDriveLogo } from '@/components/icons'
 import {
   Dialog,
   DialogContent,
@@ -105,9 +104,9 @@ function TreeNode({ node, depth, selectedScopes, getCheckState, onToggleExpand, 
 
           {/* Folder icon */}
           {node.isExpanded ? (
-            <FolderOpen className="size-4 shrink-0 text-blue-500" />
+            <Folder className="size-4 shrink-0 text-amber-600" />
           ) : (
-            <Folder className="size-4 shrink-0 text-muted-foreground" />
+            <Folder className="size-4 shrink-0 text-amber-500" />
           )}
 
           {/* Name */}
@@ -1048,7 +1047,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
             <div className="flex flex-col items-center gap-4 py-4">
               <div className="size-16 rounded-full bg-blue-50 dark:bg-blue-950 flex items-center justify-center">
-                <Cloud className="size-8 text-[#0078D4]" />
+                <OneDriveLogo className="size-8" />
               </div>
 
               <Button
@@ -1059,7 +1058,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
                 {isConnecting ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Cloud className="size-4" />
+                  <OneDriveLogo className="size-4" />
                 )}
                 {isConnecting ? 'Connecting...' : 'Connect with Microsoft'}
               </Button>
@@ -1120,7 +1119,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
             <div className="min-h-[200px] max-h-[300px] overflow-y-auto border rounded-md py-1">
               {browseAuthError ? (
                 <div className="flex flex-col items-center justify-center h-[200px] gap-3 px-4">
-                  <Cloud className="size-8 text-muted-foreground" />
+                  <OneDriveLogo className="size-8 opacity-50" />
                   <p className="text-sm text-center text-muted-foreground">
                     Your OneDrive session has expired. Please sign in again to continue.
                   </p>
@@ -1135,7 +1134,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
                     disabled={isConnecting}
                     className="gap-1.5 bg-[#0078D4] hover:bg-[#106EBE] text-white"
                   >
-                    {isConnecting ? <Loader2 className="size-3.5 animate-spin" /> : <Cloud className="size-3.5" />}
+                    {isConnecting ? <Loader2 className="size-3.5 animate-spin" /> : <OneDriveLogo className="size-3.5" />}
                     {isConnecting ? 'Reconnecting...' : 'Reconnect'}
                   </Button>
                 </div>

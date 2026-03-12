@@ -38,8 +38,9 @@ import {
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import type { ParsedFile } from '@bc-agent/shared';
-import { FILE_SOURCE_TYPE, PROVIDER_ID, PROVIDER_ACCENT_COLOR } from '@bc-agent/shared';
-import { Folder, Upload, GripVertical, Cloud } from 'lucide-react';
+import { FILE_SOURCE_TYPE, PROVIDER_ID } from '@bc-agent/shared';
+import { Folder, Upload, GripVertical } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { useIntegrationListStore } from '@/src/domains/integrations';
 import {
@@ -374,7 +375,7 @@ export function FileDataTable() {
       return (
         <div className="flex flex-col items-center justify-center h-full p-6 text-center">
           <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg px-8 py-12 w-full max-w-md flex flex-col items-center">
-            <Cloud className="size-16 mb-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], opacity: 0.5 }} />
+            <OneDriveLogo className="size-16 mb-4 opacity-50" />
             <h3 className="text-lg font-medium text-foreground/80 mb-1">No synced files</h3>
             <p className="text-sm text-muted-foreground mb-4">
               Configure which OneDrive folders to sync
@@ -383,6 +384,28 @@ export function FileDataTable() {
               variant="outline"
               size="sm"
               onClick={() => openWizard(PROVIDER_ID.ONEDRIVE)}
+            >
+              Configure Sync
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // SharePoint empty state — prompt to configure sync
+    if (sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg px-8 py-12 w-full max-w-md flex flex-col items-center">
+            <SharePointLogo className="size-16 mb-4 opacity-50" />
+            <h3 className="text-lg font-medium text-foreground/80 mb-1">No synced files</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Configure which SharePoint libraries to sync
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => openWizard(PROVIDER_ID.SHAREPOINT)}
             >
               Configure Sync
             </Button>

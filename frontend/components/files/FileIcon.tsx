@@ -18,9 +18,9 @@ import {
   File,
   FileCode,
   FileJson,
-  Cloud,
   Users,
 } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 interface FileIconProps {
@@ -39,18 +39,31 @@ export function FileIcon({ file, className }: FileIconProps) {
 
   // Add badge for external files (OneDrive)
   if (file.sourceType === FILE_SOURCE_TYPE.ONEDRIVE) {
-    const accentColor = PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE];
-    const BadgeIcon = file.isShared ? Users : Cloud;
+    const badgeContent = file.isShared ? (
+      <Users
+        className="relative size-3.5 drop-shadow-sm"
+        style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], fill: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], strokeWidth: 2.5 }}
+      />
+    ) : (
+      <OneDriveLogo className="relative size-3.5 drop-shadow-sm" />
+    );
     return (
       <span className="relative inline-flex flex-shrink-0">
         {icon}
-        {/* Background circle that masks the main icon, creating a cutout effect */}
         <span className="absolute -bottom-0.5 -right-1 size-3.5 flex items-center justify-center">
-          <span className="absolute inset-[-1px] rounded-full bg-background" />
-          <BadgeIcon
-            className="relative size-3.5 drop-shadow-sm"
-            style={{ color: accentColor, fill: file.isShared ? accentColor : 'none', strokeWidth: file.isShared ? 2.5 : 3.5 }}
-          />
+          {badgeContent}
+        </span>
+      </span>
+    );
+  }
+
+  // Add badge for external files (SharePoint)
+  if (file.sourceType === FILE_SOURCE_TYPE.SHAREPOINT) {
+    return (
+      <span className="relative inline-flex flex-shrink-0">
+        {icon}
+        <span className="absolute -bottom-0.5 -right-1 size-3.5 flex items-center justify-center">
+          <SharePointLogo className="relative size-3.5 drop-shadow-sm" />
         </span>
       </span>
     );

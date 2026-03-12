@@ -7,11 +7,11 @@ import {
   File,
   FileCode,
   FileArchive,
-  Cloud,
   Mail,
   Globe,
   HardDrive,
 } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -73,9 +73,10 @@ function FileIcon({ fileName, className }: { fileName: string; className?: strin
  */
 function SourceIcon({ sourceType, className }: { sourceType?: SourceType; className?: string }) {
   switch (sourceType) {
-    case 'sharepoint':
     case 'onedrive':
-      return <Cloud className={cn(className, 'text-blue-500')} />;
+      return <OneDriveLogo className={className} />;
+    case 'sharepoint':
+      return <SharePointLogo className={className} />;
     case 'email':
       return <Mail className={cn(className, 'text-amber-500')} />;
     case 'web':

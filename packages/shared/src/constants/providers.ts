@@ -40,12 +40,12 @@ export const PROVIDER_ACCENT_COLOR: Record<ProviderId, string> = {
 } as const;
 
 // ============================================
-// PROVIDER ICONS (lucide-react icon names)
+// PROVIDER ICONS (component names for ICON_MAP lookup)
 // ============================================
 export const PROVIDER_ICON: Record<ProviderId, string> = {
   [PROVIDER_ID.BUSINESS_CENTRAL]: 'Building2',
-  [PROVIDER_ID.ONEDRIVE]: 'Cloud',
-  [PROVIDER_ID.SHAREPOINT]: 'Globe',
+  [PROVIDER_ID.ONEDRIVE]: 'OneDriveLogo',
+  [PROVIDER_ID.SHAREPOINT]: 'SharePointLogo',
   [PROVIDER_ID.POWER_BI]: 'BarChart3',
 } as const;
 

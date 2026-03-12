@@ -1,10 +1,11 @@
 'use client';
 
-import { Cloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthHealth } from '@/src/domains/integrations';
 import { useIntegrationListStore } from '@/src/domains/integrations';
-import { PROVIDER_DISPLAY_NAME } from '@bc-agent/shared';
+import { PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
+import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function IntegrationHealthBanner({ className }: { className?: string }) {
@@ -28,7 +29,11 @@ export function IntegrationHealthBanner({ className }: { className?: string }) {
         'shadow-lg backdrop-blur-sm animate-in slide-in-from-top duration-300',
       )}
     >
-      <Cloud className="h-4 w-4 shrink-0" />
+      {expiredConnections[0]?.provider === PROVIDER_ID.ONEDRIVE
+        ? <OneDriveLogo className="h-4 w-4 shrink-0" />
+        : expiredConnections[0]?.provider === PROVIDER_ID.SHAREPOINT
+          ? <SharePointLogo className="h-4 w-4 shrink-0" />
+          : <AlertTriangle className="h-4 w-4 shrink-0" />}
       <span className="text-sm font-medium">
         {names} session expired. Reconnect to continue syncing.
       </span>

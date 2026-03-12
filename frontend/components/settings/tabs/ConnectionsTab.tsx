@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Cloud, Globe, BarChart3, Loader2, Settings, Unplug, Plus } from 'lucide-react';
+import { Building2, BarChart3, Loader2, Settings, Unplug, Plus } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -18,8 +19,8 @@ import type { ConnectionSummary, ProviderId } from '@bc-agent/shared';
 
 const ICON_MAP: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   Building2,
-  Cloud,
-  Globe,
+  OneDriveLogo,
+  SharePointLogo,
   BarChart3,
 };
 
@@ -65,7 +66,7 @@ export function ConnectionsTab() {
         {PROVIDER_UI_ORDER.map((providerId) => {
           const connection = connectionsByProvider.get(providerId);
           const iconName = PROVIDER_ICON[providerId];
-          const IconComponent = ICON_MAP[iconName] ?? Cloud;
+          const IconComponent = ICON_MAP[iconName] ?? Building2;
           const displayName = PROVIDER_DISPLAY_NAME[providerId];
           const isConnectable = CONNECTABLE_PROVIDERS.has(providerId);
           const isConnected = !!connection;

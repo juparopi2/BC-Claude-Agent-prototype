@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Globe, Search, Loader2 } from 'lucide-react'
+import { Search, Loader2 } from 'lucide-react'
+import { SharePointLogo } from '@/components/icons'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -95,7 +96,7 @@ export function SitePickerGrid({
                   className="mt-0.5"
                   aria-label={`Select ${site.displayName}`}
                 />
-                <Globe className="size-4 mt-0.5 shrink-0 text-[#038387]" />
+                <SharePointLogo className="size-4 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{site.displayName}</p>
                   <p className="text-xs text-muted-foreground truncate">{site.webUrl}</p>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useCallback, useState, useRef } from 'react';
-import { Home, Star, Cloud, Globe, ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
+import { Home, Star, ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
+import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,7 +14,7 @@ import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useIntegrationListStore, useSyncStatusStore, selectIsAnySyncing } from '@/src/domains/integrations';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { FolderTreeItem } from './FolderTreeItem';
-import { CONNECTION_STATUS, FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
+import { CONNECTION_STATUS, FILE_SOURCE_TYPE, PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 
 const EMPTY_OD_FOLDERS: ParsedFile[] = [];
@@ -239,7 +240,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                         sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && !currentFolderId && 'font-semibold'
                       )}
                     >
-                      <Cloud className="size-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE] }} />
+                      <OneDriveLogo className="size-4" />
                       <span className="text-sm font-medium">{PROVIDER_DISPLAY_NAME[PROVIDER_ID.ONEDRIVE]}</span>
                     </button>
                     {isAnySyncing && <Loader2 className="size-3 text-muted-foreground animate-spin" />}
@@ -247,7 +248,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                   <CollapsibleContent>
                     {isOneDriveExpired ? (
                       <div className="flex flex-col items-center justify-center py-6 gap-3 px-4">
-                        <Cloud className="size-8 text-muted-foreground" />
+                        <OneDriveLogo className="size-8 opacity-50" />
                         <p className="text-sm text-center text-muted-foreground">
                           Your OneDrive session has expired. Please sign in again to continue.
                         </p>
@@ -256,7 +257,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                           onClick={() => oneDriveConnection && openWizard(PROVIDER_ID.ONEDRIVE, oneDriveConnection.id)}
                           className="gap-1.5 bg-[#0078D4] hover:bg-[#106EBE] text-white"
                         >
-                          <Cloud className="size-3.5" />
+                          <OneDriveLogo className="size-3.5" />
                           Reconnect
                         </Button>
                       </div>
@@ -313,7 +314,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                         sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT && !currentFolderId && 'font-semibold'
                       )}
                     >
-                      <Globe className="size-4" style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.SHAREPOINT] }} />
+                      <SharePointLogo className="size-4" />
                       <span className="text-sm font-medium">{PROVIDER_DISPLAY_NAME[PROVIDER_ID.SHAREPOINT]}</span>
                     </button>
                     {isAnySyncing && <Loader2 className="size-3 text-muted-foreground animate-spin" />}
@@ -321,7 +322,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                   <CollapsibleContent>
                     {isSPExpired ? (
                       <div className="flex flex-col items-center justify-center py-6 gap-3 px-4">
-                        <Globe className="size-8 text-muted-foreground" />
+                        <SharePointLogo className="size-8 opacity-50" />
                         <p className="text-sm text-center text-muted-foreground">
                           Your SharePoint session has expired. Please sign in again to continue.
                         </p>
@@ -330,7 +331,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                           onClick={() => spConnection && openWizard(PROVIDER_ID.SHAREPOINT, spConnection.id)}
                           className="gap-1.5 bg-[#038387] hover:bg-[#026c6f] text-white"
                         >
-                          <Globe className="size-3.5" />
+                          <SharePointLogo className="size-3.5" />
                           Reconnect
                         </Button>
                       </div>

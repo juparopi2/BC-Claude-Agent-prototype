@@ -285,6 +285,8 @@ export type {
   SessionFileReference,
   // Anthropic content block types
   AnthropicContainerUploadBlock,
+  AnthropicUrlImageBlock,
+  AnthropicUrlDocumentBlock,
   // LangChain-compatible content block types
   LangChainImageBlock,
   LangChainTextBlock,

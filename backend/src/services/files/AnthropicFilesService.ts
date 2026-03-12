@@ -86,7 +86,7 @@ export class AnthropicFilesService {
         filename: file.filename,
         mimeType: file.mime_type,
         sizeBytes: file.size_bytes,
-        downloadable: file.downloadable,
+        downloadable: file.downloadable ?? false,
       };
     } catch (error) {
       const errorInfo =

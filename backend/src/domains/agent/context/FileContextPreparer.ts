@@ -320,6 +320,7 @@ export class FileContextPreparer implements IFileContextPreparer {
             updatedAt: new Date().toISOString(),
             isFavorite: false,
             isFolder: false,
+            isShared: false,
             // Additional required fields for ParsedFile type
             parentFolderId: null,
             processingStatus: 'pending',

@@ -105,7 +105,7 @@ export class OrphanCleanupService {
         select: { blob_path: true },
       });
       for (const f of files) {
-        knownPaths.add(f.blob_path);
+        if (f.blob_path) knownPaths.add(f.blob_path);
       }
     }
 

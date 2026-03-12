@@ -278,7 +278,7 @@ router.post('/stuck/:fileId/retry', async (req, res) => {
       userId,
       batchId: (file.batch_id ?? '').toUpperCase(),
       mimeType: file.mime_type,
-      blobPath: file.blob_path,
+      blobPath: file.blob_path ?? undefined,
       fileName: file.name,
     });
 
@@ -348,7 +348,7 @@ router.post('/stuck/retry-all', async (req, res) => {
           userId: file.user_id,
           batchId: (fileDetails.batch_id ?? '').toUpperCase(),
           mimeType: fileDetails.mime_type,
-          blobPath: fileDetails.blob_path,
+          blobPath: fileDetails.blob_path ?? undefined,
           fileName: fileDetails.name,
         });
 

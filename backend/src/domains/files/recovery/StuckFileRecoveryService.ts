@@ -155,7 +155,7 @@ export class StuckFileRecoveryService {
         userId: file.user_id,
         batchId: (fileDetails.batch_id ?? '').toUpperCase(),
         mimeType: fileDetails.mime_type,
-        blobPath: fileDetails.blob_path,
+        blobPath: fileDetails.blob_path ?? undefined,
         fileName: file.name,
       });
 

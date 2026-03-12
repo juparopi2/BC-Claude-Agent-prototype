@@ -58,7 +58,7 @@ export interface FilePendingProcessing {
   name: string;
   mimeType: string;
   sizeBytes: number;
-  blobPath: string;
+  blobPath: string | null;
   parentFolderId: string | null;
 }
 
@@ -564,7 +564,7 @@ export class FileRepository implements IFileRepository {
     if (!record) return null;
 
     return {
-      blobPath: record.blob_path,
+      blobPath: record.blob_path ?? '',
       isFolder: record.is_folder,
       name: record.name,
       mimeType: record.mime_type,

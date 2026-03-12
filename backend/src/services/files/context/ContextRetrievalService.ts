@@ -207,6 +207,9 @@ export class ContextRetrievalService {
    * Retrieves direct content from blob storage
    */
   private async retrieveDirectContent(_userId: string, file: ParsedFile): Promise<RetrievedContent> {
+    if (!file.blobPath) {
+      throw new Error(`File ${file.id} has no blob path`);
+    }
     const buffer = await this.fileUploadService.downloadFromBlob(file.blobPath);
 
     // Determine if this should be text or base64

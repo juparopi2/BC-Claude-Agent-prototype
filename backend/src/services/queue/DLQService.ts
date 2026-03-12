@@ -134,7 +134,7 @@ export class DLQService {
       userId,
       batchId: (file.batch_id ?? '').toUpperCase(),
       mimeType: file.mime_type,
-      blobPath: file.blob_path,
+      blobPath: file.blob_path ?? undefined,
       fileName: file.name,
     });
 

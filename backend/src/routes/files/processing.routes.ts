@@ -101,7 +101,7 @@ router.post(
         batchId: retryBatchId,
         userId,
         mimeType: result.file.mimeType,
-        blobPath: result.file.blobPath,
+        blobPath: result.file.blobPath ?? undefined,
         fileName: result.file.name,
       });
 

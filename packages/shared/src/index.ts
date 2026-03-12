@@ -214,6 +214,8 @@ export type {
   AnthropicFileDocumentBlock,
   AnthropicFileImageBlock,
   AnthropicContainerUploadBlock,
+  AnthropicUrlImageBlock,
+  AnthropicUrlDocumentBlock,
   AnthropicAttachmentContentBlock,
   SessionFileReference,
   LangChainImageBlock,

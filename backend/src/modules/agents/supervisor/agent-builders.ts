@@ -261,7 +261,7 @@ export async function buildReactAgents(): Promise<BuiltAgent[]> {
           lastState = stepState;
         }
 
-        const finalResult = lastState as Awaited<ReturnType<typeof originalInvoke>>;
+        const finalResult = lastState as Awaited<ReturnType<typeof _originalInvoke>>;
         logger.info({
           agentId: agentDef.id,
           durationMs: Date.now() - start,

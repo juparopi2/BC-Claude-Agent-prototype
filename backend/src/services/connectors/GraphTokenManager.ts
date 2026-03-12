@@ -44,6 +44,15 @@ export class ConnectionTokenExpiredError extends Error {
 export class GraphTokenManager {
   private encryptionKey: Buffer;
 
+  /**
+   * Singleflight map: concurrent getValidToken calls for the same connectionId
+   * share a single in-flight DB query.  This prevents intermittent "Connection
+   * not found" errors when the PrismaMssql adapter handles many concurrent
+   * findUnique queries against the same row (observed with 3+ parallel
+   * BullMQ initial-sync workers).
+   */
+  private inflightTokenRequests = new Map<string, Promise<string>>();
+
   constructor(encryptionKey: string) {
     this.encryptionKey = Buffer.from(encryptionKey, 'base64');
 
@@ -57,6 +66,10 @@ export class GraphTokenManager {
   /**
    * Get a valid access token for a connection.
    *
+   * Uses a singleflight pattern: if a token fetch for the same connectionId
+   * is already in progress, concurrent callers await the same promise instead
+   * of issuing duplicate DB queries.
+   *
    * If the stored token is expired (within the 5-minute buffer), the method
    * first attempts an MSAL silent refresh using `msal_home_account_id` and
    * the `scopes_granted` stored on the connection.  If silent refresh
@@ -65,6 +78,27 @@ export class GraphTokenManager {
    * so the caller can trigger the full OAuth re-consent flow.
    */
   async getValidToken(connectionId: string): Promise<string> {
+    // Singleflight: deduplicate concurrent calls for the same connectionId
+    const inflight = this.inflightTokenRequests.get(connectionId);
+    if (inflight) {
+      return inflight;
+    }
+
+    const promise = this._getValidTokenImpl(connectionId);
+    this.inflightTokenRequests.set(connectionId, promise);
+
+    try {
+      return await promise;
+    } finally {
+      this.inflightTokenRequests.delete(connectionId);
+    }
+  }
+
+  /**
+   * Internal implementation of getValidToken — runs the actual DB query,
+   * expiry check, and optional MSAL refresh.
+   */
+  private async _getValidTokenImpl(connectionId: string): Promise<string> {
     const connection = await prisma.connections.findUnique({
       where: { id: connectionId },
       select: {

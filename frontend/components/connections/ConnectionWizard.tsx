@@ -29,8 +29,9 @@ import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
 import { toast } from 'sonner'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 import { ScopeDiffView } from './ScopeDiffView'
-import type { TreeNodeData, SelectedScope, AuthInitiateResponse } from './wizard-utils'
-import { findNode, sortItems, formatFileSize } from './wizard-utils'
+import type { TreeNodeData, SelectedScope, AuthInitiateResponse, NodeInfo, ExplicitSelection } from './wizard-utils'
+import { findNode, sortItems, formatFileSize, SYNC_ALL_KEY } from './wizard-utils'
+import { useTriStateSelection } from './useTriStateSelection'
 import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOperation'
 
 // ============================================
@@ -45,9 +46,6 @@ interface ConnectionWizardProps {
 }
 
 type WizardStep = 'connect' | 'browse'
-
-type ExplicitSelection = 'include' | 'exclude'
-const SYNC_ALL_KEY = '__ROOT__'
 
 type BrowseTab = 'my-files' | 'shared'
 
@@ -267,14 +265,31 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
   const isReconfiguring = existingScopes.length > 0
 
-  // PRD-112: Tri-state selection
-  const [explicitSelections, setExplicitSelections] = useState<Map<string, ExplicitSelection>>(new Map())
-  const isSyncAll = explicitSelections.get(SYNC_ALL_KEY) === 'include'
-
   const [showDiff, setShowDiff] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections)
+
+  // ============================================
+  // PRD-112: Tri-state selection helpers
+  // ============================================
+
+  const findNodeInMaps = useCallback((id: string): TreeNodeData | null => {
+    return nodeMap.get(id) ?? sharedNodeMap.get(id) ?? null
+  }, [nodeMap, sharedNodeMap])
+
+  const findNodeForHook = useCallback((id: string): NodeInfo | null => {
+    const node = nodeMap.get(id) ?? sharedNodeMap.get(id) ?? null
+    if (!node) return null
+    return {
+      id: node.item.id,
+      parentId: node.item.parentId,
+      isFolder: node.item.isFolder,
+      childIds: node.children?.map(c => c.item.id) ?? [],
+    }
+  }, [nodeMap, sharedNodeMap])
+
+  const { explicitSelections, isSyncAll, getCheckState, toggleSelect, toggleSyncAll, setExplicitSelections, reset: resetTriState } = useTriStateSelection({ findNode: findNodeForHook })
 
   // ============================================
   // Reset on dialog close
@@ -290,7 +305,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setBrowseRefreshKey(0)
     setNodeMap(new Map())
     setSelectedScopes(new Map())
-    setExplicitSelections(new Map())
+    resetTriState()
     setExistingScopes([])
     setBrowseTab('my-files')
     setSharedNodes([])
@@ -299,7 +314,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setSharedNodeMap(new Map())
     setShowDiff(false)
     setIsSaving(false)
-  }, [])
+  }, [resetTriState])
 
   useEffect(() => {
     if (!isOpen) {
@@ -322,55 +337,6 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
       }
     }
   }, [initialConnectionId])
-
-  // ============================================
-  // PRD-112: Tri-state selection helpers
-  // ============================================
-
-  const findNodeInMaps = useCallback((id: string): TreeNodeData | null => {
-    return nodeMap.get(id) ?? sharedNodeMap.get(id) ?? null
-  }, [nodeMap, sharedNodeMap])
-
-  const getEffectiveCheckState = useCallback((itemId: string): boolean | 'indeterminate' => {
-    const explicit = explicitSelections.get(itemId)
-
-    if (explicit === 'exclude') return false
-
-    if (explicit === 'include') {
-      // Check if any loaded children are excluded → indeterminate
-      const node = findNodeInMaps(itemId)
-      if (node?.item.isFolder && node.children && node.children.length > 0) {
-        const hasExcluded = node.children.some(c =>
-          explicitSelections.get(c.item.id) === 'exclude'
-        )
-        if (hasExcluded) return 'indeterminate'
-      }
-      return true
-    }
-
-    // No explicit selection — inherit from parent
-    const node = findNodeInMaps(itemId)
-    if (node?.item.parentId) {
-      const parentState = getEffectiveCheckState(node.item.parentId)
-      if (parentState === true || parentState === 'indeterminate') return true
-    }
-
-    // "Sync All" — root include means everything is checked by default
-    if (isSyncAll) return true
-
-    return false
-  }, [explicitSelections, findNodeInMaps, isSyncAll])
-
-  const handleSyncAll = useCallback(() => {
-    setExplicitSelections(prev => {
-      if (prev.get(SYNC_ALL_KEY) === 'include') {
-        // Toggle off: clear everything
-        return new Map()
-      }
-      // Toggle on: set root include, clear everything else
-      return new Map([[SYNC_ALL_KEY, 'include' as ExplicitSelection]])
-    })
-  }, [])
 
   // ============================================
   // Step 1: Initiate Microsoft OAuth
@@ -689,71 +655,6 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   )
 
   // ============================================
-  // Step 2: Toggle folder selection
-  // ============================================
-
-  const handleToggleSelect = useCallback((item: ExternalFileItem) => {
-    if (!item.isFolder && item.isSupported === false) return
-
-    setExplicitSelections(prev => {
-      const next = new Map(prev)
-      const currentState = getEffectiveCheckState(item.id)
-
-      if (currentState) {
-        // UNCHECKING
-        const node = findNodeInMaps(item.id)
-        const parentId = node?.item.parentId
-        const parentIsIncluded = parentId
-          ? getEffectiveCheckState(parentId) !== false
-          : isSyncAll
-
-        if (parentIsIncluded && !next.has(item.id)) {
-          // Item inherits from parent or "Sync All" — create explicit exclusion
-          next.set(item.id, 'exclude')
-        } else if (next.get(item.id) === 'include') {
-          // Item was explicitly included — remove it
-          next.delete(item.id)
-        }
-
-        // If folder, clear descendant explicit entries
-        if (item.isFolder) {
-          const clearDescendants = (folderId: string) => {
-            const folderNode = findNodeInMaps(folderId)
-            if (folderNode?.children) {
-              for (const child of folderNode.children) {
-                next.delete(child.item.id)
-                if (child.item.isFolder) clearDescendants(child.item.id)
-              }
-            }
-          }
-          clearDescendants(item.id)
-        }
-      } else {
-        // CHECKING
-        next.set(item.id, 'include')
-
-        // If folder, remove descendant exclusions (they inherit)
-        if (item.isFolder) {
-          const removeDescendantExclusions = (folderId: string) => {
-            const folderNode = findNodeInMaps(folderId)
-            if (folderNode?.children) {
-              for (const child of folderNode.children) {
-                if (next.get(child.item.id) === 'exclude') {
-                  next.delete(child.item.id)
-                }
-                if (child.item.isFolder) removeDescendantExclusions(child.item.id)
-              }
-            }
-          }
-          removeDescendantExclusions(item.id)
-        }
-      }
-
-      return next
-    })
-  }, [getEffectiveCheckState, findNodeInMaps, isSyncAll])
-
-  // ============================================
   // Close handler
   // ============================================
 
@@ -945,7 +846,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               <Button
                 variant={isSyncAll ? 'default' : 'outline'}
                 size="sm"
-                onClick={handleSyncAll}
+                onClick={toggleSyncAll}
                 className="text-xs h-7"
               >
                 {isSyncAll ? <Check className="size-3 mr-1" /> : null}
@@ -992,9 +893,9 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
                       node={node}
                       depth={0}
                       selectedScopes={selectedScopes}
-                      getCheckState={getEffectiveCheckState}
+                      getCheckState={getCheckState}
                       onToggleExpand={handleToggleExpand}
-                      onToggleSelect={handleToggleSelect}
+                      onToggleSelect={toggleSelect}
                     />
                   ))
                 )
@@ -1014,9 +915,9 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
                     node={node}
                     depth={0}
                     selectedScopes={selectedScopes}
-                    getCheckState={getEffectiveCheckState}
+                    getCheckState={getCheckState}
                     onToggleExpand={handleToggleExpand}
-                    onToggleSelect={handleToggleSelect}
+                    onToggleSelect={toggleSelect}
                   />
                 ))
               )}

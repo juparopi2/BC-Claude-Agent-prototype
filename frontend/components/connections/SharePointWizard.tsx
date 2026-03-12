@@ -7,6 +7,7 @@ import {
   ChevronDown,
   BookOpen,
   Folder,
+  Check,
 } from 'lucide-react'
 import { SharePointLogo } from '@/components/icons'
 import {
@@ -32,8 +33,9 @@ import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
 import { toast } from 'sonner'
-import type { TreeNodeData, AuthInitiateResponse } from './wizard-utils'
-import { findNode, sortItems, formatFileSize } from './wizard-utils'
+import type { TreeNodeData, AuthInitiateResponse, NodeInfo } from './wizard-utils'
+import { findNode, sortItems, formatFileSize, SYNC_ALL_KEY, type ExplicitSelection } from './wizard-utils'
+import { useTriStateSelection } from './useTriStateSelection'
 import { SitePickerGrid } from './sharepoint/SitePickerGrid'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOperation'
@@ -71,12 +73,12 @@ interface SiteLibraries {
 interface LibFolderNodeProps {
   node: TreeNodeData
   depth: number
-  selectedFolders: Set<string>
-  onToggleFolder: (folderId: string, folderName: string, folderPath: string | null) => void
+  getCheckState: (itemId: string) => boolean | 'indeterminate'
+  onToggleSelect: (item: { id: string; isFolder: boolean }) => void
   onToggleExpand: (nodeId: string) => void
 }
 
-function LibFolderNode({ node, depth, selectedFolders, onToggleFolder, onToggleExpand }: LibFolderNodeProps) {
+function LibFolderNode({ node, depth, getCheckState, onToggleSelect, onToggleExpand }: LibFolderNodeProps) {
   const { item } = node
 
   if (!item.isFolder) {
@@ -120,8 +122,8 @@ function LibFolderNode({ node, depth, selectedFolders, onToggleFolder, onToggleE
         </button>
 
         <Checkbox
-          checked={selectedFolders.has(item.id)}
-          onCheckedChange={() => onToggleFolder(item.id, item.name, item.parentPath ?? null)}
+          checked={getCheckState(item.id)}
+          onCheckedChange={() => onToggleSelect({ id: item.id, isFolder: item.isFolder })}
           onClick={(e) => e.stopPropagation()}
           aria-label={`Select ${item.name}`}
         />
@@ -144,8 +146,8 @@ function LibFolderNode({ node, depth, selectedFolders, onToggleFolder, onToggleE
               key={child.item.id}
               node={child}
               depth={depth + 1}
-              selectedFolders={selectedFolders}
-              onToggleFolder={onToggleFolder}
+              getCheckState={getCheckState}
+              onToggleSelect={onToggleSelect}
               onToggleExpand={onToggleExpand}
             />
           ))}
@@ -179,14 +181,43 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
   // Step 3: Libraries
   const [siteLibraries, setSiteLibraries] = useState<Map<string, SiteLibraries>>(new Map())
-  const [selectedLibraries, setSelectedLibraries] = useState<Set<string>>(new Set())
-  const [selectedFolders, setSelectedFolders] = useState<Map<string, { name: string; path: string | null; driveId: string; siteId: string; siteName: string; libraryName: string }>>(new Map())
 
   // Step 3: Existing scopes (for reconfigure)
   const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
 
   // Step 3: Saving state for the "Save & Sync" button
   const [isSaving, setIsSaving] = useState(false)
+
+  // ============================================
+  // Tri-state selection via hook
+  // ============================================
+
+  const findNodeForHook = useCallback((id: string): NodeInfo | null => {
+    for (const [, siteEntry] of siteLibraries) {
+      for (const lib of siteEntry.libraries) {
+        // Check if id is a library (driveId)
+        if (lib.driveId === id) {
+          const childIds = lib.folders?.map(n => n.item.id) ?? []
+          return { id, parentId: null, isFolder: true, childIds }
+        }
+        // Check folders within library
+        if (lib.folders) {
+          const found = findNode(lib.folders, id)
+          if (found) {
+            return {
+              id: found.item.id,
+              parentId: found.item.parentId ?? lib.driveId,
+              isFolder: found.item.isFolder,
+              childIds: found.children?.map(c => c.item.id) ?? [],
+            }
+          }
+        }
+      }
+    }
+    return null
+  }, [siteLibraries])
+
+  const { explicitSelections, isSyncAll, getCheckState, toggleSelect, toggleSyncAll, setExplicitSelections, reset: resetTriState } = useTriStateSelection({ findNode: findNodeForHook })
 
   const resetWizard = useCallback(() => {
     setStep('connect')
@@ -199,11 +230,10 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     setSiteNextPageToken(null)
     setIsSitesLoadingMore(false)
     setSiteLibraries(new Map())
-    setSelectedLibraries(new Set())
-    setSelectedFolders(new Map())
+    resetTriState()
     setExistingScopes([])
     setIsSaving(false)
-  }, [])
+  }, [resetTriState])
 
   useEffect(() => {
     if (!isOpen) {
@@ -459,16 +489,21 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
         })
       )
 
-      // Pre-select libraries from existing scopes
+      // Pre-populate explicitSelections from existing scopes
       if (existingScopes.length > 0) {
-        const preSelectedLibs = new Set<string>()
+        const preExplicit = new Map<string, ExplicitSelection>()
         for (const scope of existingScopes) {
-          if ((scope.scopeType === 'library') && scope.scopeResourceId) {
-            preSelectedLibs.add(scope.scopeResourceId)
+          if (scope.scopeType === 'root' && scope.scopeResourceId) {
+            preExplicit.set(SYNC_ALL_KEY, 'include')
+          } else if (scope.scopeResourceId) {
+            preExplicit.set(
+              scope.scopeResourceId,
+              (scope as { scopeMode?: string }).scopeMode === 'exclude' ? 'exclude' : 'include'
+            )
           }
         }
-        if (preSelectedLibs.size > 0) {
-          setSelectedLibraries(preSelectedLibs)
+        if (preExplicit.size > 0) {
+          setExplicitSelections(preExplicit)
         }
       }
     }
@@ -476,26 +511,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     fetchAllLibraries()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, connectionId])
-
-  const handleToggleLibrary = useCallback((driveId: string) => {
-    setSelectedLibraries(prev => {
-      const next = new Set(prev)
-      if (next.has(driveId)) {
-        next.delete(driveId)
-        // Also remove any folder selections within this library
-        setSelectedFolders(prevFolders => {
-          const nextFolders = new Map(prevFolders)
-          for (const [folderId, info] of nextFolders) {
-            if (info.driveId === driveId) nextFolders.delete(folderId)
-          }
-          return nextFolders
-        })
-      } else {
-        next.add(driveId)
-      }
-      return next
-    })
-  }, [])
 
   // Expand library to browse its folders
   const handleToggleLibraryExpand = useCallback(async (siteId: string, driveId: string) => {
@@ -707,37 +722,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     }
   }, [connectionId, siteLibraries])
 
-  const handleToggleFolder = useCallback((folderId: string, folderName: string, folderPath: string | null) => {
-    // Find which library this folder belongs to
-    for (const [siteId, siteEntry] of siteLibraries) {
-      for (const lib of siteEntry.libraries) {
-        if (lib.folders) {
-          const found = findNode(lib.folders, folderId)
-          if (found) {
-            setSelectedFolders(prev => {
-              const next = new Map(prev)
-              if (next.has(folderId)) {
-                next.delete(folderId)
-              } else {
-                next.set(folderId, {
-                  name: folderName,
-                  path: folderPath,
-                  driveId: lib.driveId,
-                  siteId: siteId,
-                  siteName: siteEntry.site.displayName,
-                  libraryName: lib.displayName,
-                })
-              }
-              return next
-            })
-            return
-          }
-        }
-      }
-    }
-  }, [siteLibraries])
-
-
   // ============================================
   // Done / Close
   // ============================================
@@ -749,10 +733,134 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   }, [fetchConnections, onClose])
 
   // ============================================
-  // Selection summary for libraries step
+  // Scope generation helpers
   // ============================================
 
-  const totalSelectedItems = selectedLibraries.size + selectedFolders.size
+  const findLibraryAndSiteForItem = useCallback((itemId: string) => {
+    for (const [siteId, siteEntry] of siteLibraries) {
+      for (const lib of siteEntry.libraries) {
+        if (lib.driveId === itemId) {
+          return { lib, siteId, siteName: siteEntry.site.displayName, folder: null as TreeNodeData | null }
+        }
+        if (lib.folders) {
+          const found = findNode(lib.folders, itemId)
+          if (found) {
+            return { lib, siteId, siteName: siteEntry.site.displayName, folder: found }
+          }
+        }
+      }
+    }
+    return null
+  }, [siteLibraries])
+
+  const buildAndTriggerSync = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!connectionId) return { success: false, error: 'No connection ID' }
+
+    const existingScopeMap = new Map<string, ConnectionScopeWithStats>()
+    for (const scope of existingScopes) {
+      if (scope.scopeResourceId) {
+        existingScopeMap.set(scope.scopeResourceId, scope)
+      }
+      if (scope.scopeType === 'root') {
+        existingScopeMap.set(SYNC_ALL_KEY, scope)
+      }
+    }
+
+    const toAdd: Array<{
+      scopeType: string
+      scopeResourceId: string
+      scopeDisplayName: string
+      scopePath?: string
+      scopeSiteId?: string
+      scopeMode?: 'include' | 'exclude'
+      remoteDriveId?: string
+    }> = []
+    const toRemove: string[] = []
+
+    for (const [resourceId, mode] of explicitSelections) {
+      if (resourceId === SYNC_ALL_KEY) {
+        if (mode === 'include') {
+          const hasExistingRoot = existingScopes.some(s => s.scopeType === 'root')
+          if (!hasExistingRoot) {
+            toAdd.push({
+              scopeType: 'root',
+              scopeResourceId: 'root',
+              scopeDisplayName: 'All Libraries',
+              scopeMode: 'include',
+            })
+          }
+        }
+        continue
+      }
+
+      const existingScope = existingScopeMap.get(resourceId)
+      const info = findLibraryAndSiteForItem(resourceId)
+
+      if (mode === 'include') {
+        if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
+          if (info) {
+            const isLibrary = info.folder === null
+            toAdd.push({
+              scopeType: isLibrary ? 'library' : 'folder',
+              scopeResourceId: resourceId,
+              scopeDisplayName: isLibrary ? info.lib.displayName : (info.folder?.item.name ?? resourceId),
+              scopePath: isLibrary
+                ? `${info.siteName} / ${info.lib.displayName}`
+                : `${info.siteName} / ${info.lib.displayName}${info.folder?.item.parentPath ? ` / ${info.folder.item.parentPath}` : ''}`,
+              scopeSiteId: info.siteId,
+              scopeMode: 'include',
+              remoteDriveId: isLibrary ? undefined : info.lib.driveId,
+            })
+          }
+          if (existingScope && (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
+            toRemove.push(existingScope.id)
+          }
+        }
+      } else if (mode === 'exclude') {
+        if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode !== 'exclude') {
+          if (info) {
+            const isLibrary = info.folder === null
+            toAdd.push({
+              scopeType: isLibrary ? 'library' : 'folder',
+              scopeResourceId: resourceId,
+              scopeDisplayName: isLibrary ? info.lib.displayName : (info.folder?.item.name ?? resourceId),
+              scopePath: isLibrary
+                ? `${info.siteName} / ${info.lib.displayName}`
+                : `${info.siteName} / ${info.lib.displayName}${info.folder?.item.parentPath ? ` / ${info.folder.item.parentPath}` : ''}`,
+              scopeSiteId: info.siteId,
+              scopeMode: 'exclude',
+              remoteDriveId: isLibrary ? undefined : info.lib.driveId,
+            })
+          }
+        }
+      }
+    }
+
+    // Existing scopes no longer in explicitSelections → remove
+    for (const scope of existingScopes) {
+      if (!scope.scopeResourceId) continue
+      if (scope.scopeType === 'root' && !explicitSelections.has(SYNC_ALL_KEY)) {
+        toRemove.push(scope.id)
+      } else if (scope.scopeType !== 'root' && !explicitSelections.has(scope.scopeResourceId)) {
+        if (isSyncAll && (scope as { scopeMode?: string }).scopeMode !== 'exclude') {
+          toRemove.push(scope.id)
+        } else if (!isSyncAll) {
+          toRemove.push(scope.id)
+        }
+      }
+    }
+
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      return { success: true }
+    }
+
+    return triggerSyncOperation({
+      connectionId,
+      providerId: 'sharepoint',
+      toAdd,
+      toRemove,
+    })
+  }, [connectionId, existingScopes, explicitSelections, findLibraryAndSiteForItem, isSyncAll])
 
   // ============================================
   // Render
@@ -837,6 +945,19 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
             </DialogHeader>
 
             <div className="min-h-[200px] max-h-[350px] overflow-y-auto border rounded-md py-1 space-y-2">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b">
+                <span className="text-sm font-medium text-muted-foreground">Libraries</span>
+                <Button
+                  variant={isSyncAll ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={toggleSyncAll}
+                  className="text-xs h-7"
+                >
+                  {isSyncAll ? <Check className="size-3 mr-1" /> : null}
+                  Sync All
+                </Button>
+              </div>
+
               {Array.from(siteLibraries.entries()).map(([siteId, siteEntry]) => (
                 <div key={siteId}>
                   {/* Site header */}
@@ -856,15 +977,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                     </div>
                   ) : (
                     siteEntry.libraries.map(lib => {
-                      const isLibSelected = selectedLibraries.has(lib.driveId)
-                      const hasFolderSelections = Array.from(selectedFolders.values()).some(
-                        f => f.driveId === lib.driveId
-                      )
-                      const checkState: boolean | 'indeterminate' = isLibSelected
-                        ? true
-                        : hasFolderSelections
-                          ? 'indeterminate'
-                          : false
+                      const checkState = getCheckState(lib.driveId)
 
                       return (
                         <div key={lib.driveId}>
@@ -887,7 +1000,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
                             <Checkbox
                               checked={checkState}
-                              onCheckedChange={() => handleToggleLibrary(lib.driveId)}
+                              onCheckedChange={() => toggleSelect({ id: lib.driveId, isFolder: true })}
                               aria-label={`Select ${lib.displayName}`}
                             />
 
@@ -912,8 +1025,8 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                                     key={folderNode.item.id}
                                     node={folderNode}
                                     depth={0}
-                                    selectedFolders={selectedFolders instanceof Map ? new Set(selectedFolders.keys()) : new Set()}
-                                    onToggleFolder={handleToggleFolder}
+                                    getCheckState={getCheckState}
+                                    onToggleSelect={toggleSelect}
                                     onToggleExpand={handleToggleFolderExpand}
                                   />
                                 ))
@@ -928,12 +1041,19 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
               ))}
             </div>
 
-            {totalSelectedItems > 0 && (
+            {explicitSelections.size > 0 && (
               <p className="text-xs text-muted-foreground">
-                {selectedLibraries.size > 0 && `${selectedLibraries.size} librar${selectedLibraries.size !== 1 ? 'ies' : 'y'}`}
-                {selectedLibraries.size > 0 && selectedFolders.size > 0 && ', '}
-                {selectedFolders.size > 0 && `${selectedFolders.size} folder${selectedFolders.size !== 1 ? 's' : ''}`}
-                {' '}selected
+                {isSyncAll
+                  ? 'All libraries selected'
+                  : (() => {
+                      const inclusions = Array.from(explicitSelections.values()).filter(m => m === 'include').length
+                      const exclusions = Array.from(explicitSelections.values()).filter(m => m === 'exclude').length
+                      const parts: string[] = []
+                      if (inclusions > 0) parts.push(`${inclusions} included`)
+                      if (exclusions > 0) parts.push(`${exclusions} excluded`)
+                      return parts.join(', ')
+                    })()
+                }
               </p>
             )}
 
@@ -943,79 +1063,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
               </Button>
               <Button
                 onClick={async () => {
-                  if (!connectionId) return
                   setIsSaving(true)
-
-                  // Build scope additions
-                  const toAdd: Array<{
-                    scopeType: string
-                    scopeResourceId: string
-                    scopeDisplayName: string
-                    scopePath?: string
-                    scopeSiteId?: string
-                    scopeMode?: 'include' | 'exclude'
-                    remoteDriveId?: string
-                  }> = []
-                  const toRemove: string[] = []
-
-                  // Existing scope IDs for comparison
-                  const existingScopeResourceIds = new Set(
-                    existingScopes.map(s => s.scopeResourceId).filter(Boolean)
-                  )
-
-                  // Add selected libraries
-                  for (const driveId of selectedLibraries) {
-                    if (existingScopeResourceIds.has(driveId)) continue
-                    for (const [siteId, siteEntry] of siteLibraries) {
-                      const lib = siteEntry.libraries.find(l => l.driveId === driveId)
-                      if (lib) {
-                        toAdd.push({
-                          scopeType: 'library',
-                          scopeResourceId: driveId,
-                          scopeDisplayName: lib.displayName,
-                          scopePath: `${siteEntry.site.displayName} / ${lib.displayName}`,
-                          scopeSiteId: siteId,
-                          scopeMode: 'include',
-                        })
-                        break
-                      }
-                    }
-                  }
-
-                  // Add selected folders
-                  for (const [folderId, info] of selectedFolders) {
-                    if (existingScopeResourceIds.has(folderId)) continue
-                    toAdd.push({
-                      scopeType: 'folder',
-                      scopeResourceId: folderId,
-                      scopeDisplayName: info.name,
-                      scopePath: `${info.siteName} / ${info.libraryName}${info.path ? ` / ${info.path}` : ''}`,
-                      scopeSiteId: info.siteId,
-                      scopeMode: 'include',
-                      remoteDriveId: info.driveId,
-                    })
-                  }
-
-                  // Remove existing scopes that are no longer selected
-                  for (const scope of existingScopes) {
-                    if (!scope.scopeResourceId) continue
-                    const isStillSelected =
-                      selectedLibraries.has(scope.scopeResourceId) ||
-                      selectedFolders.has(scope.scopeResourceId)
-                    if (!isStillSelected) {
-                      toRemove.push(scope.id)
-                    }
-                  }
-
-                  const result = await triggerSyncOperation({
-                    connectionId,
-                    providerId: 'sharepoint',
-                    toAdd,
-                    toRemove,
-                  })
-
+                  const result = await buildAndTriggerSync()
                   setIsSaving(false)
-
                   if (result.success) {
                     useFolderTreeStore.getState().invalidateTreeFolder('sharepoint-root')
                     onClose()
@@ -1023,7 +1073,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                     toast.error('Failed to start sync', { description: result.error })
                   }
                 }}
-                disabled={totalSelectedItems === 0 || isSaving}
+                disabled={explicitSelections.size === 0 || isSaving}
               >
                 {isSaving ? (
                   <><Loader2 className="size-4 animate-spin mr-2" />Saving...</>

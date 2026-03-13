@@ -39,6 +39,7 @@ import {
   createScopesSchema,
   browseFolderQuerySchema,
   batchScopesSchema,
+  resolveAncestorsBodySchema,
   isFileSyncSupported,
   GRAPH_API_SCOPES,
 } from '@bc-agent/shared';
@@ -922,6 +923,60 @@ router.post(
           connectionId: req.params.id,
         },
         'Failed to batch update scopes'
+      );
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/connections/:id/resolve-ancestors
+ * Resolve the ancestor chain for a list of item IDs (PRD-118).
+ * Used by the wizard tree to auto-expand folders containing pre-selected scopes.
+ */
+router.post(
+  '/:id/resolve-ancestors',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const connectionId = parseConnectionId(req, res);
+      if (!connectionId) return;
+
+      const bodyResult = validateSafe(resolveAncestorsBodySchema, req.body);
+      if (!bodyResult.success) {
+        sendError(
+          res,
+          ErrorCode.VALIDATION_ERROR,
+          bodyResult.error.errors[0]?.message ?? 'Invalid request body'
+        );
+        return;
+      }
+
+      const userId = req.userId!;
+      const service = getConnectionService();
+      const result = await service.resolveAncestors(
+        userId,
+        connectionId,
+        bodyResult.data.itemIds,
+        bodyResult.data.driveId
+      );
+
+      logger.info(
+        { userId: userId.toUpperCase(), connectionId, itemCount: bodyResult.data.itemIds.length },
+        'Ancestors resolved'
+      );
+      res.json(result);
+    } catch (error) {
+      if (handleDomainError(error, res)) return;
+
+      logger.error(
+        {
+          error: error instanceof Error
+            ? { message: error.message, stack: error.stack, name: error.name }
+            : { value: String(error) },
+          connectionId: req.params.id,
+        },
+        'Failed to resolve ancestors'
       );
       next(error);
     }

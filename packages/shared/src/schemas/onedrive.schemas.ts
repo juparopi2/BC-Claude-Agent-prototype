@@ -70,3 +70,14 @@ export const scopeIdParamSchema = z.object({
 });
 
 export type ScopeIdParam = z.infer<typeof scopeIdParamSchema>;
+
+/**
+ * Schema for resolving ancestor item IDs (PRD-118).
+ * Used by POST /:id/resolve-ancestors to walk up the folder hierarchy.
+ */
+export const resolveAncestorsBodySchema = z.object({
+  itemIds: z.array(z.string().min(1)).min(1).max(50),
+  driveId: z.string().max(200).optional(),
+});
+
+export type ResolveAncestorsBody = z.infer<typeof resolveAncestorsBodySchema>;

@@ -43,6 +43,8 @@ export interface ConnectionScopeDetail {
   createdAt: string;
   scopeMode: 'include' | 'exclude';
   scopeSiteId?: string | null;
+  scopePath: string | null;
+  remoteDriveId: string | null;
   processingTotal: number;
   processingCompleted: number;
   processingFailed: number;

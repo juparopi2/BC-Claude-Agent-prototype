@@ -653,11 +653,91 @@ export class ConnectionService {
       createdAt: row.created_at.toISOString(),
       scopeMode: (row.scope_mode ?? 'include') as 'include' | 'exclude',
       scopeSiteId: row.scope_site_id ?? null,
+      scopePath: row.scope_path ?? null,
+      remoteDriveId: row.remote_drive_id ?? null,
       processingTotal: row.processing_total,
       processingCompleted: row.processing_completed,
       processingFailed: row.processing_failed,
       processingStatus: row.processing_status,
     };
+  }
+
+  /**
+   * Resolve the ancestor chain for a list of item IDs (PRD-118).
+   * Walks up the parent hierarchy for each item using OneDrive metadata API,
+   * caching intermediate lookups to avoid redundant requests.
+   */
+  async resolveAncestors(
+    userId: string,
+    connectionId: string,
+    itemIds: string[],
+    driveId?: string
+  ): Promise<{ ancestors: Record<string, string[]> }> {
+    const normalizedUserId = userId.toUpperCase();
+    const normalizedConnectionId = connectionId.toUpperCase();
+    logger.debug(
+      { userId: normalizedUserId, connectionId: normalizedConnectionId, itemCount: itemIds.length },
+      'Resolving ancestors'
+    );
+
+    const repo = getConnectionRepository();
+    const row = await repo.findById(normalizedUserId, normalizedConnectionId);
+
+    if (!row) {
+      throw new ConnectionNotFoundError(normalizedConnectionId);
+    }
+
+    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
+
+    const { getOneDriveService } = await import('@/services/connectors/onedrive');
+    const oneDriveService = getOneDriveService();
+
+    // Cache resolved item metadata to avoid duplicate API calls for shared ancestors
+    const metadataCache = new Map<string, { parentId: string | null }>();
+
+    const getParentId = async (itemId: string): Promise<string | null> => {
+      const cached = metadataCache.get(itemId);
+      if (cached !== undefined) return cached.parentId;
+
+      try {
+        const metadata = driveId
+          ? await oneDriveService.getItemMetadataFromDrive(normalizedConnectionId, driveId, itemId)
+          : await oneDriveService.getItemMetadata(normalizedConnectionId, itemId);
+        metadataCache.set(itemId, { parentId: metadata.parentId });
+        return metadata.parentId;
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        logger.warn({ error: errorInfo, connectionId: normalizedConnectionId, itemId }, 'Failed to resolve item metadata');
+        metadataCache.set(itemId, { parentId: null });
+        return null;
+      }
+    };
+
+    const ancestors: Record<string, string[]> = {};
+
+    for (const itemId of itemIds) {
+      const chain: string[] = [];
+      let currentId: string | null = itemId;
+
+      // Walk up the parent chain
+      while (currentId) {
+        const parentId = await getParentId(currentId);
+        if (!parentId) break;
+        chain.unshift(parentId);
+        currentId = parentId;
+      }
+
+      ancestors[itemId] = chain;
+    }
+
+    logger.info(
+      { connectionId: normalizedConnectionId, itemCount: itemIds.length, cacheSize: metadataCache.size },
+      'Ancestors resolved'
+    );
+
+    return { ancestors };
   }
 
   /**

@@ -627,6 +627,7 @@ export {
   browseFolderQuerySchema,
   batchScopesSchema,
   scopeIdParamSchema,
+  resolveAncestorsBodySchema,
 
   // Connection schemas (PRD-100)
   createConnectionSchema,

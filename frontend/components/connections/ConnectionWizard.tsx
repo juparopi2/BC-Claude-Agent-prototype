@@ -8,6 +8,8 @@ import {
   ChevronDown,
   Folder,
   Users,
+  FoldVertical,
+  UnfoldVertical,
 } from 'lucide-react'
 import { OneDriveLogo } from '@/components/icons'
 import {
@@ -33,6 +35,13 @@ import type { TreeNodeData, SelectedScope, AuthInitiateResponse, NodeInfo, Expli
 import { findNode, sortItems, formatFileSize, SYNC_ALL_KEY } from './wizard-utils'
 import { useTriStateSelection } from './useTriStateSelection'
 import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOperation'
+import {
+  collapseAllNodes,
+  resolveAncestors,
+  expandToSyncRoots,
+  getWizardExpandPref,
+  setWizardExpandPref,
+} from './tree-expansion-utils'
 
 // ============================================
 // Types
@@ -267,6 +276,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
 
   const [showDiff, setShowDiff] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isAutoExpanding, setIsAutoExpanding] = useState(false)
 
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections)
 
@@ -312,6 +322,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setIsSharedLoading(false)
     setSharedLoadedOnce(false)
     setSharedNodeMap(new Map())
+    setIsAutoExpanding(false)
     setShowDiff(false)
     setIsSaving(false)
   }, [resetTriState])
@@ -543,6 +554,20 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     fetchShared()
   }, [step, connectionId, browseTab, sharedLoadedOnce, buildNodeMap])
 
+  // PRD-118: Auto-expand to sync roots on wizard open
+  useEffect(() => {
+    if (step !== 'browse' || !connectionId || isBrowseLoading || existingScopes.length === 0) return
+    if (getWizardExpandPref(connectionId) === 'collapsed') return
+
+    // Use a tick delay so the tree state is fully settled
+    const timer = setTimeout(() => {
+      handleExpandToSyncRoots()
+    }, 100)
+    return () => clearTimeout(timer)
+  // Only run once when browse loading finishes with existing scopes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, connectionId, isBrowseLoading])
+
   // ============================================
   // Step 2: Toggle folder expand (lazy load children)
   // ============================================
@@ -653,6 +678,71 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     },
     [connectionId, nodeMap, sharedNodeMap]
   )
+
+  const handleCollapseAll = useCallback(() => {
+    setRootNodes(prev => collapseAllNodes(prev))
+    setSharedNodes(prev => collapseAllNodes(prev))
+    if (connectionId) {
+      setWizardExpandPref(connectionId, 'collapsed')
+    }
+  }, [connectionId])
+
+  const handleExpandToSyncRoots = useCallback(async () => {
+    if (!connectionId || existingScopes.length === 0) return
+
+    setIsAutoExpanding(true)
+    try {
+      // Collect non-root scope resource IDs, split by drive
+      const myFilesIds: string[] = []
+      const sharedByDrive = new Map<string, string[]>()
+
+      for (const scope of existingScopes) {
+        if (!scope.scopeResourceId || scope.scopeType === 'root') continue
+        const driveId = scope.remoteDriveId
+        if (driveId) {
+          const arr = sharedByDrive.get(driveId) ?? []
+          arr.push(scope.scopeResourceId)
+          sharedByDrive.set(driveId, arr)
+        } else {
+          myFilesIds.push(scope.scopeResourceId)
+        }
+      }
+
+      // Resolve ancestor chains
+      const allChains: Record<string, string[]> = {}
+
+      const resolvePromises: Promise<void>[] = []
+      if (myFilesIds.length > 0) {
+        resolvePromises.push(
+          resolveAncestors(connectionId, myFilesIds).then(chains => {
+            Object.assign(allChains, chains)
+          })
+        )
+      }
+      for (const [driveId, ids] of sharedByDrive) {
+        resolvePromises.push(
+          resolveAncestors(connectionId, ids, driveId).then(chains => {
+            Object.assign(allChains, chains)
+          })
+        )
+      }
+      await Promise.all(resolvePromises)
+
+      // Expand level-by-level
+      await expandToSyncRoots({
+        ancestorChains: allChains,
+        fetchAndExpandNode: async (nodeId) => {
+          await handleToggleExpand(nodeId)
+        },
+      })
+
+      setWizardExpandPref(connectionId, 'auto-expand')
+    } catch (err) {
+      console.error('[ConnectionWizard] Auto-expand failed:', err)
+    } finally {
+      setIsAutoExpanding(false)
+    }
+  }, [connectionId, existingScopes, handleToggleExpand])
 
   // ============================================
   // Close handler
@@ -840,18 +930,60 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               </button>
             </div>
 
-            {/* PRD-112: Sync All toggle */}
+            {/* PRD-112: Sync All toggle + PRD-118: Expand/Collapse buttons */}
             <div className="flex items-center justify-between px-2 py-1.5 border-b mb-1">
               <span className="text-sm font-medium">Select items to sync</span>
-              <Button
-                variant={isSyncAll ? 'default' : 'outline'}
-                size="sm"
-                onClick={toggleSyncAll}
-                className="text-xs h-7"
-              >
-                {isSyncAll ? <Check className="size-3 mr-1" /> : null}
-                Sync All
-              </Button>
+              <div className="flex items-center gap-1">
+                {isReconfiguring && (
+                  <>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            onClick={handleExpandToSyncRoots}
+                            disabled={isAutoExpanding}
+                          >
+                            {isAutoExpanding ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <UnfoldVertical className="size-3.5" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Expand to synced items</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            onClick={handleCollapseAll}
+                            disabled={isAutoExpanding}
+                          >
+                            <FoldVertical className="size-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Collapse all</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </>
+                )}
+                <Button
+                  variant={isSyncAll ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={toggleSyncAll}
+                  className="text-xs h-7"
+                >
+                  {isSyncAll ? <Check className="size-3 mr-1" /> : null}
+                  Sync All
+                </Button>
+              </div>
             </div>
 
             <div className="min-h-[200px] max-h-[300px] overflow-y-auto border rounded-md py-1">

@@ -8,6 +8,8 @@ import {
   BookOpen,
   Folder,
   Check,
+  FoldVertical,
+  UnfoldVertical,
 } from 'lucide-react'
 import { SharePointLogo } from '@/components/icons'
 import {
@@ -40,6 +42,13 @@ import { useTriStateSelection } from './useTriStateSelection'
 import { SitePickerGrid } from './sharepoint/SitePickerGrid'
 import { getFileIconType, FileIcon as FileTypeIcon, fileTypeColors } from '@/src/presentation/chat/file-type-utils'
 import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOperation'
+import {
+  collapseAllNodes,
+  resolveAncestors,
+  expandToSyncRoots,
+  getWizardExpandPref,
+  setWizardExpandPref,
+} from './tree-expansion-utils'
 
 // ============================================
 // Types
@@ -222,6 +231,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
   // Step 3: Saving state for the "Save & Sync" button
   const [isSaving, setIsSaving] = useState(false)
+  const [isAutoExpanding, setIsAutoExpanding] = useState(false)
 
   // ============================================
   // Tri-state selection via hook
@@ -268,6 +278,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     setSiteSyncInfo(new Map())
     resetTriState()
     setExistingScopes([])
+    setIsAutoExpanding(false)
     setIsSaving(false)
   }, [resetTriState])
 
@@ -555,6 +566,23 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, connectionId])
 
+  // PRD-118: Auto-expand to sync roots on libraries step entry
+  useEffect(() => {
+    if (step !== 'libraries' || !connectionId || existingScopes.length === 0) return
+
+    // Wait until all libraries are loaded
+    const allLoaded = Array.from(siteLibraries.values()).every(entry => entry.isLoaded)
+    if (!allLoaded || siteLibraries.size === 0) return
+
+    if (getWizardExpandPref(connectionId) === 'collapsed') return
+
+    const timer = setTimeout(() => {
+      handleExpandToSyncRoots()
+    }, 100)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, connectionId, siteLibraries])
+
   // Expand library to browse its folders
   const handleToggleLibraryExpand = useCallback(async (siteId: string, driveId: string) => {
     if (!connectionId) return
@@ -764,6 +792,84 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
       })
     }
   }, [connectionId, siteLibraries])
+
+  const handleCollapseAll = useCallback(() => {
+    // Collapse all library expansions and folder trees
+    setSiteLibraries(prev => {
+      const next = new Map(prev)
+      for (const [siteId, siteEntry] of next) {
+        next.set(siteId, {
+          ...siteEntry,
+          libraries: siteEntry.libraries.map(lib => ({
+            ...lib,
+            isExpanded: false,
+            folders: lib.folders ? collapseAllNodes(lib.folders) : null,
+          })),
+        })
+      }
+      return next
+    })
+    if (connectionId) {
+      setWizardExpandPref(connectionId, 'collapsed')
+    }
+  }, [connectionId])
+
+  const handleExpandToSyncRoots = useCallback(async () => {
+    if (!connectionId || existingScopes.length === 0) return
+
+    setIsAutoExpanding(true)
+    try {
+      // Group scopes by type: library-level vs folder-level
+      const folderScopesByDrive = new Map<string, string[]>()
+
+      for (const scope of existingScopes) {
+        if (!scope.scopeResourceId || scope.scopeType === 'root') continue
+
+        if (scope.scopeType === 'library') {
+          // Library-level: just expand the library toggle
+          // Find which site has this library
+          for (const [siteId, siteEntry] of siteLibraries) {
+            const lib = siteEntry.libraries.find(l => l.driveId === scope.scopeResourceId)
+            if (lib && !lib.isExpanded) {
+              await handleToggleLibraryExpand(siteId, scope.scopeResourceId)
+            }
+          }
+        } else if (scope.remoteDriveId) {
+          // Folder-level: group by drive for ancestor resolution
+          const arr = folderScopesByDrive.get(scope.remoteDriveId) ?? []
+          arr.push(scope.scopeResourceId)
+          folderScopesByDrive.set(scope.remoteDriveId, arr)
+        }
+      }
+
+      // Resolve ancestors for folder-level scopes and expand
+      for (const [driveId, itemIds] of folderScopesByDrive) {
+        const chains = await resolveAncestors(connectionId, itemIds, driveId)
+
+        // First ensure the library containing these folders is expanded
+        for (const [siteId, siteEntry] of siteLibraries) {
+          const lib = siteEntry.libraries.find(l => l.driveId === driveId)
+          if (lib && !lib.isExpanded) {
+            await handleToggleLibraryExpand(siteId, driveId)
+          }
+        }
+
+        // Expand ancestors level by level within the library
+        await expandToSyncRoots({
+          ancestorChains: chains,
+          fetchAndExpandNode: async (nodeId) => {
+            await handleToggleFolderExpand(nodeId)
+          },
+        })
+      }
+
+      setWizardExpandPref(connectionId, 'auto-expand')
+    } catch (err) {
+      console.error('[SharePointWizard] Auto-expand failed:', err)
+    } finally {
+      setIsAutoExpanding(false)
+    }
+  }, [connectionId, existingScopes, siteLibraries, handleToggleLibraryExpand, handleToggleFolderExpand])
 
   // ============================================
   // Done / Close
@@ -993,15 +1099,57 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
             <div className="min-h-[200px] max-h-[350px] overflow-y-auto border rounded-md py-1 space-y-2">
               <div className="flex items-center justify-between px-3 py-1.5 border-b">
                 <span className="text-sm font-medium text-muted-foreground">Libraries</span>
-                <Button
-                  variant={isSyncAll ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={toggleSyncAll}
-                  className="text-xs h-7"
-                >
-                  {isSyncAll ? <Check className="size-3 mr-1" /> : null}
-                  Sync All
-                </Button>
+                <div className="flex items-center gap-1">
+                  {existingScopes.length > 0 && (
+                    <>
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              onClick={handleExpandToSyncRoots}
+                              disabled={isAutoExpanding}
+                            >
+                              {isAutoExpanding ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <UnfoldVertical className="size-3.5" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Expand to synced items</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              onClick={handleCollapseAll}
+                              disabled={isAutoExpanding}
+                            >
+                              <FoldVertical className="size-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Collapse all</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </>
+                  )}
+                  <Button
+                    variant={isSyncAll ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={toggleSyncAll}
+                    className="text-xs h-7"
+                  >
+                    {isSyncAll ? <Check className="size-3 mr-1" /> : null}
+                    Sync All
+                  </Button>
+                </div>
               </div>
 
               {Array.from(siteLibraries.entries()).map(([siteId, siteEntry]) => (

@@ -387,6 +387,7 @@ export {
   browseFolderQuerySchema,
   batchScopesSchema,
   scopeIdParamSchema,
+  resolveAncestorsBodySchema,
 } from './onedrive.schemas';
 
 export type {
@@ -394,6 +395,7 @@ export type {
   BrowseFolderQuery,
   BatchScopesInput,
   ScopeIdParam,
+  ResolveAncestorsBody,
 } from './onedrive.schemas';
 
 // ============================================

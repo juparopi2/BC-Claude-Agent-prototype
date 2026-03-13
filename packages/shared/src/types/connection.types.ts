@@ -42,6 +42,7 @@ export interface ConnectionScopeDetail {
   itemCount: number;
   createdAt: string;
   scopeMode: 'include' | 'exclude';
+  scopeSiteId?: string | null;
   processingTotal: number;
   processingCompleted: number;
   processingFailed: number;

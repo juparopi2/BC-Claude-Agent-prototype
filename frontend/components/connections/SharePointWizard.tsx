@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import type {
   FolderListResult,
   ConnectionScopeWithStats,
@@ -28,7 +29,7 @@ import type {
   SharePointSiteListResult,
   SharePointLibraryListResult,
 } from '@bc-agent/shared'
-import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, CONNECTION_STATUS } from '@bc-agent/shared'
+import { CONNECTIONS_API, AGENT_DISPLAY_NAME, AGENT_ID, CONNECTION_STATUS, SUPPORTED_EXTENSIONS_DISPLAY } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 import { useIntegrationListStore } from '@/src/domains/integrations'
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore'
@@ -84,20 +85,51 @@ function LibFolderNode({ node, depth, getCheckState, onToggleSelect, onToggleExp
   if (!item.isFolder) {
     const iconType = getFileIconType(item.name, item.mimeType ?? undefined)
     const colors = fileTypeColors[iconType]
-    return (
+    const isUnsupported = item.isSupported === false
+
+    const fileRow = (
       <div
-        className="flex items-center gap-1.5 py-1 pr-2 rounded-md select-none"
+        className={`flex items-center gap-1.5 py-1 pr-2 rounded-md select-none ${isUnsupported ? 'opacity-50' : 'hover:bg-muted/50'}`}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
       >
         <span className="size-4 shrink-0" />
-        <span className="size-4 shrink-0" />
-        <FileTypeIcon iconType={iconType} className={`size-4 shrink-0 ${colors?.icon ?? 'text-muted-foreground'}`} />
-        <span className="text-sm truncate flex-1 text-muted-foreground">{item.name}</span>
+
+        {isUnsupported ? (
+          <span className="size-4 shrink-0" />
+        ) : (
+          <Checkbox
+            checked={getCheckState(item.id)}
+            onCheckedChange={() => onToggleSelect({ id: item.id, isFolder: item.isFolder })}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${item.name}`}
+          />
+        )}
+
+        <FileTypeIcon iconType={iconType} className={`size-4 shrink-0 ${isUnsupported ? 'text-muted-foreground' : (colors?.icon ?? 'text-muted-foreground')}`} />
+        <span className={`text-sm truncate flex-1 ${isUnsupported ? 'text-muted-foreground' : ''}`}>{item.name}</span>
+        {isUnsupported && (
+          <span className="text-[10px] text-muted-foreground shrink-0 ml-1">Unsupported</span>
+        )}
         {item.sizeBytes != null && item.sizeBytes > 0 && (
           <span className="text-xs text-muted-foreground/60 shrink-0">{formatFileSize(item.sizeBytes)}</span>
         )}
       </div>
     )
+
+    if (isUnsupported) {
+      return (
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>{fileRow}</TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs">
+              <p>Supported formats: {SUPPORTED_EXTENSIONS_DISPLAY}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )
+    }
+
+    return fileRow
   }
 
   return (
@@ -182,6 +214,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   // Step 3: Libraries
   const [siteLibraries, setSiteLibraries] = useState<Map<string, SiteLibraries>>(new Map())
 
+  // Step 2/3: Site sync info for badges
+  const [siteSyncInfo, setSiteSyncInfo] = useState<Map<string, { scopeCount: number; fileCount: number }>>(new Map())
+
   // Step 3: Existing scopes (for reconfigure)
   const [existingScopes, setExistingScopes] = useState<ConnectionScopeWithStats[]>([])
 
@@ -230,6 +265,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     setSiteNextPageToken(null)
     setIsSitesLoadingMore(false)
     setSiteLibraries(new Map())
+    setSiteSyncInfo(new Map())
     resetTriState()
     setExistingScopes([])
     setIsSaving(false)
@@ -339,13 +375,20 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
           const fetched = scopesData.scopes ?? []
           if (!cancelled) {
             setExistingScopes(fetched)
-            // Pre-select sites that have existing scopes
+            // Pre-select sites that have existing scopes & build sync info map
             const scopedSiteIds = new Set<string>()
+            const syncInfoMap = new Map<string, { scopeCount: number; fileCount: number }>()
             for (const scope of fetched) {
-              if ((scope as { scopeSiteId?: string }).scopeSiteId) {
-                scopedSiteIds.add((scope as { scopeSiteId?: string }).scopeSiteId!)
+              const siteId = scope.scopeSiteId
+              if (siteId) {
+                scopedSiteIds.add(siteId)
+                const existing = syncInfoMap.get(siteId) ?? { scopeCount: 0, fileCount: 0 }
+                existing.scopeCount += 1
+                existing.fileCount += scope.fileCount ?? 0
+                syncInfoMap.set(siteId, existing)
               }
             }
+            setSiteSyncInfo(syncInfoMap)
             if (scopedSiteIds.size > 0) {
               setSelectedSiteIds(scopedSiteIds)
             }
@@ -800,8 +843,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
         if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode === 'exclude') {
           if (info) {
             const isLibrary = info.folder === null
+            const scopeType = isLibrary ? 'library' : info.folder!.item.isFolder ? 'folder' : 'file'
             toAdd.push({
-              scopeType: isLibrary ? 'library' : 'folder',
+              scopeType,
               scopeResourceId: resourceId,
               scopeDisplayName: isLibrary ? info.lib.displayName : (info.folder?.item.name ?? resourceId),
               scopePath: isLibrary
@@ -820,8 +864,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
         if (!existingScope || (existingScope as { scopeMode?: string }).scopeMode !== 'exclude') {
           if (info) {
             const isLibrary = info.folder === null
+            const scopeType = isLibrary ? 'library' : info.folder!.item.isFolder ? 'folder' : 'file'
             toAdd.push({
-              scopeType: isLibrary ? 'library' : 'folder',
+              scopeType,
               scopeResourceId: resourceId,
               scopeDisplayName: isLibrary ? info.lib.displayName : (info.folder?.item.name ?? resourceId),
               scopePath: isLibrary
@@ -921,6 +966,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
               onLoadMore={handleLoadMoreSites}
               hasMore={!!siteNextPageToken}
               isLoadingMore={isSitesLoadingMore}
+              siteSyncInfo={siteSyncInfo}
             />
 
             <DialogFooter>
@@ -1009,7 +1055,10 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                             <div className="flex-1 min-w-0">
                               <span className="text-sm">{lib.displayName}</span>
                               <span className="text-xs text-muted-foreground ml-2">
-                                {lib.itemCount != null ? `${lib.itemCount} items, ` : ''}{formatFileSize(lib.sizeBytes)}
+                                {[
+                                  lib.itemCount != null ? `${lib.itemCount} items` : '',
+                                  lib.sizeBytes > 0 ? formatFileSize(lib.sizeBytes) : '',
+                                ].filter(Boolean).join(', ')}
                               </span>
                             </div>
                           </div>

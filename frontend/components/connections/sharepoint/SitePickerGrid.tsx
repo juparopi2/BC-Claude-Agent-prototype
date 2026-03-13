@@ -8,6 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import type { SharePointSite } from '@bc-agent/shared'
 
+interface SiteSyncInfo {
+  scopeCount: number
+  fileCount: number
+}
+
 interface SitePickerGridProps {
   sites: SharePointSite[]
   selectedSiteIds: Set<string>
@@ -18,6 +23,7 @@ interface SitePickerGridProps {
   onLoadMore: () => void
   hasMore: boolean
   isLoadingMore: boolean
+  siteSyncInfo?: Map<string, SiteSyncInfo>
 }
 
 export function SitePickerGrid({
@@ -30,6 +36,7 @@ export function SitePickerGrid({
   onLoadMore,
   hasMore,
   isLoadingMore,
+  siteSyncInfo,
 }: SitePickerGridProps) {
   const [localQuery, setLocalQuery] = useState(searchQuery)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -98,7 +105,14 @@ export function SitePickerGrid({
                 />
                 <SharePointLogo className="size-4 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{site.displayName}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium truncate">{site.displayName}</p>
+                    {siteSyncInfo?.get(site.siteId) && (
+                      <span className="text-[10px] text-green-600 dark:text-green-400 shrink-0">
+                        Synced{siteSyncInfo.get(site.siteId)!.fileCount > 0 ? ` · ${siteSyncInfo.get(site.siteId)!.fileCount} files` : ''}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground truncate">{site.webUrl}</p>
                   {site.lastModifiedAt && (
                     <p className="text-xs text-muted-foreground mt-0.5">

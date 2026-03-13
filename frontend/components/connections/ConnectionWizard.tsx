@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Check,
   Loader2,
@@ -8,8 +8,8 @@ import {
   ChevronDown,
   Folder,
   Users,
-  FoldVertical,
-  UnfoldVertical,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react'
 import { OneDriveLogo } from '@/components/icons'
 import {
@@ -38,7 +38,8 @@ import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOp
 import {
   collapseAllNodes,
   resolveAncestors,
-  expandToSyncRoots,
+  fetchAncestorContents,
+  applyExpansionToTree,
   getWizardExpandPref,
   setWizardExpandPref,
 } from './tree-expansion-utils'
@@ -277,6 +278,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const [showDiff, setShowDiff] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isAutoExpanding, setIsAutoExpanding] = useState(false)
+  const hasAutoExpandedRef = useRef(false)
+  const [isTreeAutoExpanded, setIsTreeAutoExpanded] = useState(false)
 
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections)
 
@@ -323,6 +326,8 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     setSharedLoadedOnce(false)
     setSharedNodeMap(new Map())
     setIsAutoExpanding(false)
+    hasAutoExpandedRef.current = false
+    setIsTreeAutoExpanded(false)
     setShowDiff(false)
     setIsSaving(false)
   }, [resetTriState])
@@ -554,17 +559,17 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
     fetchShared()
   }, [step, connectionId, browseTab, sharedLoadedOnce, buildNodeMap])
 
-  // PRD-118: Auto-expand to sync roots on wizard open
+  // PRD-118: Auto-expand to sync roots on wizard open (fires exactly once)
   useEffect(() => {
     if (step !== 'browse' || !connectionId || isBrowseLoading || existingScopes.length === 0) return
+    if (hasAutoExpandedRef.current) return
     if (getWizardExpandPref(connectionId) === 'collapsed') return
 
-    // Use a tick delay so the tree state is fully settled
+    hasAutoExpandedRef.current = true
     const timer = setTimeout(() => {
       handleExpandToSyncRoots()
     }, 100)
     return () => clearTimeout(timer)
-  // Only run once when browse loading finishes with existing scopes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, connectionId, isBrowseLoading])
 
@@ -682,6 +687,7 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
   const handleCollapseAll = useCallback(() => {
     setRootNodes(prev => collapseAllNodes(prev))
     setSharedNodes(prev => collapseAllNodes(prev))
+    setIsTreeAutoExpanded(false)
     if (connectionId) {
       setWizardExpandPref(connectionId, 'collapsed')
     }
@@ -708,41 +714,85 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
         }
       }
 
-      // Resolve ancestor chains
-      const allChains: Record<string, string[]> = {}
+      // Resolve ancestor chains in parallel
+      const myFilesChains: Record<string, string[]> = {}
+      const sharedChains: Record<string, string[]> = {}
 
       const resolvePromises: Promise<void>[] = []
       if (myFilesIds.length > 0) {
         resolvePromises.push(
           resolveAncestors(connectionId, myFilesIds).then(chains => {
-            Object.assign(allChains, chains)
+            Object.assign(myFilesChains, chains)
           })
         )
       }
       for (const [driveId, ids] of sharedByDrive) {
         resolvePromises.push(
           resolveAncestors(connectionId, ids, driveId).then(chains => {
-            Object.assign(allChains, chains)
+            Object.assign(sharedChains, chains)
           })
         )
       }
       await Promise.all(resolvePromises)
 
-      // Expand level-by-level
-      await expandToSyncRoots({
+      // Build remoteDriveIdMap for shared scopes (ancestorId → driveId)
+      const remoteDriveIdMap = new Map<string, string>()
+      for (const [driveId, ids] of sharedByDrive) {
+        for (const scopeId of ids) {
+          const chain = sharedChains[scopeId]
+          if (chain) {
+            for (const ancestorId of chain) {
+              remoteDriveIdMap.set(ancestorId, driveId)
+            }
+          }
+        }
+      }
+
+      // Fetch all ancestor folder contents in parallel
+      const allChains = { ...myFilesChains, ...sharedChains }
+      const contentsByNodeId = await fetchAncestorContents({
         ancestorChains: allChains,
-        fetchAndExpandNode: async (nodeId) => {
-          await handleToggleExpand(nodeId)
+        browseUrlResolver: (nodeId) => {
+          const driveId = remoteDriveIdMap.get(nodeId)
+          return driveId
+            ? `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse-shared/${driveId}/${nodeId}`
+            : `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse/${nodeId}`
         },
       })
 
+      // Apply expansion to myFiles tree
+      if (Object.keys(myFilesChains).length > 0) {
+        const myResult = applyExpansionToTree({
+          currentNodes: rootNodes,
+          currentNodeMap: nodeMap,
+          contentsByNodeId,
+          ancestorChains: myFilesChains,
+        })
+        setRootNodes(myResult.nodes)
+        setNodeMap(myResult.nodeMap)
+      }
+
+      // Apply expansion to shared tree
+      if (Object.keys(sharedChains).length > 0) {
+        const sharedResult = applyExpansionToTree({
+          currentNodes: sharedNodes,
+          currentNodeMap: sharedNodeMap,
+          contentsByNodeId,
+          ancestorChains: sharedChains,
+          remoteDriveIdMap,
+        })
+        setSharedNodes(sharedResult.nodes)
+        setSharedNodeMap(sharedResult.nodeMap)
+      }
+
+      setIsTreeAutoExpanded(true)
       setWizardExpandPref(connectionId, 'auto-expand')
     } catch (err) {
       console.error('[ConnectionWizard] Auto-expand failed:', err)
     } finally {
       setIsAutoExpanding(false)
     }
-  }, [connectionId, existingScopes, handleToggleExpand])
+  }, [connectionId, existingScopes, rootNodes, nodeMap, sharedNodes, sharedNodeMap])
 
   // ============================================
   // Close handler
@@ -935,44 +985,30 @@ export function ConnectionWizard({ isOpen, onClose, initialConnectionId }: Conne
               <span className="text-sm font-medium">Select items to sync</span>
               <div className="flex items-center gap-1">
                 {isReconfiguring && (
-                  <>
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7"
-                            onClick={handleExpandToSyncRoots}
-                            disabled={isAutoExpanding}
-                          >
-                            {isAutoExpanding ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <UnfoldVertical className="size-3.5" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Expand to synced items</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <TooltipProvider delayDuration={300}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7"
-                            onClick={handleCollapseAll}
-                            disabled={isAutoExpanding}
-                          >
-                            <FoldVertical className="size-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Collapse all</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          onClick={isTreeAutoExpanded ? handleCollapseAll : handleExpandToSyncRoots}
+                          disabled={isAutoExpanding}
+                        >
+                          {isAutoExpanding ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : isTreeAutoExpanded ? (
+                            <Minimize2 className="size-3.5" />
+                          ) : (
+                            <Maximize2 className="size-3.5" />
+                          )}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {isTreeAutoExpanded ? 'Collapse all' : 'Expand to synced items'}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
                 <Button
                   variant={isSyncAll ? 'default' : 'outline'}

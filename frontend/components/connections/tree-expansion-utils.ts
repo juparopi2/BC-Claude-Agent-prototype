@@ -10,6 +10,8 @@
  */
 
 import type { TreeNodeData } from './wizard-utils'
+import { sortItems } from './wizard-utils'
+import type { ExternalFileItem, FolderListResult } from '@bc-agent/shared'
 import { CONNECTIONS_API } from '@bc-agent/shared'
 import { env } from '@/lib/config/env'
 
@@ -156,6 +158,135 @@ export async function expandToSyncRoots(params: ExpandToSyncRootsParams): Promis
     // before proceeding to the next level.
     await Promise.all(Array.from(nodeIds).map((nodeId) => fetchAndExpandNode(nodeId)))
   }
+}
+
+// ============================================
+// Batch Fetch for Ancestor Contents
+// ============================================
+
+/**
+ * Fetch the folder contents for all unique ancestor IDs across all chains in
+ * a single parallel batch.
+ *
+ * @returns Map of nodeId → sorted child items. Failed fetches are logged with
+ *   console.warn and omitted from the result (not thrown).
+ */
+export async function fetchAncestorContents(params: {
+  ancestorChains: Record<string, string[]>
+  browseUrlResolver: (nodeId: string) => string
+}): Promise<Map<string, ExternalFileItem[]>> {
+  const { ancestorChains, browseUrlResolver } = params
+
+  // Collect all unique ancestor IDs
+  const uniqueIds = new Set<string>()
+  for (const chain of Object.values(ancestorChains)) {
+    for (const id of chain) {
+      uniqueIds.add(id)
+    }
+  }
+
+  const result = new Map<string, ExternalFileItem[]>()
+  if (uniqueIds.size === 0) return result
+
+  // Fire one fetch per unique ancestor in parallel
+  const entries = Array.from(uniqueIds)
+  const fetches = entries.map(async (nodeId) => {
+    try {
+      const response = await fetch(browseUrlResolver(nodeId), {
+        credentials: 'include',
+      })
+      if (!response.ok) {
+        console.warn(`[fetchAncestorContents] Failed to fetch ${nodeId}: HTTP ${response.status}`)
+        return
+      }
+      const data = (await response.json()) as FolderListResult
+      result.set(nodeId, sortItems(data.items))
+    } catch (error) {
+      console.warn(`[fetchAncestorContents] Error fetching ${nodeId}:`, error)
+    }
+  })
+
+  await Promise.all(fetches)
+  return result
+}
+
+// ============================================
+// Apply Expansion to Tree (Pure Function)
+// ============================================
+
+/**
+ * Clone a tree and apply fetched ancestor contents to it in a single pass.
+ * For each ancestor:
+ * - If `children !== null` → just set `isExpanded = true` (preserves manual
+ *   expansions, never toggles/collapses).
+ * - If `children === null` and fetched content exists → set `children` from
+ *   the fetched content and set `isExpanded = true`.
+ *
+ * Returns a new `{ nodes, nodeMap }` — the caller sets state once.
+ */
+export function applyExpansionToTree(params: {
+  currentNodes: TreeNodeData[]
+  currentNodeMap: Map<string, TreeNodeData>
+  contentsByNodeId: Map<string, ExternalFileItem[]>
+  ancestorChains: Record<string, string[]>
+  remoteDriveIdMap?: Map<string, string>
+}): { nodes: TreeNodeData[]; nodeMap: Map<string, TreeNodeData> } {
+  const { currentNodes, contentsByNodeId, ancestorChains, remoteDriveIdMap } = params
+
+  // Collect all ancestor IDs that need expansion
+  const ancestorIds = new Set<string>()
+  for (const chain of Object.values(ancestorChains)) {
+    for (const id of chain) {
+      ancestorIds.add(id)
+    }
+  }
+
+  // Deep-clone the tree
+  const clonedNodes: TreeNodeData[] = structuredClone(currentNodes)
+
+  // Rebuild nodeMap from the clone so all references point to cloned nodes
+  const newNodeMap = new Map<string, TreeNodeData>()
+  const registerNodes = (nodes: TreeNodeData[]) => {
+    for (const node of nodes) {
+      newNodeMap.set(node.item.id, node)
+      if (node.children) {
+        registerNodes(node.children)
+      }
+    }
+  }
+  registerNodes(clonedNodes)
+
+  // Apply expansions
+  for (const nodeId of ancestorIds) {
+    const node = newNodeMap.get(nodeId)
+    if (!node) continue
+
+    if (node.children !== null) {
+      // Already has children — just expand (never toggle/collapse)
+      node.isExpanded = true
+    } else {
+      // Children not loaded yet — apply fetched content
+      const items = contentsByNodeId.get(nodeId)
+      if (items) {
+        // Determine remoteDriveId for this node (for shared items)
+        const remoteDriveId = remoteDriveIdMap?.get(nodeId) ?? node.item.remoteDriveId
+        const children: TreeNodeData[] = items.map((item) => ({
+          item: remoteDriveId ? { ...item, remoteDriveId } : item,
+          children: item.isFolder ? null : null,
+          isExpanded: false,
+          isLoading: false,
+        }))
+        node.children = children
+        node.isExpanded = true
+        // Register new children in nodeMap
+        for (const child of children) {
+          newNodeMap.set(child.item.id, child)
+        }
+      }
+    }
+  }
+
+  return { nodes: clonedNodes, nodeMap: newNodeMap }
 }
 
 // ============================================

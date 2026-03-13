@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Loader2,
   ChevronRight,
@@ -8,8 +8,8 @@ import {
   BookOpen,
   Folder,
   Check,
-  FoldVertical,
-  UnfoldVertical,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react'
 import { SharePointLogo } from '@/components/icons'
 import {
@@ -45,7 +45,7 @@ import { triggerSyncOperation } from '@/src/domains/integrations/hooks/useSyncOp
 import {
   collapseAllNodes,
   resolveAncestors,
-  expandToSyncRoots,
+  fetchAncestorContents,
   getWizardExpandPref,
   setWizardExpandPref,
 } from './tree-expansion-utils'
@@ -232,6 +232,8 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   // Step 3: Saving state for the "Save & Sync" button
   const [isSaving, setIsSaving] = useState(false)
   const [isAutoExpanding, setIsAutoExpanding] = useState(false)
+  const hasAutoExpandedRef = useRef(false)
+  const [isTreeAutoExpanded, setIsTreeAutoExpanded] = useState(false)
 
   // ============================================
   // Tri-state selection via hook
@@ -279,6 +281,8 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     resetTriState()
     setExistingScopes([])
     setIsAutoExpanding(false)
+    hasAutoExpandedRef.current = false
+    setIsTreeAutoExpanded(false)
     setIsSaving(false)
   }, [resetTriState])
 
@@ -566,7 +570,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, connectionId])
 
-  // PRD-118: Auto-expand to sync roots on libraries step entry
+  // PRD-118: Auto-expand to sync roots on libraries step entry (fires exactly once)
   useEffect(() => {
     if (step !== 'libraries' || !connectionId || existingScopes.length === 0) return
 
@@ -574,8 +578,10 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     const allLoaded = Array.from(siteLibraries.values()).every(entry => entry.isLoaded)
     if (!allLoaded || siteLibraries.size === 0) return
 
+    if (hasAutoExpandedRef.current) return
     if (getWizardExpandPref(connectionId) === 'collapsed') return
 
+    hasAutoExpandedRef.current = true
     const timer = setTimeout(() => {
       handleExpandToSyncRoots()
     }, 100)
@@ -809,6 +815,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
       }
       return next
     })
+    setIsTreeAutoExpanded(false)
     if (connectionId) {
       setWizardExpandPref(connectionId, 'collapsed')
     }
@@ -819,57 +826,193 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
     setIsAutoExpanding(true)
     try {
-      // Group scopes by type: library-level vs folder-level
+      // Categorize scopes: library-level vs folder-level
+      const libraryDriveIdsToExpand = new Set<string>()
       const folderScopesByDrive = new Map<string, string[]>()
 
       for (const scope of existingScopes) {
         if (!scope.scopeResourceId || scope.scopeType === 'root') continue
 
         if (scope.scopeType === 'library') {
-          // Library-level: just expand the library toggle
-          // Find which site has this library
-          for (const [siteId, siteEntry] of siteLibraries) {
-            const lib = siteEntry.libraries.find(l => l.driveId === scope.scopeResourceId)
-            if (lib && !lib.isExpanded) {
-              await handleToggleLibraryExpand(siteId, scope.scopeResourceId)
-            }
-          }
+          libraryDriveIdsToExpand.add(scope.scopeResourceId)
         } else if (scope.remoteDriveId) {
-          // Folder-level: group by drive for ancestor resolution
+          libraryDriveIdsToExpand.add(scope.remoteDriveId)
           const arr = folderScopesByDrive.get(scope.remoteDriveId) ?? []
           arr.push(scope.scopeResourceId)
           folderScopesByDrive.set(scope.remoteDriveId, arr)
         }
       }
 
-      // Resolve ancestors for folder-level scopes and expand
-      for (const [driveId, itemIds] of folderScopesByDrive) {
-        const chains = await resolveAncestors(connectionId, itemIds, driveId)
+      // Map driveId → siteId from siteLibraries
+      const driveToSiteMap = new Map<string, string>()
+      for (const [siteId, siteEntry] of siteLibraries) {
+        for (const lib of siteEntry.libraries) {
+          driveToSiteMap.set(lib.driveId, siteId)
+        }
+      }
 
-        // First ensure the library containing these folders is expanded
-        for (const [siteId, siteEntry] of siteLibraries) {
-          const lib = siteEntry.libraries.find(l => l.driveId === driveId)
-          if (lib && !lib.isExpanded) {
-            await handleToggleLibraryExpand(siteId, driveId)
+      // Resolve ancestors for folder-level scopes in parallel
+      const allChains: Record<string, string[]> = {}
+      const resolvePromises: Promise<void>[] = []
+      for (const [driveId, itemIds] of folderScopesByDrive) {
+        resolvePromises.push(
+          resolveAncestors(connectionId, itemIds, driveId).then(chains => {
+            Object.assign(allChains, chains)
+          })
+        )
+      }
+      await Promise.all(resolvePromises)
+
+      // Identify which libraries need root folder fetching and which ancestors need content fetching
+      const libraryRootFetches: Array<{ siteId: string; driveId: string }> = []
+      for (const driveId of libraryDriveIdsToExpand) {
+        const siteId = driveToSiteMap.get(driveId)
+        if (!siteId) continue
+        const siteEntry = siteLibraries.get(siteId)
+        const lib = siteEntry?.libraries.find(l => l.driveId === driveId)
+        if (lib && lib.folders === null) {
+          libraryRootFetches.push({ siteId, driveId })
+        }
+      }
+
+      // Fetch library root folders and ancestor folder contents in parallel
+      const libraryRootContents = new Map<string, FolderListResult>()
+      const fetchPromises: Promise<void>[] = []
+
+      for (const { siteId, driveId } of libraryRootFetches) {
+        fetchPromises.push(
+          fetch(
+            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/sites/${siteId}/libraries/${driveId}/browse`,
+            { credentials: 'include' }
+          ).then(async (response) => {
+            if (response.ok) {
+              const data = await response.json() as FolderListResult
+              libraryRootContents.set(driveId, data)
+            } else {
+              console.warn(`[SharePointWizard] Failed to fetch library root ${driveId}: HTTP ${response.status}`)
+            }
+          }).catch((error) => {
+            console.warn(`[SharePointWizard] Error fetching library root ${driveId}:`, error)
+          })
+        )
+      }
+
+      // Also fetch ancestor contents
+      const ancestorContentsPromise = Object.keys(allChains).length > 0
+        ? fetchAncestorContents({
+            ancestorChains: allChains,
+            browseUrlResolver: (nodeId) => {
+              // Find which drive/site this ancestor belongs to
+              for (const [driveId, itemIds] of folderScopesByDrive) {
+                for (const scopeId of itemIds) {
+                  const chain = allChains[scopeId]
+                  if (chain?.includes(nodeId)) {
+                    const siteId = driveToSiteMap.get(driveId)
+                    return `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/sites/${siteId}/libraries/${driveId}/browse/${nodeId}`
+                  }
+                }
+              }
+              // Fallback (shouldn't happen)
+              return `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/browse/${nodeId}`
+            },
+          })
+        : Promise.resolve(new Map<string, import('@bc-agent/shared').ExternalFileItem[]>())
+
+      fetchPromises.push(ancestorContentsPromise.then(() => {}))
+      await Promise.all(fetchPromises)
+
+      const ancestorContents = await ancestorContentsPromise
+
+      // Single setSiteLibraries call that applies everything
+      setSiteLibraries(prev => {
+        const next = new Map(prev)
+
+        for (const [siteId, siteEntry] of next) {
+          let changed = false
+          const updatedLibs = siteEntry.libraries.map(lib => {
+            if (!libraryDriveIdsToExpand.has(lib.driveId)) return lib
+
+            changed = true
+            let folders: TreeNodeData[] | null = lib.folders
+
+            // If library root wasn't loaded, apply fetched root content
+            if (folders === null) {
+              const rootData = libraryRootContents.get(lib.driveId)
+              if (rootData) {
+                const sorted = sortItems(rootData.items)
+                folders = sorted.map(item => ({
+                  item,
+                  children: item.isFolder ? null : [],
+                  isExpanded: false,
+                  isLoading: false,
+                }))
+              }
+            }
+
+            if (folders === null) return { ...lib, isExpanded: true }
+
+            // Deep-clone folders so we can mutate
+            const clonedFolders: TreeNodeData[] = structuredClone(folders)
+
+            // Build a map for quick lookups
+            const folderMap = new Map<string, TreeNodeData>()
+            const registerAll = (nodes: TreeNodeData[]) => {
+              for (const n of nodes) {
+                folderMap.set(n.item.id, n)
+                if (n.children) registerAll(n.children)
+              }
+            }
+            registerAll(clonedFolders)
+
+            // Collect ancestor IDs for this library's drive
+            const driveId = lib.driveId
+            const driveItemIds = folderScopesByDrive.get(driveId) ?? []
+            for (const scopeId of driveItemIds) {
+              const chain = allChains[scopeId]
+              if (!chain) continue
+              for (const ancestorId of chain) {
+                const node = folderMap.get(ancestorId)
+                if (!node) continue
+                if (node.children !== null) {
+                  node.isExpanded = true
+                } else {
+                  const items = ancestorContents.get(ancestorId)
+                  if (items) {
+                    const children: TreeNodeData[] = items.map(item => ({
+                      item,
+                      children: item.isFolder ? null : [],
+                      isExpanded: false,
+                      isLoading: false,
+                    }))
+                    node.children = children
+                    node.isExpanded = true
+                    for (const child of children) {
+                      folderMap.set(child.item.id, child)
+                    }
+                  }
+                }
+              }
+            }
+
+            return { ...lib, isExpanded: true, isFoldersLoading: false, folders: clonedFolders }
+          })
+
+          if (changed) {
+            next.set(siteId, { ...siteEntry, libraries: updatedLibs })
           }
         }
 
-        // Expand ancestors level by level within the library
-        await expandToSyncRoots({
-          ancestorChains: chains,
-          fetchAndExpandNode: async (nodeId) => {
-            await handleToggleFolderExpand(nodeId)
-          },
-        })
-      }
+        return next
+      })
 
+      setIsTreeAutoExpanded(true)
       setWizardExpandPref(connectionId, 'auto-expand')
     } catch (err) {
       console.error('[SharePointWizard] Auto-expand failed:', err)
     } finally {
       setIsAutoExpanding(false)
     }
-  }, [connectionId, existingScopes, siteLibraries, handleToggleLibraryExpand, handleToggleFolderExpand])
+  }, [connectionId, existingScopes, siteLibraries])
 
   // ============================================
   // Done / Close
@@ -1101,44 +1244,30 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
                 <span className="text-sm font-medium text-muted-foreground">Libraries</span>
                 <div className="flex items-center gap-1">
                   {existingScopes.length > 0 && (
-                    <>
-                      <TooltipProvider delayDuration={300}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              onClick={handleExpandToSyncRoots}
-                              disabled={isAutoExpanding}
-                            >
-                              {isAutoExpanding ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : (
-                                <UnfoldVertical className="size-3.5" />
-                              )}
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Expand to synced items</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider delayDuration={300}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="size-7"
-                              onClick={handleCollapseAll}
-                              disabled={isAutoExpanding}
-                            >
-                              <FoldVertical className="size-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">Collapse all</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    </>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            onClick={isTreeAutoExpanded ? handleCollapseAll : handleExpandToSyncRoots}
+                            disabled={isAutoExpanding}
+                          >
+                            {isAutoExpanding ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : isTreeAutoExpanded ? (
+                              <Minimize2 className="size-3.5" />
+                            ) : (
+                              <Maximize2 className="size-3.5" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {isTreeAutoExpanded ? 'Collapse all' : 'Expand to synced items'}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                   <Button
                     variant={isSyncAll ? 'default' : 'outline'}

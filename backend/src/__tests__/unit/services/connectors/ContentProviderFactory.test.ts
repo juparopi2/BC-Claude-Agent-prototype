@@ -7,7 +7,7 @@
  * Covers:
  * - 'local' → BlobContentProvider (via getBlobContentProvider)
  * - 'onedrive' → GraphApiContentProvider (PRD-101)
- * - 'sharepoint' → throws not-implemented error (PRD-103)
+ * - 'sharepoint' → GraphApiContentProvider (same as OneDrive, via Microsoft Graph drives API)
  * - unknown → throws unknown source type error
  */
 
@@ -77,12 +77,10 @@ describe('ContentProviderFactory', () => {
       expect(provider).toBe(mockGraphApiProvider);
     });
 
-    it("throws 'not implemented' for 'sharepoint' source type", () => {
-      expect(() => factory.getProvider('sharepoint')).toThrow(
-        expect.objectContaining({
-          message: expect.stringContaining('PRD-101'),
-        })
-      );
+    it("returns GraphApiContentProvider for 'sharepoint' source type", () => {
+      const provider = factory.getProvider('sharepoint');
+
+      expect(provider).toBe(mockGraphApiProvider);
     });
 
     it('throws for unknown source type', () => {

@@ -115,8 +115,29 @@ export class FileExtractWorker {
         );
       });
 
+      // Emit failure WebSocket events (permanently_failed + readiness_changed)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await this.emitFailureEvents(userId, fileId, errorMessage).catch((emitErr) => {
+        jobLogger.error(
+          { error: emitErr instanceof Error ? emitErr.message : String(emitErr) },
+          'Failed to emit failure WebSocket events',
+        );
+      });
+
       throw error; // Re-throw for BullMQ retry
     }
+  }
+
+  private async emitFailureEvents(
+    userId: string,
+    fileId: string,
+    errorMessage: string,
+  ): Promise<void> {
+    const { getProcessingRetryManager } = await import(
+      '@/domains/files/retry/ProcessingRetryManager'
+    );
+    const retryManager = getProcessingRetryManager();
+    await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
   }
 
   private async addToDLQ(

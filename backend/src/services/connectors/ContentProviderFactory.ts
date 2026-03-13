@@ -2,8 +2,8 @@
  * ContentProviderFactory
  *
  * Maps file source types to their corresponding IFileContentProvider implementations.
- * Supports local blob storage now; OneDrive and SharePoint providers are planned for
- * PRD-101 and PRD-103 respectively.
+ * Local files use BlobContentProvider. Both OneDrive and SharePoint use
+ * GraphApiContentProvider, which accesses content via the Microsoft Graph drives API.
  *
  * @module services/connectors
  */
@@ -21,7 +21,7 @@ export class ContentProviderFactory {
    * Get the IFileContentProvider for the given source type.
    *
    * @param sourceType - One of FILE_SOURCE_TYPE values ('local', 'onedrive', 'sharepoint')
-   * @throws Error if the provider is not yet implemented
+   * @throws Error if the source type is unknown
    */
   getProvider(sourceType: string): IFileContentProvider {
     logger.info({ sourceType }, 'Resolving content provider');
@@ -34,7 +34,7 @@ export class ContentProviderFactory {
         return getGraphApiContentProvider();
 
       case FILE_SOURCE_TYPE.SHAREPOINT:
-        throw new Error(`Provider not implemented: ${sourceType} (PRD-101/PRD-103)`);
+        return getGraphApiContentProvider();
 
       default:
         throw new Error(`Unknown source type: ${sourceType}`);

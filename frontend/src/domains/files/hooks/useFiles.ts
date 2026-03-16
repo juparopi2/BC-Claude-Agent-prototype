@@ -54,7 +54,7 @@ export interface UseFilesReturn {
   /** Refresh current folder */
   refreshCurrentFolder: () => Promise<void>;
   /** Toggle favorite status for a file */
-  toggleFavorite: (fileId: string) => Promise<void>;
+  toggleFavorite: (fileId: string, currentIsFavorite: boolean) => Promise<void>;
 }
 
 /**
@@ -227,24 +227,56 @@ export function useFiles(): UseFilesReturn {
   }, [fetchFiles, currentFolderId]);
 
   // Toggle favorite status
+  const deleteFilesFromList = useFileListStore((state) => state.deleteFiles);
   const toggleFavorite = useCallback(
-    async (fileId: string) => {
-      const file = files.find((f) => f.id === fileId);
-      if (!file) return;
-
+    async (fileId: string, currentIsFavorite: boolean) => {
       try {
         const fileApi = getFileApiClient();
         const result = await fileApi.updateFile(fileId, {
-          isFavorite: !file.isFavorite,
+          isFavorite: !currentIsFavorite,
         });
         if (result.success) {
-          updateFile(fileId, { isFavorite: result.data.file.isFavorite });
+          const newIsFavorite = result.data.file.isFavorite;
+          const isInFavoritesMode = useSortFilterStore.getState().showFavoritesOnly;
+
+          if (isInFavoritesMode && !newIsFavorite) {
+            // Unfavorited in favorites mode → remove from file list and tree
+            deleteFilesFromList([fileId]);
+            useFolderTreeStore.getState().removeFileFromAllCaches(fileId);
+          } else if (isInFavoritesMode && newIsFavorite) {
+            // Added to favorites while in favorites mode → re-fetch to show it
+            // (file might come from tree context menu on a different scope)
+            updateFile(fileId, { isFavorite: newIsFavorite });
+            useFolderTreeStore.getState().updateTreeFolder(fileId, { isFavorite: newIsFavorite });
+            // Re-fetch the file list to include the newly favorited item
+            const currentSourceFilter = useSortFilterStore.getState().sourceTypeFilter;
+            const folderId = useFolderTreeStore.getState().currentFolderId;
+            const fetchOpts: GetFilesOptions = {
+              folderId: folderId ?? null,
+              favoritesOnly: true,
+              sourceType: currentSourceFilter ?? FILE_SOURCE_TYPE.LOCAL,
+            };
+            if (currentSourceFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+              const { activeSiteContext: siteCtx, activeLibraryContext: libCtx } = useFolderTreeStore.getState();
+              if (siteCtx?.siteId) fetchOpts.siteId = siteCtx.siteId;
+              if (libCtx?.scopeId) fetchOpts.connectionScopeId = libCtx.scopeId;
+            }
+            const refreshResult = await fileApi.getFiles(fetchOpts);
+            if (refreshResult.success) {
+              const { files: fetchedFiles, pagination } = refreshResult.data;
+              setFiles(fetchedFiles, pagination.total, pagination.offset + fetchedFiles.length < pagination.total);
+            }
+          } else {
+            // Normal mode: just update the flag in place
+            updateFile(fileId, { isFavorite: newIsFavorite });
+            useFolderTreeStore.getState().updateTreeFolder(fileId, { isFavorite: newIsFavorite });
+          }
         }
       } catch (err) {
         console.error('Failed to toggle favorite:', err);
       }
     },
-    [files, updateFile]
+    [updateFile, deleteFilesFromList, setFiles]
   );
 
   // Re-fetch files when favorites filter, sourceType filter, or SP context changes

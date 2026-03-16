@@ -105,8 +105,8 @@ export function FileContextMenu({ file, children, onOpenChange }: FileContextMen
   }, [file, newName, renameFile, actionError]);
 
   const handleToggleFavorite = useCallback(async () => {
-    await toggleFavorite(file.id);
-  }, [file.id, toggleFavorite]);
+    await toggleFavorite(file.id, file.isFavorite);
+  }, [file.id, file.isFavorite, toggleFavorite]);
 
   const handleDelete = useCallback(async () => {
     setIsDeleting(true);

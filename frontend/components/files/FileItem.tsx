@@ -18,7 +18,7 @@ interface FileItemProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onSe
   isFocused?: boolean;
   onSelect: (fileId: string, multi: boolean) => void;
   onDoubleClick: (file: ParsedFile) => void;
-  onFavoriteToggle: (fileId: string) => void;
+  onFavoriteToggle: (fileId: string, currentIsFavorite: boolean) => void;
 }
 
 /**
@@ -74,9 +74,9 @@ export const FileItem = memo(forwardRef<HTMLDivElement, FileItemProps>(function 
   const handleFavoriteClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onFavoriteToggle(file.id);
+      onFavoriteToggle(file.id, file.isFavorite);
     },
-    [file.id, onFavoriteToggle]
+    [file.id, file.isFavorite, onFavoriteToggle]
   );
 
 

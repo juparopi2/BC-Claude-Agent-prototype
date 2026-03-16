@@ -26,7 +26,7 @@ function getDisplayDate(file: ParsedFile): string {
 }
 
 export function createFileColumns(callbacks: {
-  onFavoriteToggle: (fileId: string) => void;
+  onFavoriteToggle: (fileId: string, currentIsFavorite: boolean) => void;
 }): ColumnDef<ParsedFile>[] {
   return [
     // Favorite column
@@ -40,7 +40,7 @@ export function createFileColumns(callbacks: {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              callbacks.onFavoriteToggle(file.id);
+              callbacks.onFavoriteToggle(file.id, file.isFavorite);
             }}
             className={cn(
               'p-1 rounded hover:bg-accent transition-colors',

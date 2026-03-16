@@ -166,8 +166,8 @@ export function FileList() {
     }
   }, [navigateToFolder, previewableFiles, openFolderPreview]);
 
-  const handleFavoriteToggle = useCallback((fileId: string) => {
-    toggleFavorite(fileId);
+  const handleFavoriteToggle = useCallback((fileId: string, currentIsFavorite: boolean) => {
+    toggleFavorite(fileId, currentIsFavorite);
   }, [toggleFavorite]);
 
   // Loading state

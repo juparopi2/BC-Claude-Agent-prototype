@@ -12,14 +12,17 @@ interface SiteTreeItemProps {
   site: SharePointSiteNode;
   level: number;
   onSiteSelect: (siteId: string, siteName: string) => void;
+  /** Called when a library is selected in the tree */
+  onLibrarySelect?: (siteId: string, siteName: string, driveId: string, libraryName: string, scopeId?: string) => void;
   /** Called when a folder inside this site's libraries is clicked in the tree */
-  onFolderSelect?: (siteId: string, siteName: string, folderId: string, folder: ParsedFile) => void;
+  onFolderSelect?: (siteId: string, siteName: string, folderId: string, folder: ParsedFile, driveId: string, libraryName: string, scopeId?: string) => void;
 }
 
 export const SiteTreeItem = memo(function SiteTreeItem({
   site,
   level,
   onSiteSelect,
+  onLibrarySelect,
   onFolderSelect,
 }: SiteTreeItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -28,17 +31,23 @@ export const SiteTreeItem = memo(function SiteTreeItem({
     onSiteSelect(site.siteId, site.displayName);
   }, [site.siteId, site.displayName, onSiteSelect]);
 
-  const handleLibrarySelect = useCallback(() => {
-    // Selecting a library also activates the site context
-    onSiteSelect(site.siteId, site.displayName);
-  }, [site.siteId, site.displayName, onSiteSelect]);
+  const handleLibrarySelect = useCallback(
+    (driveId: string, libraryName: string, scopeId?: string) => {
+      if (onLibrarySelect) {
+        onLibrarySelect(site.siteId, site.displayName, driveId, libraryName, scopeId);
+      } else {
+        onSiteSelect(site.siteId, site.displayName);
+      }
+    },
+    [site.siteId, site.displayName, onSiteSelect, onLibrarySelect]
+  );
 
   // Site-bound folder select: binds siteId/siteName so child FolderTreeItems
   // can trigger full source-switching via the parent handler
   const handleFolderSelect = useMemo(() => {
     if (!onFolderSelect) return undefined;
-    return (folderId: string, folder: ParsedFile) => {
-      onFolderSelect(site.siteId, site.displayName, folderId, folder);
+    return (folderId: string, folder: ParsedFile, driveId: string, libraryName: string, scopeId?: string) => {
+      onFolderSelect(site.siteId, site.displayName, folderId, folder, driveId, libraryName, scopeId);
     };
   }, [site.siteId, site.displayName, onFolderSelect]);
 

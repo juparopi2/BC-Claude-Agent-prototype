@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { Home, Star, ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
 import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { cn } from '@/lib/utils';
@@ -82,8 +82,13 @@ export function FolderTree({ className }: FolderTreeProps) {
       setLoadingFolder('onedrive-root', true);
       try {
         const fileApi = getFileApiClient();
+        const currentFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
         const [foldersResult, scopesResponse] = await Promise.all([
-          fileApi.getFiles({ folderId: null, sourceType: FILE_SOURCE_TYPE.ONEDRIVE }),
+          fileApi.getFiles({
+            folderId: null,
+            sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+            ...(currentFavoritesOnly ? { favoritesOnly: true } : {}),
+          }),
           oneDriveConnection
             ? fetch(`${env.apiUrl}${CONNECTIONS_API.BASE}/${oneDriveConnection.id}/scopes`, { credentials: 'include' })
             : Promise.resolve(null),
@@ -255,6 +260,51 @@ export function FolderTree({ className }: FolderTreeProps) {
     initFolderTree();
   }, [initFolderTree, showFavoritesOnly]);
 
+  // Re-load OneDrive folders when favorites mode changes
+  const prevFavRef = useRef(showFavoritesOnly);
+  useEffect(() => {
+    if (prevFavRef.current !== showFavoritesOnly) {
+      prevFavRef.current = showFavoritesOnly;
+      // Invalidate to force re-fetch with new filter on next render
+      useFolderTreeStore.getState().invalidateTreeFolder('onedrive-root');
+      // Reset the loading ref so the load effect can re-fire
+      odLoadingRef.current = false;
+    }
+  }, [showFavoritesOnly]);
+
+  // SP favorites filtering: when favorites mode is ON, check which sites have favorite files
+  const [spFavSiteIds, setSpFavSiteIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!showFavoritesOnly || !isSPExpanded || sharepointSites.length === 0) {
+      setSpFavSiteIds(null); // null = show all (no filter)
+      return;
+    }
+
+    let cancelled = false;
+    const checkSites = async () => {
+      const fileApi = getFileApiClient();
+      const checks = await Promise.all(
+        sharepointSites.map(async (site) => {
+          const result = await fileApi.getFiles({
+            favoritesOnly: true,
+            sourceType: FILE_SOURCE_TYPE.SHAREPOINT,
+            siteId: site.siteId,
+            limit: 1,
+          });
+          return {
+            siteId: site.siteId,
+            hasFavorites: result.success && result.data.files.length > 0,
+          };
+        })
+      );
+      if (!cancelled) {
+        setSpFavSiteIds(new Set(checks.filter((c) => c.hasFavorites).map((c) => c.siteId)));
+      }
+    };
+    checkSites();
+    return () => { cancelled = true; };
+  }, [showFavoritesOnly, isSPExpanded, sharepointSites]);
+
   const handleSelect = useCallback((folderId: string | null, folder?: ParsedFile) => {
     // Clear source type filter when navigating to a local folder
     if (sourceTypeFilter) {
@@ -305,13 +355,26 @@ export function FolderTree({ className }: FolderTreeProps) {
     navigateToFolder(null);
   }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
+  // Called when a library name is clicked in the SP tree
+  const handleLibrarySelect = useCallback(
+    (siteId: string, siteName: string, driveId: string, libraryName: string, scopeId?: string) => {
+      setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
+      setActiveSiteContext({ siteId, siteName });
+      useFolderTreeStore.getState().setActiveLibraryContext({ driveId, libraryName, scopeId });
+      navigateToFolder(null); // Library root → shows library's files
+    },
+    [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]
+  );
+
   // Called when any folder inside a SP site's library is clicked in the tree
   const handleSharePointFolderSelect = useCallback(
-    (siteId: string, siteName: string, folderId: string, folder: ParsedFile) => {
+    (siteId: string, siteName: string, folderId: string, folder: ParsedFile,
+     driveId: string, libraryName: string, scopeId?: string) => {
       if (sourceTypeFilter !== FILE_SOURCE_TYPE.SHAREPOINT) {
         setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
       }
       setActiveSiteContext({ siteId, siteName });
+      useFolderTreeStore.getState().setActiveLibraryContext({ driveId, libraryName, scopeId });
       navigateToFolder(folderId, folder);
     },
     [navigateToFolder, sourceTypeFilter, setSourceTypeFilter, setActiveSiteContext]
@@ -357,7 +420,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                 <Home className="size-4 text-muted-foreground" />
               )}
               <span className="text-sm font-medium">
-                {showFavoritesOnly ? 'Favorites' : (hasExternalConnection ? 'Local Files' : 'All Files')}
+                {hasExternalConnection ? 'Local Files' : 'All Files'}
               </span>
             </button>
           </div>
@@ -510,12 +573,16 @@ export function FolderTree({ className }: FolderTreeProps) {
                     ) : isLoadingSpSites ? (
                       <FolderTreeSkeleton />
                     ) : (
-                      sharepointSites.map((site) => (
+                      (spFavSiteIds
+                        ? sharepointSites.filter((s) => spFavSiteIds.has(s.siteId))
+                        : sharepointSites
+                      ).map((site) => (
                         <SiteTreeItem
                           key={site.siteId}
                           site={site}
                           level={1}
                           onSiteSelect={handleSiteSelect}
+                          onLibrarySelect={handleLibrarySelect}
                           onFolderSelect={handleSharePointFolderSelect}
                         />
                       ))

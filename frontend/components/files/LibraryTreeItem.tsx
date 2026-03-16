@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, memo, useEffect } from 'react';
+import { useCallback, memo, useEffect, useMemo } from 'react';
 import { BookOpen, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
@@ -18,9 +18,9 @@ interface LibraryTreeItemProps {
   library: SharePointLibraryNode;
   siteId: string;
   level: number;
-  onSelect: () => void;
+  onSelect: (driveId: string, libraryName: string, scopeId?: string) => void;
   /** Propagated to child FolderTreeItems so SP folder clicks update source context */
-  onFolderSelect?: (folderId: string, folder: ParsedFile) => void;
+  onFolderSelect?: (folderId: string, folder: ParsedFile, driveId: string, libraryName: string, scopeId?: string) => void;
 }
 
 export const LibraryTreeItem = memo(function LibraryTreeItem({
@@ -100,8 +100,16 @@ export const LibraryTreeItem = memo(function LibraryTreeItem({
   }, [isExpanded, isLoaded, isLoading, cacheKey, library.scopeId, library.folderScopes, siteId, setLoadingFolder, setTreeFolders]);
 
   const handleSelect = useCallback(() => {
-    onSelect();
-  }, [onSelect]);
+    onSelect(library.driveId, library.displayName, library.scopeId);
+  }, [onSelect, library.driveId, library.displayName, library.scopeId]);
+
+  // Wrap onFolderSelect to include library info for child FolderTreeItems
+  const handleChildFolderSelect = useMemo(() => {
+    if (!onFolderSelect) return undefined;
+    return (folderId: string, folder: ParsedFile) => {
+      onFolderSelect(folderId, folder, library.driveId, library.displayName, library.scopeId);
+    };
+  }, [onFolderSelect, library.driveId, library.displayName, library.scopeId]);
 
   const handleToggleExpand = useCallback(() => {
     toggleFolderExpanded(cacheKey);
@@ -149,7 +157,7 @@ export const LibraryTreeItem = memo(function LibraryTreeItem({
             key={folder.id}
             folder={folder}
             level={level + 1}
-            onSelect={onFolderSelect}
+            onSelect={handleChildFolderSelect}
           />
         ))}
       </CollapsibleContent>

@@ -91,6 +91,10 @@ export interface FolderTreeActions {
   setSharepointSiteCache: (sites: SharePointSite[]) => void;
   /** Store OneDrive scope file counts keyed by scope display name */
   setOneDriveScopeFileCounts: (counts: Record<string, number>) => void;
+  /** Update a folder's properties across all tree caches (e.g. after favorite toggle) */
+  updateTreeFolder: (folderId: string, updates: Partial<ParsedFile>) => void;
+  /** Remove a file/folder by ID from all tree caches (e.g. unfavorite in favorites mode) */
+  removeFileFromAllCaches: (fileId: string) => void;
 }
 
 /**
@@ -244,6 +248,40 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
 
       setOneDriveScopeFileCounts: (counts) => {
         set({ oneDriveScopeFileCounts: counts });
+      },
+
+      updateTreeFolder: (folderId, updates) => {
+        set((state) => {
+          let changed = false;
+          const newTreeFolders: Record<string, ParsedFile[]> = {};
+          for (const [parentId, children] of Object.entries(state.treeFolders)) {
+            const idx = children.findIndex((f) => f.id === folderId);
+            if (idx >= 0) {
+              newTreeFolders[parentId] = children.map((f, i) =>
+                i === idx ? { ...f, ...updates } : f
+              );
+              changed = true;
+            } else {
+              newTreeFolders[parentId] = children;
+            }
+          }
+          return changed ? { treeFolders: newTreeFolders } : state;
+        });
+      },
+
+      removeFileFromAllCaches: (fileId) => {
+        set((state) => {
+          let changed = false;
+          const newTreeFolders: Record<string, ParsedFile[]> = {};
+          for (const [parentId, children] of Object.entries(state.treeFolders)) {
+            const filtered = children.filter((f) => f.id !== fileId);
+            if (filtered.length !== children.length) {
+              changed = true;
+            }
+            newTreeFolders[parentId] = filtered;
+          }
+          return changed ? { treeFolders: newTreeFolders } : state;
+        });
       },
 
       getRootFolders: () => {

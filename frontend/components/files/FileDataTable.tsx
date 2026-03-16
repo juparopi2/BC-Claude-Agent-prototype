@@ -205,8 +205,8 @@ export function FileDataTable() {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleFavoriteToggle = useCallback((fileId: string) => {
-    toggleFavorite(fileId);
+  const handleFavoriteToggle = useCallback((fileId: string, currentIsFavorite: boolean) => {
+    toggleFavorite(fileId, currentIsFavorite);
   }, [toggleFavorite]);
 
   // Create columns with stable reference

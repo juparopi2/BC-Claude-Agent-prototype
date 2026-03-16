@@ -99,7 +99,7 @@ export function FileBreadcrumb() {
           />
         )}
         <span className="sr-only sm:not-sr-only">
-          {showFavoritesOnly ? 'Favorites' : sourceUI.displayName}
+          {sourceUI.displayName}
         </span>
       </button>
 

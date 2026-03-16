@@ -87,7 +87,7 @@ export class SubscriptionRenewalWorker {
     const staleThreshold = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
     const staleScopeRows = await prisma.connection_scopes.findMany({
       where: {
-        sync_status: 'idle',
+        sync_status: { in: ['synced', 'idle'] },
         last_sync_cursor: { not: null },
         last_sync_at: { lt: staleThreshold },
       },

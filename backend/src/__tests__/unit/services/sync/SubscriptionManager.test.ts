@@ -126,6 +126,7 @@ const sampleScope = {
 
 const sampleConnection = {
   microsoft_drive_id: DRIVE_ID,
+  provider: 'onedrive' as string,
 };
 
 // Graph API subscription response
@@ -211,19 +212,44 @@ describe('SubscriptionManager', () => {
       }) });
     });
 
-    it('skips subscription for shared scopes (remote_drive_id set)', async () => {
+    it('skips subscription for OneDrive shared scopes (remote_drive_id set, provider=onedrive)', async () => {
       mockScopesFindUnique.mockResolvedValue({
         ...sampleScope,
         remote_drive_id: 'REMOTE-DRIVE-999',
       });
+      mockConnectionsFindUnique.mockResolvedValue({ microsoft_drive_id: DRIVE_ID, provider: 'onedrive' });
 
       const manager = getSubscriptionManager();
       await manager.createSubscription(CONNECTION_ID, SCOPE_ID);
 
-      // No Graph call, no DB update
+      // No Graph POST, no subscription DB update
       expect(mockGraphPost).not.toHaveBeenCalled();
       expect(mockScopesUpdate).not.toHaveBeenCalled();
-      expect(mockConnectionsFindUnique).not.toHaveBeenCalled();
+    });
+
+    // PRD-118: SharePoint folder scopes have remote_drive_id set to library driveId
+    // but they DO need subscriptions — the guard must not skip them.
+    it('creates subscription for SharePoint folder scopes (remote_drive_id set, provider=sharepoint)', async () => {
+      const libraryDriveId = 'SP-LIBRARY-DRIVE-001';
+      mockScopesFindUnique.mockResolvedValue({
+        ...sampleScope,
+        scope_type: 'folder',
+        scope_resource_id: 'SP-FOLDER-001',
+        remote_drive_id: libraryDriveId,
+        subscription_id: null,
+      });
+      mockConnectionsFindUnique.mockResolvedValue({ microsoft_drive_id: null, provider: 'sharepoint' });
+
+      const manager = getSubscriptionManager();
+      await manager.createSubscription(CONNECTION_ID, SCOPE_ID);
+
+      // Graph POST should be called with the library driveId
+      expect(mockGraphPost).toHaveBeenCalledTimes(1);
+      const [, , body] = mockGraphPost.mock.calls[0] as [string, string, Record<string, unknown>];
+      expect(body.resource).toBe(`drives/${libraryDriveId}/root`);
+
+      // DB should be updated with subscription info
+      expect(mockScopesUpdate).toHaveBeenCalledTimes(1);
     });
 
     it('resolves driveId from scope_resource_id for library scope type', async () => {

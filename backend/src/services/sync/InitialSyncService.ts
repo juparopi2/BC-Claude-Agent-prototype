@@ -426,7 +426,9 @@ export class InitialSyncService {
 
       // PRD-108: Create Graph subscription for webhook notifications
       // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
-      if (!scope.remote_drive_id) {
+      // PRD-118: SharePoint folder scopes set remote_drive_id (library driveId) but DO need subscriptions
+      const shouldCreateSubscription = !scope.remote_drive_id || connection.provider === 'sharepoint';
+      if (shouldCreateSubscription) {
         try {
           const { env } = await import('@/infrastructure/config');
           if (env.GRAPH_WEBHOOK_BASE_URL) {
@@ -619,7 +621,9 @@ export class InitialSyncService {
 
       // PRD-108: Create Graph subscription for webhook notifications
       // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
-      if (!scope.remote_drive_id) {
+      // PRD-118: SharePoint folder scopes set remote_drive_id (library driveId) but DO need subscriptions
+      const shouldCreateSubscription = !scope.remote_drive_id || connection?.provider === 'sharepoint';
+      if (shouldCreateSubscription) {
         try {
           const { env } = await import('@/infrastructure/config');
           if (env.GRAPH_WEBHOOK_BASE_URL) {

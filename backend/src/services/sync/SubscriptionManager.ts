@@ -1,9 +1,9 @@
 /**
- * SubscriptionManager (PRD-108)
+ * SubscriptionManager (PRD-108, PRD-118)
  *
  * Manages Microsoft Graph change notification subscriptions for OneDrive
- * connection scopes. Handles creation, renewal, and deletion of subscriptions,
- * as well as querying scopes with expiring subscriptions.
+ * and SharePoint connection scopes. Handles creation, renewal, and deletion
+ * of subscriptions, as well as querying scopes with expiring subscriptions.
  *
  * Design:
  * - Stateless singleton (getSubscriptionManager / __resetSubscriptionManager).
@@ -85,19 +85,21 @@ export class SubscriptionManager {
       throw new Error(`Scope not found: ${scopeId}`);
     }
 
-    // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
-    if (scope.remote_drive_id) {
-      logger.info({ connectionId, scopeId }, 'Skipping subscription for shared scope (remote drive)');
-      return;
-    }
-
-    // 2. Load connection
+    // 2. Load connection (need provider to distinguish SP folder scopes from OD shared scopes)
     const connection = await prisma.connections.findUnique({
       where: { id: connectionId },
-      select: { microsoft_drive_id: true },
+      select: { microsoft_drive_id: true, provider: true },
     });
     if (!connection) {
       throw new Error(`Connection not found: ${connectionId}`);
+    }
+
+    // PRD-110: Skip subscription for shared scopes (no webhook support for remote drives)
+    // PRD-118: SharePoint folder scopes also set remote_drive_id (to the library driveId),
+    // but they DO need subscriptions — only skip for non-SharePoint providers.
+    if (scope.remote_drive_id && connection.provider !== 'sharepoint') {
+      logger.info({ connectionId, scopeId }, 'Skipping subscription for shared scope (remote drive)');
+      return;
     }
 
     // PRD-111: Resolve driveId from scope level (SharePoint library) or connection level (OneDrive)

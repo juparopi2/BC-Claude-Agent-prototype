@@ -26,6 +26,8 @@ export interface FolderTreeState {
   loadingFolderIds: Set<string>;
   /** Cached folder children by parentId (key 'root' for root folders) */
   treeFolders: Record<string, ParsedFile[]>;
+  /** Which source sections are expanded in the folder tree sidebar */
+  expandedSections: { local: boolean; onedrive: boolean; sharepoint: boolean };
 }
 
 /**
@@ -58,6 +60,8 @@ export interface FolderTreeActions {
   removeTreeFolder: (parentId: string, folderId: string) => void;
   /** Invalidate (delete) cached children for a parent, forcing re-fetch on next expand. */
   invalidateTreeFolder: (parentId: string) => void;
+  /** Toggle or set a source section's expanded state */
+  setSectionExpanded: (section: 'local' | 'onedrive' | 'sharepoint', expanded: boolean) => void;
 }
 
 /**
@@ -69,6 +73,7 @@ const initialState: FolderTreeState = {
   expandedFolderIds: [],
   loadingFolderIds: new Set(),
   treeFolders: {},
+  expandedSections: { local: true, onedrive: false, sharepoint: false },
 };
 
 /**
@@ -181,6 +186,12 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
         });
       },
 
+      setSectionExpanded: (section, expanded) => {
+        set((state) => ({
+          expandedSections: { ...state.expandedSections, [section]: expanded },
+        }));
+      },
+
       getRootFolders: () => {
         return get().treeFolders['root'] || [];
       },
@@ -242,8 +253,9 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
     {
       name: 'bc-agent-folder-tree',
       partialize: (state) => ({
-        // Only persist expanded folders for UX continuity
+        // Only persist expanded folders and sections for UX continuity
         expandedFolderIds: state.expandedFolderIds,
+        expandedSections: state.expandedSections,
       }),
     }
   )

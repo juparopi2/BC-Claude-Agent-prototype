@@ -164,4 +164,46 @@ describe('sortFilterStore', () => {
       expect(state.showFavoritesOnly).toBe(false);
     });
   });
+
+  describe('sourceTypeFilter', () => {
+    it('should be null initially', () => {
+      const state = useSortFilterStore.getState();
+      expect(state.sourceTypeFilter).toBeNull();
+    });
+
+    it('should set to onedrive', () => {
+      const { setSourceTypeFilter } = useSortFilterStore.getState();
+
+      setSourceTypeFilter('onedrive');
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBe('onedrive');
+    });
+
+    it('should set to sharepoint', () => {
+      const { setSourceTypeFilter } = useSortFilterStore.getState();
+
+      setSourceTypeFilter('sharepoint');
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBe('sharepoint');
+    });
+
+    it('should clear back to null', () => {
+      const { setSourceTypeFilter } = useSortFilterStore.getState();
+
+      setSourceTypeFilter('onedrive');
+      setSourceTypeFilter(null);
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBeNull();
+    });
+
+    it('should reset to null on resetSortFilterStore()', () => {
+      const { setSourceTypeFilter } = useSortFilterStore.getState();
+
+      setSourceTypeFilter('onedrive');
+
+      resetSortFilterStore();
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBeNull();
+    });
+  });
 });

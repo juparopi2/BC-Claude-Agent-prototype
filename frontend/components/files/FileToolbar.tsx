@@ -36,7 +36,8 @@ interface FileToolbarProps {
 export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
   const { openFilePicker, isUploading } = useFileUploadTrigger();
   const { showFavoritesOnly, toggleFavoritesOnly, columnVisibility, setColumnVisibility, sourceTypeFilter } = useSortFilterStore();
-  const isOneDriveView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE;
+  const isCloudView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE
+    || sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT;
   const { isFileSidebarVisible: isSidebarVisible, toggleFileSidebar: toggleSidebar } = useUIPreferencesStore();
   const { isLoading, refreshCurrentFolder } = useFiles();
 
@@ -101,8 +102,8 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
           </Tooltip>
         )}
 
-        {/* Upload button — hidden in OneDrive view */}
-        {!isOneDriveView && (
+        {/* Upload button — hidden in cloud view */}
+        {!isCloudView && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -120,8 +121,8 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
           </Tooltip>
         )}
 
-        {/* New Folder button — hidden in OneDrive view */}
-        {!isOneDriveView && <CreateFolderDialog isCompact={isCompact} />}
+        {/* New Folder button — hidden in cloud view */}
+        {!isCloudView && <CreateFolderDialog isCompact={isCompact} />}
 
       </div>
       <div className="flex items-center gap-0">

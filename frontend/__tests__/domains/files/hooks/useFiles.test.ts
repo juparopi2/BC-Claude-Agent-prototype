@@ -6,17 +6,34 @@
  * @module __tests__/domains/files/hooks/useFiles
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { useFiles } from '@/src/domains/files/hooks/useFiles';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import { useFiles, __resetModuleState } from '@/src/domains/files/hooks/useFiles';
 import { resetFileListStore, useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { resetSortFilterStore, useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
+import { resetFolderTreeStore, useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
+import { getFileApiClient } from '@/src/infrastructure/api';
 import { createMockFile, createMockFolder } from '@/__tests__/fixtures/FileFixture';
+
+vi.mock('@/src/infrastructure/api', () => ({
+  getFileApiClient: vi.fn(),
+  resetFileApiClient: vi.fn(),
+}));
+
+// Default mock that satisfies the useEffect's getFileApiClient().getFiles() call
+const defaultMockGetFiles = vi.fn().mockResolvedValue({
+  success: true,
+  data: { files: [], pagination: { offset: 0, limit: 50, total: 0 } },
+});
 
 describe('useFiles', () => {
   beforeEach(() => {
     resetFileListStore();
     resetSortFilterStore();
+    resetFolderTreeStore();
+    __resetModuleState();
+    vi.clearAllMocks();
+    (getFileApiClient as Mock).mockReturnValue({ getFiles: defaultMockGetFiles });
   });
 
   describe('sortedFiles', () => {
@@ -132,10 +149,13 @@ describe('useFiles', () => {
   });
 
   describe('loading and error state', () => {
-    it('should expose loading state', () => {
+    it('should expose loading state', async () => {
       const { result } = renderHook(() => useFiles());
 
-      expect(result.current.isLoading).toBe(false);
+      // Wait for initial effect fetch to complete
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
 
       act(() => {
         useFileListStore.getState().setLoading(true);
@@ -245,6 +265,150 @@ describe('useFiles', () => {
       });
 
       expect(useSortFilterStore.getState().showFavoritesOnly).toBe(true);
+    });
+  });
+
+  describe('filter change effect', () => {
+    const mockGetFiles = vi.fn();
+
+    beforeEach(() => {
+      mockGetFiles.mockResolvedValue({
+        success: true,
+        data: {
+          files: [],
+          pagination: { offset: 0, limit: 50, total: 0 },
+        },
+      });
+      (getFileApiClient as Mock).mockReturnValue({ getFiles: mockGetFiles });
+    });
+
+    describe('sourceTypeFilter change', () => {
+      it('should NOT reset currentFolder when sourceTypeFilter changes', async () => {
+        // Setup: user is inside a folder
+        act(() => {
+          useFolderTreeStore.getState().setCurrentFolder('FOLDER-123', []);
+        });
+
+        const { result } = renderHook(() => useFiles());
+
+        // Wait for initial fetch triggered by the effect
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(1);
+        });
+
+        // Now change source type filter
+        act(() => {
+          useSortFilterStore.getState().setSourceTypeFilter('onedrive');
+        });
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(2);
+        });
+
+        // THE KEY REGRESSION TEST: currentFolder must NOT be reset
+        expect(useFolderTreeStore.getState().currentFolderId).toBe('FOLDER-123');
+      });
+
+      it('should fetch with new sourceType when filter changes', async () => {
+        const { result } = renderHook(() => useFiles());
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(1);
+        });
+
+        act(() => {
+          useSortFilterStore.getState().setSourceTypeFilter('sharepoint');
+        });
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(2);
+        });
+
+        expect(mockGetFiles).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sourceType: 'sharepoint' })
+        );
+      });
+
+      it('should preserve currentFolderId in fetch options', async () => {
+        act(() => {
+          useFolderTreeStore.getState().setCurrentFolder('MY-FOLDER', []);
+        });
+
+        const { result } = renderHook(() => useFiles());
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(1);
+        });
+
+        act(() => {
+          useSortFilterStore.getState().setSourceTypeFilter('onedrive');
+        });
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(2);
+        });
+
+        expect(mockGetFiles).toHaveBeenLastCalledWith(
+          expect.objectContaining({ folderId: 'MY-FOLDER', sourceType: 'onedrive' })
+        );
+      });
+    });
+
+    describe('showFavoritesOnly change', () => {
+      it('should reset currentFolder to root when entering favorites mode', async () => {
+        // Setup: user is inside a folder
+        act(() => {
+          useFolderTreeStore.getState().setCurrentFolder('SOME-FOLDER', []);
+        });
+
+        const { result } = renderHook(() => useFiles());
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(1);
+        });
+
+        // Enter favorites mode
+        act(() => {
+          useSortFilterStore.getState().toggleFavoritesOnly();
+        });
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(2);
+        });
+
+        // Should reset to root
+        expect(useFolderTreeStore.getState().currentFolderId).toBeNull();
+        expect(useFolderTreeStore.getState().folderPath).toEqual([]);
+        // Should fetch with favoritesOnly
+        expect(mockGetFiles).toHaveBeenLastCalledWith(
+          expect.objectContaining({ folderId: null, favoritesOnly: true })
+        );
+      });
+
+      it('should NOT reset currentFolder when exiting favorites mode', async () => {
+        // Start in favorites mode
+        act(() => {
+          useSortFilterStore.getState().toggleFavoritesOnly();
+        });
+
+        const { result } = renderHook(() => useFiles());
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(1);
+        });
+
+        // Exit favorites mode
+        act(() => {
+          useSortFilterStore.getState().toggleFavoritesOnly();
+        });
+
+        await waitFor(() => {
+          expect(mockGetFiles).toHaveBeenCalledTimes(2);
+        });
+
+        // currentFolderId should remain null (was reset when entering favorites)
+        expect(useFolderTreeStore.getState().currentFolderId).toBeNull();
+      });
     });
   });
 });

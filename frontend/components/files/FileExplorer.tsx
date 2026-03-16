@@ -29,7 +29,8 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
   const { fetchFiles } = useFiles();
   const { currentFolderId } = useFolderNavigation();
   const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
-  const isOneDriveView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE;
+  const isCloudView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE
+    || sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT;
   const isSidebarVisible = useUIPreferencesStore((state) => state.isFileSidebarVisible);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -64,7 +65,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
         <div className={cn('flex flex-col h-full min-h-0', className)}>
           <FileToolbar isNarrow />
           <FileBreadcrumb />
-          <FileUploadZone disabled={isOneDriveView} className="flex-1 min-h-0 overflow-hidden">
+          <FileUploadZone isCloudView={isCloudView} className="flex-1 min-h-0 overflow-hidden">
             <FileDataTable />
           </FileUploadZone>
         </div>
@@ -101,7 +102,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           >
             <div className="flex flex-col h-full min-h-0 overflow-hidden">
               <FileBreadcrumb />
-              <FileUploadZone disabled={isOneDriveView} className="flex-1 min-h-0 overflow-hidden">
+              <FileUploadZone isCloudView={isCloudView} className="flex-1 min-h-0 overflow-hidden">
                 <FileDataTable />
               </FileUploadZone>
             </div>

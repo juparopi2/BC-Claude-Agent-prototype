@@ -251,14 +251,14 @@ export function useFiles(): UseFilesReturn {
     // When entering favorites mode, reset to root for flat favorites view
     const currentShowFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
     const currentSourceTypeFilter = useSortFilterStore.getState().sourceTypeFilter;
-    if (currentShowFavoritesOnly || currentSourceTypeFilter) {
+    if (currentShowFavoritesOnly) {
       useFolderTreeStore.getState().setCurrentFolder(null, []);
     }
 
     // Re-fetch with current folder when filter settings change
     // Use the store directly to avoid stale closures
     const fileApi = getFileApiClient();
-    const folderId = (currentShowFavoritesOnly || currentSourceTypeFilter) ? null : useFolderTreeStore.getState().currentFolderId;
+    const folderId = currentShowFavoritesOnly ? null : useFolderTreeStore.getState().currentFolderId;
 
     // Build fetch options - backend handles root vs folder logic
     const fetchOptions: GetFilesOptions = {
@@ -312,4 +312,11 @@ export function useFiles(): UseFilesReturn {
     refreshCurrentFolder,
     toggleFavorite,
   };
+}
+
+/** @internal Reset module-level coordination state (for testing only) */
+export function __resetModuleState(): void {
+  lastFetchedFilterValue = null;
+  lastFetchedSourceType = undefined;
+  filterFetchInProgress = false;
 }

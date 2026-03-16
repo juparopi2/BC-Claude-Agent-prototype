@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Home, Star, ChevronDown, ChevronRight, Loader2, Settings2 } from 'lucide-react';
 import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { cn } from '@/lib/utils';
@@ -38,10 +38,9 @@ export function FolderTree({ className }: FolderTreeProps) {
     (c) => c.status === CONNECTION_STATUS.CONNECTED || c.status === CONNECTION_STATUS.EXPIRED
   );
 
-  // Local Files collapsible state (expanded by default)
-  const [isLocalExpanded, setLocalExpanded] = useState(true);
-  // PRD-107: OneDrive expandable tree state
-  const [isOneDriveExpanded, setOneDriveExpanded] = useState(false);
+  // Section expanded state — store-backed for persistence across navigation
+  const isLocalExpanded = useFolderTreeStore((s) => s.expandedSections.local);
+  const isOneDriveExpanded = useFolderTreeStore((s) => s.expandedSections.onedrive);
   const odRootFoldersFromStore = useFolderTreeStore((s) => s.treeFolders['onedrive-root']);
   const odRootFolders = odRootFoldersFromStore ?? EMPTY_OD_FOLDERS;
   const isOdRootLoaded = odRootFoldersFromStore !== undefined;
@@ -54,7 +53,8 @@ export function FolderTree({ className }: FolderTreeProps) {
   const hasSP = spConnection?.status === CONNECTION_STATUS.CONNECTED;
   const isSPExpired = spConnection?.status === CONNECTION_STATUS.EXPIRED;
   const showSPSection = hasSP || isSPExpired;
-  const [isSPExpanded, setSPExpanded] = useState(false);
+  const isSPExpanded = useFolderTreeStore((s) => s.expandedSections.sharepoint);
+  const setSectionExpanded = useFolderTreeStore((s) => s.setSectionExpanded);
   const spRootFoldersFromStore = useFolderTreeStore((s) => s.treeFolders['sharepoint-root']);
   const spRootFolders = spRootFoldersFromStore ?? EMPTY_OD_FOLDERS;
   const isSpRootLoaded = spRootFoldersFromStore !== undefined;
@@ -168,7 +168,11 @@ export function FolderTree({ className }: FolderTreeProps) {
     <ScrollArea className={cn('h-full', className)}>
       <div className="p-2">
         {/* Local Files — collapsible section */}
-        <Collapsible open={hasExternalConnection ? isLocalExpanded : true} onOpenChange={hasExternalConnection ? setLocalExpanded : undefined}>
+        <Collapsible
+          open={hasExternalConnection ? isLocalExpanded : true}
+          onOpenChange={hasExternalConnection ? (open: boolean) => setSectionExpanded('local', open) : undefined}
+          className={cn(!sourceTypeFilter && 'border-l-2 border-l-primary')}
+        >
           <div className={cn(
             'flex items-center w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors',
             hasExternalConnection ? 'gap-1' : 'gap-2'
@@ -191,7 +195,7 @@ export function FolderTree({ className }: FolderTreeProps) {
               onClick={handleAllFiles}
               className={cn(
                 'flex items-center gap-2 flex-1 cursor-pointer',
-                currentFolderId === null && !sourceTypeFilter && (hasExternalConnection ? 'font-semibold' : 'bg-accent rounded')
+                currentFolderId === null && !sourceTypeFilter && 'bg-accent rounded font-medium'
               )}
             >
               {showFavoritesOnly ? (
@@ -225,7 +229,11 @@ export function FolderTree({ className }: FolderTreeProps) {
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <div className="mt-3 pt-3 border-t">
-                <Collapsible open={isOneDriveExpanded} onOpenChange={setOneDriveExpanded}>
+                <Collapsible
+                  open={isOneDriveExpanded}
+                  onOpenChange={(open: boolean) => setSectionExpanded('onedrive', open)}
+                  className={cn(sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && 'border-l-2 border-l-[#0078D4]')}
+                >
                   <div className="flex items-center gap-1 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors">
                     <CollapsibleTrigger asChild>
                       <button
@@ -243,7 +251,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                       onClick={handleOneDriveClick}
                       className={cn(
                         'flex items-center gap-2 flex-1 cursor-pointer',
-                        sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && !currentFolderId && 'font-semibold'
+                        sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE && !currentFolderId && 'bg-accent rounded font-medium'
                       )}
                     >
                       <OneDriveLogo className="size-4" />
@@ -299,7 +307,11 @@ export function FolderTree({ className }: FolderTreeProps) {
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <div className="mt-3 pt-3 border-t">
-                <Collapsible open={isSPExpanded} onOpenChange={setSPExpanded}>
+                <Collapsible
+                  open={isSPExpanded}
+                  onOpenChange={(open: boolean) => setSectionExpanded('sharepoint', open)}
+                  className={cn(sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT && 'border-l-2 border-l-[#038387]')}
+                >
                   <div className="flex items-center gap-1 w-full py-1.5 px-2 rounded hover:bg-accent/50 transition-colors">
                     <CollapsibleTrigger asChild>
                       <button
@@ -317,7 +329,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                       onClick={handleSharePointClick}
                       className={cn(
                         'flex items-center gap-2 flex-1 cursor-pointer',
-                        sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT && !currentFolderId && 'font-semibold'
+                        sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT && !currentFolderId && 'bg-accent rounded font-medium'
                       )}
                     >
                       <SharePointLogo className="size-4" />

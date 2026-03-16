@@ -15,7 +15,9 @@ import { useFolderNavigation } from './useFolderNavigation';
 import { useFileSelection } from './useFileSelection';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
+import { useSortFilterStore } from '../stores/sortFilterStore';
 import { buildPathToFolderAsync } from '../utils/folderPathBuilder';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 
 /**
@@ -80,6 +82,20 @@ export function useGoToFilePath(): UseGoToFilePathReturn {
         }
 
         const file = result.data.file;
+
+        // Sync source type filter to match the file's source
+        const targetSourceFilter = file.sourceType === FILE_SOURCE_TYPE.LOCAL ? null : file.sourceType;
+        useSortFilterStore.getState().setSourceTypeFilter(targetSourceFilter);
+
+        // Auto-expand the correct folder tree section
+        const folderTreeState = useFolderTreeStore.getState();
+        if (targetSourceFilter === FILE_SOURCE_TYPE.ONEDRIVE) {
+          folderTreeState.setSectionExpanded('onedrive', true);
+        } else if (targetSourceFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+          folderTreeState.setSectionExpanded('sharepoint', true);
+        } else {
+          folderTreeState.setSectionExpanded('local', true);
+        }
 
         // 2. Build the full breadcrumb path from root to parent folder
         let path: ParsedFile[] = [];

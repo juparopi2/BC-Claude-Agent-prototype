@@ -13,6 +13,8 @@ import { useGoToFilePath } from '@/src/domains/files/hooks/useGoToFilePath';
 import { resetFolderTreeStore, useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { createMockFile, createMockFolder } from '@/__tests__/fixtures/FileFixture';
+import { resetSortFilterStore, useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 
 // Mock dependencies
 vi.mock('@/src/infrastructure/api', () => ({
@@ -43,6 +45,7 @@ const mockFileApi = {
 describe('useGoToFilePath', () => {
   beforeEach(() => {
     resetFolderTreeStore();
+    resetSortFilterStore();
     vi.clearAllMocks();
     (getFileApiClient as Mock).mockReturnValue(mockFileApi);
   });
@@ -276,6 +279,188 @@ describe('useGoToFilePath', () => {
 
       // Should no longer be navigating
       expect(result.current.isNavigating).toBe(false);
+    });
+  });
+
+  describe('goToFilePath - source filter sync', () => {
+    it('should set sourceTypeFilter to null for local files', async () => {
+      // Pre-set filter to onedrive (simulating user was browsing OneDrive)
+      useSortFilterStore.getState().setSourceTypeFilter('onedrive');
+
+      const rootFile = createMockFile({
+        id: 'FILE-LOCAL',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.LOCAL,
+      });
+
+      mockFileApi.getFile.mockResolvedValue({
+        success: true,
+        data: { file: rootFile },
+      });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-LOCAL');
+      });
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBeNull();
+    });
+
+    it('should set sourceTypeFilter to onedrive for OneDrive files', async () => {
+      const onedriveFile = createMockFile({
+        id: 'FILE-OD',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+      });
+
+      mockFileApi.getFile.mockResolvedValue({
+        success: true,
+        data: { file: onedriveFile },
+      });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-OD');
+      });
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBe('onedrive');
+    });
+
+    it('should set sourceTypeFilter to sharepoint for SharePoint files', async () => {
+      const spFile = createMockFile({
+        id: 'FILE-SP',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.SHAREPOINT,
+      });
+
+      mockFileApi.getFile.mockResolvedValue({
+        success: true,
+        data: { file: spFile },
+      });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-SP');
+      });
+
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBe('sharepoint');
+    });
+  });
+
+  describe('goToFilePath - section auto-expand', () => {
+    it('should expand onedrive section for OneDrive file', async () => {
+      const onedriveFile = createMockFile({
+        id: 'FILE-OD',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+      });
+
+      mockFileApi.getFile.mockResolvedValue({
+        success: true,
+        data: { file: onedriveFile },
+      });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-OD');
+      });
+
+      expect(useFolderTreeStore.getState().expandedSections.onedrive).toBe(true);
+    });
+
+    it('should expand sharepoint section for SharePoint file', async () => {
+      const spFile = createMockFile({
+        id: 'FILE-SP',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.SHAREPOINT,
+      });
+
+      mockFileApi.getFile.mockResolvedValue({
+        success: true,
+        data: { file: spFile },
+      });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-SP');
+      });
+
+      expect(useFolderTreeStore.getState().expandedSections.sharepoint).toBe(true);
+    });
+
+    it('should expand local section for local file even if user collapsed it', async () => {
+      // User manually collapsed the local section
+      useFolderTreeStore.getState().setSectionExpanded('local', false);
+
+      const localFile = createMockFile({
+        id: 'FILE-LOCAL',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.LOCAL,
+      });
+
+      mockFileApi.getFile.mockResolvedValue({
+        success: true,
+        data: { file: localFile },
+      });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-LOCAL');
+      });
+
+      expect(useFolderTreeStore.getState().expandedSections.local).toBe(true);
+    });
+
+    it('should sync source filter AND section for nested OneDrive file', async () => {
+      const folderA = createMockFolder({
+        id: 'FOLDER-A',
+        name: 'Folder A',
+        parentFolderId: null,
+        sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+      });
+      const folderB = createMockFolder({
+        id: 'FOLDER-B',
+        name: 'Folder B',
+        parentFolderId: 'FOLDER-A',
+        sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+      });
+      const file = createMockFile({
+        id: 'FILE-OD-NESTED',
+        name: 'report.xlsx',
+        parentFolderId: 'FOLDER-B',
+        sourceType: FILE_SOURCE_TYPE.ONEDRIVE,
+      });
+
+      // Pre-populate cache
+      act(() => {
+        useFolderTreeStore.getState().setTreeFolders('root', [folderA]);
+        useFolderTreeStore.getState().setTreeFolders('FOLDER-A', [folderB]);
+      });
+
+      // Mock API calls: file -> parent folder B
+      mockFileApi.getFile
+        .mockResolvedValueOnce({ success: true, data: { file } })
+        .mockResolvedValueOnce({ success: true, data: { file: folderB } });
+
+      const { result } = renderHook(() => useGoToFilePath());
+
+      await act(async () => {
+        await result.current.goToFilePath('FILE-OD-NESTED');
+      });
+
+      // Source filter synced to onedrive
+      expect(useSortFilterStore.getState().sourceTypeFilter).toBe('onedrive');
+      // OneDrive section expanded
+      expect(useFolderTreeStore.getState().expandedSections.onedrive).toBe(true);
+      // Navigation correct
+      expect(useFolderTreeStore.getState().currentFolderId).toBe('FOLDER-B');
+      expect(useFolderTreeStore.getState().folderPath).toHaveLength(2);
     });
   });
 });

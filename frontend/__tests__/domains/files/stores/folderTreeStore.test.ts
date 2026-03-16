@@ -465,4 +465,67 @@ describe('folderTreeStore', () => {
       expect(state.expandedFolderIds).toEqual([]);
     });
   });
+
+  describe('expandedSections', () => {
+    it('should have initial values: local=true, onedrive=false, sharepoint=false', () => {
+      const state = useFolderTreeStore.getState();
+      expect(state.expandedSections).toEqual({
+        local: true,
+        onedrive: false,
+        sharepoint: false,
+      });
+    });
+
+    it('should expand a collapsed section', () => {
+      const { setSectionExpanded } = useFolderTreeStore.getState();
+
+      setSectionExpanded('onedrive', true);
+
+      expect(useFolderTreeStore.getState().expandedSections.onedrive).toBe(true);
+    });
+
+    it('should collapse an expanded section', () => {
+      const { setSectionExpanded } = useFolderTreeStore.getState();
+
+      setSectionExpanded('local', false);
+
+      expect(useFolderTreeStore.getState().expandedSections.local).toBe(false);
+    });
+
+    it('should be idempotent (setting same value twice is safe)', () => {
+      const { setSectionExpanded } = useFolderTreeStore.getState();
+
+      setSectionExpanded('onedrive', true);
+      setSectionExpanded('onedrive', true);
+
+      expect(useFolderTreeStore.getState().expandedSections.onedrive).toBe(true);
+    });
+
+    it('should not affect other sections when changing one', () => {
+      const { setSectionExpanded } = useFolderTreeStore.getState();
+
+      setSectionExpanded('onedrive', true);
+
+      const { expandedSections } = useFolderTreeStore.getState();
+      expect(expandedSections.local).toBe(true);
+      expect(expandedSections.onedrive).toBe(true);
+      expect(expandedSections.sharepoint).toBe(false);
+    });
+
+    it('should reset to initial values on resetFolderTreeStore()', () => {
+      const { setSectionExpanded } = useFolderTreeStore.getState();
+
+      setSectionExpanded('onedrive', true);
+      setSectionExpanded('sharepoint', true);
+      setSectionExpanded('local', false);
+
+      resetFolderTreeStore();
+
+      expect(useFolderTreeStore.getState().expandedSections).toEqual({
+        local: true,
+        onedrive: false,
+        sharepoint: false,
+      });
+    });
+  });
 });

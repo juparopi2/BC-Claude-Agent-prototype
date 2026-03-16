@@ -33,6 +33,8 @@ export interface FolderTreeState {
   sharepointSites: SharePointSiteNode[];
   /** Active SharePoint site context for filtering (transient, not persisted) */
   activeSiteContext: { siteId: string; siteName: string } | null;
+  /** Active SharePoint library context for filtering (transient, not persisted) */
+  activeLibraryContext: { driveId: string; libraryName: string; scopeId?: string } | null;
   /**
    * Raw SharePoint sites fetched from the connections API (transient, not persisted).
    * Populated by SharePointWizard when it fetches the sites list.
@@ -83,6 +85,8 @@ export interface FolderTreeActions {
   setSharepointSites: (sites: SharePointSiteNode[]) => void;
   /** Set the active SharePoint site context */
   setActiveSiteContext: (context: { siteId: string; siteName: string } | null) => void;
+  /** Set the active SharePoint library context */
+  setActiveLibraryContext: (context: { driveId: string; libraryName: string; scopeId?: string } | null) => void;
   /** Cache raw SharePointSite objects fetched from the connections API */
   setSharepointSiteCache: (sites: SharePointSite[]) => void;
   /** Store OneDrive scope file counts keyed by scope display name */
@@ -101,6 +105,7 @@ const initialState: FolderTreeState = {
   expandedSections: { local: true, onedrive: false, sharepoint: false },
   sharepointSites: [],
   activeSiteContext: null,
+  activeLibraryContext: null,
   sharepointSiteCache: [],
   oneDriveScopeFileCounts: {},
 };
@@ -227,6 +232,10 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
 
       setActiveSiteContext: (context) => {
         set({ activeSiteContext: context });
+      },
+
+      setActiveLibraryContext: (context) => {
+        set({ activeLibraryContext: context });
       },
 
       setSharepointSiteCache: (sites) => {

@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { useFiles, useFolderNavigation, useFileProcessingEvents } from '@/src/domains/files';
+import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useSyncEvents, useConnectionHealth } from '@/src/domains/integrations';
@@ -19,6 +20,8 @@ import { FileBreadcrumb } from './FileBreadcrumb';
 import { FileUploadZone } from './FileUploadZone';
 import { FileDataTable } from './FileDataTable';
 import { FolderTree } from './FolderTree';
+import { SharePointSitesGrid } from './SharePointSitesGrid';
+import { SharePointLibrariesGrid } from './SharePointLibrariesGrid';
 
 interface FileExplorerProps {
   className?: string;
@@ -29,8 +32,18 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
   const { fetchFiles } = useFiles();
   const { currentFolderId } = useFolderNavigation();
   const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
+  const activeSiteContext = useFolderTreeStore((s) => s.activeSiteContext);
+  const activeLibraryContext = useFolderTreeStore((s) => s.activeLibraryContext);
   const isCloudView = sourceTypeFilter === FILE_SOURCE_TYPE.ONEDRIVE
     || sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT;
+
+  // Determine if we should show SP card views instead of the file table
+  const isSharePointSitesView = sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT
+    && !activeSiteContext && !currentFolderId;
+  const isSharePointLibrariesView = sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT
+    && !!activeSiteContext && !activeLibraryContext && !currentFolderId;
+  const isSharePointCardView = isSharePointSitesView || isSharePointLibrariesView;
+
   const isSidebarVisible = useUIPreferencesStore((state) => state.isFileSidebarVisible);
   const sidebarPanelRef = useRef<ImperativePanelHandle>(null);
 
@@ -43,10 +56,11 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
   // Proactive health monitoring for external connections (Layer 3)
   useConnectionHealth();
 
-  // Load files on mount and when folder changes
+  // Load files on mount and when folder changes (skip for SP card views)
   useEffect(() => {
+    if (isSharePointCardView) return;
     fetchFiles(currentFolderId);
-  }, [fetchFiles, currentFolderId]);
+  }, [fetchFiles, currentFolderId, isSharePointCardView]);
 
   // Sync sidebar visibility with panel collapse/expand
   useEffect(() => {
@@ -58,6 +72,17 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
     }
   }, [isSidebarVisible]);
 
+  // Content area — shared between narrow and full layouts
+  const contentArea = isSharePointSitesView ? (
+    <SharePointSitesGrid />
+  ) : isSharePointLibrariesView ? (
+    <SharePointLibrariesGrid />
+  ) : (
+    <FileUploadZone isCloudView={isCloudView} className="flex-1 min-h-0 overflow-hidden">
+      <FileDataTable />
+    </FileUploadZone>
+  );
+
   // Narrow layout (no sidebar)
   if (isNarrow) {
     return (
@@ -65,9 +90,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
         <div className={cn('flex flex-col h-full min-h-0', className)}>
           <FileToolbar isNarrow />
           <FileBreadcrumb />
-          <FileUploadZone isCloudView={isCloudView} className="flex-1 min-h-0 overflow-hidden">
-            <FileDataTable />
-          </FileUploadZone>
+          {contentArea}
         </div>
       </TooltipProvider>
     );
@@ -102,9 +125,7 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
           >
             <div className="flex flex-col h-full min-h-0 overflow-hidden">
               <FileBreadcrumb />
-              <FileUploadZone isCloudView={isCloudView} className="flex-1 min-h-0 overflow-hidden">
-                <FileDataTable />
-              </FileUploadZone>
+              {contentArea}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>

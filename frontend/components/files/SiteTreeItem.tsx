@@ -1,22 +1,26 @@
 'use client';
 
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, memo, useMemo } from 'react';
 import { Globe, ChevronRight, ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { LibraryTreeItem } from './LibraryTreeItem';
+import type { ParsedFile } from '@bc-agent/shared';
 import type { SharePointSiteNode } from '@/src/domains/files/types/siteNode.types';
 
 interface SiteTreeItemProps {
   site: SharePointSiteNode;
   level: number;
   onSiteSelect: (siteId: string, siteName: string) => void;
+  /** Called when a folder inside this site's libraries is clicked in the tree */
+  onFolderSelect?: (siteId: string, siteName: string, folderId: string, folder: ParsedFile) => void;
 }
 
 export const SiteTreeItem = memo(function SiteTreeItem({
   site,
   level,
   onSiteSelect,
+  onFolderSelect,
 }: SiteTreeItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -28,6 +32,15 @@ export const SiteTreeItem = memo(function SiteTreeItem({
     // Selecting a library also activates the site context
     onSiteSelect(site.siteId, site.displayName);
   }, [site.siteId, site.displayName, onSiteSelect]);
+
+  // Site-bound folder select: binds siteId/siteName so child FolderTreeItems
+  // can trigger full source-switching via the parent handler
+  const handleFolderSelect = useMemo(() => {
+    if (!onFolderSelect) return undefined;
+    return (folderId: string, folder: ParsedFile) => {
+      onFolderSelect(site.siteId, site.displayName, folderId, folder);
+    };
+  }, [site.siteId, site.displayName, onFolderSelect]);
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
@@ -71,6 +84,7 @@ export const SiteTreeItem = memo(function SiteTreeItem({
             siteId={site.siteId}
             level={level + 1}
             onSelect={handleLibrarySelect}
+            onFolderSelect={handleFolderSelect}
           />
         ))}
       </CollapsibleContent>

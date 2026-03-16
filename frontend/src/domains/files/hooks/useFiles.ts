@@ -19,6 +19,8 @@ import type { ParsedFile, FileSortBy, SortOrder, GetFilesOptions } from '@bc-age
 // This ensures only ONE instance fetches when showFavoritesOnly changes
 let lastFetchedFilterValue: boolean | null = null;
 let lastFetchedSourceType: string | null | undefined = undefined;
+let lastFetchedSiteId: string | null | undefined = undefined;
+let lastFetchedLibraryDriveId: string | null | undefined = undefined;
 let filterFetchInProgress = false;
 
 /**
@@ -139,6 +141,10 @@ export function useFiles(): UseFilesReturn {
   // Get current folder from folder tree store
   const currentFolderId = useFolderTreeStore((state) => state.currentFolderId);
 
+  // SP context for refetch triggering
+  const activeSiteContext = useFolderTreeStore((state) => state.activeSiteContext);
+  const activeLibraryContext = useFolderTreeStore((state) => state.activeLibraryContext);
+
   // Get sort/filter state and actions
   const sortBy = useSortFilterStore((state) => state.sortBy);
   const sortOrder = useSortFilterStore((state) => state.sortOrder);
@@ -181,6 +187,17 @@ export function useFiles(): UseFilesReturn {
           fetchOptions.sourceType = currentSourceTypeFilter;
         } else {
           fetchOptions.sourceType = FILE_SOURCE_TYPE.LOCAL;
+        }
+
+        // Add SP site/library context when fetching SharePoint files
+        if (currentSourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+          const { activeSiteContext, activeLibraryContext } = useFolderTreeStore.getState();
+          if (activeSiteContext?.siteId) {
+            fetchOptions.siteId = activeSiteContext.siteId;
+          }
+          if (activeLibraryContext?.scopeId) {
+            fetchOptions.connectionScopeId = activeLibraryContext.scopeId;
+          }
         }
 
         const result = await fileApi.getFiles(fetchOptions);
@@ -230,11 +247,19 @@ export function useFiles(): UseFilesReturn {
     [files, updateFile]
   );
 
-  // Re-fetch files when favorites filter or sourceType filter changes
+  // Re-fetch files when favorites filter, sourceType filter, or SP context changes
   // Uses module-level coordination to ensure only ONE hook instance fetches
+  const activeSiteId = activeSiteContext?.siteId ?? null;
+  const activeLibraryDriveId = activeLibraryContext?.driveId ?? null;
+
   useEffect(() => {
     // Check if these filter values were already fetched (by any hook instance)
-    if (lastFetchedFilterValue === showFavoritesOnly && lastFetchedSourceType === sourceTypeFilter) {
+    if (
+      lastFetchedFilterValue === showFavoritesOnly
+      && lastFetchedSourceType === sourceTypeFilter
+      && lastFetchedSiteId === activeSiteId
+      && lastFetchedLibraryDriveId === activeLibraryDriveId
+    ) {
       return;
     }
 
@@ -247,6 +272,8 @@ export function useFiles(): UseFilesReturn {
     filterFetchInProgress = true;
     lastFetchedFilterValue = showFavoritesOnly;
     lastFetchedSourceType = sourceTypeFilter;
+    lastFetchedSiteId = activeSiteId;
+    lastFetchedLibraryDriveId = activeLibraryDriveId;
 
     // When entering favorites mode, reset to root for flat favorites view
     const currentShowFavoritesOnly = useSortFilterStore.getState().showFavoritesOnly;
@@ -276,6 +303,17 @@ export function useFiles(): UseFilesReturn {
       fetchOptions.sourceType = FILE_SOURCE_TYPE.LOCAL;
     }
 
+    // Add SP site/library context
+    if (currentSourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+      const { activeSiteContext: siteCtx, activeLibraryContext: libCtx } = useFolderTreeStore.getState();
+      if (siteCtx?.siteId) {
+        fetchOptions.siteId = siteCtx.siteId;
+      }
+      if (libCtx?.scopeId) {
+        fetchOptions.connectionScopeId = libCtx.scopeId;
+      }
+    }
+
     setLoading(true);
     fileApi.getFiles(fetchOptions)
       .then((result) => {
@@ -294,7 +332,7 @@ export function useFiles(): UseFilesReturn {
         setLoading(false);
         filterFetchInProgress = false;
       });
-  }, [showFavoritesOnly, sourceTypeFilter, setFiles, setLoading, setError]);
+  }, [showFavoritesOnly, sourceTypeFilter, activeSiteId, activeLibraryDriveId, setFiles, setLoading, setError]);
 
   return {
     sortedFiles,
@@ -318,5 +356,7 @@ export function useFiles(): UseFilesReturn {
 export function __resetModuleState(): void {
   lastFetchedFilterValue = null;
   lastFetchedSourceType = undefined;
+  lastFetchedSiteId = undefined;
+  lastFetchedLibraryDriveId = undefined;
   filterFetchInProgress = false;
 }

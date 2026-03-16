@@ -19,6 +19,8 @@ interface LibraryTreeItemProps {
   siteId: string;
   level: number;
   onSelect: () => void;
+  /** Propagated to child FolderTreeItems so SP folder clicks update source context */
+  onFolderSelect?: (folderId: string, folder: ParsedFile) => void;
 }
 
 export const LibraryTreeItem = memo(function LibraryTreeItem({
@@ -26,6 +28,7 @@ export const LibraryTreeItem = memo(function LibraryTreeItem({
   siteId,
   level,
   onSelect,
+  onFolderSelect,
 }: LibraryTreeItemProps) {
   // Cache key: use scopeId for library scopes, driveId for folder-scope groups
   const cacheKey = library.scopeId
@@ -146,6 +149,7 @@ export const LibraryTreeItem = memo(function LibraryTreeItem({
             key={folder.id}
             folder={folder}
             level={level + 1}
+            onSelect={onFolderSelect}
           />
         ))}
       </CollapsibleContent>

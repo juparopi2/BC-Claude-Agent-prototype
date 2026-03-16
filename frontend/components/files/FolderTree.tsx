@@ -261,18 +261,21 @@ export function FolderTree({ className }: FolderTreeProps) {
       setSourceTypeFilter(null);
     }
     setActiveSiteContext(null);
+    useFolderTreeStore.getState().setActiveLibraryContext?.(null);
     navigateToFolder(folderId, folder);
   }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter, setActiveSiteContext]);
 
   const handleAllFiles = useCallback(() => {
     setSourceTypeFilter(null);
     setActiveSiteContext(null);
+    useFolderTreeStore.getState().setActiveLibraryContext?.(null);
     navigateToFolder(null);
   }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
   const handleOneDriveClick = useCallback(() => {
     setSourceTypeFilter(FILE_SOURCE_TYPE.ONEDRIVE);
     setActiveSiteContext(null);
+    useFolderTreeStore.getState().setActiveLibraryContext?.(null);
     navigateToFolder(null);
   }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
@@ -281,20 +284,38 @@ export function FolderTree({ className }: FolderTreeProps) {
       setSourceTypeFilter(FILE_SOURCE_TYPE.ONEDRIVE);
     }
     setActiveSiteContext(null);
+    useFolderTreeStore.getState().setActiveLibraryContext?.(null);
     navigateToFolder(folderId, folder);
   }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter, setActiveSiteContext]);
 
   const handleSharePointClick = useCallback(() => {
     setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
     setActiveSiteContext(null);
+    // Also clear library context when going to SP root
+    useFolderTreeStore.getState().setActiveLibraryContext?.(null);
     navigateToFolder(null);
-  }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
+    // Auto-expand SP section so sites load
+    setSectionExpanded('sharepoint', true);
+  }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder, setSectionExpanded]);
 
   const handleSiteSelect = useCallback((siteId: string, siteName: string) => {
     setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
     setActiveSiteContext({ siteId, siteName });
+    useFolderTreeStore.getState().setActiveLibraryContext?.(null);
     navigateToFolder(null);
   }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
+
+  // Called when any folder inside a SP site's library is clicked in the tree
+  const handleSharePointFolderSelect = useCallback(
+    (siteId: string, siteName: string, folderId: string, folder: ParsedFile) => {
+      if (sourceTypeFilter !== FILE_SOURCE_TYPE.SHAREPOINT) {
+        setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
+      }
+      setActiveSiteContext({ siteId, siteName });
+      navigateToFolder(folderId, folder);
+    },
+    [navigateToFolder, sourceTypeFilter, setSourceTypeFilter, setActiveSiteContext]
+  );
 
   return (
     <ScrollArea className={cn('h-full', className)}>
@@ -495,6 +516,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                           site={site}
                           level={1}
                           onSiteSelect={handleSiteSelect}
+                          onFolderSelect={handleSharePointFolderSelect}
                         />
                       ))
                     )}

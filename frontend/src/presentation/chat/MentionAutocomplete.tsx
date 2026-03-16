@@ -11,7 +11,9 @@
 
 import { useRef, useEffect } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { useFileMentionSearch } from '@/src/domains/files';
+import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
 import { FileText, Folder, Image, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,12 +35,24 @@ interface MentionAutocompleteProps {
 }
 
 /**
- * Get icon for file type
+ * Get icon for file type with source overlay (OneDrive/SharePoint badge)
  */
 function getFileIcon(file: ParsedFile) {
-  if (file.isFolder) return <Folder className="size-4 text-amber-500" />;
-  if (file.mimeType?.startsWith('image/')) return <Image className="size-4 text-purple-500" />;
-  return <FileText className="size-4 text-blue-500" />;
+  const sourceUI = getFileSourceUI(file.sourceType);
+  const baseIcon = file.isFolder
+    ? <Folder className="size-4 text-amber-500" />
+    : file.mimeType?.startsWith('image/')
+      ? <Image className="size-4 text-purple-500" />
+      : <FileText className="size-4 text-blue-500" />;
+
+  return (
+    <span className="relative inline-flex flex-shrink-0">
+      {baseIcon}
+      {file.sourceType !== FILE_SOURCE_TYPE.LOCAL && sourceUI.accentColor && (
+        <sourceUI.Icon className="absolute -bottom-0.5 -right-1 size-2.5" />
+      )}
+    </span>
+  );
 }
 
 export function MentionAutocomplete({
@@ -120,11 +134,22 @@ export function MentionAutocomplete({
         >
           {getFileIcon(file)}
           <span className="truncate flex-1">{file.name}</span>
-          {file.isFolder && (
-            <span className="text-xs text-muted-foreground ml-1">folder</span>
-          )}
-          {file.mimeType?.startsWith('image/') && (
-            <span className="text-xs text-muted-foreground ml-1">image</span>
+          {file.sourceType !== FILE_SOURCE_TYPE.LOCAL ? (
+            <span
+              className="text-xs ml-1"
+              style={{ color: getFileSourceUI(file.sourceType).accentColor }}
+            >
+              {getFileSourceUI(file.sourceType).displayName}
+            </span>
+          ) : (
+            <>
+              {file.isFolder && (
+                <span className="text-xs text-muted-foreground ml-1">folder</span>
+              )}
+              {file.mimeType?.startsWith('image/') && (
+                <span className="text-xs text-muted-foreground ml-1">image</span>
+              )}
+            </>
           )}
         </div>
       ))}

@@ -209,7 +209,8 @@
       "WebFetch(domain:langchain-ai.github.io)",
       "WebFetch(domain:reference.langchain.com)",
       "WebFetch(domain:app.unpkg.com)",
-      "Bash(find \"D:\\\\Documents\\\\BC-Claude-Agent-prototype\" -type f \\\\\\( -name \"*browse*\" -o -name \"*folder*\" \\\\\\) \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) 2>/dev/null | grep -v node_modules)"
+      "Bash(find \"D:\\\\Documents\\\\BC-Claude-Agent-prototype\" -type f \\\\\\( -name \"*browse*\" -o -name \"*folder*\" \\\\\\) \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) 2>/dev/null | grep -v node_modules)",
+      "mcp__claude_ai_Context7__resolve-library-id"
     ],
     "deny": [],
     "ask": []

@@ -44,10 +44,22 @@ const SAMPLE_EMBEDDINGS = [
 
 const SAMPLE_SEARCH_IDS = ['search-1', 'search-2', 'search-3'];
 
+const SAMPLE_FILE_META = {
+  mime_type: 'application/pdf',
+  file_modified_at: null,
+  name: 'test.pdf',
+  size_bytes: null,
+  source_type: 'local',
+  parent_folder_id: null,
+  scope_site_id: null,
+};
+
 // Mock functions
 const mockTransitionStatus = vi.fn();
 const mockGetPipelineStatus = vi.fn();
-const mockExecuteQuery = vi.fn();
+const mockGetFileWithScopeMetadata = vi.fn();
+const mockFindByFileId = vi.fn();
+const mockUpdateSearchDocumentIds = vi.fn();
 const mockGenerateEmbeddings = vi.fn();
 const mockIndexChunksBatch = vi.fn();
 const mockEmitReadiness = vi.fn();
@@ -72,11 +84,15 @@ vi.mock('@/services/files/repository/FileRepository', () => ({
   getFileRepository: vi.fn(() => ({
     transitionStatus: mockTransitionStatus,
     getPipelineStatus: mockGetPipelineStatus,
+    getFileWithScopeMetadata: mockGetFileWithScopeMetadata,
   })),
 }));
 
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: mockExecuteQuery,
+vi.mock('@/services/files/repository/FileChunkRepository', () => ({
+  getFileChunkRepository: vi.fn(() => ({
+    findByFileId: mockFindByFileId,
+    updateSearchDocumentIds: mockUpdateSearchDocumentIds,
+  })),
 }));
 
 vi.mock('@/services/embeddings/EmbeddingService', () => ({
@@ -121,15 +137,11 @@ describe('FileEmbedWorker', () => {
     it('should successfully process file with chunks', async () => {
       // Setup mocks
       mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
-
-      // Mock executeQuery calls in sequence
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: SAMPLE_CHUNKS }) // 1st: load chunks
-        .mockResolvedValueOnce({ recordset: [{ mime_type: 'application/pdf' }] }) // 2nd: get mimeType
-        .mockResolvedValue({ recordset: [] }); // 3rd+: update file_chunks
-
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
       mockGenerateEmbeddings.mockResolvedValue(SAMPLE_EMBEDDINGS);
       mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
 
       mockTransitionStatus.mockResolvedValue({
         success: true,
@@ -145,10 +157,10 @@ describe('FileEmbedWorker', () => {
         SAMPLE_JOB_DATA.userId,
       );
 
-      // Verify chunks loaded
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT id, chunk_text, chunk_index, chunk_tokens'),
-        { fileId: SAMPLE_JOB_DATA.fileId, userId: SAMPLE_JOB_DATA.userId },
+      // Verify chunks loaded via repository
+      expect(mockFindByFileId).toHaveBeenCalledWith(
+        SAMPLE_JOB_DATA.fileId,
+        SAMPLE_JOB_DATA.userId,
       );
 
       // Verify embeddings generated
@@ -158,10 +170,10 @@ describe('FileEmbedWorker', () => {
         SAMPLE_JOB_DATA.fileId,
       );
 
-      // Verify mimeType query
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT mime_type, file_modified_at, name, size_bytes FROM files'),
-        { fileId: SAMPLE_JOB_DATA.fileId, userId: SAMPLE_JOB_DATA.userId },
+      // Verify file metadata fetched via repository
+      expect(mockGetFileWithScopeMetadata).toHaveBeenCalledWith(
+        SAMPLE_JOB_DATA.fileId,
+        SAMPLE_JOB_DATA.userId,
       );
 
       // Verify search indexing
@@ -181,19 +193,12 @@ describe('FileEmbedWorker', () => {
         ]),
       );
 
-      // Verify file_chunks updates (3 calls for 3 chunks)
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        'UPDATE file_chunks SET search_document_id = @searchId WHERE id = @chunkId',
-        { searchId: 'search-1', chunkId: 'chunk-1' },
-      );
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        'UPDATE file_chunks SET search_document_id = @searchId WHERE id = @chunkId',
-        { searchId: 'search-2', chunkId: 'chunk-2' },
-      );
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        'UPDATE file_chunks SET search_document_id = @searchId WHERE id = @chunkId',
-        { searchId: 'search-3', chunkId: 'chunk-3' },
-      );
+      // Verify file_chunks search_document_id updates via repository
+      expect(mockUpdateSearchDocumentIds).toHaveBeenCalledWith([
+        { chunkId: 'chunk-1', searchDocumentId: 'search-1' },
+        { chunkId: 'chunk-2', searchDocumentId: 'search-2' },
+        { chunkId: 'chunk-3', searchDocumentId: 'search-3' },
+      ]);
 
       // Verify state transition to ready
       expect(mockTransitionStatus).toHaveBeenCalledWith(
@@ -218,7 +223,7 @@ describe('FileEmbedWorker', () => {
     it('should handle zero chunks (image file) and skip embedding', async () => {
       // Setup mocks
       mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] }); // No chunks
+      mockFindByFileId.mockResolvedValue([]); // No chunks
 
       mockTransitionStatus.mockResolvedValue({
         success: true,
@@ -234,10 +239,10 @@ describe('FileEmbedWorker', () => {
         SAMPLE_JOB_DATA.userId,
       );
 
-      // Verify chunks query executed
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT id, chunk_text, chunk_index, chunk_tokens'),
-        { fileId: SAMPLE_JOB_DATA.fileId, userId: SAMPLE_JOB_DATA.userId },
+      // Verify chunks query executed via repository
+      expect(mockFindByFileId).toHaveBeenCalledWith(
+        SAMPLE_JOB_DATA.fileId,
+        SAMPLE_JOB_DATA.userId,
       );
 
       // Verify embedding generation NOT called
@@ -290,7 +295,7 @@ describe('FileEmbedWorker', () => {
       );
 
       // Verify no further processing
-      expect(mockExecuteQuery).not.toHaveBeenCalled();
+      expect(mockFindByFileId).not.toHaveBeenCalled();
       expect(mockGenerateEmbeddings).not.toHaveBeenCalled();
       expect(mockTransitionStatus).not.toHaveBeenCalled();
     });
@@ -301,7 +306,7 @@ describe('FileEmbedWorker', () => {
       const testError = new Error('Embedding API failed');
 
       mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: SAMPLE_CHUNKS });
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
       mockGenerateEmbeddings.mockRejectedValue(testError);
 
       mockTransitionStatus.mockResolvedValue({
@@ -323,7 +328,7 @@ describe('FileEmbedWorker', () => {
 
     it('should throw error on embedding count mismatch', async () => {
       mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: SAMPLE_CHUNKS }); // 3 chunks
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS); // 3 chunks
 
       // Return only 2 embeddings (mismatch)
       mockGenerateEmbeddings.mockResolvedValue([
@@ -352,14 +357,11 @@ describe('FileEmbedWorker', () => {
 
     it('should throw error if state transition to ready fails', async () => {
       mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
-
-      mockExecuteQuery
-        .mockResolvedValueOnce({ recordset: SAMPLE_CHUNKS })
-        .mockResolvedValueOnce({ recordset: [{ mime_type: 'application/pdf' }] })
-        .mockResolvedValue({ recordset: [] });
-
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
       mockGenerateEmbeddings.mockResolvedValue(SAMPLE_EMBEDDINGS);
       mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
 
       // Transition fails
       mockTransitionStatus.mockResolvedValue({

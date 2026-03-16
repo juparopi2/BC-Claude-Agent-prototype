@@ -67,21 +67,11 @@ export class FileEmbedWorker {
 
     try {
       // 2. Load chunks from DB
-      const { executeQuery } = await import('@/infrastructure/database/database');
-      const chunksResult = await executeQuery<{
-        id: string;
-        chunk_text: string;
-        chunk_index: number;
-        chunk_tokens: number;
-      }>(
-        `SELECT id, chunk_text, chunk_index, chunk_tokens
-         FROM file_chunks
-         WHERE file_id = @fileId AND user_id = @userId
-         ORDER BY chunk_index`,
-        { fileId, userId },
+      const { getFileChunkRepository } = await import(
+        '@/services/files/repository/FileChunkRepository'
       );
-
-      const chunks = chunksResult.recordset;
+      const chunkRepo = getFileChunkRepository();
+      const chunks = await chunkRepo.findByFileId(fileId, userId);
 
       if (chunks.length === 0) {
         // Check if this is an image file (images skip chunking, have 0 chunks)
@@ -115,16 +105,13 @@ export class FileEmbedWorker {
         );
       }
 
-      // 4. Get file mimeType, file_modified_at, name, and size_bytes for search indexing
-      const fileResult = await executeQuery<{ mime_type: string; file_modified_at: Date | null; name: string; size_bytes: number | null }>(
-        `SELECT mime_type, file_modified_at, name, size_bytes FROM files WHERE id = @fileId AND user_id = @userId`,
-        { fileId, userId },
-      );
-      const mimeType = fileResult.recordset[0]?.mime_type;
-      const fileModifiedAtRaw = fileResult.recordset[0]?.file_modified_at;
+      // 4. Get file mimeType, file_modified_at, name, size_bytes, source metadata for search indexing
+      const fileMeta = await repo.getFileWithScopeMetadata(fileId, userId);
+      const mimeType = fileMeta?.mime_type;
+      const fileModifiedAtRaw = fileMeta?.file_modified_at;
       const fileModifiedAt = fileModifiedAtRaw ? fileModifiedAtRaw.toISOString() : undefined;
-      const fileName = fileResult.recordset[0]?.name;
-      const sizeBytes = fileResult.recordset[0]?.size_bytes ?? undefined;
+      const fileName = fileMeta?.name;
+      const sizeBytes = fileMeta?.size_bytes ?? undefined;
 
       // 5. Index in Azure AI Search
       const { VectorSearchService } = await import('@/services/search/VectorSearchService');
@@ -144,21 +131,19 @@ export class FileEmbedWorker {
         fileModifiedAt,
         fileName,
         sizeBytes,
+        siteId: fileMeta?.scope_site_id ?? undefined,
+        sourceType: fileMeta?.source_type ?? 'local',
+        parentFolderId: fileMeta?.parent_folder_id ?? undefined,
       }));
 
       const searchDocIds = await vectorSearchService.indexChunksBatch(chunksWithEmbeddings);
 
       // 6. Update file_chunks with search_document_id
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const searchId = searchDocIds[i];
-        if (chunk) {
-          await executeQuery(
-            'UPDATE file_chunks SET search_document_id = @searchId WHERE id = @chunkId',
-            { searchId: searchId || null, chunkId: chunk.id },
-          );
-        }
-      }
+      const updates = chunks.map((chunk, i) => ({
+        chunkId: chunk.id,
+        searchDocumentId: searchDocIds[i] || null,
+      }));
+      await chunkRepo.updateSearchDocumentIds(updates);
 
       // 7. CAS transition: embedding → ready
       const advanceResult = await repo.transitionStatus(

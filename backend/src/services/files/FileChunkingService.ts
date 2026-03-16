@@ -12,8 +12,7 @@
  * @module services/files/FileChunkingService
  */
 
-import { v4 as uuidv4 } from 'uuid';
-import { executeQuery, SqlParams } from '@/infrastructure/database/database';
+import { prisma } from '@/infrastructure/database/prisma';
 import { createChildLogger } from '@/shared/utils/logger';
 import { ChunkingStrategyFactory } from '../chunking/ChunkingStrategyFactory';
 import type { ChunkingOptions } from '../chunking/types';
@@ -163,7 +162,11 @@ export class FileChunkingService {
       logger.info({ fileId, chunkCount: chunks.length }, 'Generated chunks');
 
       // 6. Insert chunks into database
-      await this.insertChunks(fileId, userId, chunks);
+      const { getFileChunkRepository } = await import(
+        '@/services/files/repository/FileChunkRepository'
+      );
+      const chunkRepo = getFileChunkRepository();
+      await chunkRepo.createMany(fileId, userId, chunks);
 
       // 7. Calculate total tokens
       const totalTokens = chunks.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
@@ -199,20 +202,17 @@ export class FileChunkingService {
    * @returns File data or null if not found
    */
   private async getFileForChunking(fileId: string, userId: string): Promise<FileForChunking | null> {
-    const result = await executeQuery<{
-      id: string;
-      user_id: string;
-      mime_type: string;
-      extracted_text: string | null;
-      pipeline_status: string;
-    }>(
-      `SELECT id, user_id, mime_type, extracted_text, pipeline_status
-       FROM files
-       WHERE id = @fileId AND user_id = @userId`,
-      { fileId, userId }
-    );
+    const row = await prisma.files.findFirst({
+      where: { id: fileId, user_id: userId },
+      select: {
+        id: true,
+        user_id: true,
+        mime_type: true,
+        extracted_text: true,
+        pipeline_status: true,
+      },
+    });
 
-    const row = result.recordset[0];
     if (!row) {
       return null;
     }
@@ -253,25 +253,29 @@ export class FileChunkingService {
         return;
       }
 
-      // Get file name, mime_type, file_modified_at, and size_bytes from files table
-      const fileResult = await executeQuery<{ name: string; mime_type: string | null; file_modified_at: Date | null; size_bytes: number | null }>(
-        `SELECT name, mime_type, file_modified_at, size_bytes FROM files WHERE id = @fileId AND user_id = @userId`,
-        { fileId, userId }
+      // Get file name, mime_type, file_modified_at, size_bytes, and source metadata
+      const { getFileRepository } = await import(
+        '@/services/files/repository/FileRepository'
       );
+      const fileRepo = getFileRepository();
+      const fileMeta = await fileRepo.getFileWithScopeMetadata(fileId, userId);
 
-      const fileName = fileResult.recordset[0]?.name || 'unknown.jpg';
-      const fileMimeType = fileResult.recordset[0]?.mime_type ?? undefined;
-      const fileModifiedAtRaw = fileResult.recordset[0]?.file_modified_at;
+      const fileName = fileMeta?.name || 'unknown.jpg';
+      const fileMimeType = fileMeta?.mime_type ?? undefined;
+      const fileModifiedAtRaw = fileMeta?.file_modified_at;
       const fileModifiedAt = fileModifiedAtRaw ? fileModifiedAtRaw.toISOString() : undefined;
-      const sizeBytes = fileResult.recordset[0]?.size_bytes ?? undefined;
+      const sizeBytes = fileMeta?.size_bytes ?? undefined;
+      const imageSiteId = fileMeta?.scope_site_id ?? undefined;
+      const imageSourceType = fileMeta?.source_type ?? 'local';
+      const imageParentFolderId = fileMeta?.parent_folder_id ?? undefined;
 
       logger.debug({
         fileId, userId,
-        dbMimeType: fileResult.recordset[0]?.mime_type,
-        dbMimeTypeType: typeof fileResult.recordset[0]?.mime_type,
+        dbMimeType: fileMeta?.mime_type,
+        dbMimeTypeType: typeof fileMeta?.mime_type,
         resolvedMimeType: fileMimeType,
         resolvedMimeTypeType: typeof fileMimeType,
-        dbRecordFound: !!fileResult.recordset[0],
+        dbRecordFound: !!fileMeta,
       }, '[TRACE] indexImageEmbedding - mimeType from DB re-read (image path)');
 
       // Generate text embedding from caption for contentVector search path
@@ -337,6 +341,9 @@ export class FileChunkingService {
         contentVector: captionContentVector,
         fileModifiedAt,
         sizeBytes,
+        siteId: imageSiteId,
+        sourceType: imageSourceType,
+        parentFolderId: imageParentFolderId,
       });
 
       logger.info(
@@ -401,59 +408,6 @@ export class FileChunkingService {
         'Failed to emit readiness_changed event - file processing still succeeded'
       );
     }
-  }
-
-  /**
-   * Insert chunks into database
-   *
-   * @param fileId - File ID
-   * @param userId - User ID
-   * @param chunks - Chunks from chunking strategy
-   * @returns Array of chunk records with IDs
-   */
-  private async insertChunks(
-    fileId: string,
-    userId: string,
-    chunks: Array<{ text: string; chunkIndex: number; tokenCount: number; metadata?: Record<string, unknown> }>
-  ): Promise<Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }>> {
-    const chunkRecords: Array<{ id: string; text: string; chunkIndex: number; tokenCount: number }> = [];
-
-    for (const chunk of chunks) {
-      // All IDs must be UPPERCASE per CLAUDE.md
-      const chunkId = uuidv4().toUpperCase();
-
-      // Table schema (after migration 004):
-      // - chunk_text (not content)
-      // - chunk_tokens (not token_count)
-      // - user_id (for multi-tenant security)
-      // - metadata (for debugging/traceability)
-      const params: SqlParams = {
-        id: chunkId,
-        file_id: fileId,
-        user_id: userId,
-        chunk_text: chunk.text,
-        chunk_index: chunk.chunkIndex,
-        chunk_tokens: chunk.tokenCount,
-        metadata: chunk.metadata ? JSON.stringify(chunk.metadata) : null,
-      };
-
-      await executeQuery(
-        `INSERT INTO file_chunks (id, file_id, user_id, chunk_index, chunk_text, chunk_tokens, metadata, created_at)
-         VALUES (@id, @file_id, @user_id, @chunk_index, @chunk_text, @chunk_tokens, @metadata, GETUTCDATE())`,
-        params
-      );
-
-      chunkRecords.push({
-        id: chunkId,
-        text: chunk.text,
-        chunkIndex: chunk.chunkIndex,
-        tokenCount: chunk.tokenCount,
-      });
-    }
-
-    logger.info({ fileId, insertedCount: chunkRecords.length }, 'Inserted chunks into database');
-
-    return chunkRecords;
   }
 
 }

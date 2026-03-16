@@ -9,14 +9,36 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FileChunkingService, getFileChunkingService } from '../../../../services/files/FileChunkingService';
 import type { FileChunkingJob } from '@/infrastructure/queue/MessageQueue';
-import { executeQuery } from '@/infrastructure/database/database';
 
-// Mock dependencies
-vi.mock('@/infrastructure/database/database', () => ({
-  executeQuery: vi.fn(),
+// Hoist mock functions so they can be used in vi.mock factories
+const { mockFindFirst, mockCreateMany, mockGetFileWithScopeMetadata } = vi.hoisted(() => ({
+  mockFindFirst: vi.fn(),
+  mockCreateMany: vi.fn(),
+  mockGetFileWithScopeMetadata: vi.fn(),
 }));
 
-const mockExecuteQuery = vi.mocked(executeQuery);
+// Mock Prisma
+vi.mock('@/infrastructure/database/prisma', () => ({
+  prisma: {
+    files: {
+      findFirst: mockFindFirst,
+    },
+  },
+}));
+
+// Mock FileChunkRepository
+vi.mock('@/services/files/repository/FileChunkRepository', () => ({
+  getFileChunkRepository: vi.fn(() => ({
+    createMany: mockCreateMany,
+  })),
+}));
+
+// Mock FileRepository (for indexImageEmbedding path)
+vi.mock('@/services/files/repository/FileRepository', () => ({
+  getFileRepository: vi.fn(() => ({
+    getFileWithScopeMetadata: mockGetFileWithScopeMetadata,
+  })),
+}));
 
 vi.mock('@/shared/utils/logger', () => ({
   logger: {
@@ -37,10 +59,6 @@ vi.mock('@/shared/utils/logger', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   })),
-}));
-
-vi.mock('uuid', () => ({
-  v4: vi.fn(() => 'mock-chunk-uuid'),
 }));
 
 // Mock ChunkingStrategyFactory
@@ -73,7 +91,7 @@ describe('FileChunkingService', () => {
     service = getFileChunkingService();
 
     // Clear mock calls
-    mockExecuteQuery.mockClear();
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -105,7 +123,7 @@ describe('FileChunkingService', () => {
     };
 
     it('should throw error if file not found', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      mockFindFirst.mockResolvedValueOnce(null);
 
       await expect(service.processFileChunks(mockJobData)).rejects.toThrow(
         'File not found: test-file-id'
@@ -113,14 +131,12 @@ describe('FileChunkingService', () => {
     });
 
     it('should return early if no extracted text', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{
-          id: 'test-file-id',
-          user_id: 'test-user-id',
-          mime_type: 'text/plain',
-          extracted_text: null,
-          pipeline_status: 'chunking',
-        }],
+      mockFindFirst.mockResolvedValueOnce({
+        id: 'test-file-id',
+        user_id: 'test-user-id',
+        mime_type: 'text/plain',
+        extracted_text: null,
+        pipeline_status: 'chunking',
       });
 
       const result = await service.processFileChunks(mockJobData);
@@ -133,14 +149,12 @@ describe('FileChunkingService', () => {
     });
 
     it('should throw error if processing not completed', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{
-          id: 'test-file-id',
-          user_id: 'test-user-id',
-          mime_type: 'text/plain',
-          extracted_text: 'Some text content',
-          pipeline_status: 'extracting',
-        }],
+      mockFindFirst.mockResolvedValueOnce({
+        id: 'test-file-id',
+        user_id: 'test-user-id',
+        mime_type: 'text/plain',
+        extracted_text: 'Some text content',
+        pipeline_status: 'extracting',
       });
 
       await expect(service.processFileChunks(mockJobData)).rejects.toThrow(
@@ -149,21 +163,20 @@ describe('FileChunkingService', () => {
     });
 
     it('should process file and return correct result', async () => {
-      // Mock file query
-      mockExecuteQuery
-        .mockResolvedValueOnce({
-          recordset: [{
-            id: 'test-file-id',
-            user_id: 'test-user-id',
-            mime_type: 'text/plain',
-            extracted_text: 'This is the extracted text content from the file.',
-            pipeline_status: 'chunking',
-          }],
-        })
-        // Mock insert chunk 1
-        .mockResolvedValueOnce({ recordset: [] })
-        // Mock insert chunk 2
-        .mockResolvedValueOnce({ recordset: [] });
+      // Mock file query via Prisma
+      mockFindFirst.mockResolvedValueOnce({
+        id: 'test-file-id',
+        user_id: 'test-user-id',
+        mime_type: 'text/plain',
+        extracted_text: 'This is the extracted text content from the file.',
+        pipeline_status: 'chunking',
+      });
+
+      // Mock createMany to return chunk records
+      mockCreateMany.mockResolvedValueOnce([
+        { id: 'MOCK-CHUNK-1', text: 'Chunk 1 content', chunkIndex: 0, tokenCount: 100 },
+        { id: 'MOCK-CHUNK-2', text: 'Chunk 2 content', chunkIndex: 1, tokenCount: 120 },
+      ]);
 
       const result = await service.processFileChunks(mockJobData);
 
@@ -173,22 +186,30 @@ describe('FileChunkingService', () => {
         totalTokens: 220, // 100 + 120
         embeddingJobId: undefined,
       });
+
+      // Verify createMany was called with correct args
+      expect(mockCreateMany).toHaveBeenCalledWith(
+        'test-file-id',
+        'test-user-id',
+        expect.arrayContaining([
+          expect.objectContaining({ text: 'Chunk 1 content', chunkIndex: 0, tokenCount: 100 }),
+          expect.objectContaining({ text: 'Chunk 2 content', chunkIndex: 1, tokenCount: 120 }),
+        ]),
+      );
     });
 
     it('should rethrow error on chunk insert failure', async () => {
-      // Mock file query
-      mockExecuteQuery
-        .mockResolvedValueOnce({
-          recordset: [{
-            id: 'test-file-id',
-            user_id: 'test-user-id',
-            mime_type: 'text/plain',
-            extracted_text: 'Some content',
-            pipeline_status: 'chunking',
-          }],
-        })
-        // Mock chunk insert failure
-        .mockRejectedValueOnce(new Error('Database error'));
+      // Mock file query via Prisma
+      mockFindFirst.mockResolvedValueOnce({
+        id: 'test-file-id',
+        user_id: 'test-user-id',
+        mime_type: 'text/plain',
+        extracted_text: 'Some content',
+        pipeline_status: 'chunking',
+      });
+
+      // Mock chunk insert failure
+      mockCreateMany.mockRejectedValueOnce(new Error('Database error'));
 
       await expect(service.processFileChunks(mockJobData)).rejects.toThrow('Database error');
     });
@@ -216,8 +237,16 @@ describe('FileChunkingService', () => {
 
       const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
 
-      // Mock updateEmbeddingStatus (processing)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      // Mock FileRepository.getFileWithScopeMetadata
+      mockGetFileWithScopeMetadata.mockResolvedValueOnce({
+        name: 'invoice.jpg',
+        mime_type: 'image/jpeg',
+        file_modified_at: null,
+        size_bytes: null,
+        source_type: 'local',
+        parent_folder_id: null,
+        scope_site_id: null,
+      });
 
       // Mock ImageEmbeddingRepository
       vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
@@ -225,11 +254,6 @@ describe('FileChunkingService', () => {
           getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
         }),
       }));
-
-      // Mock file name query
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ name: 'invoice.jpg', mime_type: 'image/jpeg' }],
-      });
 
       // Mock EmbeddingService for caption text embedding
       vi.doMock('@/services/embeddings/EmbeddingService', () => ({
@@ -248,9 +272,6 @@ describe('FileChunkingService', () => {
           }),
         },
       }));
-
-      // Mock updateEmbeddingStatus (completed)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Mock FileEventEmitter
       vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
@@ -286,8 +307,16 @@ describe('FileChunkingService', () => {
 
       const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
 
-      // Mock updateEmbeddingStatus (processing)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      // Mock FileRepository.getFileWithScopeMetadata
+      mockGetFileWithScopeMetadata.mockResolvedValueOnce({
+        name: 'photo.jpg',
+        mime_type: 'image/jpeg',
+        file_modified_at: null,
+        size_bytes: null,
+        source_type: 'local',
+        parent_folder_id: null,
+        scope_site_id: null,
+      });
 
       // Mock ImageEmbeddingRepository
       vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
@@ -295,11 +324,6 @@ describe('FileChunkingService', () => {
           getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
         }),
       }));
-
-      // Mock file name query
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ name: 'photo.jpg', mime_type: 'image/jpeg' }],
-      });
 
       // Mock EmbeddingService to fail
       vi.doMock('@/services/embeddings/EmbeddingService', () => ({
@@ -318,9 +342,6 @@ describe('FileChunkingService', () => {
           }),
         },
       }));
-
-      // Mock updateEmbeddingStatus (completed)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Mock FileEventEmitter
       vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
@@ -353,8 +374,16 @@ describe('FileChunkingService', () => {
 
       const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
 
-      // Mock updateEmbeddingStatus (processing)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
+      // Mock FileRepository.getFileWithScopeMetadata
+      mockGetFileWithScopeMetadata.mockResolvedValueOnce({
+        name: 'photo.jpg',
+        mime_type: 'image/jpeg',
+        file_modified_at: null,
+        size_bytes: null,
+        source_type: 'local',
+        parent_folder_id: null,
+        scope_site_id: null,
+      });
 
       // Mock ImageEmbeddingRepository
       vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
@@ -362,11 +391,6 @@ describe('FileChunkingService', () => {
           getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
         }),
       }));
-
-      // Mock file name query
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ name: 'photo.jpg', mime_type: 'image/jpeg' }],
-      });
 
       // Mock VectorSearchService
       vi.doMock('@services/search/VectorSearchService', () => ({
@@ -376,9 +400,6 @@ describe('FileChunkingService', () => {
           }),
         },
       }));
-
-      // Mock updateEmbeddingStatus (completed)
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [] });
 
       // Mock FileEventEmitter
       vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({

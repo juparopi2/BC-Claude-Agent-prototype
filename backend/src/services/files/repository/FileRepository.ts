@@ -52,6 +52,16 @@ export interface MarkForDeletionResult {
   markedCount: number;
 }
 
+export interface FileWithScopeMetadata {
+  mime_type: string;
+  file_modified_at: Date | null;
+  name: string;
+  size_bytes: number | null;
+  source_type: string;
+  parent_folder_id: string | null;
+  scope_site_id: string | null;
+}
+
 export interface FilePendingProcessing {
   id: string;
   userId: string;
@@ -90,6 +100,7 @@ export interface IFileRepository {
   findByContentHash(userId: string, contentHash: string): Promise<ParsedFile[]>;
   searchByName(userId: string, query: string, options?: { limit?: number }): Promise<ParsedFile[]>;
   getDescendantFileIds(userId: string, folderId: string): Promise<string[]>;
+  getFileWithScopeMetadata(fileId: string, userId: string): Promise<FileWithScopeMetadata | null>;
   // Pipeline methods
   transitionStatus(fileId: string, userId: string, from: PipelineStatus, to: PipelineStatus): Promise<TransitionResult>;
   getPipelineStatus(fileId: string, userId: string): Promise<PipelineStatus | null>;
@@ -1495,6 +1506,50 @@ export class FileRepository implements IFileRepository {
 
     logger.error({ fileId, userId }, 'Force status update failed: file not found or soft-deleted');
     return { success: false, error: 'File not found or soft-deleted' };
+  }
+
+  // --------------------------------------------------------------------------
+  // getFileWithScopeMetadata
+  // --------------------------------------------------------------------------
+
+  /**
+   * Get file metadata including scope_site_id from connection_scopes.
+   * Uses two-query pattern since files lacks a Prisma relation to connection_scopes.
+   */
+  async getFileWithScopeMetadata(fileId: string, userId: string): Promise<FileWithScopeMetadata | null> {
+    const file = await this.prisma.files.findFirst({
+      where: { id: fileId, user_id: userId, deletion_status: null },
+      select: {
+        mime_type: true,
+        file_modified_at: true,
+        name: true,
+        size_bytes: true,
+        source_type: true,
+        parent_folder_id: true,
+        connection_scope_id: true,
+      },
+    });
+
+    if (!file) return null;
+
+    let scopeSiteId: string | null = null;
+    if (file.connection_scope_id) {
+      const scope = await this.prisma.connection_scopes.findUnique({
+        where: { id: file.connection_scope_id },
+        select: { scope_site_id: true },
+      });
+      scopeSiteId = scope?.scope_site_id ?? null;
+    }
+
+    return {
+      mime_type: file.mime_type,
+      file_modified_at: file.file_modified_at,
+      name: file.name,
+      size_bytes: file.size_bytes !== null ? Number(file.size_bytes) : null,
+      source_type: file.source_type,
+      parent_folder_id: file.parent_folder_id,
+      scope_site_id: scopeSiteId,
+    };
   }
 }
 

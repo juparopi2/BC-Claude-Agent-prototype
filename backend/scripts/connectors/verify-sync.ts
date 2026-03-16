@@ -24,6 +24,7 @@
 
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
+import { createSearchClient } from '../_shared/azure';
 import { getFlag, hasFlag } from '../_shared/args';
 
 // ============================================================================
@@ -511,8 +512,71 @@ async function verifySearchSection(
     }
   }
 
-  info('Note: AI Search index document count check requires Azure Search SDK');
-  info('      Use scripts/storage/verify-storage.ts --section search for index-level verification');
+  // AI Search metadata field sampling
+  const searchClient = createSearchClient<{
+    chunkId: string;
+    fileId: string;
+    siteId?: string;
+    sourceType?: string;
+    parentFolderId?: string;
+  }>();
+
+  if (searchClient) {
+    subheader('AI Search Metadata Fields');
+
+    try {
+      const searchResults = await searchClient.search('*', {
+        filter: `userId eq '${userId}'`,
+        select: ['chunkId', 'fileId', 'siteId', 'sourceType', 'parentFolderId'] as string[],
+        top: 5,
+      } as Record<string, unknown>);
+
+      const sampleDocs: Array<{
+        chunkId: string;
+        fileId: string;
+        siteId?: string;
+        sourceType?: string;
+        parentFolderId?: string;
+      }> = [];
+      for await (const result of searchResults.results) {
+        if (result.document) sampleDocs.push(result.document);
+      }
+
+      if (sampleDocs.length === 0) {
+        warn('No documents found in AI Search for this user');
+      } else {
+        const withSiteId = sampleDocs.filter((d) => d.siteId !== undefined && d.siteId !== null).length;
+        const withSourceType = sampleDocs.filter((d) => d.sourceType !== undefined && d.sourceType !== null).length;
+        const withParentFolderId = sampleDocs.filter((d) => d.parentFolderId !== undefined && d.parentFolderId !== null).length;
+
+        const total = sampleDocs.length;
+        const fieldStatus = (populated: number, label: string): void => {
+          const color = populated === total ? GREEN : populated === 0 ? RED : YELLOW;
+          const icon = populated === total ? '✓' : populated === 0 ? '✗' : '⚠';
+          console.log(`  ${color}${icon}${RESET} ${label}: ${populated}/${total} sampled docs`);
+        };
+
+        fieldStatus(withSiteId, 'siteId');
+        fieldStatus(withSourceType, 'sourceType');
+        fieldStatus(withParentFolderId, 'parentFolderId');
+
+        // Show first 3 docs for visual confirmation
+        const preview = sampleDocs.slice(0, 3);
+        console.log(`\n  ${DIM}Sample documents:${RESET}`);
+        for (const doc of preview) {
+          console.log(`    ${DIM}chunk:${RESET} ${doc.chunkId.substring(0, 30)}...`);
+          console.log(`      siteId:         ${doc.siteId ?? '(null)'}`);
+          console.log(`      sourceType:     ${doc.sourceType ?? '(null)'}`);
+          console.log(`      parentFolderId: ${doc.parentFolderId ?? '(null)'}`);
+        }
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      fail(`Failed to query AI Search: ${errorMsg}`);
+    }
+  } else {
+    info('AI Search not configured — skipping metadata field check');
+  }
 }
 
 // ============================================================================

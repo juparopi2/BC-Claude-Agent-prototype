@@ -46,7 +46,7 @@ export {
 } from './useUploadProgress';
 
 // File Mention Search Hook
-export { useFileMentionSearch } from './useFileMentionSearch';
+export { useFileMentionSearch, SITE_MENTION_MIME_TYPE } from './useFileMentionSearch';
 
 // Sandbox File Download Hook
 export {

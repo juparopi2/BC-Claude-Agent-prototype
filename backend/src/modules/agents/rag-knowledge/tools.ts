@@ -34,18 +34,33 @@ const logger = createChildLogger({ service: 'RagTools' });
 const RAG_THRESHOLD_MULTIPLIER = 0.85;
 
 /**
- * Build an OData scope filter from @mention scopeFileIds in LangGraph config.
+ * Build an OData scope filter from the LangGraph config.
+ *
+ * Preferred path: use the pre-built `scopeFilter` string from MentionScopeResolver
+ * (set on config.configurable.scopeFilter by MessageContextBuilder).
+ *
+ * Legacy fallback: if only `scopeFileIds` is present, build a simple fileId filter.
+ * This keeps backward compatibility with any callers that still pass raw IDs.
+ *
  * Returns undefined if no scope is active (tools search globally).
  */
 function buildScopeFilter(config: RunnableConfig): string | undefined {
+  // Preferred: pre-built OData filter from MentionScopeResolver
+  const scopeFilter = config?.configurable?.scopeFilter as string | undefined;
+  if (scopeFilter) {
+    logger.info({ filter: scopeFilter.slice(0, 200) }, 'Using pre-built scope filter');
+    return scopeFilter;
+  }
+
+  // Legacy fallback: build from raw scopeFileIds
   const scopeFileIds = config?.configurable?.scopeFileIds as string[] | undefined;
   if (!scopeFileIds?.length) {
-    logger.debug('No scopeFileIds — searching globally');
+    logger.debug('No scopeFilter or scopeFileIds — searching globally');
     return undefined;
   }
   const normalized = scopeFileIds.map(id => id.toUpperCase());
   const filter = `search.in(fileId, '${normalized.join(',')}', ',')`;
-  logger.info({ scopeCount: normalized.length, filter: filter.slice(0, 200) }, 'Scope filter built');
+  logger.info({ scopeCount: normalized.length, filter: filter.slice(0, 200) }, 'Scope filter built from legacy scopeFileIds');
   return filter;
 }
 

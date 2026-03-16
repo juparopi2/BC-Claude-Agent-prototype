@@ -233,6 +233,12 @@ export interface GetFilesOptions {
   /** Filter by source type (e.g., 'local', 'onedrive', 'sharepoint') */
   sourceType?: string;
 
+  /** Filter by SharePoint site ID — only files belonging to scopes with this site ID */
+  siteId?: string;
+
+  /** Filter by connection scope ID — restrict to a specific synced library/folder */
+  connectionScopeId?: string;
+
   /** Maximum number of results */
   limit?: number;
 

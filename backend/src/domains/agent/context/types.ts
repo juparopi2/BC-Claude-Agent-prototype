@@ -31,7 +31,17 @@ export interface SemanticSearchOptions {
   /** File IDs to exclude from results */
   excludeFileIds?: string[];
 
-  /** Restrict search to specific file IDs (from @mentions) */
+  /**
+   * Pre-built OData filter string from MentionScopeResolver.
+   * When provided, used directly as the additionalFilter for Azure AI Search.
+   * Replaces the old scopeFileIds approach.
+   */
+  scopeFilter?: string;
+
+  /**
+   * @deprecated Use scopeFilter instead.
+   * Restrict search to specific file IDs (from @mentions).
+   */
   scopeFileIds?: string[];
 }
 
@@ -87,6 +97,18 @@ export interface MentionScope {
   scopeFileIds: string[];
   /** Metadata about each @mention for LLM context */
   mentionedFiles: MentionedFileRef[];
+  /**
+   * Pre-built OData filter from MentionScopeResolver.
+   * When present, passed directly to Azure AI Search as additionalFilter.
+   */
+  searchFilter?: string | null;
+  /**
+   * Rich resolved mention metadata (from MentionScopeResolver).
+   * When present, used for prompt annotation instead of mentionedFiles.
+   */
+  resolvedMentions?: import('./MentionScopeResolver').ResolvedMention[];
+  /** Warnings from scope resolution (e.g., deduplication notices). */
+  warnings?: string[];
 }
 
 // === FileContextPreparer Types (for future implementation) ===
@@ -134,6 +156,19 @@ export interface FileContextOptions {
 
   /** File/folder IDs from @mentions to scope semantic search */
   scopeFileIds?: string[];
+
+  /**
+   * Rich mention objects from the chat message.
+   * When present alongside scopeFileIds, used by MentionScopeResolver for
+   * accurate resolution (site mentions, folder deduplication, counts).
+   */
+  mentions?: Array<{
+    fileId: string;
+    name: string;
+    isFolder: boolean;
+    type?: 'file' | 'folder' | 'site';
+    siteId?: string;
+  }>;
 }
 
 /**

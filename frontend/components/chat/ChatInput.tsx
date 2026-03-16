@@ -19,6 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
 import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton, MentionHighlightOverlay } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
+import { SITE_MENTION_MIME_TYPE } from '@/src/domains/files';
 import { FILE_MENTION_ADD_EVENT } from '@/src/domains/chat/utils/mentionEvent';
 import { buildChatAttachmentAcceptString } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
@@ -213,15 +214,29 @@ export default function ChatInput({
   };
 
   /**
-   * Handle selecting a file from autocomplete
+   * Handle selecting a file or site from autocomplete
    */
   const handleMentionSelect = (file: ParsedFile) => {
-    addMention({
-      fileId: file.id,
-      name: file.name,
-      isFolder: file.isFolder,
-      mimeType: file.mimeType || '',
-    });
+    const isSite = file.mimeType === SITE_MENTION_MIME_TYPE;
+
+    const mention: FileMention = isSite
+      ? {
+          fileId: file.id,
+          name: file.name,
+          isFolder: false,
+          mimeType: SITE_MENTION_MIME_TYPE,
+          type: 'site',
+          siteId: file.id,
+        }
+      : {
+          fileId: file.id,
+          name: file.name,
+          isFolder: file.isFolder,
+          mimeType: file.mimeType || '',
+          type: file.isFolder ? 'folder' : 'file',
+        };
+
+    addMention(mention);
 
     // Replace @query with @[Name] inline
     if (atTriggerPosition !== null) {

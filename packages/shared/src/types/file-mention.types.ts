@@ -17,4 +17,13 @@ export interface FileMention {
   isFolder: boolean;
   /** MIME type of the file (empty string for folders) */
   mimeType: string;
+  /**
+   * Mention target type (backward-compatible, defaults to 'file' when absent).
+   * - 'file': a regular file
+   * - 'folder': a folder
+   * - 'site': a SharePoint site
+   */
+  type?: 'file' | 'folder' | 'site';
+  /** SharePoint site ID (only present when type === 'site') */
+  siteId?: string;
 }

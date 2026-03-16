@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback } from 'react';
-import { ChevronRight, Star } from 'lucide-react';
+import { ChevronRight, Star, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFolderNavigation } from '@/src/domains/files';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
+import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 
 /**
  * FileBreadcrumb Component
@@ -21,6 +22,7 @@ import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
  * - Responsive design (hides "Files" text on small screens)
  * - Horizontal scrollable for deep paths
  * - Accessible with ARIA labels
+ * - SharePoint site segment when navigating within a specific site
  *
  * @example
  * ```tsx
@@ -28,21 +30,34 @@ import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
  * ```
  */
 export function FileBreadcrumb() {
-  const { folderPath, currentFolderId, setCurrentFolder } = useFolderNavigation();
+  const { folderPath, currentFolderId, setCurrentFolder, activeSiteContext } =
+    useFolderNavigation();
   const showFavoritesOnly = useSortFilterStore((s) => s.showFavoritesOnly);
   const sourceTypeFilter = useSortFilterStore((s) => s.sourceTypeFilter);
 
   const sourceUI = getFileSourceUI(sourceTypeFilter);
 
-  const handleNavigate = useCallback((folderId: string | null, index: number) => {
-    if (folderId === null) {
-      setCurrentFolder(null, []);
-    } else {
-      // Truncate path to the clicked folder (inclusive)
-      const newPath = folderPath.slice(0, index + 1);
-      setCurrentFolder(folderId, newPath);
-    }
-  }, [setCurrentFolder, folderPath]);
+  const isSharePoint = sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT;
+  const showSiteSegment = isSharePoint && activeSiteContext !== null;
+
+  const handleNavigate = useCallback(
+    (folderId: string | null, index: number) => {
+      if (folderId === null) {
+        setCurrentFolder(null, []);
+      } else {
+        // Truncate path to the clicked folder (inclusive)
+        const newPath = folderPath.slice(0, index + 1);
+        setCurrentFolder(folderId, newPath);
+      }
+    },
+    [setCurrentFolder, folderPath]
+  );
+
+  /** Clicking the site segment navigates to SP root while keeping the site context visible */
+  const handleSiteClick = useCallback(() => {
+    setCurrentFolder(null, []);
+    // Keep activeSiteContext so the site label stays in the breadcrumb at root level
+  }, [setCurrentFolder]);
 
   return (
     <nav
@@ -54,9 +69,9 @@ export function FileBreadcrumb() {
         onClick={() => handleNavigate(null, -1)}
         className={cn(
           'flex items-center gap-1 px-2 py-1 rounded hover:bg-accent transition-colors cursor-pointer',
-          currentFolderId === null && 'bg-accent font-medium'
+          currentFolderId === null && !showSiteSegment && 'bg-accent font-medium'
         )}
-        aria-current={currentFolderId === null ? 'page' : undefined}
+        aria-current={currentFolderId === null && !showSiteSegment ? 'page' : undefined}
       >
         {showFavoritesOnly ? (
           <Star className="size-4 fill-amber-400 text-amber-400" />
@@ -70,6 +85,27 @@ export function FileBreadcrumb() {
           {showFavoritesOnly ? 'Favorites' : sourceUI.displayName}
         </span>
       </button>
+
+      {/* SharePoint site segment — shown when drilling into a specific site */}
+      {showSiteSegment && (
+        <div className="flex items-center">
+          <ChevronRight className="size-4 text-muted-foreground flex-shrink-0" />
+          <button
+            onClick={handleSiteClick}
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded hover:bg-accent transition-colors truncate max-w-40 cursor-pointer',
+              currentFolderId === null && folderPath.length === 0 && 'bg-accent font-medium'
+            )}
+            title={activeSiteContext.siteName}
+            aria-current={
+              currentFolderId === null && folderPath.length === 0 ? 'page' : undefined
+            }
+          >
+            <Building2 className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            <span className="truncate">{activeSiteContext.siteName}</span>
+          </button>
+        </div>
+      )}
 
       {/* Path segments */}
       {folderPath.map((folder, index) => (

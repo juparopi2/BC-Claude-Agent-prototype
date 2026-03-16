@@ -55,6 +55,10 @@ export interface UseFolderNavigationReturn {
   removeTreeFolder: (parentId: string, folderId: string) => void;
   /** Invalidate cached children for a parent, forcing re-fetch on next expand */
   invalidateTreeFolder: (parentId: string) => void;
+  /** Active SharePoint site context (null when not in a SP site) */
+  activeSiteContext: { siteId: string; siteName: string } | null;
+  /** Set or clear the active SharePoint site context */
+  setActiveSiteContext: (context: { siteId: string; siteName: string } | null) => void;
 }
 
 /**
@@ -108,6 +112,8 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
   const upsertTreeFolderAction = useFolderTreeStore((state) => state.upsertTreeFolder);
   const removeTreeFolderAction = useFolderTreeStore((state) => state.removeTreeFolder);
   const invalidateTreeFolderAction = useFolderTreeStore((state) => state.invalidateTreeFolder);
+  const activeSiteContext = useFolderTreeStore((state) => state.activeSiteContext);
+  const setActiveSiteContextAction = useFolderTreeStore((state) => state.setActiveSiteContext);
 
   // Wrap actions in useCallback for stable references
   const setCurrentFolder = useCallback(
@@ -184,6 +190,13 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     [invalidateTreeFolderAction]
   );
 
+  const setActiveSiteContext = useCallback(
+    (context: { siteId: string; siteName: string } | null) => {
+      setActiveSiteContextAction(context);
+    },
+    [setActiveSiteContextAction]
+  );
+
   // Initialize folder tree by loading root folders from API
   const initFolderTree = useCallback(async () => {
     setLoadingFolderAction('root', true);
@@ -211,6 +224,11 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     (folderId: string | null, folderData?: ParsedFile) => {
       if (folderId === null) {
         setCurrentFolderAction(null, []);
+        // Clear site context when navigating to root for non-SP sections (Local, OneDrive)
+        const currentSourceFilter = useSortFilterStore.getState().sourceTypeFilter;
+        if (currentSourceFilter !== FILE_SOURCE_TYPE.SHAREPOINT) {
+          setActiveSiteContextAction(null);
+        }
         return;
       }
 
@@ -236,7 +254,7 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
         setCurrentFolderAction(folderId, currentPath);
       }
     },
-    [setCurrentFolderAction]
+    [setCurrentFolderAction, setActiveSiteContextAction]
   );
 
   return {
@@ -257,5 +275,7 @@ export function useFolderNavigation(): UseFolderNavigationReturn {
     upsertTreeFolder,
     removeTreeFolder,
     invalidateTreeFolder,
+    activeSiteContext,
+    setActiveSiteContext,
   };
 }

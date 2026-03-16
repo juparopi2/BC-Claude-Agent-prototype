@@ -204,6 +204,7 @@ function LibFolderNode({ node, depth, getCheckState, onToggleSelect, onToggleExp
 
 export function SharePointWizard({ isOpen, onClose, initialConnectionId }: SharePointWizardProps) {
   const fetchConnections = useIntegrationListStore((s) => s.fetchConnections)
+  const setSharepointSiteCache = useFolderTreeStore((s) => s.setSharepointSiteCache)
 
   // Step state
   const [step, setStep] = useState<SPWizardStep>('connect')
@@ -382,6 +383,8 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
         if (!cancelled) {
           setSites(data.sites)
           setSiteNextPageToken(data.nextPageToken)
+          // Populate the global site cache so useFileMentionSearch can filter locally
+          setSharepointSiteCache(data.sites)
         }
 
         // Parse existing scopes for pre-selection
@@ -420,7 +423,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
     fetchSites()
     return () => { cancelled = true }
-  }, [step, connectionId, siteSearchQuery])
+  }, [step, connectionId, siteSearchQuery, setSharepointSiteCache])
 
   const handleLoadMoreSites = useCallback(async () => {
     if (!connectionId || !siteNextPageToken || isSitesLoadingMore) return
@@ -439,14 +442,19 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
       const data = await response.json() as SharePointSiteListResult
-      setSites(prev => [...prev, ...data.sites])
+      setSites(prev => {
+        const updated = [...prev, ...data.sites]
+        // Keep the global cache in sync with all loaded sites
+        setSharepointSiteCache(updated)
+        return updated
+      })
       setSiteNextPageToken(data.nextPageToken)
     } catch (err) {
       toast.error('Failed to load more sites')
     } finally {
       setIsSitesLoadingMore(false)
     }
-  }, [connectionId, siteNextPageToken, siteSearchQuery, isSitesLoadingMore])
+  }, [connectionId, siteNextPageToken, siteSearchQuery, isSitesLoadingMore, setSharepointSiteCache])
 
   const handleToggleSite = useCallback((siteId: string) => {
     setSelectedSiteIds(prev => {

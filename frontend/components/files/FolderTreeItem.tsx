@@ -5,6 +5,7 @@ import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
 import { useFolderNavigation, useFolderTreeStore } from '@/src/domains/files';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
@@ -17,12 +18,15 @@ interface FolderTreeItemProps {
   folder: ParsedFile;
   level: number;
   onSelect?: (folderId: string, folder: ParsedFile) => void;
+  /** Optional file count badge — only passed for OneDrive root folders (level 1) */
+  fileCount?: number;
 }
 
 export const FolderTreeItem = memo(function FolderTreeItem({
   folder,
   level,
   onSelect,
+  fileCount,
 }: FolderTreeItemProps) {
   const {
     currentFolderId,
@@ -135,10 +139,15 @@ export const FolderTreeItem = memo(function FolderTreeItem({
             </span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="text-sm truncate">{folder.name}</span>
+                <span className="text-sm truncate flex-1">{folder.name}</span>
               </TooltipTrigger>
               <TooltipContent side="right">{folder.name}</TooltipContent>
             </Tooltip>
+            {fileCount != null && fileCount > 0 && (
+              <Badge variant="secondary" className="text-xs px-1.5 py-0 h-4 flex-shrink-0">
+                {fileCount}
+              </Badge>
+            )}
           </div>
         </div>
       </FileContextMenu>

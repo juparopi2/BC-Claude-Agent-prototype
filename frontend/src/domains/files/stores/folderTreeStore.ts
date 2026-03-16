@@ -10,7 +10,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ParsedFile } from '@bc-agent/shared';
+import type { ParsedFile, SharePointSite } from '@bc-agent/shared';
+import type { SharePointSiteNode } from '../types/siteNode.types';
 
 /**
  * Folder tree state
@@ -28,6 +29,22 @@ export interface FolderTreeState {
   treeFolders: Record<string, ParsedFile[]>;
   /** Which source sections are expanded in the folder tree sidebar */
   expandedSections: { local: boolean; onedrive: boolean; sharepoint: boolean };
+  /** SharePoint sites derived from connection scopes (transient, not persisted) */
+  sharepointSites: SharePointSiteNode[];
+  /** Active SharePoint site context for filtering (transient, not persisted) */
+  activeSiteContext: { siteId: string; siteName: string } | null;
+  /**
+   * Raw SharePoint sites fetched from the connections API (transient, not persisted).
+   * Populated by SharePointWizard when it fetches the sites list.
+   * Used by useFileMentionSearch for local site filtering without an extra API call.
+   */
+  sharepointSiteCache: SharePointSite[];
+  /**
+   * Map of OneDrive scope display name → file count (transient, not persisted).
+   * Populated when the OneDrive section is expanded and scopes are fetched.
+   * Used to show file count badges on OneDrive root folders.
+   */
+  oneDriveScopeFileCounts: Record<string, number>;
 }
 
 /**
@@ -62,6 +79,14 @@ export interface FolderTreeActions {
   invalidateTreeFolder: (parentId: string) => void;
   /** Toggle or set a source section's expanded state */
   setSectionExpanded: (section: 'local' | 'onedrive' | 'sharepoint', expanded: boolean) => void;
+  /** Set SharePoint sites derived from connection scopes */
+  setSharepointSites: (sites: SharePointSiteNode[]) => void;
+  /** Set the active SharePoint site context */
+  setActiveSiteContext: (context: { siteId: string; siteName: string } | null) => void;
+  /** Cache raw SharePointSite objects fetched from the connections API */
+  setSharepointSiteCache: (sites: SharePointSite[]) => void;
+  /** Store OneDrive scope file counts keyed by scope display name */
+  setOneDriveScopeFileCounts: (counts: Record<string, number>) => void;
 }
 
 /**
@@ -74,6 +99,10 @@ const initialState: FolderTreeState = {
   loadingFolderIds: new Set(),
   treeFolders: {},
   expandedSections: { local: true, onedrive: false, sharepoint: false },
+  sharepointSites: [],
+  activeSiteContext: null,
+  sharepointSiteCache: [],
+  oneDriveScopeFileCounts: {},
 };
 
 /**
@@ -190,6 +219,22 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
         set((state) => ({
           expandedSections: { ...state.expandedSections, [section]: expanded },
         }));
+      },
+
+      setSharepointSites: (sites) => {
+        set({ sharepointSites: sites });
+      },
+
+      setActiveSiteContext: (context) => {
+        set({ activeSiteContext: context });
+      },
+
+      setSharepointSiteCache: (sites) => {
+        set({ sharepointSiteCache: sites });
+      },
+
+      setOneDriveScopeFileCounts: (counts) => {
+        set({ oneDriveScopeFileCounts: counts });
       },
 
       getRootFolders: () => {

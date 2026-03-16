@@ -174,6 +174,31 @@ export const indexSchema: SearchIndex = {
       sortable: true,
       facetable: false,
     },
+    // ===== Source Metadata =====
+    {
+      name: 'siteId',
+      type: 'Edm.String',
+      searchable: false,
+      filterable: true,  // For filtering by SharePoint site
+      sortable: false,
+      facetable: true,   // For analytics / scope navigation
+    },
+    {
+      name: 'sourceType',
+      type: 'Edm.String',
+      searchable: false,
+      filterable: true,  // For filtering by source (local, onedrive, sharepoint)
+      sortable: false,
+      facetable: true,   // For analytics / source breakdown
+    },
+    {
+      name: 'parentFolderId',
+      type: 'Edm.String',
+      searchable: false,
+      filterable: true,  // For scoping search to a specific folder
+      sortable: false,
+      facetable: false,
+    },
   ],
 
   vectorSearch: {

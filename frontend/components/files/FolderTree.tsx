@@ -14,8 +14,11 @@ import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
 import { useIntegrationListStore, useSyncStatusStore, selectIsAnySyncing } from '@/src/domains/integrations';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { FolderTreeItem } from './FolderTreeItem';
-import { CONNECTION_STATUS, FILE_SOURCE_TYPE, PROVIDER_DISPLAY_NAME, PROVIDER_ID } from '@bc-agent/shared';
-import type { ParsedFile } from '@bc-agent/shared';
+import { SiteTreeItem } from './SiteTreeItem';
+import { CONNECTION_STATUS, FILE_SOURCE_TYPE, PROVIDER_DISPLAY_NAME, PROVIDER_ID, CONNECTIONS_API } from '@bc-agent/shared';
+import type { ParsedFile, ConnectionScopeWithStats } from '@bc-agent/shared';
+import type { SharePointSiteNode } from '@/src/domains/files/types/siteNode.types';
+import { env } from '@/lib/config/env';
 
 const EMPTY_OD_FOLDERS: ParsedFile[] = [];
 
@@ -55,10 +58,14 @@ export function FolderTree({ className }: FolderTreeProps) {
   const showSPSection = hasSP || isSPExpired;
   const isSPExpanded = useFolderTreeStore((s) => s.expandedSections.sharepoint);
   const setSectionExpanded = useFolderTreeStore((s) => s.setSectionExpanded);
-  const spRootFoldersFromStore = useFolderTreeStore((s) => s.treeFolders['sharepoint-root']);
-  const spRootFolders = spRootFoldersFromStore ?? EMPTY_OD_FOLDERS;
-  const isSpRootLoaded = spRootFoldersFromStore !== undefined;
-  const isLoadingSpFolders = useFolderTreeStore((s) => s.loadingFolderIds.has('sharepoint-root'));
+  const isLoadingSpSites = useFolderTreeStore((s) => s.loadingFolderIds.has('sharepoint-root'));
+  const sharepointSites = useFolderTreeStore((s) => s.sharepointSites);
+  const spSitesLoadedMarker = useFolderTreeStore((s) => s.treeFolders['sharepoint-sites-loaded']);
+  const areSitesLoaded = sharepointSites.length > 0 || spSitesLoadedMarker !== undefined;
+  const setSharepointSites = useFolderTreeStore((s) => s.setSharepointSites);
+  const setActiveSiteContext = useFolderTreeStore((s) => s.setActiveSiteContext);
+  const oneDriveScopeFileCounts = useFolderTreeStore((s) => s.oneDriveScopeFileCounts);
+  const setOneDriveScopeFileCounts = useFolderTreeStore((s) => s.setOneDriveScopeFileCounts);
 
   // Load OneDrive root folders when expanded (store-backed, mirrors local files pattern)
   // Use a ref for the loading guard to avoid including isLoadingOdFolders in deps,
@@ -75,9 +82,25 @@ export function FolderTree({ className }: FolderTreeProps) {
       setLoadingFolder('onedrive-root', true);
       try {
         const fileApi = getFileApiClient();
-        const result = await fileApi.getFiles({ folderId: null, sourceType: FILE_SOURCE_TYPE.ONEDRIVE });
-        if (!cancelled && result.success) {
-          setTreeFolders('onedrive-root', result.data.files.filter((f) => f.isFolder));
+        const [foldersResult, scopesResponse] = await Promise.all([
+          fileApi.getFiles({ folderId: null, sourceType: FILE_SOURCE_TYPE.ONEDRIVE }),
+          oneDriveConnection
+            ? fetch(`${env.apiUrl}${CONNECTIONS_API.BASE}/${oneDriveConnection.id}/scopes`, { credentials: 'include' })
+            : Promise.resolve(null),
+        ]);
+        if (!cancelled && foldersResult.success) {
+          setTreeFolders('onedrive-root', foldersResult.data.files.filter((f) => f.isFolder));
+        }
+        if (!cancelled && scopesResponse?.ok) {
+          const data = await scopesResponse.json() as { scopes: ConnectionScopeWithStats[] };
+          const scopes = data.scopes ?? [];
+          const counts: Record<string, number> = {};
+          for (const scope of scopes) {
+            if (scope.scopeDisplayName) {
+              counts[scope.scopeDisplayName] = scope.fileCount;
+            }
+          }
+          setOneDriveScopeFileCounts(counts);
         }
       } catch (err) {
         console.error('Failed to load OneDrive folders:', err);
@@ -90,37 +113,142 @@ export function FolderTree({ className }: FolderTreeProps) {
     loadOdFolders();
 
     return () => { cancelled = true; odLoadingRef.current = false; };
-  }, [isOneDriveExpanded, hasOneDrive, isOdRootLoaded, setLoadingFolder, setTreeFolders]);
+  }, [isOneDriveExpanded, hasOneDrive, isOdRootLoaded, oneDriveConnection, setLoadingFolder, setTreeFolders, setOneDriveScopeFileCounts]);
 
-  // Load SharePoint root folders when expanded (store-backed, mirrors OneDrive pattern)
+  // Load SharePoint scopes and group into sites when SP section expands
   const spLoadingRef = useRef(false);
   useEffect(() => {
-    if (!isSPExpanded || !hasSP) return;
-    if (isSpRootLoaded) return;
+    if (!isSPExpanded || !hasSP || !spConnection) return;
+    if (areSitesLoaded) return;
     if (spLoadingRef.current) return;
 
     spLoadingRef.current = true;
     let cancelled = false;
-    const loadSpFolders = async () => {
+    const loadSpSites = async () => {
       setLoadingFolder('sharepoint-root', true);
       try {
-        const fileApi = getFileApiClient();
-        const result = await fileApi.getFiles({ folderId: null, sourceType: FILE_SOURCE_TYPE.SHAREPOINT });
-        if (!cancelled && result.success) {
-          setTreeFolders('sharepoint-root', result.data.files.filter((f) => f.isFolder));
+        const response = await fetch(
+          `${env.apiUrl}${CONNECTIONS_API.BASE}/${spConnection.id}/scopes`,
+          { credentials: 'include' }
+        );
+        if (!cancelled && response.ok) {
+          const data = await response.json() as { scopes: ConnectionScopeWithStats[] };
+          const scopes = data.scopes ?? [];
+
+          // Group scopes by site, then by library (driveId).
+          // scopePath format: "SiteName / LibraryName" (library) or "SiteName / LibraryName / FolderPath" (folder)
+          // Library scopes get scopeId set; folder scopes get grouped into folderScopes[].
+          const siteMap = new Map<string, SharePointSiteNode>();
+
+          // Intermediate: track libraries per site by driveId
+          type LibraryAccum = {
+            displayName: string;
+            driveId: string;
+            fileCount: number;
+            scopeId?: string;
+            folderScopes: Array<{ scopeId: string; displayName: string; fileCount: number }>;
+          };
+          const libraryMap = new Map<string, LibraryAccum>(); // key: siteId + driveId
+
+          for (const scope of scopes) {
+            const siteId = scope.scopeSiteId;
+            if (!siteId) continue;
+            // Skip exclude scopes, root scopes, and site scopes
+            if (scope.scopeMode === 'exclude') continue;
+            if (scope.scopeType === 'root' || scope.scopeType === 'site' || scope.scopeType === 'exclude') continue;
+
+            const scopePathParts = scope.scopePath?.split(' / ');
+            const siteName = scopePathParts && scopePathParts.length > 0
+              ? scopePathParts[0]
+              : siteId;
+
+            if (!siteMap.has(siteId)) {
+              siteMap.set(siteId, {
+                siteId,
+                displayName: siteName,
+                libraries: [],
+                totalFileCount: 0,
+              });
+            }
+
+            const driveId = scope.remoteDriveId ?? '';
+            const libKey = `${siteId}::${driveId}`;
+
+            if (!libraryMap.has(libKey)) {
+              // Extract library name from scopePath (2nd segment) or fall back to display name
+              const libraryName = scopePathParts && scopePathParts.length > 1
+                ? scopePathParts[1]
+                : scope.scopeDisplayName ?? 'Documents';
+              libraryMap.set(libKey, {
+                displayName: libraryName,
+                driveId,
+                fileCount: 0,
+                folderScopes: [],
+              });
+            }
+            const lib = libraryMap.get(libKey)!;
+
+            if (scope.scopeType === 'library') {
+              // Whole library synced — set scopeId (supersedes folder scopes)
+              lib.scopeId = scope.id;
+              lib.fileCount += scope.fileCount;
+            } else if (scope.scopeType === 'folder') {
+              // Folder within a library
+              lib.folderScopes.push({
+                scopeId: scope.id,
+                displayName: scope.scopeDisplayName ?? 'Unknown Folder',
+                fileCount: scope.fileCount,
+              });
+              lib.fileCount += scope.fileCount;
+            }
+          }
+
+          // Assemble libraries into sites
+          for (const [libKey, lib] of libraryMap) {
+            const siteId = libKey.split('::')[0];
+            const site = siteMap.get(siteId);
+            if (!site) continue;
+
+            // If library scope exists, it supersedes folder scopes
+            if (lib.scopeId) {
+              site.libraries.push({
+                displayName: lib.displayName,
+                driveId: lib.driveId,
+                fileCount: lib.fileCount,
+                scopeId: lib.scopeId,
+              });
+            } else if (lib.folderScopes.length > 0) {
+              site.libraries.push({
+                displayName: lib.displayName,
+                driveId: lib.driveId,
+                fileCount: lib.fileCount,
+                folderScopes: lib.folderScopes,
+              });
+            }
+            site.totalFileCount += lib.fileCount;
+          }
+
+          const sites = Array.from(siteMap.values());
+          if (!cancelled) {
+            setSharepointSites(sites);
+            // Mark as loaded even if empty
+            setTreeFolders('sharepoint-sites-loaded', []);
+          }
+        } else if (!cancelled) {
+          setTreeFolders('sharepoint-sites-loaded', []);
         }
       } catch (err) {
-        console.error('Failed to load SharePoint folders:', err);
-        if (!cancelled) setTreeFolders('sharepoint-root', []);
+        console.error('Failed to load SharePoint sites:', err);
+        if (!cancelled) setTreeFolders('sharepoint-sites-loaded', []);
       } finally {
         setLoadingFolder('sharepoint-root', false);
         spLoadingRef.current = false;
       }
     };
-    loadSpFolders();
+    loadSpSites();
 
     return () => { cancelled = true; spLoadingRef.current = false; };
-  }, [isSPExpanded, hasSP, isSpRootLoaded, setLoadingFolder, setTreeFolders]);
+  }, [isSPExpanded, hasSP, spConnection, areSitesLoaded, setLoadingFolder, setTreeFolders, setSharepointSites]);
 
   // Load root folders on mount and when favorites mode changes
   useEffect(() => {
@@ -132,37 +260,41 @@ export function FolderTree({ className }: FolderTreeProps) {
     if (sourceTypeFilter) {
       setSourceTypeFilter(null);
     }
+    setActiveSiteContext(null);
     navigateToFolder(folderId, folder);
-  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter]);
+  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter, setActiveSiteContext]);
 
   const handleAllFiles = useCallback(() => {
     setSourceTypeFilter(null);
+    setActiveSiteContext(null);
     navigateToFolder(null);
-  }, [setSourceTypeFilter, navigateToFolder]);
+  }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
   const handleOneDriveClick = useCallback(() => {
     setSourceTypeFilter(FILE_SOURCE_TYPE.ONEDRIVE);
+    setActiveSiteContext(null);
     navigateToFolder(null);
-  }, [setSourceTypeFilter, navigateToFolder]);
+  }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
   const handleOneDriveFolderSelect = useCallback((folderId: string, folder: ParsedFile) => {
     if (sourceTypeFilter !== FILE_SOURCE_TYPE.ONEDRIVE) {
       setSourceTypeFilter(FILE_SOURCE_TYPE.ONEDRIVE);
     }
+    setActiveSiteContext(null);
     navigateToFolder(folderId, folder);
-  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter]);
+  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter, setActiveSiteContext]);
 
   const handleSharePointClick = useCallback(() => {
     setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
+    setActiveSiteContext(null);
     navigateToFolder(null);
-  }, [setSourceTypeFilter, navigateToFolder]);
+  }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
-  const handleSharePointFolderSelect = useCallback((folderId: string, folder: ParsedFile) => {
-    if (sourceTypeFilter !== FILE_SOURCE_TYPE.SHAREPOINT) {
-      setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
-    }
-    navigateToFolder(folderId, folder);
-  }, [navigateToFolder, sourceTypeFilter, setSourceTypeFilter]);
+  const handleSiteSelect = useCallback((siteId: string, siteName: string) => {
+    setSourceTypeFilter(FILE_SOURCE_TYPE.SHAREPOINT);
+    setActiveSiteContext({ siteId, siteName });
+    navigateToFolder(null);
+  }, [setSourceTypeFilter, setActiveSiteContext, navigateToFolder]);
 
   return (
     <ScrollArea className={cn('h-full', className)}>
@@ -284,6 +416,7 @@ export function FolderTree({ className }: FolderTreeProps) {
                           folder={folder}
                           level={1}
                           onSelect={handleOneDriveFolderSelect}
+                          fileCount={oneDriveScopeFileCounts[folder.name]}
                         />
                       ))
                     )}
@@ -353,15 +486,15 @@ export function FolderTree({ className }: FolderTreeProps) {
                           Reconnect
                         </Button>
                       </div>
-                    ) : isLoadingSpFolders ? (
+                    ) : isLoadingSpSites ? (
                       <FolderTreeSkeleton />
                     ) : (
-                      spRootFolders.map(folder => (
-                        <FolderTreeItem
-                          key={folder.id}
-                          folder={folder}
+                      sharepointSites.map((site) => (
+                        <SiteTreeItem
+                          key={site.siteId}
+                          site={site}
                           level={1}
-                          onSelect={handleSharePointFolderSelect}
+                          onSiteSelect={handleSiteSelect}
                         />
                       ))
                     )}

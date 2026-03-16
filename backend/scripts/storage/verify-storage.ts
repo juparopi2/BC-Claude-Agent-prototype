@@ -28,6 +28,9 @@ interface SearchDoc {
   content?: string;
   isImage?: boolean;
   fileStatus?: string;
+  siteId?: string;
+  sourceType?: string;
+  parentFolderId?: string;
   // Vector fields - populated via getDocument() calls, not in search select
   contentVector?: number[];
   imageVector?: number[];
@@ -551,7 +554,7 @@ async function verifySearchSection(
 
     while (true) {
       const results = await searchClient.search('*', {
-        select: ['chunkId', 'fileId', 'userId', 'chunkIndex', 'mimeType', 'content', 'isImage', 'fileStatus'],
+        select: ['chunkId', 'fileId', 'userId', 'chunkIndex', 'mimeType', 'content', 'isImage', 'fileStatus', 'siteId', 'sourceType', 'parentFolderId'],
         filter: `userId eq '${userId}'`,
         top: PAGE_SIZE,
         skip,
@@ -668,6 +671,15 @@ async function verifySearchSection(
   const docsWithFileStatus = searchDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
   reportFieldCoverage('  fileStatus', docsWithFileStatus, totalDocs);
 
+  const docsWithSiteId = searchDocs.filter((d) => d.siteId !== undefined && d.siteId !== null).length;
+  reportFieldCoverage('  siteId', docsWithSiteId, totalDocs);
+
+  const docsWithSourceType = searchDocs.filter((d) => d.sourceType !== undefined && d.sourceType !== null).length;
+  reportFieldCoverage('  sourceType', docsWithSourceType, totalDocs);
+
+  const docsWithParentFolderId = searchDocs.filter((d) => d.parentFolderId !== undefined && d.parentFolderId !== null).length;
+  reportFieldCoverage('  parentFolderId', docsWithParentFolderId, totalDocs);
+
   // Breakdown by category
   if (imageDocs.length > 0) {
     console.log('\n  Image document field coverage:');
@@ -677,6 +689,12 @@ async function verifySearchSection(
     reportFieldCoverage('    content', imgWithContent, imageDocs.length);
     const imgWithStatus = imageDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
     reportFieldCoverage('    fileStatus', imgWithStatus, imageDocs.length);
+    const imgWithSiteId = imageDocs.filter((d) => d.siteId !== undefined && d.siteId !== null).length;
+    reportFieldCoverage('    siteId', imgWithSiteId, imageDocs.length);
+    const imgWithSourceType = imageDocs.filter((d) => d.sourceType !== undefined && d.sourceType !== null).length;
+    reportFieldCoverage('    sourceType', imgWithSourceType, imageDocs.length);
+    const imgWithParentFolderId = imageDocs.filter((d) => d.parentFolderId !== undefined && d.parentFolderId !== null).length;
+    reportFieldCoverage('    parentFolderId', imgWithParentFolderId, imageDocs.length);
   }
 
   if (textDocs.length > 0) {
@@ -689,6 +707,12 @@ async function verifySearchSection(
     reportFieldCoverage('    isImage', txtWithIsImage, textDocs.length);
     const txtWithStatus = textDocs.filter((d) => d.fileStatus !== undefined && d.fileStatus !== null).length;
     reportFieldCoverage('    fileStatus', txtWithStatus, textDocs.length);
+    const txtWithSiteId = textDocs.filter((d) => d.siteId !== undefined && d.siteId !== null).length;
+    reportFieldCoverage('    siteId', txtWithSiteId, textDocs.length);
+    const txtWithSourceType = textDocs.filter((d) => d.sourceType !== undefined && d.sourceType !== null).length;
+    reportFieldCoverage('    sourceType', txtWithSourceType, textDocs.length);
+    const txtWithParentFolderId = textDocs.filter((d) => d.parentFolderId !== undefined && d.parentFolderId !== null).length;
+    reportFieldCoverage('    parentFolderId', txtWithParentFolderId, textDocs.length);
   }
 
   // Image Vector Coverage - checks contentVector (1536d) and imageVector (1024d) via getDocument

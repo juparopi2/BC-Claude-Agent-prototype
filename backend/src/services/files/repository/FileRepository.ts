@@ -183,6 +183,8 @@ export class FileRepository implements IFileRepository {
       sortBy = 'date',
       favoritesOnly = false,
       sourceType,
+      siteId,
+      connectionScopeId,
       limit = 50,
       offset = 0,
     } = options;
@@ -195,6 +197,19 @@ export class FileRepository implements IFileRepository {
 
     if (sourceType) {
       where['source_type'] = sourceType;
+    }
+
+    // When connectionScopeId is provided, restrict to that specific scope (most specific filter)
+    if (connectionScopeId) {
+      where['connection_scope_id'] = connectionScopeId;
+    } else if (siteId) {
+      // Fallback: restrict to files whose connection_scope belongs to that site
+      const matchingScopes = await this.prisma.connection_scopes.findMany({
+        where: { scope_site_id: siteId },
+        select: { id: true },
+      });
+      const scopeIds = matchingScopes.map((s) => s.id);
+      where['connection_scope_id'] = { in: scopeIds };
     }
 
     if (favoritesOnly && (folderId === undefined || folderId === null)) {

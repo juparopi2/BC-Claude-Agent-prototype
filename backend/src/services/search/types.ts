@@ -28,6 +28,9 @@ export interface FileChunkWithEmbedding {
   fileModifiedAt?: string; // ISO 8601 timestamp of original file modification date
   fileName?: string; // Original file name for search
   sizeBytes?: number; // File size in bytes for filtering
+  siteId?: string; // SharePoint site ID (from connection_scopes.scope_site_id)
+  sourceType?: string; // File source: 'local', 'onedrive', 'sharepoint'
+  parentFolderId?: string; // Parent folder ID for scoped folder search
 }
 
 /**
@@ -90,6 +93,12 @@ export interface ImageIndexParams {
   sizeBytes?: number;
   /** ISO 8601 timestamp of original file modification date */
   fileModifiedAt?: string;
+  /** SharePoint site ID (from connection_scopes.scope_site_id) */
+  siteId?: string;
+  /** File source: 'local', 'onedrive', 'sharepoint' */
+  sourceType?: string;
+  /** Parent folder ID for scoped folder search */
+  parentFolderId?: string;
 }
 
 /**

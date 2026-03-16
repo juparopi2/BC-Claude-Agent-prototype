@@ -48,6 +48,8 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
     const threshold = options?.threshold ?? SEMANTIC_SEARCH_THRESHOLD;
     const maxFiles = options?.maxFiles ?? SEMANTIC_SEARCH_MAX_FILES;
     const excludeFileIds = options?.excludeFileIds ?? [];
+    const scopeFilter = options?.scopeFilter;
+    // Legacy fallback: build a simple fileId filter from scopeFileIds when scopeFilter is absent
     const scopeFileIds = options?.scopeFileIds ?? [];
 
     this.logger.debug(
@@ -57,7 +59,8 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
         threshold,
         maxFiles,
         excludeCount: excludeFileIds.length,
-        scopeCount: scopeFileIds.length,
+        hasScopeFilter: !!scopeFilter,
+        legacyScopeCount: scopeFileIds.length,
       },
       'Starting semantic search'
     );
@@ -72,11 +75,17 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
       };
 
       // Add scope filter for @mentions
-      if (scopeFileIds.length > 0) {
-        const scopeFilter = `search.in(fileId, '${scopeFileIds.join(',')}', ',')`;
+      if (scopeFilter) {
+        // Use pre-built OData filter from MentionScopeResolver (preferred path)
         serviceOptions.additionalFilter = serviceOptions.additionalFilter
           ? `(${serviceOptions.additionalFilter}) and (${scopeFilter})`
           : scopeFilter;
+      } else if (scopeFileIds.length > 0) {
+        // Legacy fallback: build a simple fileId filter from explicit IDs
+        const legacyFilter = `search.in(fileId, '${scopeFileIds.join(',')}', ',')`;
+        serviceOptions.additionalFilter = serviceOptions.additionalFilter
+          ? `(${serviceOptions.additionalFilter}) and (${legacyFilter})`
+          : legacyFilter;
       }
 
       const response = await this.searchService!.searchRelevantFiles(serviceOptions);

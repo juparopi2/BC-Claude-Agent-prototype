@@ -57,6 +57,18 @@ export interface MessageContextOptions {
   targetAgentId?: string;
   /** File/folder IDs from @mentions to scope semantic search */
   mentionedFileIds?: string[];
+  /**
+   * Rich mention metadata from the chat message (FileMention[]).
+   * When provided alongside mentionedFileIds, used by MentionScopeResolver for
+   * accurate resolution (site mentions, deduplication, accurate counts).
+   */
+  mentions?: Array<{
+    fileId: string;
+    name: string;
+    isFolder: boolean;
+    type?: 'file' | 'folder' | 'site';
+    siteId?: string;
+  }>;
   /** Enable web search capability — supervisor will be hinted to prefer research-agent */
   enableWebSearch?: boolean;
 }
@@ -88,6 +100,8 @@ export interface MessageContextBuildResult {
         targetAgentId?: string;
         enableWebSearch?: boolean;
         scopeFileIds?: string[];
+        /** Pre-built OData scope filter from MentionScopeResolver for RAG tools. */
+        scopeFilter?: string;
         chatImageEmbeddings?: ChatImageEmbedding[];
         /** Whether any chat attachment requires sandbox file processing */
         requiresFileProcessing?: boolean;
@@ -105,17 +119,43 @@ export interface MessageContextBuildResult {
 /**
  * Build XML annotation describing user @mentions for LLM context.
  * Placed before <documents> so the LLM sees mention intent first.
+ *
+ * When resolvedMentions are present (from MentionScopeResolver), uses them for
+ * accurate counts and site support. Falls back to legacy mentionedFiles otherwise.
  */
 function buildMentionsAnnotation(mentionScope: MentionScope): string {
   const lines: string[] = ['<user_mentions>'];
-  for (const m of mentionScope.mentionedFiles) {
-    if (m.isFolder) {
-      const descendantCount = mentionScope.scopeFileIds.length;
-      lines.push(`<mention type="folder" id="${m.fileId}" name="${m.fileName}" descendant_count="${descendantCount}" />`);
-    } else {
-      lines.push(`<mention type="file" id="${m.fileId}" name="${m.fileName}" mime_type="${m.mimeType}" />`);
+
+  // Prefer rich ResolvedMention data from MentionScopeResolver
+  if (mentionScope.resolvedMentions?.length) {
+    for (const rm of mentionScope.resolvedMentions) {
+      if (rm.type === 'site') {
+        lines.push(`<mention type="site" id="${rm.id}" name="${rm.name}" file_count="${rm.fileCount ?? 0}" />`);
+      } else if (rm.type === 'folder') {
+        lines.push(`<mention type="folder" id="${rm.id}" name="${rm.name}" descendant_file_count="${rm.descendantFileCount ?? 0}" />`);
+      } else {
+        lines.push(`<mention type="file" id="${rm.id}" name="${rm.name}" />`);
+      }
+    }
+
+    // Emit warnings as XML comments so the LLM can see deduplication notices
+    if (mentionScope.warnings?.length) {
+      for (const w of mentionScope.warnings) {
+        lines.push(`<!-- warning: ${w} -->`);
+      }
+    }
+  } else {
+    // Legacy fallback: use the old mentionedFiles structure
+    for (const m of mentionScope.mentionedFiles) {
+      if (m.isFolder) {
+        const descendantCount = mentionScope.scopeFileIds.length;
+        lines.push(`<mention type="folder" id="${m.fileId}" name="${m.fileName}" descendant_file_count="${descendantCount}" />`);
+      } else {
+        lines.push(`<mention type="file" id="${m.fileId}" name="${m.fileName}" mime_type="${m.mimeType}" />`);
+      }
     }
   }
+
   lines.push('</user_mentions>');
   return lines.join('\n');
 }
@@ -208,6 +248,8 @@ export function buildGraphInputs(
         targetAgentId: options?.targetAgentId,
         enableWebSearch: options?.enableWebSearch,
         scopeFileIds: contextResult.mentionScope?.scopeFileIds,
+        // Pass the pre-built OData filter for RAG tools (preferred over raw scopeFileIds)
+        scopeFilter: contextResult.mentionScope?.searchFilter ?? undefined,
         chatImageEmbeddings: chatImageEmbeddings?.length ? chatImageEmbeddings : undefined,
         requiresFileProcessing: routingMetadata?.hasContainerUploads,
         nonNativeFileTypes: routingMetadata?.nonNativeTypes?.length
@@ -244,10 +286,13 @@ export class MessageContextBuilder {
     options?: MessageContextOptions
   ): Promise<MessageContextBuildResult> {
     // Step 1: Prepare file context
+    // Pass mentions (rich metadata) alongside mentionedFileIds so MentionScopeResolver
+    // can use the full FileMention shape (type, siteId) for accurate resolution.
     const contextResult = await this.fileContextPreparer.prepare(userId, prompt, {
       attachments: options?.attachments,
       enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
       scopeFileIds: options?.mentionedFileIds,
+      mentions: options?.mentions,
     });
 
     // Step 2: Resolve chat attachments to content blocks (with routing classification)

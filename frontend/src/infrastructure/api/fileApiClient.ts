@@ -248,6 +248,12 @@ export class FileApiClient {
     if (options?.sourceType) {
       params.set('sourceType', options.sourceType);
     }
+    if (options?.siteId) {
+      params.set('siteId', options.siteId);
+    }
+    if (options?.connectionScopeId) {
+      params.set('connectionScopeId', options.connectionScopeId);
+    }
     if (options?.limit !== undefined) {
       params.set('limit', options.limit.toString());
     }

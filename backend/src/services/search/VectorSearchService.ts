@@ -181,6 +181,9 @@ export class VectorSearchService {
       isImage: false,
       fileName: chunk.fileName || null,
       sizeBytes: chunk.sizeBytes ?? null,
+      siteId: chunk.siteId ?? null,
+      sourceType: chunk.sourceType ?? null,
+      parentFolderId: chunk.parentFolderId ?? null,
     }));
 
     // Per-document mimeType trace for diagnosing per-chunk field gaps
@@ -486,7 +489,7 @@ export class VectorSearchService {
       throw new Error('Failed to initialize search client');
     }
 
-    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes, fileModifiedAt } = params;
+    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes, fileModifiedAt, siteId, sourceType, parentFolderId } = params;
     const normalizedFileId = fileId.toUpperCase();
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
@@ -513,6 +516,9 @@ export class VectorSearchService {
       fileName: fileName || null,
       sizeBytes: sizeBytes ?? null,
       fileModifiedAt: fileModifiedAt || null,
+      siteId: siteId ?? null,
+      sourceType: sourceType ?? null,
+      parentFolderId: parentFolderId ?? null,
     };
 
     logger.debug({

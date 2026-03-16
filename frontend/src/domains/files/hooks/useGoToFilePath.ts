@@ -6,6 +6,9 @@
  * expands the folder tree, navigates to parent folder, selects the file,
  * and ensures the file sidebar is visible.
  *
+ * For SharePoint files, auto-sets the active site context in the breadcrumb
+ * by resolving the site from the connection's scope data.
+ *
  * @module domains/files/hooks/useGoToFilePath
  */
 
@@ -16,9 +19,11 @@ import { useFileSelection } from './useFileSelection';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { useSortFilterStore } from '../stores/sortFilterStore';
+import { useIntegrationListStore } from '@/src/domains/integrations';
 import { buildPathToFolderAsync } from '../utils/folderPathBuilder';
-import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
-import type { ParsedFile } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, CONNECTIONS_API, PROVIDER_ID } from '@bc-agent/shared';
+import { env } from '@/lib/config/env';
+import type { ParsedFile, ConnectionScopeDetail } from '@bc-agent/shared';
 
 /**
  * Return type for useGoToFilePath hook
@@ -30,6 +35,55 @@ export interface UseGoToFilePathReturn {
   isNavigating: boolean;
   /** Error message if navigation failed */
   error: string | null;
+}
+
+/**
+ * Attempt to resolve a SharePoint site context from the connection scopes.
+ * Returns the site context if determinable (single site or cached site list),
+ * or null if the site cannot be determined.
+ */
+async function resolveSPSiteContext(
+  connectionId: string
+): Promise<{ siteId: string; siteName: string } | null> {
+  try {
+    const response = await fetch(
+      `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/scopes`,
+      { credentials: 'include' }
+    );
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { scopes: ConnectionScopeDetail[] };
+    const scopes = data.scopes ?? [];
+
+    // Collect unique sites from scopes that have a site ID
+    const siteMap = new Map<string, string>();
+    for (const scope of scopes) {
+      if (scope.scopeSiteId) {
+        // Use scopeDisplayName as a fallback site name carrier — for library/folder scopes
+        // the displayName often includes "Site / Library" format; extract site part if possible
+        if (!siteMap.has(scope.scopeSiteId)) {
+          // Try to get site name from the store cache first
+          const cachedSites = useFolderTreeStore.getState().sharepointSiteCache;
+          const cachedSite = cachedSites.find((s) => s.siteId === scope.scopeSiteId);
+          const siteName = cachedSite?.displayName ?? scope.scopeDisplayName ?? scope.scopeSiteId;
+          siteMap.set(scope.scopeSiteId, siteName);
+        }
+      }
+    }
+
+    if (siteMap.size === 1) {
+      // Only one site configured — unambiguously set it
+      const [[siteId, siteName]] = [...siteMap.entries()];
+      return { siteId, siteName };
+    }
+
+    // Multiple sites — cannot determine which site the file belongs to
+    // without a siteId on ParsedFile. Return null to avoid incorrect context.
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -59,7 +113,7 @@ export function useGoToFilePath(): UseGoToFilePathReturn {
   const [isNavigating, setIsNavigating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { setCurrentFolder, toggleFolderExpanded } = useFolderNavigation();
+  const { setCurrentFolder, toggleFolderExpanded, setActiveSiteContext } = useFolderNavigation();
   const { selectFile } = useFileSelection();
   const setFileSidebarVisible = useUIPreferencesStore((s) => s.setFileSidebarVisible);
 
@@ -84,7 +138,8 @@ export function useGoToFilePath(): UseGoToFilePathReturn {
         const file = result.data.file;
 
         // Sync source type filter to match the file's source
-        const targetSourceFilter = file.sourceType === FILE_SOURCE_TYPE.LOCAL ? null : file.sourceType;
+        const targetSourceFilter =
+          file.sourceType === FILE_SOURCE_TYPE.LOCAL ? null : file.sourceType;
         useSortFilterStore.getState().setSourceTypeFilter(targetSourceFilter);
 
         // Auto-expand the correct folder tree section
@@ -95,6 +150,21 @@ export function useGoToFilePath(): UseGoToFilePathReturn {
           folderTreeState.setSectionExpanded('sharepoint', true);
         } else {
           folderTreeState.setSectionExpanded('local', true);
+        }
+
+        // 1b. For SharePoint files, attempt to resolve and set the site context
+        if (targetSourceFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+          const connections = useIntegrationListStore.getState().connections;
+          const spConnection = connections.find((c) => c.provider === PROVIDER_ID.SHAREPOINT);
+          if (spConnection) {
+            const siteContext = await resolveSPSiteContext(spConnection.id);
+            setActiveSiteContext(siteContext);
+          } else {
+            setActiveSiteContext(null);
+          }
+        } else {
+          // Clear site context for non-SP files
+          setActiveSiteContext(null);
         }
 
         // 2. Build the full breadcrumb path from root to parent folder
@@ -141,7 +211,7 @@ export function useGoToFilePath(): UseGoToFilePathReturn {
         setIsNavigating(false);
       }
     },
-    [setCurrentFolder, toggleFolderExpanded, selectFile, setFileSidebarVisible]
+    [setCurrentFolder, toggleFolderExpanded, selectFile, setFileSidebarVisible, setActiveSiteContext]
   );
 
   return {

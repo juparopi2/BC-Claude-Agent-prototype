@@ -63,6 +63,8 @@ export const getFilesSchema = z.object({
   offset: z.coerce.number().int().min(0).optional().default(FILE_PAGINATION.DEFAULT_OFFSET),
   search: z.string().max(200).optional(),
   sourceType: z.enum(['local', 'onedrive', 'sharepoint']).optional(),
+  siteId: z.string().min(1).optional(),
+  connectionScopeId: z.string().uuid().optional(),
 });
 
 export type GetFilesInput = z.infer<typeof getFilesSchema>;

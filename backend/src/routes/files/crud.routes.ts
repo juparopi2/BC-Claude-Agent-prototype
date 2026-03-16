@@ -36,7 +36,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    const { folderId, sortBy, favoritesOnly, limit, offset, search, sourceType } = validation.data;
+    const { folderId, sortBy, favoritesOnly, limit, offset, search, sourceType, siteId, connectionScopeId } = validation.data;
 
     // If search parameter provided, use search endpoint
     if (search) {
@@ -47,7 +47,7 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       return;
     }
 
-    logger.info({ userId, folderId, sortBy, favoritesOnly, limit, offset }, 'Getting files');
+    logger.info({ userId, folderId, sortBy, favoritesOnly, limit, offset, siteId }, 'Getting files');
 
     // Get files with FileService
     const fileService = getFileService();
@@ -57,6 +57,8 @@ router.get('/', authenticateMicrosoft, async (req: Request, res: Response): Prom
       sortBy,
       favoritesOnly,
       sourceType,
+      siteId,
+      connectionScopeId,
       limit,
       offset,
     });

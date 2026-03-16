@@ -213,6 +213,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
           timeoutMs: ctx.timeoutMs,
           targetAgentId: options?.targetAgentId,
           mentionedFileIds: options?.mentionedFileIds,
+          mentions: options?.mentions,
           enableWebSearch: options?.enableWebSearch,
         }
       );

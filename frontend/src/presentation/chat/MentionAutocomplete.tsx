@@ -12,9 +12,9 @@
 import { useRef, useEffect } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
 import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
-import { useFileMentionSearch } from '@/src/domains/files';
+import { useFileMentionSearch, SITE_MENTION_MIME_TYPE } from '@/src/domains/files';
 import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
-import { FileText, Folder, Image, Loader2 } from 'lucide-react';
+import { FileText, Folder, Globe, Image, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MentionAutocompleteProps {
@@ -38,6 +38,15 @@ interface MentionAutocompleteProps {
  * Get icon for file type with source overlay (OneDrive/SharePoint badge)
  */
 function getFileIcon(file: ParsedFile) {
+  // Site results use the Globe icon with no overlay
+  if (file.mimeType === SITE_MENTION_MIME_TYPE) {
+    return (
+      <span className="relative inline-flex flex-shrink-0">
+        <Globe className="size-4 text-teal-600" />
+      </span>
+    );
+  }
+
   const sourceUI = getFileSourceUI(file.sourceType);
   const baseIcon = file.isFolder
     ? <Folder className="size-4 text-amber-500" />
@@ -134,7 +143,9 @@ export function MentionAutocomplete({
         >
           {getFileIcon(file)}
           <span className="truncate flex-1">{file.name}</span>
-          {file.sourceType !== FILE_SOURCE_TYPE.LOCAL ? (
+          {file.mimeType === SITE_MENTION_MIME_TYPE ? (
+            <span className="text-xs text-teal-600 ml-1">SharePoint site</span>
+          ) : file.sourceType !== FILE_SOURCE_TYPE.LOCAL ? (
             <span
               className="text-xs ml-1"
               style={{ color: getFileSourceUI(file.sourceType).accentColor }}

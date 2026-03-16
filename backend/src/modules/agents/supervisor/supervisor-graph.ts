@@ -238,6 +238,8 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
     const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
     const scopeFileIds = typedInputs.context?.options?.scopeFileIds as string[] | undefined;
+    // Pre-built OData scope filter from MentionScopeResolver (preferred over scopeFileIds for RAG tools)
+    const scopeFilter = typedInputs.context?.options?.scopeFilter as string | undefined;
     const chatImageEmbeddings = typedInputs.context?.options?.chatImageEmbeddings as
       | Array<{ attachmentId: string; name: string; embedding: number[] }>
       | undefined;
@@ -272,6 +274,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
                 userId,
                 invocationId: `inv-${Date.now()}`,
                 scopeFileIds,
+                scopeFilter,
                 chatImageEmbeddings,
                 sessionFileReferences,
               },
@@ -308,7 +311,11 @@ class SupervisorGraphAdapter implements ICompiledGraph {
     }
 
     logger.info(
-      { hasScopeFileIds: !!scopeFileIds?.length, scopeCount: scopeFileIds?.length ?? 0 },
+      {
+        hasScopeFileIds: !!scopeFileIds?.length,
+        scopeCount: scopeFileIds?.length ?? 0,
+        hasScopeFilter: !!scopeFilter,
+      },
       'Invoking supervisor with scope'
     );
 
@@ -327,7 +334,7 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       const stream = await compiledSupervisor.stream(
         { messages: [new HumanMessage({ content: supervisorContent })] },
         {
-          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, chatImageEmbeddings, sessionFileReferences },
+          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, scopeFilter, chatImageEmbeddings, sessionFileReferences },
           recursionLimit: options?.recursionLimit ?? 100,
           signal: options?.signal,
           streamMode: 'values',

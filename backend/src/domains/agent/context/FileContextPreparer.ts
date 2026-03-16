@@ -45,6 +45,11 @@ import {
   SemanticSearchHandler,
   createSemanticSearchHandler,
 } from './SemanticSearchHandler';
+import {
+  MentionScopeResolver,
+  getMentionScopeResolver,
+} from './MentionScopeResolver';
+import type { MentionInput } from './MentionScopeResolver';
 
 export class FileContextPreparer implements IFileContextPreparer {
   private readonly logger = createChildLogger({ service: 'FileContextPreparer' });
@@ -53,11 +58,13 @@ export class FileContextPreparer implements IFileContextPreparer {
     private fileService?: FileService,
     private contextRetrieval?: ContextRetrievalService,
     private promptBuilder?: FileContextPromptBuilder,
-    private searchHandler?: SemanticSearchHandler
+    private searchHandler?: SemanticSearchHandler,
+    private mentionScopeResolver?: MentionScopeResolver
   ) {
     this.fileService = fileService ?? FileService.getInstance();
     this.promptBuilder = promptBuilder ?? getFileContextPromptBuilder();
     this.searchHandler = searchHandler ?? createSemanticSearchHandler();
+    this.mentionScopeResolver = mentionScopeResolver ?? getMentionScopeResolver();
     // contextRetrieval is initialized lazily since it requires dependencies
   }
 
@@ -67,32 +74,71 @@ export class FileContextPreparer implements IFileContextPreparer {
     options?: FileContextOptions
   ): Promise<FileContextPreparationResult> {
     const attachmentIds = options?.attachments ?? [];
-    const scopeFileIds = options?.scopeFileIds ?? [];
+    const rawScopeFileIds = options?.scopeFileIds ?? [];
 
-    // Resolve folder IDs → descendant file IDs + collect mention metadata
+    // Resolve @mentions via MentionScopeResolver (replaces old resolveMentions())
     let mentionScope: MentionScope | undefined;
-    let resolvedScopeIds: string[] = [];
-    if (scopeFileIds.length > 0) {
-      mentionScope = await this.resolveMentions(userId, scopeFileIds);
-      resolvedScopeIds = mentionScope.scopeFileIds;
+    let resolvedSearchFilter: string | null = null;
+    if (rawScopeFileIds.length > 0) {
+      // Build MentionInput array.
+      // When rich mentions are available (options.mentions), prefer those for better resolution
+      // (site mentions, folder deduplication, accurate counts).
+      const mentionInputs: MentionInput[] = options?.mentions
+        ? options.mentions.map(m => ({
+            fileId: m.fileId,
+            name: m.name,
+            isFolder: m.isFolder,
+            type: m.type as MentionInput['type'],
+            siteId: m.siteId,
+          }))
+        : rawScopeFileIds.map(id => ({
+            fileId: id,
+            name: id,
+            isFolder: false, // unknown — treated as file; caller should use options.mentions
+          }));
+
+      const resolution = await this.mentionScopeResolver!.resolve(userId, mentionInputs);
+      resolvedSearchFilter = resolution.searchFilter;
+
+      // Build backward-compatible MentionedFileRef list for callers that still read mentionedFiles
+      const mentionedFiles: MentionedFileRef[] = resolution.resolvedMentions.map(rm => ({
+        fileId: rm.id,
+        fileName: rm.name,
+        isFolder: rm.type === 'folder',
+        mimeType: '',
+      }));
+
+      mentionScope = {
+        // scopeFileIds kept for backward compat (MessageContextBuilder reads this for graph context)
+        scopeFileIds: rawScopeFileIds,
+        mentionedFiles,
+        searchFilter: resolution.searchFilter,
+        resolvedMentions: resolution.resolvedMentions,
+        warnings: resolution.warnings,
+      };
 
       this.logger.info({
-        inputScopeCount: scopeFileIds.length,
-        resolvedScopeCount: resolvedScopeIds.length,
-        mentionedFiles: mentionScope.mentionedFiles.map(m => ({ name: m.fileName, isFolder: m.isFolder })),
-      }, 'Resolved @mention scope');
+        inputScopeCount: rawScopeFileIds.length,
+        resolvedMentions: resolution.resolvedMentions.map(rm => ({ name: rm.name, type: rm.type })),
+        warningCount: resolution.warnings.length,
+        hasFilter: resolution.isScoped,
+      }, 'Resolved @mention scope via MentionScopeResolver');
+
+      if (resolution.warnings.length > 0) {
+        this.logger.warn({ warnings: resolution.warnings }, 'Mention scope resolution warnings');
+      }
     }
 
     // If scope is provided, automatically enable scoped semantic search
-    const enableSemanticSearch = options?.enableAutoSemanticSearch || resolvedScopeIds.length > 0;
+    const enableSemanticSearch = options?.enableAutoSemanticSearch || resolvedSearchFilter !== null;
 
     this.logger.debug(
       {
         userId,
         attachmentCount: attachmentIds.length,
         enableSemanticSearch,
-        scopeFileIds: scopeFileIds.length,
-        resolvedScopeIds: resolvedScopeIds.length,
+        rawScopeCount: rawScopeFileIds.length,
+        hasScopeFilter: resolvedSearchFilter !== null,
         promptLength: prompt.length,
       },
       'Starting file context preparation'
@@ -109,7 +155,7 @@ export class FileContextPreparer implements IFileContextPreparer {
         prompt,
         attachmentIds,
         options,
-        resolvedScopeIds
+        resolvedSearchFilter ?? undefined
       );
     }
 
@@ -214,24 +260,26 @@ export class FileContextPreparer implements IFileContextPreparer {
   /**
    * Runs semantic search with graceful degradation.
    * Returns empty array on error (doesn't fail the request).
+   *
+   * @param scopeFilter - Pre-built OData filter from MentionScopeResolver (preferred).
    */
   private async runSemanticSearch(
     userId: string,
     query: string,
     excludeFileIds: string[],
     options?: FileContextOptions,
-    scopeFileIds?: string[]
+    scopeFilter?: string
   ): Promise<SearchResult[]> {
     try {
       const results = await this.searchHandler!.search(userId, query, {
         threshold: options?.semanticThreshold,
         maxFiles: options?.maxSemanticFiles,
         excludeFileIds,
-        scopeFileIds,
+        scopeFilter,
       });
 
       this.logger.debug(
-        { userId, resultsCount: results.length, hasScope: (scopeFileIds?.length ?? 0) > 0 },
+        { userId, resultsCount: results.length, hasScopeFilter: !!scopeFilter },
         'Semantic search completed'
       );
 
@@ -243,39 +291,6 @@ export class FileContextPreparer implements IFileContextPreparer {
       );
       return [];
     }
-  }
-
-  /**
-   * Resolves scope file IDs, expanding folders to their descendant file IDs,
-   * and collects metadata about each @mention for LLM context.
-   */
-  private async resolveMentions(userId: string, scopeFileIds: string[]): Promise<MentionScope> {
-    const allIds: string[] = [];
-    const mentionedFiles: MentionedFileRef[] = [];
-
-    for (const id of scopeFileIds) {
-      const file = await this.fileService!.getFile(userId, id);
-      if (!file) continue;
-
-      mentionedFiles.push({
-        fileId: file.id,
-        fileName: file.name,
-        isFolder: file.isFolder,
-        mimeType: file.mimeType,
-      });
-
-      if (file.isFolder) {
-        const descendants = await this.fileService!.getDescendantFileIds(userId, id);
-        allIds.push(...descendants);
-      } else {
-        allIds.push(id);
-      }
-    }
-
-    return {
-      scopeFileIds: [...new Set(allIds)],
-      mentionedFiles,
-    };
   }
 
   /**
@@ -359,12 +374,14 @@ export function createFileContextPreparer(
   fileService?: FileService,
   contextRetrieval?: ContextRetrievalService,
   promptBuilder?: FileContextPromptBuilder,
-  searchHandler?: SemanticSearchHandler
+  searchHandler?: SemanticSearchHandler,
+  mentionScopeResolver?: MentionScopeResolver
 ): FileContextPreparer {
   return new FileContextPreparer(
     fileService,
     contextRetrieval,
     promptBuilder,
-    searchHandler
+    searchHandler,
+    mentionScopeResolver
   );
 }

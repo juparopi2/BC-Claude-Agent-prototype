@@ -10,7 +10,7 @@
 import { useCallback } from 'react';
 import type { FolderDuplicateCheckInput } from '@bc-agent/shared';
 import { getUploadApiClient } from '@/src/infrastructure/api/uploadApiClient';
-import { useFolderDuplicateStore } from '../stores/folderDuplicateStore';
+import { useFolderDuplicateStore } from '../stores/duplicateResolutionStore';
 
 export interface FolderDuplicateResolutionResult {
   /** Map of tempId -> renamed folder name (for keep_both) */

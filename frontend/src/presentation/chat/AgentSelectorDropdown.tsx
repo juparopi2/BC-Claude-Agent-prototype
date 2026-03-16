@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { AGENT_ICON, AGENT_COLOR, AGENT_DISPLAY_NAME, AGENT_DESCRIPTION, AGENT_UI_ORDER } from '@bc-agent/shared';
 import { useUIPreferencesStore } from '@/src/domains/ui';
-import { useAgentStateStore } from '@/src/domains/chat/stores/agentStateStore';
+import { useAgentExecutionStore } from '@/src/domains/chat/stores/agentExecutionStore';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Check, ChevronDown } from 'lucide-react';
@@ -28,7 +28,7 @@ export function AgentSelectorDropdown({ disabled, value, onChange }: AgentSelect
 
   const selectedAgentId = useUIPreferencesStore((state) => state.selectedAgentId);
   const setSelectedAgentId = useUIPreferencesStore((state) => state.setSelectedAgentId);
-  const isAgentBusy = useAgentStateStore((state) => state.isAgentBusy);
+  const isAgentBusy = useAgentExecutionStore((state) => state.isAgentBusy);
 
   // Controlled mode if value and onChange are provided
   const isControlled = value !== undefined && onChange !== undefined;

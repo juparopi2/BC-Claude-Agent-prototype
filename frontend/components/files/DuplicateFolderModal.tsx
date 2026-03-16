@@ -27,7 +27,7 @@ import {
   useFolderDuplicateStore,
   type FolderDuplicateAction,
   type FolderDuplicateResolution,
-} from '@/src/domains/files/stores/folderDuplicateStore';
+} from '@/src/domains/files/stores/duplicateResolutionStore';
 import type { FolderDuplicateCheckResult } from '@bc-agent/shared';
 
 // ============================================

@@ -6,6 +6,9 @@
  * - Orphaned messages get fallback group on reload (Bug #2 fix)
  * - addMessageToCurrentGroup deduplicates message IDs
  *
+ * NOTE: agentWorkflowStore merged into agentExecutionStore.
+ * useAgentWorkflowStore is a backward-compatible alias for useAgentExecutionStore.
+ *
  * @module __tests__/domains/chat/stores/agentWorkflowStore
  */
 
@@ -14,8 +17,8 @@ import { act } from '@testing-library/react';
 import type { AgentIdentity, Message } from '@bc-agent/shared';
 import { AGENT_ID, AGENT_DISPLAY_NAME } from '@bc-agent/shared';
 import {
-  useAgentWorkflowStore,
-} from '../../../../src/domains/chat/stores/agentWorkflowStore';
+  useAgentExecutionStore as useAgentWorkflowStore,
+} from '../../../../src/domains/chat/stores/agentExecutionStore';
 
 // ============================================================================
 // Helpers

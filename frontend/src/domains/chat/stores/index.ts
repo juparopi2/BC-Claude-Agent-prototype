@@ -4,7 +4,8 @@
  * Barrel export for all chat-related stores.
  *
  * NOTE: streamingStore has been removed.
- * Use agentStateStore for agent busy/paused state.
+ * agentStateStore and agentWorkflowStore have been merged into agentExecutionStore.
+ * Use agentExecutionStore for agent busy/paused state and workflow groups.
  *
  * @module domains/chat/stores
  */
@@ -20,24 +21,27 @@ export {
   type MessageStore,
 } from './messageStore';
 
-// Agent State Store
+// Agent Execution Store (merged from agentStateStore + agentWorkflowStore)
 export {
-  getAgentStateStore,
-  useAgentStateStore,
+  getAgentExecutionStore,
+  useAgentExecutionStore,
+  // Backward-compatible aliases
+  getAgentExecutionStore as getAgentStateStore,
+  useAgentExecutionStore as useAgentStateStore,
+  getAgentExecutionStore as getAgentWorkflowStore,
+  useAgentExecutionStore as useAgentWorkflowStore,
+  type AgentExecutionState,
+  type AgentExecutionActions,
+  type AgentExecutionStore,
+  type AgentProcessingGroup,
+  // Backward-compatible type aliases
   type AgentState,
   type AgentStateActions,
   type AgentStateStore,
-} from './agentStateStore';
-
-// Agent Workflow Store
-export {
-  getAgentWorkflowStore,
-  useAgentWorkflowStore,
-  type AgentProcessingGroup,
   type AgentWorkflowState,
   type AgentWorkflowActions,
   type AgentWorkflowStore,
-} from './agentWorkflowStore';
+} from './agentExecutionStore';
 
 // Approval Store
 export {
@@ -51,16 +55,33 @@ export {
   type ApprovalStore,
 } from './approvalStore';
 
-// Citation Store
+// Message Metadata Store (merged from citationStore + chatAttachmentStore)
 export {
+  getMessageMetadataStore,
+  useMessageMetadataStore,
+  resetMessageMetadataStore,
+  // Backward-compatible aliases
   getCitationStore,
   useCitationStore,
   resetCitationStore,
+  getChatAttachmentStore,
+  useChatAttachmentStore,
+  resetChatAttachmentStore,
+  type MessageMetadataState,
+  type MessageMetadataActions,
+  type MessageMetadataStore,
+  type MessageWithMetadata,
+  type MessageWithCitations,
+  type MessageWithChatAttachments,
   type CitationFileMap,
+  // Backward-compatible type aliases
   type CitationState,
   type CitationActions,
   type CitationStore,
-} from './citationStore';
+  type ChatAttachmentState,
+  type ChatAttachmentActions,
+  type ChatAttachmentStore,
+} from './messageMetadataStore';
 
 // Pending Chat Store
 export {
@@ -72,17 +93,6 @@ export {
   type PendingChatActions,
   type PendingChatStore,
 } from './pendingChatStore';
-
-// Chat Attachment Store (message-to-attachment mapping)
-export {
-  useChatAttachmentStore,
-  getChatAttachmentStore,
-  resetChatAttachmentStore,
-  type ChatAttachmentState,
-  type ChatAttachmentActions,
-  type ChatAttachmentStore,
-  type MessageWithChatAttachments,
-} from './chatAttachmentStore';
 
 // File Mention Store
 export {

@@ -27,7 +27,7 @@ import type { DuplicateScope, DuplicateMatchType } from '@bc-agent/shared';
 import {
   useDuplicateStore,
   type DuplicateAction,
-} from '@/src/domains/files/stores/duplicateStore';
+} from '@/src/domains/files/stores/duplicateResolutionStore';
 
 // ============================================
 // Helpers

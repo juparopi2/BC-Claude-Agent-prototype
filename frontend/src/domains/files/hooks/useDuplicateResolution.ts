@@ -10,7 +10,7 @@
 import { useCallback } from 'react';
 import type { DuplicateCheckInput } from '@bc-agent/shared';
 import { getUploadApiClient } from '@/src/infrastructure/api/uploadApiClient';
-import { useDuplicateStore } from '../stores/duplicateStore';
+import { useDuplicateStore } from '../stores/duplicateResolutionStore';
 
 interface DuplicateResolutionResult {
   /** Files that should proceed with upload */

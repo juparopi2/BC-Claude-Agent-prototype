@@ -25,16 +25,12 @@ import { ChatContainer, ChatInput } from '@/components/chat';
 // Domain hooks and stores
 import {
   useSocketConnection,
-  getMessageStore,
-  getAgentStateStore,
-  getCitationStore,
-  getChatAttachmentStore,
-  getAgentWorkflowStore,
   usePendingChatStore,
   getPendingChatStore,
   pendingFileManager,
 } from '@/src/domains/chat';
 import { useUIPreferencesStore } from '@/src/domains/ui';
+import { teardownSession, hydrateSession } from '@/src/domains/session/services';
 
 export default function ChatPage() {
   const params = useParams();
@@ -75,14 +71,8 @@ export default function ChatPage() {
 
       setIsLoading(true);
 
-      // Clear domain stores on session change
-      const messageStore = getMessageStore();
-      const agentStateStore = getAgentStateStore();
-      const citationStore = getCitationStore();
-      messageStore.getState().reset();
-      agentStateStore.getState().reset();
-      citationStore.getState().clearCitations();
-      getAgentWorkflowStore().getState().reset();
+      // Reset ALL session-scoped stores (centralized cleanup)
+      teardownSession();
 
       // Select the session in the session store
       await selectSession(sessionId);
@@ -91,23 +81,8 @@ export default function ChatPage() {
       const api = getApiClient();
       const result = await api.getMessages(sessionId);
       if (result.success) {
-        messageStore.getState().setMessages(result.data);
-        getAgentWorkflowStore().getState().reconstructFromMessages(result.data);
-
-        // Hydrate citations from loaded messages (for source carousel)
-        const messagesWithCitations = result.data
-          .filter((m): m is typeof m & { citedFiles: unknown } => 'citedFiles' in m)
-          .map(m => ({
-            id: m.id,
-            citedFiles: m.citedFiles as import('@bc-agent/shared').CitedFile[],
-          }));
-        if (messagesWithCitations.length > 0) {
-          citationStore.getState().hydrateFromMessages(messagesWithCitations);
-        }
-
-        // Hydrate chat attachments from loaded messages (for attachment carousel)
-        const chatAttachmentStore = getChatAttachmentStore();
-        chatAttachmentStore.getState().hydrateFromMessages(result.data);
+        // Hydrate ALL stores from loaded data (centralized setup)
+        hydrateSession({ messages: result.data });
       } else {
         console.error('[ChatPage] Failed to load messages:', result.error);
       }

@@ -11,7 +11,7 @@ import {
   useChatAttachmentStore,
   resetChatAttachmentStore,
   type MessageWithChatAttachments,
-} from '@/src/domains/chat/stores/chatAttachmentStore';
+} from '@/src/domains/chat/stores/messageMetadataStore';
 import type { ChatAttachmentSummary } from '@bc-agent/shared';
 
 describe('chatAttachmentStore', () => {

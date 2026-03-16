@@ -3,7 +3,7 @@
  *
  * Exports all public API for the chat domain.
  *
- * NOTE: Streaming has been removed. Use agentStateStore and processAgentEventSync.
+ * NOTE: Streaming has been removed. Use agentExecutionStore and processAgentEventSync.
  *
  * @module domains/chat
  */
@@ -18,16 +18,20 @@ export {
   type MessageState,
   type MessageActions,
   type MessageStore,
-  // Agent State Store
-  getAgentStateStore,
-  useAgentStateStore,
+  // Agent Execution Store (merged from agentStateStore + agentWorkflowStore)
+  getAgentExecutionStore,
+  useAgentExecutionStore,
+  getAgentExecutionStore as getAgentStateStore,
+  useAgentExecutionStore as useAgentStateStore,
+  getAgentExecutionStore as getAgentWorkflowStore,
+  useAgentExecutionStore as useAgentWorkflowStore,
+  type AgentExecutionState,
+  type AgentExecutionActions,
+  type AgentExecutionStore,
+  type AgentProcessingGroup,
   type AgentState,
   type AgentStateActions,
   type AgentStateStore,
-  // Agent Workflow Store
-  getAgentWorkflowStore,
-  useAgentWorkflowStore,
-  type AgentProcessingGroup,
   type AgentWorkflowState,
   type AgentWorkflowActions,
   type AgentWorkflowStore,
@@ -40,14 +44,29 @@ export {
   type ApprovalState,
   type ApprovalActions,
   type ApprovalStore,
-  // Citation Store
+  // Message Metadata Store (merged from citationStore + chatAttachmentStore)
+  getMessageMetadataStore,
+  useMessageMetadataStore,
+  resetMessageMetadataStore,
   getCitationStore,
   useCitationStore,
   resetCitationStore,
+  getChatAttachmentStore,
+  useChatAttachmentStore,
+  resetChatAttachmentStore,
+  type MessageMetadataState,
+  type MessageMetadataActions,
+  type MessageMetadataStore,
+  type MessageWithMetadata,
+  type MessageWithCitations,
+  type MessageWithChatAttachments,
   type CitationFileMap,
   type CitationState,
   type CitationActions,
   type CitationStore,
+  type ChatAttachmentState,
+  type ChatAttachmentActions,
+  type ChatAttachmentStore,
   // Pending Chat Store
   usePendingChatStore,
   getPendingChatStore,
@@ -56,14 +75,6 @@ export {
   type PendingChatState,
   type PendingChatActions,
   type PendingChatStore,
-  // Chat Attachment Store (message-to-attachment mapping)
-  useChatAttachmentStore,
-  getChatAttachmentStore,
-  resetChatAttachmentStore,
-  type ChatAttachmentState,
-  type ChatAttachmentActions,
-  type ChatAttachmentStore,
-  type MessageWithChatAttachments,
   // File Mention Store
   useFileMentionStore,
   getFileMentionStore,

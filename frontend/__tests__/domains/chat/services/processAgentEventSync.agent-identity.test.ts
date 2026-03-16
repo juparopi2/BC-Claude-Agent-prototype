@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { processAgentEventSync } from '@/src/domains/chat/services/processAgentEventSync';
 import { getMessageStore, resetMessageStore } from '@/src/domains/chat/stores/messageStore';
-import { getAgentStateStore } from '@/src/domains/chat/stores/agentStateStore';
+import { getAgentExecutionStore as getAgentStateStore } from '@/src/domains/chat/stores/agentExecutionStore';
 import type { AgentIdentity } from '@bc-agent/shared/types';
 import type { MessageEvent, ToolUseEvent, ThinkingCompleteEvent } from '@bc-agent/shared';
 

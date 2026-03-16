@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   useFolderDuplicateStore,
   resetFolderDuplicateStore,
-} from '@/src/domains/files/stores/folderDuplicateStore';
+} from '@/src/domains/files/stores/duplicateResolutionStore';
 import type { FolderDuplicateCheckResult } from '@bc-agent/shared';
 
 // Helper to build a minimal FolderDuplicateCheckResult for tests

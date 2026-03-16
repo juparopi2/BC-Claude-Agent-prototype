@@ -1,11 +1,15 @@
 /**
- * Agent Workflow Store
+ * Agent Execution Store
  *
- * Tracks agent processing groups during multi-agent execution.
- * Each group represents one agent's processing phase within a turn.
- * Used by PRD-061/092 to render agent-grouped sections in the chat UI.
+ * Merged store combining agentStateStore and agentWorkflowStore.
+ * Manages both agent execution state (busy, paused) and workflow
+ * processing groups for multi-agent turn tracking.
  *
- * @module domains/chat/stores/agentWorkflowStore
+ * Previously split across two stores:
+ * - agentStateStore: isAgentBusy, isPaused, pauseReason, currentAgentIdentity
+ * - agentWorkflowStore: groups, activeGroupIndex, isTurnActive
+ *
+ * @module domains/chat/stores/agentExecutionStore
  */
 
 import { create } from 'zustand';
@@ -38,7 +42,18 @@ export interface AgentProcessingGroup {
   };
 }
 
-export interface AgentWorkflowState {
+export interface AgentExecutionState {
+  // --- From agentStateStore ---
+  /** Whether the agent is busy processing */
+  isAgentBusy: boolean;
+  /** Whether the agent is paused */
+  isPaused: boolean;
+  /** Reason for pause if paused */
+  pauseReason: string | null;
+  /** Current active agent identity (from agent_changed events) */
+  currentAgentIdentity: AgentIdentity | null;
+
+  // --- From agentWorkflowStore ---
   /** Current turn's processing groups (ordered) */
   groups: AgentProcessingGroup[];
   /** Current turn's active group index */
@@ -47,7 +62,16 @@ export interface AgentWorkflowState {
   isTurnActive: boolean;
 }
 
-export interface AgentWorkflowActions {
+export interface AgentExecutionActions {
+  // --- From agentStateStore ---
+  /** Set agent busy state */
+  setAgentBusy: (busy: boolean) => void;
+  /** Set paused state with optional reason */
+  setPaused: (paused: boolean, reason?: string) => void;
+  /** Set current agent identity */
+  setCurrentAgentIdentity: (identity: AgentIdentity | null) => void;
+
+  // --- From agentWorkflowStore ---
   /** Start a new turn (reset groups) */
   startTurn: () => void;
   /** Add a new agent group (on agent_changed event) */
@@ -67,17 +91,34 @@ export interface AgentWorkflowActions {
   reconstructFromMessages: (messages: Message[]) => void;
   /** End the current turn */
   endTurn: () => void;
-  /** Reset all state */
+
+  // --- Combined ---
+  /** Reset all state (both agent state and workflow state) */
   reset: () => void;
 }
 
-export type AgentWorkflowStore = AgentWorkflowState & AgentWorkflowActions;
+export type AgentExecutionStore = AgentExecutionState & AgentExecutionActions;
+
+// Backward-compatible type aliases
+export type AgentState = AgentExecutionState;
+export type AgentStateActions = AgentExecutionActions;
+export type AgentStateStore = AgentExecutionStore;
+export type AgentWorkflowState = AgentExecutionState;
+export type AgentWorkflowActions = AgentExecutionActions;
+export type AgentWorkflowStore = AgentExecutionStore;
 
 // ============================================================================
 // Initial State
 // ============================================================================
 
-const initialState: AgentWorkflowState = {
+const initialState: AgentExecutionState = {
+  // Agent state fields
+  isAgentBusy: false,
+  isPaused: false,
+  pauseReason: null,
+  currentAgentIdentity: null,
+
+  // Workflow fields
   groups: [],
   activeGroupIndex: -1,
   isTurnActive: false,
@@ -102,9 +143,28 @@ const FALLBACK_AGENT_IDENTITY: AgentIdentity = {
 // Store Creation
 // ============================================================================
 
-export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
+export const useAgentExecutionStore = create<AgentExecutionStore>()(
   subscribeWithSelector((set) => ({
     ...initialState,
+
+    // --- Agent State Actions ---
+
+    setAgentBusy: (busy: boolean) => {
+      set({ isAgentBusy: busy });
+    },
+
+    setPaused: (paused: boolean, reason?: string) => {
+      set({
+        isPaused: paused,
+        pauseReason: paused ? (reason ?? null) : null,
+      });
+    },
+
+    setCurrentAgentIdentity: (identity: AgentIdentity | null) => {
+      set({ currentAgentIdentity: identity });
+    },
+
+    // --- Workflow Actions ---
 
     startTurn: () => {
       set({
@@ -226,6 +286,8 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
       set({ isTurnActive: false });
     },
 
+    // --- Combined Reset ---
+
     reset: () => {
       set(initialState);
     },
@@ -233,13 +295,13 @@ export const useAgentWorkflowStore = create<AgentWorkflowStore>()(
 );
 
 // ============================================================================
-// Singleton Getter
+// Singleton Getters
 // ============================================================================
 
 /**
- * Get the agent workflow store instance.
+ * Get the agent execution store instance.
  * Use for direct access outside of React components.
  */
-export function getAgentWorkflowStore() {
-  return useAgentWorkflowStore;
+export function getAgentExecutionStore() {
+  return useAgentExecutionStore;
 }

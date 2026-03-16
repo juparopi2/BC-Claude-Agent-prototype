@@ -64,15 +64,6 @@ export {
   type UnsupportedFilesResolution,
 } from './unsupportedFilesStore';
 
-export {
-  useFolderDuplicateStore,
-  resetFolderDuplicateStore,
-  type FolderDuplicateStoreState,
-  type FolderDuplicateStoreActions,
-  type FolderDuplicateAction,
-  type FolderDuplicateResolution,
-} from './folderDuplicateStore';
-
 // Stores (Batch Upload Pipeline)
 export {
   useBatchUploadStore,
@@ -83,10 +74,17 @@ export {
   type ActiveBatch,
 } from './uploadBatchStore';
 
+// Duplicate Resolution Stores (merged from duplicateStore + folderDuplicateStore)
 export {
   useDuplicateStore,
   resetDuplicateStore,
+  useFolderDuplicateStore,
+  resetFolderDuplicateStore,
   type DuplicateStoreState,
   type DuplicateStoreActions,
   type DuplicateAction,
-} from './duplicateStore';
+  type FolderDuplicateStoreState,
+  type FolderDuplicateStoreActions,
+  type FolderDuplicateAction,
+  type FolderDuplicateResolution,
+} from './duplicateResolutionStore';

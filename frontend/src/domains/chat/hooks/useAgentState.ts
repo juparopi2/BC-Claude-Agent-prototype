@@ -6,7 +6,7 @@
  * @module domains/chat/hooks/useAgentState
  */
 
-import { useAgentStateStore } from '../stores/agentStateStore';
+import { useAgentExecutionStore } from '../stores/agentExecutionStore';
 
 /**
  * Hook to access agent state.
@@ -23,9 +23,9 @@ import { useAgentStateStore } from '../stores/agentStateStore';
  * ```
  */
 export function useAgentState() {
-  const isAgentBusy = useAgentStateStore((state) => state.isAgentBusy);
-  const isPaused = useAgentStateStore((state) => state.isPaused);
-  const pauseReason = useAgentStateStore((state) => state.pauseReason);
+  const isAgentBusy = useAgentExecutionStore((state) => state.isAgentBusy);
+  const isPaused = useAgentExecutionStore((state) => state.isPaused);
+  const pauseReason = useAgentExecutionStore((state) => state.pauseReason);
 
   return {
     isAgentBusy,

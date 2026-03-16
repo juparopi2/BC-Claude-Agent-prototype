@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useChatAttachmentStore } from '../stores/chatAttachmentStore';
+import { useMessageMetadataStore } from '../stores/messageMetadataStore';
 import type { ChatAttachmentSummary, Message } from '@bc-agent/shared';
 
 /**
@@ -56,8 +56,8 @@ export interface UseMessageChatAttachmentsReturn {
  */
 export function useMessageChatAttachments(): UseMessageChatAttachmentsReturn {
   // Subscribe to store state for reactivity
-  const messageAttachments = useChatAttachmentStore((state) => state.messageAttachments);
-  const storeActions = useChatAttachmentStore();
+  const messageAttachments = useMessageMetadataStore((state) => state.messageAttachments);
+  const storeActions = useMessageMetadataStore();
 
   /**
    * Get attachments for a specific message.

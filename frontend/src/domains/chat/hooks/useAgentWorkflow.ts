@@ -6,15 +6,15 @@
  * @module domains/chat/hooks/useAgentWorkflow
  */
 
-import { useAgentWorkflowStore } from '../stores/agentWorkflowStore';
-import type { AgentProcessingGroup } from '../stores/agentWorkflowStore';
+import { useAgentExecutionStore } from '../stores/agentExecutionStore';
+import type { AgentProcessingGroup } from '../stores/agentExecutionStore';
 
 /**
  * Hook for accessing agent workflow state.
  */
 export function useAgentWorkflow() {
-  const groups = useAgentWorkflowStore((s) => s.groups);
-  const isTurnActive = useAgentWorkflowStore((s) => s.isTurnActive);
+  const groups = useAgentExecutionStore((s) => s.groups);
+  const isTurnActive = useAgentExecutionStore((s) => s.isTurnActive);
 
   return {
     groups,

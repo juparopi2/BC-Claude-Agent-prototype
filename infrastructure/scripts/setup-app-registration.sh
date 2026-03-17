@@ -69,8 +69,20 @@ CALLBACK_PATHS=(
   "/api/auth/callback/sharepoint"
 )
 
-RESOURCE_GROUP="rg-BCAgentPrototype-app-${ENVIRONMENT}"
-BACKEND_APP="app-bcagent-backend-${ENVIRONMENT}"
+case "$ENVIRONMENT" in
+  dev)
+    RESOURCE_GROUP="rg-BCAgentPrototype-app-dev"
+    BACKEND_APP="app-bcagent-backend-dev"
+    ;;
+  prod)
+    RESOURCE_GROUP="rg-myworkmate-app-prod"
+    BACKEND_APP="app-myworkmate-backend-prod"
+    ;;
+  *)
+    echo -e "${RED}Unknown environment: ${ENVIRONMENT}. Use 'dev' or 'prod'.${NC}"
+    exit 1
+    ;;
+esac
 
 # Resolve the backend FQDN dynamically from Azure
 echo -e "${YELLOW}Resolving backend Container App FQDN...${NC}"

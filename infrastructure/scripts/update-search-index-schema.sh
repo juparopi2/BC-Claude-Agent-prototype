@@ -9,12 +9,28 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-RESOURCE_GROUP="rg-BCAgentPrototype-data-dev"
-SEARCH_SERVICE_NAME="search-bcagent-dev"
+ENVIRONMENT="${ENVIRONMENT:-dev}"
+
+case "$ENVIRONMENT" in
+  dev)
+    RESOURCE_GROUP="rg-BCAgentPrototype-data-dev"
+    SEARCH_SERVICE_NAME="search-bcagent-dev"
+    ;;
+  prod)
+    RESOURCE_GROUP="rg-myworkmate-data-prod"
+    SEARCH_SERVICE_NAME="search-myworkmate-prod"
+    ;;
+  *)
+    echo -e "${RED}Unknown environment: $ENVIRONMENT. Use 'dev' or 'prod'.${NC}"
+    exit 1
+    ;;
+esac
+
 INDEX_NAME="file-chunks-index"
 API_VERSION="2024-07-01"
 
 echo -e "${BLUE}=== Azure AI Search Index Schema Update ===${NC}"
+echo -e "Environment: ${ENVIRONMENT}"
 echo -e "Service: ${SEARCH_SERVICE_NAME}"
 echo -e "Index: ${INDEX_NAME}"
 echo ""

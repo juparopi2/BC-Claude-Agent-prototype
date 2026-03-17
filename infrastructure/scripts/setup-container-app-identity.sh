@@ -25,12 +25,28 @@ NC='\033[0m'
 # Configuration — environment-based
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 SUBSCRIPTION_ID="5343f6e1-f251-4b50-a592-18ff3e97eaa7"
-RESOURCE_GROUP="rg-BCAgentPrototype-app-${ENVIRONMENT}"
-ACR_NAME="crbcagent${ENVIRONMENT}"
-KEY_VAULT_NAME="kv-bcagent-${ENVIRONMENT}"
 
-BACKEND_APP="app-bcagent-backend-${ENVIRONMENT}"
-FRONTEND_APP="app-bcagent-frontend-${ENVIRONMENT}"
+case "$ENVIRONMENT" in
+  dev)
+    PROJECT_NAME="bcagent"
+    RG_PREFIX="rg-BCAgentPrototype"
+    ;;
+  prod)
+    PROJECT_NAME="MyWorkMate"
+    RG_PREFIX="rg-myworkmate"
+    ;;
+  *)
+    echo -e "${RED}Unknown environment: $ENVIRONMENT. Use 'dev' or 'prod'.${NC}"
+    exit 1
+    ;;
+esac
+
+RESOURCE_GROUP="${RG_PREFIX}-app-${ENVIRONMENT}"
+ACR_NAME="cr${PROJECT_NAME}${ENVIRONMENT}"
+KEY_VAULT_NAME="kv-${PROJECT_NAME}-${ENVIRONMENT}"
+
+BACKEND_APP="app-${PROJECT_NAME}-backend-${ENVIRONMENT}"
+FRONTEND_APP="app-${PROJECT_NAME}-frontend-${ENVIRONMENT}"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}Setup Container App Managed Identities${NC}"

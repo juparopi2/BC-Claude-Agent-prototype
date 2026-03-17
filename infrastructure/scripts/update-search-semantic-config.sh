@@ -27,12 +27,28 @@
 set -e
 
 # Configuration
-RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-BCAgentPrototype-data-dev}"
-SEARCH_SERVICE="${AZURE_SEARCH_SERVICE:-search-bcagent-dev}"
+ENVIRONMENT="${ENVIRONMENT:-dev}"
+
+case "$ENVIRONMENT" in
+  dev)
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-BCAgentPrototype-data-dev}"
+    SEARCH_SERVICE="${AZURE_SEARCH_SERVICE:-search-bcagent-dev}"
+    ;;
+  prod)
+    RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-myworkmate-data-prod}"
+    SEARCH_SERVICE="${AZURE_SEARCH_SERVICE:-search-myworkmate-prod}"
+    ;;
+  *)
+    echo "Unknown environment: $ENVIRONMENT. Use 'dev' or 'prod'."
+    exit 1
+    ;;
+esac
+
 INDEX_NAME="file-chunks-index"
 SEMANTIC_CONFIG_NAME="semantic-config"
 
 echo "=== D26: Updating Azure AI Search Index with Semantic Configuration ==="
+echo "Environment: $ENVIRONMENT"
 echo "Resource Group: $RESOURCE_GROUP"
 echo "Search Service: $SEARCH_SERVICE"
 echo "Index Name: $INDEX_NAME"

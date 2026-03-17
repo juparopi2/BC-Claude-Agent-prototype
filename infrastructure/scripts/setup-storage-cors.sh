@@ -52,10 +52,10 @@ case "$ENVIRONMENT" in
     DEV_ORIGINS=()
     ;;
   prod|production)
-    STORAGE_ACCOUNT="sabcagentprod"
-    RESOURCE_GROUP_DATA="rg-BCAgentPrototype-data-prod"
-    RESOURCE_GROUP_APP="rg-BCAgentPrototype-app-prod"
-    FRONTEND_APP_NAME="app-bcagent-frontend-prod"
+    STORAGE_ACCOUNT="samyworkmateprod"
+    RESOURCE_GROUP_DATA="rg-myworkmate-data-prod"
+    RESOURCE_GROUP_APP="rg-myworkmate-app-prod"
+    FRONTEND_APP_NAME="app-myworkmate-frontend-prod"
     DEV_ORIGINS=()
     ;;
   *)

@@ -27,22 +27,23 @@ try {
   });
   changedFiles = output.split('\n').filter(Boolean);
 } catch (err) {
-  console.error('Failed to get git diff:', err.message);
-  process.exit(1);
+  console.warn('Warning: could not determine changed files via git diff:', err.message);
+  console.log('Falling back to full project type-check...');
+  // changedFiles stays undefined → skips the early-exit below
 }
 
-// Filter to only backend/src/ TypeScript files
-const backendTsFiles = changedFiles.filter(
-  (f) => f.startsWith('backend/src/') && f.endsWith('.ts')
-);
-
-if (backendTsFiles.length === 0) {
-  console.log('No backend/src TypeScript files changed — skipping type-check.');
-  process.exit(0);
+// Only skip if we successfully got an empty diff
+if (changedFiles !== undefined) {
+  const backendTsFiles = changedFiles.filter(
+    (f) => f.startsWith('backend/src/') && f.endsWith('.ts')
+  );
+  if (backendTsFiles.length === 0) {
+    console.log('No backend/src TypeScript files changed — skipping type-check.');
+    process.exit(0);
+  }
+  console.log(`Found ${backendTsFiles.length} changed backend file(s). Running full project type-check...`);
+  backendTsFiles.forEach((f) => console.log(`  ${f}`));
 }
-
-console.log(`Found ${backendTsFiles.length} changed backend file(s). Running full project type-check...`);
-backendTsFiles.forEach((f) => console.log(`  ${f}`));
 
 // Run tsc --noEmit with the full project (uses incremental cache for speed)
 // Cannot pass individual files + --project together; full project check is correct.

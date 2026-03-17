@@ -16,6 +16,7 @@ env:
   RESOURCE_GROUP: rg-BCAgentPrototype-app-dev
   CONTAINER_APPS_ENVIRONMENT: cae-bcagent-dev
   IMAGE_NAME: bcagent-backend
+  KEY_VAULT_URI: https://kv-bcagent-dev.vault.azure.net
 
 jobs:
   build-and-deploy:
@@ -105,30 +106,30 @@ jobs:
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --secrets \
-              sql-conn-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
-              redis-conn-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
-              anthropic-api-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
-              bc-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
-              bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
-              bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
-              stor-conn-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
-              session-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
-              encryption-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
-              microsoft-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
-              ms-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
-              microsoft-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
-              openai-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
-              azure-openai-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
-              search-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
-              azure-search-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
-              vision-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
-              azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
-              azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
-              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
-              azure-audio-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
-              azure-audio-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
-              appinsights-conn=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
-              graph-webhook-url=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
+              sql-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
+              redis-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
+              anthropic-api-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
+              bc-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
+              bc-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
+              bc-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
+              stor-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
+              session-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
+              encryption-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
+              microsoft-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
+              ms-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
+              microsoft-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
+              openai-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
+              azure-openai-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
+              search-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
+              azure-search-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
+              vision-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
+              azure-vision-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
+              azure-di-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
+              azure-di-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
+              azure-audio-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
+              azure-audio-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
+              appinsights-conn=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
+              graph-webhook-url=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
           # Get frontend URL for CORS configuration
@@ -215,30 +216,30 @@ jobs:
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --secrets \
-              sql-conn-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
-              redis-conn-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
-              anthropic-api-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
-              bc-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
-              bc-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
-              bc-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
-              stor-conn-string=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
-              session-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
-              encryption-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
-              microsoft-client-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
-              ms-client-secret=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
-              microsoft-tenant-id=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
-              openai-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
-              azure-openai-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
-              search-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
-              azure-search-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
-              vision-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
-              azure-vision-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
-              azure-di-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
-              azure-di-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
-              azure-audio-endpoint=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
-              azure-audio-key=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
-              appinsights-conn=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
-              graph-webhook-url=keyvaultref:${{ secrets.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
+              sql-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
+              redis-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
+              anthropic-api-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
+              bc-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
+              bc-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
+              bc-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
+              stor-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
+              session-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
+              encryption-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
+              microsoft-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
+              ms-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
+              microsoft-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
+              openai-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
+              azure-openai-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
+              search-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
+              azure-search-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
+              vision-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
+              azure-vision-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
+              azure-di-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
+              azure-di-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
+              azure-audio-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
+              azure-audio-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
+              appinsights-conn=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
+              graph-webhook-url=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
           echo "✅ Secrets configured from Key Vault"
 
       - name: Update Container App (if exists)

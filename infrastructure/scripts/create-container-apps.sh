@@ -188,24 +188,24 @@ az containerapp secret set \
   --name "$BACKEND_APP" \
   --resource-group "$RESOURCE_GROUP" \
   --secrets \
-    "sql-connection-string=keyvaultref:${KV_REF}/SqlDb-ConnectionString,identityref:system" \
-    "redis-connection-string=keyvaultref:${KV_REF}/Redis-ConnectionString,identityref:system" \
-    "storage-connection-string=keyvaultref:${KV_REF}/Storage-ConnectionString,identityref:system" \
+    "sql-conn-string=keyvaultref:${KV_REF}/SqlDb-ConnectionString,identityref:system" \
+    "redis-conn-string=keyvaultref:${KV_REF}/Redis-ConnectionString,identityref:system" \
+    "stor-conn-string=keyvaultref:${KV_REF}/Storage-ConnectionString,identityref:system" \
     "database-server=keyvaultref:${KV_REF}/Database-Server,identityref:system" \
     "database-name=keyvaultref:${KV_REF}/Database-Name,identityref:system" \
     "database-user=keyvaultref:${KV_REF}/Database-User,identityref:system" \
     "database-password=keyvaultref:${KV_REF}/Database-Password,identityref:system" \
-    "azure-openai-endpoint=keyvaultref:${KV_REF}/AZURE-OPENAI-ENDPOINT,identityref:system" \
+    "openai-endpoint=keyvaultref:${KV_REF}/AZURE-OPENAI-ENDPOINT,identityref:system" \
     "azure-openai-key=keyvaultref:${KV_REF}/AZURE-OPENAI-KEY,identityref:system" \
-    "azure-search-endpoint=keyvaultref:${KV_REF}/AZURE-SEARCH-ENDPOINT,identityref:system" \
+    "search-endpoint=keyvaultref:${KV_REF}/AZURE-SEARCH-ENDPOINT,identityref:system" \
     "azure-search-key=keyvaultref:${KV_REF}/AZURE-SEARCH-KEY,identityref:system" \
-    "azure-vision-endpoint=keyvaultref:${KV_REF}/AZURE-VISION-ENDPOINT,identityref:system" \
+    "vision-endpoint=keyvaultref:${KV_REF}/AZURE-VISION-ENDPOINT,identityref:system" \
     "azure-vision-key=keyvaultref:${KV_REF}/AZURE-VISION-KEY,identityref:system" \
     "azure-di-endpoint=keyvaultref:${KV_REF}/DocumentIntelligence-Endpoint,identityref:system" \
     "azure-di-key=keyvaultref:${KV_REF}/DocumentIntelligence-Key,identityref:system" \
     "azure-audio-endpoint=keyvaultref:${KV_REF}/AZURE-AUDIO-ENDPOINT,identityref:system" \
     "azure-audio-key=keyvaultref:${KV_REF}/AZURE-AUDIO-KEY,identityref:system" \
-    "applicationinsights-connectionstring=keyvaultref:${KV_REF}/ApplicationInsights-ConnectionString,identityref:system" \
+    "appinsights-conn=keyvaultref:${KV_REF}/ApplicationInsights-ConnectionString,identityref:system" \
     "anthropic-api-key=keyvaultref:${KV_REF}/Claude-ApiKey,identityref:system" \
     "bc-tenant-id=keyvaultref:${KV_REF}/BC-TenantId,identityref:system" \
     "bc-client-id=keyvaultref:${KV_REF}/BC-ClientId,identityref:system" \
@@ -213,9 +213,9 @@ az containerapp secret set \
     "session-secret=keyvaultref:${KV_REF}/SESSION-SECRET,identityref:system" \
     "encryption-key=keyvaultref:${KV_REF}/ENCRYPTION-KEY,identityref:system" \
     "microsoft-client-id=keyvaultref:${KV_REF}/Microsoft-ClientId,identityref:system" \
-    "microsoft-client-secret=keyvaultref:${KV_REF}/Microsoft-ClientSecret,identityref:system" \
+    "ms-client-secret=keyvaultref:${KV_REF}/Microsoft-ClientSecret,identityref:system" \
     "microsoft-tenant-id=keyvaultref:${KV_REF}/Microsoft-TenantId,identityref:system" \
-    "graph-webhook-base-url=keyvaultref:${KV_REF}/Graph-WebhookBaseUrl,identityref:system" \
+    "graph-webhook-url=keyvaultref:${KV_REF}/Graph-WebhookBaseUrl,identityref:system" \
   --output none
 
 echo -e "${GREEN}✓ Backend secrets configured (28 KV references)${NC}"

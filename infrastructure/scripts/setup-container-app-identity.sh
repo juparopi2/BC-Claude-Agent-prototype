@@ -32,7 +32,7 @@ case "$ENVIRONMENT" in
     RG_PREFIX="rg-BCAgentPrototype"
     ;;
   prod)
-    PROJECT_NAME="MyWorkMate"
+    PROJECT_NAME="myworkmate"
     RG_PREFIX="rg-myworkmate"
     ;;
   *)

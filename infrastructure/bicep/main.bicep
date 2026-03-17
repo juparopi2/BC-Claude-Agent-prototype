@@ -114,12 +114,6 @@ param microsoftClientSecret string
 @secure()
 param microsoftTenantId string
 
-@secure()
-param azureAudioEndpoint string
-
-@secure()
-param azureAudioKey string
-
 // ============================================================
 // COMPUTED NAMING VARIABLES
 // ============================================================
@@ -139,6 +133,7 @@ var searchName    = 'search-${projectName}-${environment}'
 var openAiName    = 'openai-${projectName}-${environment}'
 var cvName        = 'cv-${projectName}-${environment}'
 var diName        = 'di-${projectName}-${environment}'
+var speechName    = 'speech-${projectName}-${environment}'
 var lawName       = 'law-${projectName}-${environment}'
 var aiName        = 'ai-${projectName}-${environment}'
 
@@ -239,6 +234,7 @@ module cognitive 'modules/cognitive.bicep' = {
     diName: diName
     docIntelligenceSku: docIntelligenceSku
     docIntelligenceLocation: docIntelligenceLocation
+    speechName: speechName
     location: location
   }
 }
@@ -296,6 +292,10 @@ module keyvaultSecrets 'modules/keyvault-secrets.bicep' = {
     appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     appInsightsInstrumentationKey: monitoring.outputs.appInsightsInstrumentationKey
 
+    // ── Auto-derived: speech outputs ──────────────────────
+    speechEndpoint: cognitive.outputs.speechEndpoint
+    speechKey: cognitive.outputs.speechKey
+
     // ── Manual secrets ─────────────────────────────────────
     claudeApiKey: claudeApiKey
     bcTenantId: bcTenantId
@@ -306,8 +306,6 @@ module keyvaultSecrets 'modules/keyvault-secrets.bicep' = {
     microsoftClientId: microsoftClientId
     microsoftClientSecret: microsoftClientSecret
     microsoftTenantId: microsoftTenantId
-    azureAudioEndpoint: azureAudioEndpoint
-    azureAudioKey: azureAudioKey
   }
   dependsOn: [
     security

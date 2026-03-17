@@ -34,6 +34,15 @@ param docIntelligenceLocation string = 'eastus'
 @description('Primary Azure region used for Computer Vision (e.g. westeurope).')
 param location string
 
+@description('Name of the Azure AI Speech / Audio multi-service account.')
+param speechName string
+
+@description('Region for the Speech service (must support AIServices kind).')
+param speechLocation string = 'eastus2'
+
+@description('Speech / AI Services pricing tier.')
+param speechSku string = 'S0'
+
 // ============================================================
 // RESOURCES
 // ============================================================
@@ -105,6 +114,23 @@ resource docIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   }
 }
 
+resource speech 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+  name: speechName
+  location: speechLocation
+  kind: 'AIServices'
+  sku: {
+    name: speechSku
+  }
+  properties: {
+    customSubDomainName: speechName
+    publicNetworkAccess: 'Enabled'
+  }
+  tags: {
+    project: 'MyWorkMate'
+    module: 'cognitive'
+  }
+}
+
 // ============================================================
 // OUTPUTS
 // ============================================================
@@ -129,3 +155,9 @@ output docIntelligenceEndpoint string = docIntelligence.properties.endpoint
 
 @description('Primary access key for the Document Intelligence account.')
 output docIntelligenceKey string = docIntelligence.listKeys().key1
+
+@description('Endpoint URL of the Azure AI Speech / Audio account.')
+output speechEndpoint string = speech.properties.endpoint
+
+@description('Primary access key for the Azure AI Speech / Audio account.')
+output speechKey string = speech.listKeys().key1

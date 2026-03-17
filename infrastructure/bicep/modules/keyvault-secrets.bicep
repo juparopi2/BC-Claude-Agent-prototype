@@ -129,13 +129,12 @@ param microsoftClientSecret string
 @secure()
 param microsoftTenantId string
 
-@description('Azure Cognitive Services Speech / Audio endpoint.')
-@secure()
-param azureAudioEndpoint string
+@description('Endpoint URL of the Azure AI Speech account (auto-derived from cognitive module).')
+param speechEndpoint string
 
-@description('Azure Cognitive Services Speech / Audio key.')
+@description('Primary access key of the Azure AI Speech account (auto-derived from cognitive module).')
 @secure()
-param azureAudioKey string
+param speechKey string
 
 @description('Public base URL for Graph webhook notifications (e.g. Container App FQDN). Set after first Container App deployment.')
 param graphWebhookBaseUrl string = ''
@@ -391,7 +390,7 @@ resource secretAzureAudioEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01'
   parent: keyVault
   name: 'AZURE-AUDIO-ENDPOINT'
   properties: {
-    value: azureAudioEndpoint
+    value: speechEndpoint
   }
 }
 
@@ -399,7 +398,7 @@ resource secretAzureAudioKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AZURE-AUDIO-KEY'
   properties: {
-    value: azureAudioKey
+    value: speechKey
   }
 }
 

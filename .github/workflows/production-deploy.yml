@@ -302,6 +302,14 @@ jobs:
             FRONTEND_URL="https://$FRONTEND_FQDN"
           fi
 
+          # Derive MICROSOFT_REDIRECT_URI from the CAE default domain (deterministic, no chicken-and-egg).
+          # Format: https://{backend-app-name}.{cae-default-domain}/api/auth/callback
+          CAE_DEFAULT_DOMAIN=$(az containerapp env show \
+            --name ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.defaultDomain -o tsv)
+          BACKEND_REDIRECT_URI="https://${{ env.BACKEND_APP_NAME }}.${CAE_DEFAULT_DOMAIN}/api/auth/callback"
+
           az containerapp update \
             --name ${{ env.BACKEND_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -329,7 +337,7 @@ jobs:
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
               MICROSOFT_CLIENT_SECRET=secretref:microsoft-client-secret \
               MICROSOFT_TENANT_ID=secretref:microsoft-tenant-id \
-              MICROSOFT_REDIRECT_URI=secretref:microsoft-redirect-uri \
+              MICROSOFT_REDIRECT_URI=$BACKEND_REDIRECT_URI \
               AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint \
               AZURE_OPENAI_KEY=secretref:azure-openai-key \
               AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \

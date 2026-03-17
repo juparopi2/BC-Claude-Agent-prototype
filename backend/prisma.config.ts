@@ -5,8 +5,6 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   datasource: {
     url: env('DATABASE_URL'),
-  },
-  migrate: {
     shadowDatabaseUrl: process.env.SHADOW_DATABASE_URL,
   },
 });

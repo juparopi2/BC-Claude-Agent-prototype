@@ -9,12 +9,16 @@
 | Frontend Deploy (Dev) | `frontend-deploy.yml` | Push to `main` (frontend/** changes) | Independent dev frontend deploy |
 | Production Deploy | `production-deploy.yml` | Push to `production` | Atomic deploy — both services together with rollback |
 
-## GitHub Environments
+## GitHub Environments (Full Isolation — NO repo-level secrets)
 
-| Environment | Branch | Approval | Secrets |
-|-------------|--------|----------|---------|
-| `development` | `main` | None | Dev Azure SP, dev Key Vault URI |
-| `production` | `production` | Required (1+ reviewer) | Prod Azure SP, prod Key Vault URI |
+All secrets live in environments, nothing at repository level.
+
+| Environment | Used By | Approval | Secrets |
+|-------------|---------|----------|---------|
+| `development` | `test.yml`, `backend-deploy.yml`, `frontend-deploy.yml` | None | All dev values (DB, storage, API keys, SP, Key Vault) |
+| `production` | `production-deploy.yml` (all jobs) | Required (1+ reviewer) | Dev DB creds (for tests) + prod deploy creds (SP, Key Vault, DATABASE_URL) |
+
+Every job in every workflow specifies an `environment`. This ensures complete secret isolation between dev and prod.
 
 ## Adding a New Secret
 

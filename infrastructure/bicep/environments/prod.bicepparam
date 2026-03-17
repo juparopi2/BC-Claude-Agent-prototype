@@ -1,20 +1,20 @@
 using '../main.bicep'
 
 // ============================================================
-// ENVIRONMENT: prod (skeleton — adjust values before first use)
+// ENVIRONMENT: prod (Production environment)
 // ============================================================
 
 param environment = 'prod'
 param location = 'westeurope'
-param projectName = 'bcagent'
-param rgPrefix = 'rg-BCAgentPrototype'
+param projectName = 'myworkmate'
+param rgPrefix = 'rg-myworkmate'
 
 // ── Data tier (prod = higher SKUs) ──────────────────────────
 
 param sqlAdminUser = 'bcagentadmin'
 param sqlAdminPassword = readEnvironmentVariable('SQL_ADMIN_PASSWORD')
-param sqlDbServiceObjective = 'S1'            // TODO: adjust for production load
-param redisSku = 'Standard'                   // TODO: or Premium for persistence
+param sqlDbServiceObjective = 'S1'
+param redisSku = 'Standard'
 param storageSku = 'Standard_GRS'             // Geo-redundant for prod
 
 // ── Cognitive / AI ──────────────────────────────────────────
@@ -22,9 +22,9 @@ param storageSku = 'Standard_GRS'             // Geo-redundant for prod
 param openAiLocation = 'eastus'
 param docIntelligenceLocation = 'eastus'
 param openAiEmbeddingModel = 'text-embedding-3-small'
-param openAiEmbeddingCapacity = 240           // TODO: adjust for production load
+param openAiEmbeddingCapacity = 240
 param computerVisionSku = 'S1'
-param aiSearchSku = 'basic'                   // TODO: consider 'standard' for prod
+param aiSearchSku = 'basic'
 param docIntelligenceSku = 'S0'
 
 // ── Monitoring ──────────────────────────────────────────────

@@ -46,6 +46,7 @@
 | Operational scripts | `backend/scripts/` | `CLAUDE.md` |
 | Frontend files UI | `frontend/src/domains/files/` | `CLAUDE.md` |
 | Frontend integrations | `frontend/src/domains/integrations/` | `CLAUDE.md` |
+| Production operations | `infrastructure/` | `CLAUDE.md` |
 
 ## 5. Commands & Pre-Commit
 
@@ -61,3 +62,14 @@ See `.claude/rules/gotchas.md` for common runtime pitfalls, migration checklists
 - **RAG isolation**: queries ALWAYS filter by `user_id` before vector search
 - **Encrypted tokens**: AES-256-GCM for Microsoft OAuth tokens in `connections`/`users` tables
 - **GDPR**: Cascade delete removes all user PII (sessions, messages, files, events)
+
+## 8. Production Operations
+
+See `infrastructure/CLAUDE.md` for the complete production operations guide including:
+- Environment topology (dev vs prod resource naming)
+- Deployment lifecycle (atomic pipeline: test → build → migrate → deploy → health check → traffic shift)
+- Database migration rules (NEVER `db push` in prod)
+- Downtime & maintenance window procedures
+- Data integrity verification
+- Incident response & rollback procedures
+- Secret rotation schedule

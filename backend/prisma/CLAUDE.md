@@ -127,3 +127,68 @@ if (existing) {
 ```
 
 **History**: Replaced the non-unique index `IX_files_connection_external` (PRD-104). Duplicates were cleaned up using `backend/scripts/cleanup-duplicate-files.sql` before the index was created.
+
+## Production Migration Workflow
+
+### Dual Strategy
+
+| Action | Development | Production |
+|--------|-------------|------------|
+| Schema iteration | `prisma db push` (fast, no migration files) | N/A |
+| Create migration | `prisma migrate dev --create-only --name X` | N/A |
+| Apply migration | `prisma migrate resolve --applied` (dev DB) | `prisma migrate deploy` (CI job) |
+| Rollback | `prisma migrate reset` | Azure SQL PITR + manual SQL |
+
+### Developer Flow (Schema Changes)
+
+1. Edit `schema.prisma`
+2. `npx prisma db push` — iterate until satisfied
+3. `npx prisma migrate dev --create-only --name descriptive_name` — generate migration SQL
+4. Review generated SQL in `prisma/migrations/<timestamp>_descriptive_name/migration.sql`
+5. If CHECK constraints changed, append constraint changes from `constraints.sql`
+6. `npx prisma migrate resolve --applied <timestamp>_descriptive_name` — mark as applied on dev
+7. Commit the migration directory
+
+### Production Migration Rules
+
+- **NEVER** run `prisma db push` against production
+- **NEVER** run `prisma migrate dev` against production
+- Only `prisma migrate deploy` (runs pending migrations in order)
+- The CI pipeline runs `prisma migrate deploy` BEFORE deploying new containers
+
+### Two-Phase Destructive Migrations
+
+When dropping or renaming columns:
+
+**Phase 1** (deploy first):
+- Add new column with default
+- Update code to write to BOTH old and new columns
+- Deploy and confirm stable
+
+**Phase 2** (deploy after Phase 1 is stable):
+- Drop old column
+- Remove dual-write code
+- Deploy
+
+### CHECK Constraint Management
+
+All constraints are registered in `constraints.sql`. When modifying constraints:
+
+1. Update the constraint in `constraints.sql` (source of truth)
+2. Add the `ALTER TABLE ... DROP CONSTRAINT` + `ALTER TABLE ... ADD CONSTRAINT` to the migration SQL
+3. Update the `///` comments in `schema.prisma`
+4. Update the table in this CLAUDE.md
+
+### Backfill Template
+
+For large data changes in production:
+
+```sql
+-- Chunked update to avoid DTU exhaustion (target < 60%)
+DECLARE @batch INT = 1000;
+WHILE EXISTS (SELECT 1 FROM [table] WHERE [new_col] IS NULL)
+BEGIN
+  UPDATE TOP(@batch) [table] SET [new_col] = [computed_value] WHERE [new_col] IS NULL;
+  WAITFOR DELAY '00:00:01';
+END
+```

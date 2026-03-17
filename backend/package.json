@@ -42,6 +42,9 @@
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
+    "prisma:migrate:create": "prisma migrate dev --create-only",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:status": "prisma migrate status",
     "postinstall": "prisma generate"
   },
   "keywords": [

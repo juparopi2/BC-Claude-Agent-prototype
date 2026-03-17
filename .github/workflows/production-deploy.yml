@@ -1,0 +1,629 @@
+name: Production - Atomic Deploy
+
+on:
+  push:
+    branches:
+      - production
+  workflow_dispatch:
+
+env:
+  AZURE_CONTAINER_REGISTRY: crmyworkmateprod
+  BACKEND_APP_NAME: app-myworkmate-backend-prod
+  FRONTEND_APP_NAME: app-myworkmate-frontend-prod
+  RESOURCE_GROUP: rg-myworkmate-app-prod
+  CONTAINER_APPS_ENVIRONMENT: cae-myworkmate-prod
+  BACKEND_IMAGE: myworkmate-backend
+  FRONTEND_IMAGE: myworkmate-frontend
+
+jobs:
+  # ==========================================================================
+  # Test Gate — re-run full test suite against this exact commit
+  # Manual approval via GitHub Environment protection rules
+  # ==========================================================================
+  test-gate:
+    name: Test Gate
+    runs-on: ubuntu-latest
+    environment: production
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: "sqlserver://localhost;database=dummy;user=sa;password=dummy;encrypt=true"
+      DATABASE_SERVER: ${{ secrets.DATABASE_SERVER }}
+      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+      DATABASE_USER: ${{ secrets.DATABASE_USER }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+      STORAGE_CONNECTION_STRING: ${{ secrets.STORAGE_CONNECTION_STRING }}
+      REDIS_TEST_HOST: localhost
+      REDIS_TEST_PORT: 6399
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build:shared
+
+      - name: Type verification
+        run: npm run verify:types
+
+      - name: Backend lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Backend type check
+        working-directory: backend
+        run: npm run type-check
+
+      - name: Backend unit tests
+        working-directory: backend
+        run: npm run test:unit
+
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Frontend type check
+        working-directory: frontend
+        run: npm run type-check
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Wait for Redis
+        run: |
+          for i in {1..30}; do
+            if node -e "const net = require('net'); const s = net.createConnection(6399, 'localhost'); s.on('connect', () => process.exit(0)); s.on('error', () => process.exit(1)); setTimeout(() => process.exit(1), 1000);" 2>/dev/null; then
+              echo "Redis is ready!"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Backend integration tests
+        working-directory: backend
+        env:
+          DATABASE_URL: "sqlserver://${{ secrets.DATABASE_SERVER }};database=${{ secrets.DATABASE_NAME }};user=${{ secrets.DATABASE_USER }};password=${{ secrets.DATABASE_PASSWORD }};encrypt=true"
+          STORAGE_CONTAINER_NAME: "user-files"
+          STORAGE_CONTAINER_NAME_TEST: "user-files-test"
+        run: npm run test:integration
+
+  # ==========================================================================
+  # Build Docker images (parallel)
+  # ==========================================================================
+  build-backend-image:
+    name: Build Backend Image
+    runs-on: ubuntu-latest
+    needs: [test-gate]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE }}:prod-latest
+          cache-from: type=gha,scope=prod-backend
+          cache-to: type=gha,mode=max,scope=prod-backend,ignore-error=true
+
+  build-frontend-image:
+    name: Build Frontend Image
+    runs-on: ubuntu-latest
+    needs: [test-gate]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+
+      - name: Get Backend URL
+        id: get_backend_url
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv 2>/dev/null || echo "")
+
+          if [ -z "$BACKEND_FQDN" ]; then
+            echo "api_url=https://app-myworkmate-backend-prod.placeholder.azurecontainerapps.io" >> $GITHUB_OUTPUT
+            echo "ws_url=wss://app-myworkmate-backend-prod.placeholder.azurecontainerapps.io" >> $GITHUB_OUTPUT
+          else
+            echo "api_url=https://$BACKEND_FQDN" >> $GITHUB_OUTPUT
+            echo "ws_url=wss://$BACKEND_FQDN" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./frontend/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ steps.get_backend_url.outputs.api_url }}
+            NEXT_PUBLIC_WS_URL=${{ steps.get_backend_url.outputs.ws_url }}
+            NEXT_PUBLIC_ENV=production
+          tags: |
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:prod-latest
+          cache-from: type=gha,scope=prod-frontend
+          cache-to: type=gha,mode=max,scope=prod-frontend,ignore-error=true
+
+  # ==========================================================================
+  # Database migration
+  # ==========================================================================
+  migrate-database:
+    name: Migrate Database
+    runs-on: ubuntu-latest
+    needs: [build-backend-image, build-frontend-image]
+    timeout-minutes: 10
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: npm run build:shared
+
+      - name: Run migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+
+      - name: Verify migration status
+        working-directory: backend
+        run: npx prisma migrate status
+
+  # ==========================================================================
+  # Deploy new revisions at 0% traffic (blue-green)
+  # ==========================================================================
+  deploy-containers:
+    name: Deploy Containers
+    runs-on: ubuntu-latest
+    needs: [migrate-database]
+    outputs:
+      backend-old-revision: ${{ steps.record_revisions.outputs.backend_old }}
+      frontend-old-revision: ${{ steps.record_revisions.outputs.frontend_old }}
+      backend-new-revision: ${{ steps.deploy_backend.outputs.new_revision }}
+      frontend-new-revision: ${{ steps.deploy_frontend.outputs.new_revision }}
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Record current active revisions (for rollback)
+        id: record_revisions
+        run: |
+          BACKEND_OLD=$(az containerapp revision list \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[?properties.trafficWeight > \`0\`].name | [0]" -o tsv 2>/dev/null || echo "")
+          FRONTEND_OLD=$(az containerapp revision list \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "[?properties.trafficWeight > \`0\`].name | [0]" -o tsv 2>/dev/null || echo "")
+
+          echo "backend_old=$BACKEND_OLD" >> $GITHUB_OUTPUT
+          echo "frontend_old=$FRONTEND_OLD" >> $GITHUB_OUTPUT
+          echo "Previous backend revision: $BACKEND_OLD"
+          echo "Previous frontend revision: $FRONTEND_OLD"
+
+      - name: Enable multi-revision mode (backend)
+        run: |
+          az containerapp revision set-mode \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --mode multiple
+
+      - name: Enable multi-revision mode (frontend)
+        run: |
+          az containerapp revision set-mode \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --mode multiple
+
+      - name: Deploy backend (0% traffic)
+        id: deploy_backend
+        run: |
+          # Get frontend URL for CORS
+          FRONTEND_FQDN=$(az containerapp show \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn \
+            --output tsv 2>/dev/null || echo "")
+
+          if [ -z "$FRONTEND_FQDN" ]; then
+            FRONTEND_URL="https://app-myworkmate-frontend-prod.placeholder.azurecontainerapps.io"
+          else
+            FRONTEND_URL="https://$FRONTEND_FQDN"
+          fi
+
+          az containerapp update \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+            --revision-suffix sha-${GITHUB_SHA::8} \
+            --set-env-vars \
+              NODE_ENV=production \
+              PORT=3001 \
+              DATABASE_CONNECTION_STRING=secretref:sql-connection-string \
+              REDIS_CONNECTION_STRING=secretref:redis-connection-string \
+              ANTHROPIC_API_KEY=secretref:anthropic-api-key \
+              ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
+              BC_TENANT_ID=secretref:bc-tenant-id \
+              BC_CLIENT_ID=secretref:bc-client-id \
+              BC_CLIENT_SECRET=secretref:bc-client-secret \
+              BC_API_URL=https://api.businesscentral.dynamics.com/v2.0 \
+              BC_ENVIRONMENT=production \
+              STORAGE_CONNECTION_STRING=secretref:storage-connection-string \
+              STORAGE_CONTAINER_NAME=user-files \
+              APPLICATIONINSIGHTS_CONNECTION_STRING=secretref:applicationinsights-connectionstring \
+              APPLICATIONINSIGHTS_ENABLED=true \
+              APPLICATIONINSIGHTS_SAMPLING_PERCENTAGE=50 \
+              SESSION_SECRET=secretref:session-secret \
+              ENCRYPTION_KEY=secretref:encryption-key \
+              MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
+              MICROSOFT_CLIENT_SECRET=secretref:microsoft-client-secret \
+              MICROSOFT_TENANT_ID=secretref:microsoft-tenant-id \
+              MICROSOFT_REDIRECT_URI=secretref:microsoft-redirect-uri \
+              AZURE_OPENAI_ENDPOINT=secretref:azure-openai-endpoint \
+              AZURE_OPENAI_KEY=secretref:azure-openai-key \
+              AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
+              AZURE_SEARCH_ENDPOINT=secretref:azure-search-endpoint \
+              AZURE_SEARCH_KEY=secretref:azure-search-key \
+              AZURE_SEARCH_INDEX_NAME=file-chunks-index \
+              AZURE_VISION_ENDPOINT=secretref:azure-vision-endpoint \
+              AZURE_VISION_KEY=secretref:azure-vision-key \
+              AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \
+              AZURE_DI_KEY=secretref:azure-di-key \
+              AZURE_AUDIO_ENDPOINT=secretref:azure-audio-endpoint \
+              AZURE_AUDIO_KEY=secretref:azure-audio-key \
+              FRONTEND_URL=$FRONTEND_URL \
+              CORS_ORIGIN=$FRONTEND_URL \
+              LOG_LEVEL=info \
+              ENABLE_PROMPT_CACHING=true \
+              ENABLE_EXTENDED_THINKING=true \
+              MAX_CONTEXT_TOKENS=100000 \
+              QUEUE_FILE_PROCESSING_CONCURRENCY=5 \
+              QUEUE_FILE_CHUNKING_CONCURRENCY=3 \
+              QUEUE_EMBEDDING_CONCURRENCY=3 \
+              GRAPH_WEBHOOK_BASE_URL=secretref:graph-webhook-base-url \
+              SYNC_POLLING_INTERVAL_MINUTES=30 \
+              SUBSCRIPTION_RENEWAL_BUFFER_HOURS=48 \
+              SUBSCRIPTION_MAX_DURATION_DAYS=29
+
+          # Get the new revision name
+          NEW_REV=$(az containerapp revision list \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "sort_by([],&properties.createdTime)[-1].name" -o tsv)
+          echo "new_revision=$NEW_REV" >> $GITHUB_OUTPUT
+          echo "New backend revision: $NEW_REV"
+
+      - name: Deploy frontend (0% traffic)
+        id: deploy_frontend
+        run: |
+          az containerapp update \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+            --revision-suffix sha-${GITHUB_SHA::8}
+
+          # Get the new revision name
+          NEW_REV=$(az containerapp revision list \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "sort_by([],&properties.createdTime)[-1].name" -o tsv)
+          echo "new_revision=$NEW_REV" >> $GITHUB_OUTPUT
+          echo "New frontend revision: $NEW_REV"
+
+  # ==========================================================================
+  # Health checks on new revisions
+  # ==========================================================================
+  health-checks:
+    name: Health Checks
+    runs-on: ubuntu-latest
+    needs: [deploy-containers]
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Wait for containers to start
+        run: sleep 60
+
+      - name: Backend liveness check
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+
+          echo "Checking backend liveness at https://$BACKEND_FQDN/health/liveness"
+
+          MAX_RETRIES=5
+          RETRY_DELAY=20
+          for i in $(seq 1 $MAX_RETRIES); do
+            RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" --max-time 30 "https://$BACKEND_FQDN/health/liveness" 2>&1)
+            HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+            BODY=$(echo "$RESPONSE" | grep -v "HTTP_CODE:")
+
+            if echo "$BODY" | jq -e '.status == "alive"' > /dev/null 2>&1; then
+              echo "Backend liveness check passed!"
+              break
+            fi
+
+            echo "Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_CODE)"
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "Backend liveness check failed after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            sleep $RETRY_DELAY
+          done
+
+      - name: Backend readiness check
+        run: |
+          BACKEND_FQDN=$(az containerapp show \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+
+          echo "Checking backend readiness at https://$BACKEND_FQDN/health"
+
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$BACKEND_FQDN/health" 2>&1)
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Backend readiness check passed!"
+              break
+            fi
+            echo "Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_CODE)"
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "Backend readiness check failed"
+              exit 1
+            fi
+            sleep 15
+          done
+
+      - name: Frontend health check
+        run: |
+          FRONTEND_FQDN=$(az containerapp show \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+
+          echo "Checking frontend at https://$FRONTEND_FQDN"
+
+          MAX_RETRIES=5
+          for i in $(seq 1 $MAX_RETRIES); do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$FRONTEND_FQDN" 2>&1)
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Frontend health check passed!"
+              break
+            fi
+            echo "Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_CODE)"
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "Frontend health check failed"
+              exit 1
+            fi
+            sleep 20
+          done
+
+  # ==========================================================================
+  # Shift 100% traffic to new revisions
+  # ==========================================================================
+  finalize-traffic:
+    name: Finalize Traffic
+    runs-on: ubuntu-latest
+    needs: [health-checks, deploy-containers]
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Shift backend traffic to new revision
+        run: |
+          az containerapp ingress traffic set \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              ${{ needs.deploy-containers.outputs.backend-new-revision }}=100
+
+      - name: Shift frontend traffic to new revision
+        run: |
+          az containerapp ingress traffic set \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              ${{ needs.deploy-containers.outputs.frontend-new-revision }}=100
+
+      - name: Deactivate old revisions
+        if: needs.deploy-containers.outputs.backend-old-revision != ''
+        run: |
+          # Deactivate old backend revision
+          if [ -n "${{ needs.deploy-containers.outputs.backend-old-revision }}" ]; then
+            az containerapp revision deactivate \
+              --name ${{ env.BACKEND_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "${{ needs.deploy-containers.outputs.backend-old-revision }}" || true
+          fi
+
+          # Deactivate old frontend revision
+          if [ -n "${{ needs.deploy-containers.outputs.frontend-old-revision }}" ]; then
+            az containerapp revision deactivate \
+              --name ${{ env.FRONTEND_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "${{ needs.deploy-containers.outputs.frontend-old-revision }}" || true
+          fi
+
+      - name: Deployment Summary
+        run: |
+          echo "### Production Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Backend revision:** \`${{ needs.deploy-containers.outputs.backend-new-revision }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Frontend revision:** \`${{ needs.deploy-containers.outputs.frontend-new-revision }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          BACKEND_FQDN=$(az containerapp show \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          FRONTEND_FQDN=$(az containerapp show \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "**Backend URL:** https://$BACKEND_FQDN" >> $GITHUB_STEP_SUMMARY
+          echo "**Frontend URL:** https://$FRONTEND_FQDN" >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # Rollback on failure — revert traffic to previous revisions
+  # ==========================================================================
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-latest
+    needs: [deploy-containers, health-checks, finalize-traffic]
+    if: failure() && needs.deploy-containers.outputs.backend-old-revision != ''
+
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Revert backend traffic
+        if: needs.deploy-containers.outputs.backend-old-revision != ''
+        run: |
+          az containerapp ingress traffic set \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              ${{ needs.deploy-containers.outputs.backend-old-revision }}=100 || true
+
+      - name: Revert frontend traffic
+        if: needs.deploy-containers.outputs.frontend-old-revision != ''
+        run: |
+          az containerapp ingress traffic set \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --revision-weight \
+              ${{ needs.deploy-containers.outputs.frontend-old-revision }}=100 || true
+
+      - name: Deactivate failed revisions
+        run: |
+          # Deactivate failed backend revision
+          if [ -n "${{ needs.deploy-containers.outputs.backend-new-revision }}" ]; then
+            az containerapp revision deactivate \
+              --name ${{ env.BACKEND_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "${{ needs.deploy-containers.outputs.backend-new-revision }}" || true
+          fi
+
+          # Deactivate failed frontend revision
+          if [ -n "${{ needs.deploy-containers.outputs.frontend-new-revision }}" ]; then
+            az containerapp revision deactivate \
+              --name ${{ env.FRONTEND_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "${{ needs.deploy-containers.outputs.frontend-new-revision }}" || true
+          fi
+
+      - name: Create failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Production deployment failed — ${context.sha.substring(0, 8)}`,
+              body: [
+                `## Production Deployment Failure`,
+                ``,
+                `**Commit:** \`${context.sha}\``,
+                `**Workflow:** [Run #${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+                `**Time:** ${new Date().toISOString()}`,
+                ``,
+                `### Rollback Status`,
+                `Traffic was reverted to previous revisions:`,
+                `- Backend: \`${{ needs.deploy-containers.outputs.backend-old-revision }}\``,
+                `- Frontend: \`${{ needs.deploy-containers.outputs.frontend-old-revision }}\``,
+                ``,
+                `### Action Required`,
+                `1. Check workflow logs for failure details`,
+                `2. If migration was applied, assess DB compatibility with old code`,
+                `3. Fix the issue and create a new PR to \`production\``,
+              ].join('\n'),
+              labels: ['production', 'deployment-failure']
+            });
+
+      - name: Rollback Summary
+        run: |
+          echo "### Production Deployment ROLLED BACK" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Traffic reverted to previous revisions." >> $GITHUB_STEP_SUMMARY
+          echo "**Backend:** \`${{ needs.deploy-containers.outputs.backend-old-revision }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Frontend:** \`${{ needs.deploy-containers.outputs.frontend-old-revision }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A GitHub issue has been created to track this failure." >> $GITHUB_STEP_SUMMARY

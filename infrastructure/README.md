@@ -241,6 +241,65 @@ The platform uses **incremental consent** (Microsoft's recommended pattern). Log
 | App Insights | Workspace-based | Included in LAW |
 | **Total** | | **~$65-80/month** |
 
+## Production Environment
+
+### Resource Naming
+
+Production uses `myworkmate` as the project name, producing:
+
+| Resource | Production Name |
+|----------|----------------|
+| Resource Groups | `rg-myworkmate-sec-prod`, `rg-myworkmate-data-prod`, `rg-myworkmate-app-prod` |
+| Key Vault | `kv-myworkmate-prod` |
+| SQL Server | `sqlsrv-myworkmate-prod` |
+| SQL Database | `sqldb-myworkmate-prod` |
+| Redis Cache | `redis-myworkmate-prod` |
+| Storage Account | `samyworkmateprod` |
+| Container Registry | `crmyworkmateprod` |
+| CAE | `cae-myworkmate-prod` |
+| Container Apps | `app-myworkmate-backend-prod`, `app-myworkmate-frontend-prod` |
+| AI Search | `search-myworkmate-prod` |
+| OpenAI | `openai-myworkmate-prod` |
+
+> **Note**: Dev resources use the historical `rg-BCAgentPrototype-*-dev` / `bcagent` naming. Both environments are fully independent.
+
+### Production SKUs
+
+| Resource | Dev | Prod |
+|----------|-----|------|
+| SQL Database | S0 (10 DTU) | S1 (20 DTU) |
+| Redis Cache | Basic C0 | Standard C0 |
+| Storage Account | Standard_LRS | Standard_GRS |
+| Container Registry | Basic | Standard |
+| OpenAI Embedding Capacity | 120K tok/min | 240K tok/min |
+| App Insights Sampling | 100% | 50% |
+
+### Deploying Production
+
+```bash
+# Preview changes
+ENVIRONMENT=prod bash infrastructure/scripts/deploy.sh --what-if
+
+# Deploy
+ENVIRONMENT=prod bash infrastructure/scripts/deploy.sh
+```
+
+### Service Principal
+
+Create a prod-scoped SP for GitHub Actions:
+
+```bash
+az ad sp create-for-rbac --name "sp-myworkmate-prod" \
+  --role Contributor \
+  --scopes \
+    "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-myworkmate-sec-prod" \
+    "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-myworkmate-data-prod" \
+    "/subscriptions/5343f6e1-f251-4b50-a592-18ff3e97eaa7/resourceGroups/rg-myworkmate-app-prod" \
+  --sdk-auth
+```
+
+Output → GitHub Environment secret `AZURE_CREDENTIALS` for `production` environment.
+
 ## Verification
 
 ```bash

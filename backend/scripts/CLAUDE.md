@@ -79,9 +79,24 @@ npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider all -
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
 | `find-user.ts` | Search users by name or email | `<search>`, `--exact`, `--files` |
-| `reset-user-data.ts` | Full user data reset (SQL, Blob, Search, Redis) | `--userId`, `--confirm` |
+| `inventory-user.ts` | Full data inventory across all tables + Blob + AI Search | `<name\|UUID>`, `--all`, `--external` |
+| `purge-user.ts` | Per-user purge across SQL, Blob, AI Search, Redis (5 phases) | `--userId`, `--dry-run`, `--confirm`, `--keep-account` |
+| `purge-test-users.ts` | Bulk remove empty test/fixture users | `--confirm`, `--exclude`, `--include-data` |
+| `reset-user-data.ts` | Global platform reset (ALL users) — SQL, Blob, Search, Redis | `--confirm`, `--dry-run`, `--skip-redis`, `--skip-files` |
 | `run-migration.ts` | Run raw SQL migration files | positional arg (file path) |
 | `update-search-schema.ts` | Update Azure AI Search index with missing fields | `--dry-run`, `--apply` |
+
+### User Lifecycle Workflow
+
+```bash
+npx tsx scripts/database/find-user.ts Juan                                      # Find user
+npx tsx scripts/database/inventory-user.ts Juan --external                      # Full inventory
+npx tsx scripts/database/purge-user.ts --userId <UUID> --dry-run                # Preview purge
+npx tsx scripts/database/purge-user.ts --userId <UUID> --keep-account --confirm # Clean + keep login
+npx tsx scripts/database/purge-user.ts --userId <UUID> --confirm                # Full account delete
+npx tsx scripts/database/purge-test-users.ts                                    # Dry-run test users
+npx tsx scripts/database/purge-test-users.ts --confirm                          # Delete test users
+```
 
 ---
 

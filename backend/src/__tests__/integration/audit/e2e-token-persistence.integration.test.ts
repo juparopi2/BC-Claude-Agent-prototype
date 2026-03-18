@@ -201,10 +201,10 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
       await executeQuery(`
         INSERT INTO messages (
           id, session_id, role, message_type, content, metadata,
-          model, input_tokens, output_tokens, created_at
+          model, input_tokens, output_tokens, total_tokens, created_at
         ) VALUES (
           @id, @session_id, @role, @message_type, @content, @metadata,
-          @model, @input_tokens, @output_tokens, @created_at
+          @model, @input_tokens, @output_tokens, @total_tokens, @created_at
         )
       `, {
         id: testMessageId,
@@ -216,6 +216,7 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
         model: 'claude-sonnet-4-5-20250929',
         input_tokens: 150,
         output_tokens: 250,
+        total_tokens: 400,
         created_at: new Date(),
       });
 
@@ -232,7 +233,6 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
       expect(message.model).toBe('claude-sonnet-4-5-20250929');
       expect(message.input_tokens).toBe(150);
       expect(message.output_tokens).toBe(250);
-      // total_tokens is computed column
       expect(message.total_tokens).toBe(400);
     });
 

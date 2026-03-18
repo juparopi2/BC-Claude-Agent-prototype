@@ -168,6 +168,14 @@ resource userFilesContainer 'Microsoft.Storage/storageAccounts/blobServices/cont
   }
 }
 
+resource chatAttachmentsTestContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  name: 'chat-attachments-test'
+  parent: blobService
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
 resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   name: 'default'
   parent: storageAccount

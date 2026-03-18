@@ -102,6 +102,28 @@ jobs:
             sleep 1
           done
 
+      - name: Run database migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: "sqlserver://${{ secrets.DATABASE_SERVER }};database=${{ secrets.DATABASE_NAME }};user=${{ secrets.DATABASE_USER }};password=${{ secrets.DATABASE_PASSWORD }};encrypt=true"
+        run: |
+          set +e
+          MIGRATE_OUTPUT=$(npx prisma migrate deploy 2>&1)
+          MIGRATE_EXIT=$?
+          set -e
+          echo "$MIGRATE_OUTPUT"
+          if [ $MIGRATE_EXIT -ne 0 ]; then
+            if echo "$MIGRATE_OUTPUT" | grep -q "P3005"; then
+              echo "⚠️  P3005: DB has schema but no migration history. Baselining..."
+              npx prisma migrate resolve --applied "20260317162456_initial_schema"
+              echo "✅ Baseline applied. Running migrate deploy..."
+              npx prisma migrate deploy
+            else
+              echo "❌ Migration failed for unexpected reason."
+              exit $MIGRATE_EXIT
+            fi
+          fi
+
       - name: Backend integration tests
         working-directory: backend
         env:

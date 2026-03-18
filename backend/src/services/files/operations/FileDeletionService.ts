@@ -194,6 +194,11 @@ export class FileDeletionService implements IFileDeletionService {
    * Uses eventual consistency - errors are logged but don't fail the deletion
    */
   private async cleanupAISearchEmbeddings(userId: string, fileIds: string[]): Promise<boolean> {
+    if (!VectorSearchService.isConfigured()) {
+      this.logger.info({ userId, fileIds }, 'AI Search not configured — skipping embedding cleanup');
+      return true;
+    }
+
     let allSucceeded = true;
 
     try {

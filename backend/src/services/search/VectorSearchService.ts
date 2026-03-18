@@ -42,6 +42,10 @@ export class VectorSearchService {
     return VectorSearchService.instance;
   }
 
+  static isConfigured(): boolean {
+    return !!(env.AZURE_SEARCH_ENDPOINT && env.AZURE_SEARCH_KEY);
+  }
+
   /**
    * Initializes the SearchIndexClient and SearchClient if they haven't been already.
    * This allows for lazy initialization and easier testing (mocking dependencies).

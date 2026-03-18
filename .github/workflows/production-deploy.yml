@@ -107,8 +107,10 @@ jobs:
         env:
           DATABASE_URL: "sqlserver://${{ secrets.DATABASE_SERVER }};database=${{ secrets.DATABASE_NAME }};user=${{ secrets.DATABASE_USER }};password=${{ secrets.DATABASE_PASSWORD }};encrypt=true"
         run: |
+          set +e
           MIGRATE_OUTPUT=$(npx prisma migrate deploy 2>&1)
           MIGRATE_EXIT=$?
+          set -e
           echo "$MIGRATE_OUTPUT"
           if [ $MIGRATE_EXIT -ne 0 ]; then
             if echo "$MIGRATE_OUTPUT" | grep -q "P3005"; then

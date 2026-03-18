@@ -55,6 +55,7 @@ const mockVectorSearchService = vi.hoisted(() => ({
 vi.mock('@services/search/VectorSearchService', () => ({
   VectorSearchService: {
     getInstance: vi.fn(() => mockVectorSearchService),
+    isConfigured: vi.fn().mockReturnValue(true),
   },
 }));
 

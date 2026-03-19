@@ -248,9 +248,28 @@ grant_acr_pull "$BACKEND_APP"
 grant_acr_pull "$FRONTEND_APP"
 echo ""
 
+# ── Configure ACR registry on Container Apps ────────────────────────────────
+
+echo -e "${BLUE}Step 7: Configuring ACR registry authentication on Container Apps...${NC}"
+
+configure_acr_registry() {
+  local APP_NAME="$1"
+  az containerapp registry set \
+    --name "$APP_NAME" \
+    --resource-group "$RESOURCE_GROUP" \
+    --server "${ACR_NAME}.azurecr.io" \
+    --identity system \
+    --output none
+  echo -e "  ${GREEN}✓ ACR registry configured on ${APP_NAME}${NC}"
+}
+
+configure_acr_registry "$BACKEND_APP"
+configure_acr_registry "$FRONTEND_APP"
+echo ""
+
 # ── Print FQDNs ───────────────────────────────────────────────────────────────
 
-echo -e "${BLUE}Step 7: Retrieving Container App URLs...${NC}"
+echo -e "${BLUE}Step 8: Retrieving Container App URLs...${NC}"
 
 BACKEND_FQDN=$(az containerapp show \
   --name "$BACKEND_APP" \

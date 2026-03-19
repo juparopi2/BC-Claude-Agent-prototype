@@ -170,6 +170,61 @@ When dropping or renaming columns:
 - Remove dual-write code
 - Deploy
 
+### Migration Rollback Files
+
+Every migration directory may include a `rollback.sql` — a manually-authored SQL script that reverses the migration's changes. These are **never auto-executed**; they exist as documentation for incident response.
+
+**Convention:**
+- **Destructive migrations** (DROP, ALTER COLUMN) → `rollback.sql` REQUIRED
+- **Additive migrations** (CREATE, ADD COLUMN) → `rollback.sql` RECOMMENDED
+- Must include `IF EXISTS` / `IF NOT EXISTS` guards for idempotency
+- Must include post-rollback instructions as SQL comments
+
+**After executing a rollback:**
+1. Run the rollback SQL against the target database
+2. Remove the migration record: `DELETE FROM _prisma_migrations WHERE migration_name = '<name>';`
+3. Verify constraints: `npx tsx scripts/database/verify-constraints.ts`
+4. Run `npx prisma migrate deploy` to confirm clean state
+
+Template: `prisma/migrations/ROLLBACK_TEMPLATE.sql`
+
+### CI Safety Gates
+
+The CI pipeline includes a destructive SQL scanner (`backend/scripts/database/check-destructive-migrations.sh`) that runs on every PR. It scans new or modified migration files for destructive patterns:
+
+**Blocked patterns:** `DROP TABLE`, `DROP COLUMN`, `ALTER TABLE ... DROP`, `TRUNCATE`, `DELETE FROM` (without WHERE), `ALTER TABLE ... ALTER COLUMN`
+
+**Bypass mechanisms (require explicit approval):**
+1. PR label: `migration:destructive-approved`
+2. Commit message contains: `[destructive-migration]`
+
+When the scanner blocks a PR, it reports the file, line number, and matched pattern, linking to this two-phase migration documentation.
+
+### Constraint Verification
+
+The constraint verification script (`backend/scripts/database/verify-constraints.ts`) compares the expected constraints from `constraints.sql` against the actual database state.
+
+```bash
+# Full verification
+npx tsx scripts/database/verify-constraints.ts
+
+# Single table
+npx tsx scripts/database/verify-constraints.ts --table messages
+
+# JSON output for CI
+npx tsx scripts/database/verify-constraints.ts --json
+
+# Strict mode (exit 1 on any drift)
+npx tsx scripts/database/verify-constraints.ts --strict
+```
+
+The script checks:
+- CHECK constraints: expected vs actual (name, table, definition)
+- Filtered indexes: expected vs actual (name, table, columns, filter)
+- Reports: missing, extra, and mismatched items
+
+Runs in CI after migrations (both `test.yml` and `production-deploy.yml`).
+
 ### CHECK Constraint Management
 
 All constraints are registered in `constraints.sql`. When modifying constraints:

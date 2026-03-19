@@ -41,6 +41,24 @@ jobs:
         run: npm run verify:types
 
   # ==========================================================================
+  # Migration Safety — scan for destructive SQL in new migrations
+  # ==========================================================================
+  migration-safety:
+    name: Migration Safety Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for destructive migration SQL
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash backend/scripts/database/check-destructive-migrations.sh
+
+  # ==========================================================================
   # Backend Unit Tests
   # ==========================================================================
   backend-tests:
@@ -218,6 +236,11 @@ jobs:
               exit $MIGRATE_EXIT
             fi
           fi
+
+      - name: Verify database constraints
+        working-directory: backend
+        continue-on-error: true
+        run: npx tsx scripts/database/verify-constraints.ts --strict --json
 
       - name: Run integration tests
         working-directory: backend

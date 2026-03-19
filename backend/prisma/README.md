@@ -1,79 +1,65 @@
-# Prisma - Database Schema Management
+# Prisma — Database Schema Management
 
 ## Structure
 
 ```
-backend/
-├── prisma/
-│   ├── schema.prisma   # SINGLE SOURCE OF TRUTH for database schema
-│   └── README.md       # This file
-├── prisma.config.ts    # Prisma 7 configuration (datasource URL)
-└── src/infrastructure/database/prisma.ts  # Prisma client singleton
+backend/prisma/
+├── schema.prisma        # Single source of truth for table/column definitions
+├── constraints.sql      # CHECK constraints & filtered indexes (Prisma limitation)
+├── prisma.config.ts     # Prisma 7 configuration (datasource URL)
+├── migrations/          # Numbered migration directories
+│   ├── ROLLBACK_TEMPLATE.sql
+│   └── <timestamp>_<name>/
+│       ├── migration.sql
+│       └── rollback.sql  # Incident response (never auto-executed)
+└── README.md            # This file
 ```
 
-## Fundamental Principles
+## Dual Strategy
 
-### 1. Schema as Source of Truth
-The `schema.prisma` file is the complete and up-to-date representation of the database schema. Any questions about columns, types, relationships, or indexes can be answered by consulting this file.
+| Action | Development | Production |
+|--------|-------------|------------|
+| Schema iteration | `prisma db push` (fast, no files) | **NEVER** |
+| Create migration | `prisma migrate dev --create-only --name X` | N/A |
+| Apply migration | `prisma migrate resolve --applied` (dev) | `prisma migrate deploy` (CI) |
+| Rollback | `prisma migrate reset` | Azure SQL PITR + `rollback.sql` |
 
-### 2. Direct Synchronization (No Incremental Migrations)
-We use `prisma db push` instead of numbered migrations. This means:
-- NO migration files (001, 002, etc.)
-- Changes are applied directly by editing `schema.prisma`
-- Prisma detects differences and applies them automatically
+## Developer Workflow
 
-### 3. Workflow
-
-#### To make schema changes:
-1. Edit `schema.prisma` (add/modify models, fields, relationships)
-2. Run `npx prisma db push`
-3. Run `npx prisma generate` (regenerates typed client)
-4. Commit `schema.prisma`
-
-#### To sync schema with external changes:
-If someone modified the DB directly (not recommended):
-```bash
-npx prisma db pull  # Updates schema.prisma from DB
-```
+1. Edit `schema.prisma`
+2. `npx prisma db push` — iterate until satisfied
+3. `npx prisma migrate dev --create-only --name descriptive_name` — generate SQL
+4. Review SQL in `prisma/migrations/<timestamp>_name/migration.sql`
+5. If CHECK constraints changed, append from `constraints.sql`
+6. Add `rollback.sql` (required for destructive, recommended for additive)
+7. `npx prisma migrate resolve --applied <timestamp>_name` — mark applied on dev
+8. Commit the migration directory
 
 ## Essential Commands
 
-| Command | Description |
-|---------|-------------|
-| `npx prisma db push` | Apply schema changes to database |
-| `npx prisma db pull` | Update schema from existing database |
-| `npx prisma generate` | Regenerate typed Prisma client |
+| Command | Purpose |
+|---------|---------|
+| `npx prisma db push` | Apply schema to dev DB (no migration files) |
+| `npx prisma migrate dev --create-only --name X` | Generate migration SQL |
+| `npx prisma migrate deploy` | Apply pending migrations (**production**) |
+| `npx prisma migrate resolve --applied <name>` | Mark migration as applied |
+| `npx prisma generate` | Regenerate typed client |
 | `npx prisma validate` | Validate schema syntax |
-| `npx prisma format` | Format schema file |
 
-> **Note**: `prisma studio` is not supported for SQL Server in Prisma 7. Use Azure Data Studio or SSMS for visual database exploration.
+> `prisma studio` is not supported for SQL Server. Use Azure Data Studio or SSMS.
 
-## Production Considerations
+## Production Safety Rules
 
-**IMPORTANT**: `prisma db push` can cause data loss on destructive changes (dropping columns, changing types). For production:
-
-1. **Always backup before** running `db push`
-2. **Review changes** carefully before applying
-3. **Consider manual migrations** for critical changes that require data transformation
+1. **NEVER** run `prisma db push` against production
+2. **NEVER** run `prisma migrate dev` against production
+3. Only `prisma migrate deploy` runs in production (via CI pipeline)
+4. Destructive changes (DROP COLUMN, type changes) require [two-phase migration](CLAUDE.md)
+5. CI scanner blocks destructive SQL unless explicitly approved
+6. Every destructive migration **must** include `rollback.sql`
 
 ## Conventions
 
-### Model Names
-- Use `snake_case` for table names (via `@@map`)
-- Use `camelCase` for field names in TypeScript
-
-### Example Model
-```prisma
-model User {
-  id        String   @id @default(dbgenerated("newid()")) @db.UniqueIdentifier
-  email     String   @unique @db.NVarChar(255)
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime2
-
-  sessions  Session[]
-
-  @@map("users")  // Table name in DB
-}
-```
-
-### IDs
-All UUIDs must be UPPERCASE (see CLAUDE.md section 13).
+- `snake_case` for table names (via `@@map`)
+- `camelCase` for field names in TypeScript
+- All UUIDs **UPPERCASE** everywhere
+- See [CLAUDE.md](CLAUDE.md) for CHECK constraints, filtered indexes, and detailed procedures

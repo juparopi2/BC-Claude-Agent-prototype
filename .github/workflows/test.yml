@@ -118,19 +118,62 @@ jobs:
     env:
       REDIS_TEST_HOST: localhost
       REDIS_TEST_PORT: 6399
-      DATABASE_SERVER: ${{ secrets.DATABASE_SERVER }}
-      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
-      DATABASE_USER: ${{ secrets.DATABASE_USER }}
-      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-      DATABASE_URL: "sqlserver://${{ secrets.DATABASE_SERVER }};database=${{ secrets.DATABASE_NAME }};user=${{ secrets.DATABASE_USER }};password=${{ secrets.DATABASE_PASSWORD }};encrypt=true"
-      STORAGE_CONNECTION_STRING: ${{ secrets.STORAGE_CONNECTION_STRING }}
+      NODE_ENV: test
       STORAGE_CONTAINER_NAME: "user-files"
       STORAGE_CONTAINER_NAME_TEST: "user-files-test"
-      NODE_ENV: test
+      AZURE_SEARCH_INDEX_NAME: "file-chunks-index"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch secrets from Key Vault
+        run: |
+          KV="kv-bcagent-dev"
+
+          fetch() {
+            local kv_name=$1 env_name=$2
+            local val
+            val=$(az keyvault secret show --vault-name "$KV" --name "$kv_name" --query value -o tsv)
+            echo "::add-mask::$val"
+            echo "$env_name=$val" >> $GITHUB_ENV
+            export "$env_name=$val"
+          }
+
+          # Database
+          fetch "Database-Server"                   "DATABASE_SERVER"
+          fetch "Database-Name"                     "DATABASE_NAME"
+          fetch "Database-User"                     "DATABASE_USER"
+          fetch "Database-Password"                 "DATABASE_PASSWORD"
+
+          # Construct DATABASE_URL for Prisma
+          DB_URL="sqlserver://${DATABASE_SERVER};database=${DATABASE_NAME};user=${DATABASE_USER};password=${DATABASE_PASSWORD};encrypt=true"
+          echo "::add-mask::$DB_URL"
+          echo "DATABASE_URL=$DB_URL" >> $GITHUB_ENV
+
+          # Storage
+          fetch "Storage-ConnectionString"          "STORAGE_CONNECTION_STRING"
+
+          # AI Services
+          fetch "Claude-ApiKey"                     "ANTHROPIC_API_KEY"
+          fetch "AZURE-OPENAI-ENDPOINT"             "AZURE_OPENAI_ENDPOINT"
+          fetch "AZURE-OPENAI-KEY"                  "AZURE_OPENAI_KEY"
+          fetch "AZURE-OPENAI-EMBEDDING-DEPLOYMENT" "AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
+          fetch "AZURE-SEARCH-ENDPOINT"             "AZURE_SEARCH_ENDPOINT"
+          fetch "AZURE-SEARCH-KEY"                  "AZURE_SEARCH_KEY"
+          fetch "AZURE-VISION-ENDPOINT"             "AZURE_VISION_ENDPOINT"
+          fetch "AZURE-VISION-KEY"                  "AZURE_VISION_KEY"
+
+          # Security
+          fetch "ENCRYPTION-KEY"                    "ENCRYPTION_KEY"
+          fetch "SESSION-SECRET"                    "SESSION_SECRET"
+
+          echo "✅ All secrets fetched from Key Vault ($KV)"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

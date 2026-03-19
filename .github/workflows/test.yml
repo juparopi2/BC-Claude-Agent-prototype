@@ -242,8 +242,20 @@ jobs:
 
       - name: Verify database constraints
         working-directory: backend
-        continue-on-error: true
         run: npx tsx scripts/database/verify-constraints.ts --strict --json
+
+      - name: Check constraints.sql freshness
+        working-directory: backend
+        run: npx tsx scripts/database/export-constraints.ts --diff
+
+      - name: Warn if migration changed without constraints.sql
+        if: github.event_name == 'pull_request'
+        run: |
+          MIGRATION_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- backend/prisma/migrations/ | wc -l)
+          CONSTRAINTS_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- backend/prisma/constraints.sql | wc -l)
+          if [ "$MIGRATION_CHANGED" -gt 0 ] && [ "$CONSTRAINTS_CHANGED" -eq 0 ]; then
+            echo "::warning::Migration files changed but constraints.sql was not updated. Review if constraint changes are needed."
+          fi
 
       - name: Run integration tests
         working-directory: backend

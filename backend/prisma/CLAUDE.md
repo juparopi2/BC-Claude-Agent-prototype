@@ -97,6 +97,8 @@ Run via `sqlcmd` or Azure Data Studio against the target database.
 3. Update the `///` comment in `schema.prisma` above the affected model
 4. Update the table in this file (`CLAUDE.md`)
 5. Run `npm run -w backend test:unit` to verify no test assertions break
+6. Update `constraints.sql` (the constraint registry)
+7. Run `npx tsx scripts/database/verify-constraints.ts --strict` to confirm
 
 ## Filtered Unique Indexes (Not Representable in Prisma DSL)
 
@@ -148,6 +150,7 @@ if (existing) {
 5. If CHECK constraints changed, append constraint changes from `constraints.sql`
 6. `npx prisma migrate resolve --applied <timestamp>_descriptive_name` — mark as applied on dev
 7. Commit the migration directory
+8. Run `npx tsx scripts/database/export-constraints.ts --diff` to verify constraints.sql is current
 
 ### Production Migration Rules
 

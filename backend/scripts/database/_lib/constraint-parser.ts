@@ -20,6 +20,7 @@ export interface ExpectedFilteredIndex {
   table: string;
   columns: string[];
   filter: string;
+  isUnique: boolean;
 }
 
 export interface ActualCheckConstraint {
@@ -131,24 +132,157 @@ export function parseCheckConstraints(sql: string): ExpectedCheckConstraint[] {
 export function parseFilteredIndexes(sql: string): ExpectedFilteredIndex[] {
   const indexes: ExpectedFilteredIndex[] = [];
 
-  // Match: CREATE UNIQUE NONCLUSTERED INDEX [name] ON [dbo].[table] (columns) WHERE filter
-  const pattern = /CREATE\s+UNIQUE\s+NONCLUSTERED\s+INDEX\s+\[?(\w+)\]?\s+ON\s+(?:\[dbo\]\.)?\[?(\w+)\]?\s*\(([^)]+)\)\s*WHERE\s+(.+?);/gis;
+  // Match: CREATE [UNIQUE] NONCLUSTERED INDEX [name] ON [dbo].[table] (columns) WHERE filter
+  const pattern = /CREATE\s+(UNIQUE\s+)?NONCLUSTERED\s+INDEX\s+\[?(\w+)\]?\s+ON\s+(?:\[dbo\]\.)?\[?(\w+)\]?\s*\(([^)]+)\)\s*WHERE\s+(.+?);/gis;
 
   let match;
   while ((match = pattern.exec(sql)) !== null) {
-    const columns = match[3]
+    const isUnique = !!match[1];
+    const columns = match[4]
       .split(',')
       .map(c => c.replace(/\[|\]/g, '').trim());
 
     indexes.push({
-      name: match[1],
-      table: match[2],
+      name: match[2],
+      table: match[3],
       columns,
-      filter: normalizeSql(match[4]),
+      filter: normalizeSql(match[5]),
+      isUnique,
     });
   }
 
   return indexes;
+}
+
+// ============================================================================
+// Semantic Comparison
+// ============================================================================
+
+export interface ParsedValueList {
+  column: string;
+  values: Set<string>;
+  hasNull: boolean;
+}
+
+/**
+ * Parse a value-list constraint from either IN-form or OR-chain form.
+ *
+ * IN-form:     `column in ('v1','v2')`
+ * IN+NULL:     `column in ('v1','v2') or column is null`
+ * OR-form:     `column='v1' or column='v2'`
+ * OR+NULL:     `column='v1' or column is null`
+ *
+ * Returns null if the definition doesn't match any recognized form.
+ * Input is expected to be already normalized via normalizeSql().
+ */
+export function parseValueListConstraint(definition: string): ParsedValueList | null {
+  // Try IN-form with optional OR IS NULL:
+  // column in ('v1','v2') or column is null
+  const inNullMatch = definition.match(
+    /^(\w+)\s+in\s*\(([^)]+)\)\s+or\s+(\w+)\s+is\s+null$/
+  );
+  if (inNullMatch && inNullMatch[1] === inNullMatch[3]) {
+    const column = inNullMatch[1];
+    const values = new Set(
+      inNullMatch[2].split(',').map(v => v.trim().replace(/^'|'$/g, ''))
+    );
+    return { column, values, hasNull: true };
+  }
+
+  // Try plain IN-form: column in ('v1','v2')
+  const inMatch = definition.match(/^(\w+)\s+in\s*\(([^)]+)\)$/);
+  if (inMatch) {
+    const column = inMatch[1];
+    const values = new Set(
+      inMatch[2].split(',').map(v => v.trim().replace(/^'|'$/g, ''))
+    );
+    return { column, values, hasNull: false };
+  }
+
+  // Try OR-form: column='v1' or column='v2' [or column is null]
+  const orParts = definition.split(/\s+or\s+/);
+  if (orParts.length < 2) return null;
+
+  let column: string | null = null;
+  const values = new Set<string>();
+  let hasNull = false;
+
+  for (const part of orParts) {
+    const trimmed = part.trim();
+
+    // Check for IS NULL
+    const nullMatch = trimmed.match(/^(\w+)\s+is\s+null$/);
+    if (nullMatch) {
+      if (column && column !== nullMatch[1]) return null;
+      column = nullMatch[1];
+      hasNull = true;
+      continue;
+    }
+
+    // Check for column='value'
+    const eqMatch = trimmed.match(/^(\w+)\s*=\s*'([^']*)'$/);
+    if (eqMatch) {
+      if (column && column !== eqMatch[1]) return null;
+      column = eqMatch[1];
+      values.add(eqMatch[2]);
+      continue;
+    }
+
+    return null; // Unrecognized part
+  }
+
+  if (!column || values.size === 0) return null;
+  return { column, values, hasNull };
+}
+
+/**
+ * Normalize comparison operator formatting.
+ * SQL Server wraps values in parens: `>=(0)` → `>= 0`
+ */
+export function normalizeComparisonExpr(definition: string): string {
+  return definition
+    // Strip parens around bare numbers after operators: >=(0) → >= 0
+    .replace(/(>=|<=|<>|!=|>|<|=)\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)/g, '$1 $2')
+    // Normalize spaces around comparison operators
+    .replace(/\s*(>=|<=|<>|!=|>|<|=)\s*/g, ' $1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Determine if two constraint definitions are semantically equal.
+ *
+ * Handles:
+ * - IN-list vs OR-chain (SQL Server normalizes IN to OR internally)
+ * - Order-independent value comparison
+ * - OR IS NULL variants
+ * - Operator formatting differences (>=(0) vs >= 0)
+ */
+export function areConstraintsSemanticallyEqual(
+  expected: string,
+  actual: string
+): boolean {
+  // Fast path: string equality
+  if (expected === actual) return true;
+
+  // Try value-list comparison (handles IN vs OR equivalence)
+  const expectedList = parseValueListConstraint(expected);
+  const actualList = parseValueListConstraint(actual);
+
+  if (expectedList && actualList) {
+    if (expectedList.column !== actualList.column) return false;
+    if (expectedList.hasNull !== actualList.hasNull) return false;
+    if (expectedList.values.size !== actualList.values.size) return false;
+    for (const v of expectedList.values) {
+      if (!actualList.values.has(v)) return false;
+    }
+    return true;
+  }
+
+  // Fallback: normalize comparison expressions and compare
+  const normalizedExpected = normalizeComparisonExpr(expected);
+  const normalizedActual = normalizeComparisonExpr(actual);
+  return normalizedExpected === normalizedActual;
 }
 
 // ============================================================================
@@ -177,7 +311,7 @@ export function compareCheckConstraints(
     } else {
       const normalizedActual = normalizeActualDefinition(act.definition);
       const normalizedExpected = exp.definition; // Already normalized during parse
-      if (normalizedActual !== normalizedExpected) {
+      if (!areConstraintsSemanticallyEqual(normalizedExpected, normalizedActual)) {
         mismatched.push({
           name: `${exp.table}.${exp.name}`,
           expected: normalizedExpected,

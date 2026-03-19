@@ -1,0 +1,48 @@
+-- ============================================================
+-- ROLLBACK: <migration_name>
+-- ============================================================
+-- Date created: YYYY-MM-DD
+-- Original migration: prisma/migrations/<timestamp>_<name>/migration.sql
+--
+-- PURPOSE: Reverses the changes made by the above migration.
+-- This file is NEVER auto-executed. It exists as documentation
+-- for incident response.
+--
+-- INSTRUCTIONS:
+--   1. Review this script carefully before executing
+--   2. Run against the target database via sqlcmd or Azure Data Studio
+--   3. After execution, remove the migration record:
+--      DELETE FROM _prisma_migrations WHERE migration_name = '<timestamp>_<name>';
+--   4. Verify constraints: npx tsx scripts/database/verify-constraints.ts
+--   5. Run: npx prisma migrate deploy (to confirm clean state)
+-- ============================================================
+
+-- TODO: Add rollback SQL here
+-- Use IF EXISTS guards for idempotency:
+--
+--   -- Reverse a column addition:
+--   IF EXISTS (
+--     SELECT 1 FROM sys.columns
+--     WHERE name = 'new_column' AND object_id = OBJECT_ID('[dbo].[table_name]')
+--   )
+--   BEGIN
+--     ALTER TABLE [dbo].[table_name] DROP COLUMN [new_column];
+--   END
+--
+--   -- Reverse a table creation:
+--   IF OBJECT_ID('[dbo].[new_table]', 'U') IS NOT NULL
+--   BEGIN
+--     DROP TABLE [dbo].[new_table];
+--   END
+--
+--   -- Reverse a constraint change:
+--   IF EXISTS (
+--     SELECT 1 FROM sys.check_constraints
+--     WHERE name = 'CK_new_constraint'
+--   )
+--   BEGIN
+--     ALTER TABLE [dbo].[table_name] DROP CONSTRAINT [CK_new_constraint];
+--   END
+--   -- Re-add the previous version:
+--   ALTER TABLE [dbo].[table_name] ADD CONSTRAINT [CK_new_constraint]
+--     CHECK ([column] IN ('old','values'));

@@ -260,6 +260,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Fetch database credentials from Key Vault
+        run: |
+          KV="kv-myworkmate-prod"
+
+          fetch() {
+            local kv_name=$1 env_name=$2
+            local val
+            val=$(az keyvault secret show --vault-name "$KV" --name "$kv_name" --query value -o tsv)
+            echo "::add-mask::$val"
+            echo "$env_name=$val" >> $GITHUB_ENV
+          }
+
+          fetch "Database-Server"    "DATABASE_SERVER"
+          fetch "Database-Name"      "DATABASE_NAME"
+          fetch "Database-User"      "DATABASE_USER"
+          fetch "Database-Password"  "DATABASE_PASSWORD"
+
+          echo "✅ Database credentials fetched from $KV"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

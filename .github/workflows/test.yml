@@ -121,6 +121,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend-tests]
     environment: development
+    concurrency:
+      group: dev-db-integration-tests
+      cancel-in-progress: false
 
     services:
       redis:

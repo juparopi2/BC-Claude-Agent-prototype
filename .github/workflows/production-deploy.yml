@@ -6,6 +6,10 @@ on:
       - production
   workflow_dispatch:
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   AZURE_CONTAINER_REGISTRY: crmyworkmateprod
   BACKEND_APP_NAME: app-myworkmate-backend-prod
@@ -18,13 +22,17 @@ env:
 
 jobs:
   # ==========================================================================
-  # Test Gate — re-run full test suite against this exact commit
+  # Integration Test Gate — re-run integration tests against this exact commit
+  # Unit tests, lint, and type checks are enforced by test.yml + branch protection
   # Manual approval via GitHub Environment protection rules
   # ==========================================================================
   test-gate:
-    name: Test Gate
+    name: Integration Test Gate
     runs-on: ubuntu-latest
     environment: production
+    concurrency:
+      group: dev-db-integration-tests
+      cancel-in-progress: false
 
     services:
       redis:
@@ -110,33 +118,6 @@ jobs:
 
       - name: Build shared package
         run: npm run build:shared
-
-      - name: Type verification
-        run: npm run verify:types
-
-      - name: Backend lint
-        working-directory: backend
-        run: npm run lint
-
-      - name: Backend type check
-        working-directory: backend
-        run: npm run type-check
-
-      - name: Backend unit tests
-        working-directory: backend
-        run: npm run test:unit
-
-      - name: Frontend lint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Frontend type check
-        working-directory: frontend
-        run: npm run type-check
-
-      - name: Frontend tests
-        working-directory: frontend
-        run: npm test
 
       - name: Wait for Redis
         run: |

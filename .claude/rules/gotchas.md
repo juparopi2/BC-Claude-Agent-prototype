@@ -71,6 +71,18 @@ await repo.update({ deleted_at: new Date(), deletion_status: 'pending' });
 ```
 **Why**: PRD-118 — cleanup queries check `deletion_status`, not `deleted_at`.
 
+## Constraint Registry Must Stay In Sync
+When any migration adds, modifies, or drops a CHECK constraint or filtered index:
+1. Update `backend/prisma/constraints.sql` (the registry)
+2. Run `npx tsx scripts/database/export-constraints.ts --diff` to verify
+3. Run `npx tsx scripts/database/verify-constraints.ts --strict` against the target DB
+
+**Why**: CI runs constraint verification as a hard gate. Drift between constraints.sql
+and the actual DB will block the pipeline.
+
+**Auto-sync**: Run `npx tsx scripts/database/export-constraints.ts --write` to regenerate
+constraints.sql from the live DB.
+
 ## Polling Fallback Must Check BOTH Statuses
 ```typescript
 // ❌ WRONG: Misses scopes that completed initial sync

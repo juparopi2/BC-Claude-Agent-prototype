@@ -42,6 +42,16 @@ npm run -w bc-agent-frontend lint    # Frontend lint
 2. `npm run -w backend lint`
 3. `npm run -w bc-agent-frontend lint`
 
+## Constraint Verification
+```bash
+cd backend
+npx tsx scripts/database/verify-constraints.ts              # Human-readable report
+npx tsx scripts/database/verify-constraints.ts --strict     # Fail on drift (CI mode)
+npx tsx scripts/database/export-constraints.ts              # Show DB constraints
+npx tsx scripts/database/export-constraints.ts --write      # Regenerate constraints.sql from DB
+npx tsx scripts/database/export-constraints.ts --diff       # Diff DB vs constraints.sql
+```
+
 ## Test Organization
 - **Backend**: `backend/src/__tests__/{type}/path/matching/source/` (unit, integration, e2e)
 - **Frontend**: Co-located with components

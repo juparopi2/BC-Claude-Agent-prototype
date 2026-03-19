@@ -78,6 +78,8 @@ npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider all -
 
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
+| `export-constraints.ts` | Export DB constraints to constraints.sql format | `--write`, `--diff` |
+| `verify-constraints.ts` | Verify constraints.sql matches DB state | `--table`, `--json`, `--strict` |
 | `find-user.ts` | Search users by name or email | `<search>`, `--exact`, `--files` |
 | `inventory-user.ts` | Full data inventory across all tables + Blob + AI Search | `<name\|UUID>`, `--all`, `--external` |
 | `purge-user.ts` | Per-user purge across SQL, Blob, AI Search, Redis (5 phases) | `--userId`, `--dry-run`, `--confirm`, `--keep-account` |

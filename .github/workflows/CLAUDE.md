@@ -7,7 +7,7 @@
 | Tests | `test.yml` | PR to main/develop/production | Gates all merges — type-check, lint, unit, integration, e2e |
 | Backend Deploy (Dev) | `backend-deploy.yml` | Push to `main` (backend/** changes) | Independent dev backend deploy |
 | Frontend Deploy (Dev) | `frontend-deploy.yml` | Push to `main` (frontend/** changes) | Independent dev frontend deploy |
-| Production Deploy | `production-deploy.yml` | Push to `production` | Atomic deploy — both services together with rollback |
+| Production Deploy | `production-deploy.yml` | Push to `production` | Atomic deploy — integration tests + build + deploy with rollback |
 
 ## GitHub Environments (Full Isolation — NO repo-level secrets)
 
@@ -39,10 +39,31 @@ Integration tests (`backend-integration-tests` in `test.yml`, `test-gate` in `pr
 
 Changes to `test.yml` affect BOTH dev and prod gates. The production workflow re-runs the full test suite independently, but `test.yml` gates the PR merge itself.
 
+## Concurrency Safety
+
+Two concurrency groups prevent resource conflicts:
+
+| Group | Scope | Purpose |
+|-------|-------|---------|
+| `production-deploy` | Workflow-level on `production-deploy.yml` | Prevents overlapping full deploy pipelines |
+| `dev-db-integration-tests` | Job-level on `test.yml:backend-integration-tests` and `production-deploy.yml:test-gate` | Serializes dev DB access — prevents migration conflicts and test data collisions |
+
+Both groups use `cancel-in-progress: false` — queued runs wait rather than cancel, which is essential because canceling mid-migration could corrupt database state.
+
+## Branch Protection Requirement
+
+The `production` branch MUST have branch protection rules requiring these status checks from `test.yml`:
+- `Type Verification (Shared Types)`
+- `Backend Tests`
+- `Frontend Tests`
+- `Backend Integration Tests`
+
+This is critical because `production-deploy.yml` only runs integration tests (not unit/lint/type checks). Branch protection ensures those checks passed on the PR before merge.
+
 ## Key Design Decisions
 
 - **Dev deploys independently** — backend and frontend are separate workflows, acceptable for dev
 - **Prod deploys atomically** — single workflow ensures both services deploy together or not at all
-- **Tests re-run on production** — guarantees the exact commit is tested, not just PR status
+- **Prod test-gate is integration-only** — unit tests, lint, and type checks enforced by `test.yml` + branch protection; `test-gate` re-runs only integration tests against the exact merged commit
 - **Blue-green deployment** — multi-revision traffic shifting for zero-downtime production deploys
 - **Migration before containers** — new code expects new schema, so DB migrates first

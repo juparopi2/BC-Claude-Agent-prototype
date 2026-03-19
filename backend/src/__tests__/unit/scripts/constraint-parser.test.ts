@@ -6,6 +6,9 @@ import {
   compareCheckConstraints,
   compareFilteredIndexes,
   buildVerificationResult,
+  parseValueListConstraint,
+  normalizeComparisonExpr,
+  areConstraintsSemanticallyEqual,
 } from '../../../../scripts/database/_lib/constraint-parser';
 
 describe('constraint-parser', () => {
@@ -94,8 +97,39 @@ describe('constraint-parser', () => {
         name: 'UQ_files_connection_external',
         table: 'files',
         columns: ['connection_id', 'external_id'],
+        isUnique: true,
       }));
       expect(result[0].filter).toContain('is not null');
+    });
+
+    it('parses non-unique filtered index', () => {
+      const sql = `
+        CREATE NONCLUSTERED INDEX [IX_files_active]
+          ON [dbo].[files] ([user_id], [connection_id])
+          WHERE [deleted_at] IS NULL;
+      `;
+      const result = parseFilteredIndexes(sql);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(expect.objectContaining({
+        name: 'IX_files_active',
+        table: 'files',
+        columns: ['user_id', 'connection_id'],
+        isUnique: false,
+      }));
+    });
+
+    it('parses both unique and non-unique filtered indexes', () => {
+      const sql = `
+        CREATE UNIQUE NONCLUSTERED INDEX [UQ_test]
+          ON [dbo].[t1] ([a]) WHERE [x] IS NOT NULL;
+
+        CREATE NONCLUSTERED INDEX [IX_test]
+          ON [dbo].[t2] ([b]) WHERE [y] IS NOT NULL;
+      `;
+      const result = parseFilteredIndexes(sql);
+      expect(result).toHaveLength(2);
+      expect(result[0].isUnique).toBe(true);
+      expect(result[1].isUnique).toBe(false);
     });
 
     it('returns empty for non-filtered indexes', () => {
@@ -189,6 +223,121 @@ describe('constraint-parser', () => {
       const clean = { missing: [], extra: [], mismatched: [] };
       const result = buildVerificationResult(drift, clean);
       expect(result.isClean).toBe(false);
+    });
+  });
+
+  describe('parseValueListConstraint', () => {
+    it('parses IN-form', () => {
+      const result = parseValueListConstraint("status in ('idle','processing','completed')");
+      expect(result).not.toBeNull();
+      expect(result!.column).toBe('status');
+      expect(result!.values).toEqual(new Set(['idle', 'processing', 'completed']));
+      expect(result!.hasNull).toBe(false);
+    });
+
+    it('parses OR-form', () => {
+      const result = parseValueListConstraint("status='idle' or status='processing' or status='completed'");
+      expect(result).not.toBeNull();
+      expect(result!.column).toBe('status');
+      expect(result!.values).toEqual(new Set(['idle', 'processing', 'completed']));
+      expect(result!.hasNull).toBe(false);
+    });
+
+    it('parses OR-form with IS NULL', () => {
+      const result = parseValueListConstraint("status='idle' or status='processing' or status is null");
+      expect(result).not.toBeNull();
+      expect(result!.column).toBe('status');
+      expect(result!.values).toEqual(new Set(['idle', 'processing']));
+      expect(result!.hasNull).toBe(true);
+    });
+
+    it('parses IN-form with OR IS NULL', () => {
+      const result = parseValueListConstraint("status in ('idle','processing') or status is null");
+      expect(result).not.toBeNull();
+      expect(result!.column).toBe('status');
+      expect(result!.values).toEqual(new Set(['idle', 'processing']));
+      expect(result!.hasNull).toBe(true);
+    });
+
+    it('returns null for non-value-list constraints', () => {
+      const result = parseValueListConstraint('sequence_number >= 0');
+      expect(result).toBeNull();
+    });
+
+    it('returns null for mixed columns in OR-form', () => {
+      const result = parseValueListConstraint("a='x' or b='y'");
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('normalizeComparisonExpr', () => {
+    it('strips parens around bare numbers', () => {
+      expect(normalizeComparisonExpr('sequence_number>=(0)')).toBe('sequence_number >= 0');
+    });
+
+    it('normalizes spaces around operators', () => {
+      expect(normalizeComparisonExpr('x>=0')).toBe('x >= 0');
+    });
+
+    it('preserves already-normalized expressions', () => {
+      expect(normalizeComparisonExpr('sequence_number >= 0')).toBe('sequence_number >= 0');
+    });
+
+    it('handles negative numbers', () => {
+      expect(normalizeComparisonExpr('balance>=(-100)')).toBe('balance >= -100');
+    });
+  });
+
+  describe('areConstraintsSemanticallyEqual', () => {
+    it('matches identical strings (fast path)', () => {
+      const def = "role in ('admin','editor','viewer')";
+      expect(areConstraintsSemanticallyEqual(def, def)).toBe(true);
+    });
+
+    it('matches OR-chain against IN-list (no drift)', () => {
+      const expected = "status in ('idle','processing','completed','partial_failure')";
+      const actual = "status='idle' or status='processing' or status='completed' or status='partial_failure'";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(true);
+    });
+
+    it('matches reversed OR order (no drift)', () => {
+      const expected = "status in ('idle','processing')";
+      const actual = "status='processing' or status='idle'";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(true);
+    });
+
+    it('matches >=(0) against >= 0 (no drift)', () => {
+      expect(areConstraintsSemanticallyEqual('sequence_number >= 0', 'sequence_number>=(0)')).toBe(true);
+    });
+
+    it('matches OR+NULL against expected with NULL (no drift)', () => {
+      const expected = "status in ('idle','processing') or status is null";
+      const actual = "status='idle' or status='processing' or status is null";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(true);
+    });
+
+    it('detects genuine value difference (drift)', () => {
+      const expected = "status in ('idle','processing','completed')";
+      const actual = "status='idle' or status='processing' or status='error'";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(false);
+    });
+
+    it('detects extra value (drift)', () => {
+      const expected = "status in ('idle','processing')";
+      const actual = "status='idle' or status='processing' or status='completed'";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(false);
+    });
+
+    it('detects missing value (drift)', () => {
+      const expected = "status in ('idle','processing','completed')";
+      const actual = "status='idle' or status='processing'";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(false);
+    });
+
+    it('detects null mismatch (drift)', () => {
+      const expected = "status in ('idle','processing')";
+      const actual = "status='idle' or status='processing' or status is null";
+      expect(areConstraintsSemanticallyEqual(expected, actual)).toBe(false);
     });
   });
 });

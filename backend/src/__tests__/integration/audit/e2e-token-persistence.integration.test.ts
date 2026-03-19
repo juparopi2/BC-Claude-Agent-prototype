@@ -197,7 +197,8 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
       const testMessageId = `msg_test_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
       testMessageIds.push(testMessageId);
 
-      // Insert test message with tokens
+      // Insert test message with tokens.
+      // total_tokens is omitted: the DB computes it as ISNULL(input,0)+ISNULL(output,0).
       await executeQuery(`
         INSERT INTO messages (
           id, session_id, role, message_type, content, metadata,
@@ -232,7 +233,6 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
       expect(message.model).toBe('claude-sonnet-4-5-20250929');
       expect(message.input_tokens).toBe(150);
       expect(message.output_tokens).toBe(250);
-      // total_tokens is computed column
       expect(message.total_tokens).toBe(400);
     });
 

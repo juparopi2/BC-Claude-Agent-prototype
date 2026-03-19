@@ -25,7 +25,15 @@ Every job in every workflow specifies an `environment`. This ensures complete se
 1. Add to Azure Key Vault (via Bicep `keyvault-secrets.bicep` or manual)
 2. Add `keyvaultref` in the deploy workflow's secret configuration step
 3. Add `secretref:secret-name` as env var in the Container App update step
-4. If needed in tests, add to the GitHub Environment secrets
+4. If needed in tests, add a `fetch` call in the "Fetch secrets from Key Vault" step (both `test.yml` and `production-deploy.yml` test-gate)
+
+## Integration Test Secrets — Key Vault Pattern
+
+Integration tests (`backend-integration-tests` in `test.yml`, `test-gate` in `production-deploy.yml`) fetch ALL secrets at runtime from `kv-bcagent-dev` using Azure CLI. This replaces duplicating secrets as GitHub Environment Secrets.
+
+**How it works**: `azure/login@v2` authenticates with `AZURE_CREDENTIALS` (the only GitHub secret needed), then `az keyvault secret show` fetches each secret, masks it with `::add-mask::`, and writes it to `$GITHUB_ENV` for subsequent steps.
+
+**Only `AZURE_CREDENTIALS` is required** in each GitHub Environment. All other secrets come from Key Vault.
 
 ## Modifying the Test Pipeline
 

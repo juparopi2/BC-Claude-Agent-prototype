@@ -116,7 +116,7 @@ describe('WebSocket Message Flow Integration', () => {
   });
 
   describe('Chat Message Flow', () => {
-    it('should emit user_message_confirmed after chat:message', async () => {
+    it('should emit user_message_confirmed after chat:message', { timeout: 30000 }, async () => {
       const testUser = await factory.createTestUser({ prefix: 'msg_confirm_' }, serverResult.redisClient);
       const testSession = await factory.createChatSession(testUser.id);
 

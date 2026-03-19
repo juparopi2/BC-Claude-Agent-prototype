@@ -135,10 +135,10 @@ export class MessageService {
               event_id: event.id,
               created_at: new Date(),
               // ⭐ Token tracking columns (null for user messages, populated for assistant)
+              // Note: total_tokens is a computed column in DB — do NOT include it here
               model: null,
               input_tokens: null,
               output_tokens: null,
-              total_tokens: null,
               agent_id: null,
               current_todo_id: null,
             },

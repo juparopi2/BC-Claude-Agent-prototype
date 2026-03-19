@@ -197,14 +197,15 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
       const testMessageId = `msg_test_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
       testMessageIds.push(testMessageId);
 
-      // Insert test message with tokens
+      // Insert test message with tokens.
+      // total_tokens is omitted: the DB computes it as ISNULL(input,0)+ISNULL(output,0).
       await executeQuery(`
         INSERT INTO messages (
           id, session_id, role, message_type, content, metadata,
-          model, input_tokens, output_tokens, total_tokens, created_at
+          model, input_tokens, output_tokens, created_at
         ) VALUES (
           @id, @session_id, @role, @message_type, @content, @metadata,
-          @model, @input_tokens, @output_tokens, @total_tokens, @created_at
+          @model, @input_tokens, @output_tokens, @created_at
         )
       `, {
         id: testMessageId,
@@ -216,7 +217,6 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
         model: 'claude-sonnet-4-5-20250929',
         input_tokens: 150,
         output_tokens: 250,
-        total_tokens: 400,
         created_at: new Date(),
       });
 

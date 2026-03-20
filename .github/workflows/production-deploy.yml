@@ -377,6 +377,10 @@ jobs:
               NODE_ENV=production \
               PORT=3001 \
               DATABASE_CONNECTION_STRING=secretref:sql-conn-string \
+              DATABASE_SERVER=secretref:database-server \
+              DATABASE_NAME=secretref:database-name \
+              DATABASE_USER=secretref:database-user \
+              DATABASE_PASSWORD=secretref:database-password \
               REDIS_CONNECTION_STRING=secretref:redis-conn-string \
               ANTHROPIC_API_KEY=secretref:anthropic-api-key \
               ANTHROPIC_MODEL=claude-sonnet-4-20250514 \

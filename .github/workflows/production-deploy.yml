@@ -396,22 +396,6 @@ jobs:
               appinsights-conn=keyvaultref:${KV_URI}/secrets/ApplicationInsights-ConnectionString,identityref:system \
               graph-webhook-url=keyvaultref:${KV_URI}/secrets/Graph-WebhookBaseUrl,identityref:system
 
-      - name: Configure ACR registry authentication
-        run: |
-          echo "Configuring managed identity for ACR pull..."
-          az containerapp registry set \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
-            --identity system
-
-          az containerapp registry set \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
-            --identity system
-          echo "✅ ACR registry configured for both apps"
-
       - name: Deploy backend (0% traffic)
         id: deploy_backend
         run: |

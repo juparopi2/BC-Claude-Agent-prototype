@@ -353,17 +353,17 @@ jobs:
       - name: Deploy backend (0% traffic)
         id: deploy_backend
         run: |
-          # Get frontend URL for CORS
+          # Custom domain for frontend (canonical URL for CORS and redirects)
+          FRONTEND_URL="https://myworkmate.ai"
+          # CORS allows both custom domains and the Azure FQDN (for health checks / internal traffic)
           FRONTEND_FQDN=$(az containerapp show \
             --name ${{ env.FRONTEND_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv 2>/dev/null || echo "")
-
-          if [ -z "$FRONTEND_FQDN" ]; then
-            FRONTEND_URL="https://app-myworkmate-frontend-prod.placeholder.azurecontainerapps.io"
-          else
-            FRONTEND_URL="https://$FRONTEND_FQDN"
+          CORS_ORIGIN="https://myworkmate.ai,https://www.myworkmate.ai"
+          if [ -n "$FRONTEND_FQDN" ]; then
+            CORS_ORIGIN="${CORS_ORIGIN},https://${FRONTEND_FQDN}"
           fi
 
           # Derive MICROSOFT_REDIRECT_URI from the CAE default domain (deterministic, no chicken-and-egg).
@@ -419,7 +419,7 @@ jobs:
               AZURE_AUDIO_ENDPOINT=secretref:azure-audio-endpoint \
               AZURE_AUDIO_KEY=secretref:azure-audio-key \
               FRONTEND_URL=$FRONTEND_URL \
-              CORS_ORIGIN=$FRONTEND_URL \
+              CORS_ORIGIN=$CORS_ORIGIN \
               LOG_LEVEL=info \
               ENABLE_PROMPT_CACHING=true \
               ENABLE_EXTENDED_THINKING=true \

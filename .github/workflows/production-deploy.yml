@@ -14,15 +14,6 @@ concurrency:
   group: production-deploy
   cancel-in-progress: false
 
-env:
-  AZURE_CONTAINER_REGISTRY: crmyworkmateprod
-  BACKEND_APP_NAME: app-myworkmate-backend-prod
-  FRONTEND_APP_NAME: app-myworkmate-frontend-prod
-  RESOURCE_GROUP: rg-myworkmate-app-prod
-  CONTAINER_APPS_ENVIRONMENT: cae-myworkmate-prod
-  BACKEND_IMAGE: myworkmate-backend
-  FRONTEND_IMAGE: myworkmate-frontend
-
 jobs:
   # ==========================================================================
   # Integration Test Gate — re-run integration tests against this exact commit
@@ -69,7 +60,7 @@ jobs:
 
       - name: Fetch secrets from Key Vault
         run: |
-          KV="kv-bcagent-dev"
+          KV="${{ vars.DEV_KEY_VAULT_NAME }}"
 
           fetch() {
             local kv_name=$1 env_name=$2
@@ -108,7 +99,7 @@ jobs:
           fetch "ENCRYPTION-KEY"                    "ENCRYPTION_KEY"
           fetch "SESSION-SECRET"                    "SESSION_SECRET"
 
-          echo "✅ All secrets fetched from Key Vault ($KV)"
+          echo "All secrets fetched from Key Vault ($KV)"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -178,7 +169,7 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Log in to ACR
-        run: az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+        run: az acr login --name ${{ vars.ACR_NAME }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5
@@ -187,8 +178,8 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE }}:prod-latest
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:prod-latest
           cache-from: type=gha,scope=prod-backend
           cache-to: type=gha,mode=max,scope=prod-backend,ignore-error=true
 
@@ -211,24 +202,13 @@ jobs:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Log in to ACR
-        run: az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+        run: az acr login --name ${{ vars.ACR_NAME }}
 
       - name: Get Backend URL
         id: get_backend_url
         run: |
-          BACKEND_FQDN=$(az containerapp show \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn \
-            --output tsv 2>/dev/null || echo "")
-
-          if [ -z "$BACKEND_FQDN" ]; then
-            echo "api_url=https://app-myworkmate-backend-prod.placeholder.azurecontainerapps.io" >> $GITHUB_OUTPUT
-            echo "ws_url=wss://app-myworkmate-backend-prod.placeholder.azurecontainerapps.io" >> $GITHUB_OUTPUT
-          else
-            echo "api_url=https://$BACKEND_FQDN" >> $GITHUB_OUTPUT
-            echo "ws_url=wss://$BACKEND_FQDN" >> $GITHUB_OUTPUT
-          fi
+          echo "api_url=https://${{ vars.BACKEND_DOMAIN }}" >> $GITHUB_OUTPUT
+          echo "ws_url=wss://${{ vars.BACKEND_DOMAIN }}" >> $GITHUB_OUTPUT
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
@@ -241,8 +221,8 @@ jobs:
             NEXT_PUBLIC_WS_URL=${{ steps.get_backend_url.outputs.ws_url }}
             NEXT_PUBLIC_ENV=production
           tags: |
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:prod-latest
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:prod-latest
           cache-from: type=gha,scope=prod-frontend
           cache-to: type=gha,mode=max,scope=prod-frontend,ignore-error=true
 
@@ -270,7 +250,7 @@ jobs:
 
       - name: Fetch database credentials from Key Vault
         run: |
-          KV="kv-myworkmate-prod"
+          KV="${{ vars.KEY_VAULT_NAME }}"
 
           fetch() {
             local kv_name=$1 env_name=$2
@@ -337,12 +317,12 @@ jobs:
         id: record_revisions
         run: |
           BACKEND_OLD=$(az containerapp revision list \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "[?properties.trafficWeight > \`0\`].name | [0]" -o tsv 2>/dev/null || echo "")
           FRONTEND_OLD=$(az containerapp revision list \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "[?properties.trafficWeight > \`0\`].name | [0]" -o tsv 2>/dev/null || echo "")
 
           echo "backend_old=$BACKEND_OLD" >> $GITHUB_OUTPUT
@@ -353,31 +333,25 @@ jobs:
       - name: Deploy backend (0% traffic)
         id: deploy_backend
         run: |
-          # Custom domain for frontend (canonical URL for CORS and redirects)
-          FRONTEND_URL="https://myworkmate.ai"
-          # CORS allows both custom domains and the Azure FQDN (for health checks / internal traffic)
+          # Custom domains from GitHub Environment variables
+          FRONTEND_URL="https://${{ vars.FRONTEND_DOMAIN }}"
+          CORS_ORIGIN="https://${{ vars.FRONTEND_DOMAIN }},https://www.${{ vars.FRONTEND_DOMAIN }}"
+          # Also allow Azure FQDN for health checks / internal traffic
           FRONTEND_FQDN=$(az containerapp show \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv 2>/dev/null || echo "")
-          CORS_ORIGIN="https://myworkmate.ai,https://www.myworkmate.ai"
           if [ -n "$FRONTEND_FQDN" ]; then
             CORS_ORIGIN="${CORS_ORIGIN},https://${FRONTEND_FQDN}"
           fi
 
-          # Derive MICROSOFT_REDIRECT_URI from the CAE default domain (deterministic, no chicken-and-egg).
-          # Format: https://{backend-app-name}.{cae-default-domain}/api/auth/callback
-          CAE_DEFAULT_DOMAIN=$(az containerapp env show \
-            --name ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query properties.defaultDomain -o tsv)
-          BACKEND_REDIRECT_URI="https://${{ env.BACKEND_APP_NAME }}.${CAE_DEFAULT_DOMAIN}/api/auth/callback"
+          BACKEND_REDIRECT_URI="https://${{ vars.BACKEND_DOMAIN }}/api/auth/callback"
 
           az containerapp update \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.BACKEND_IMAGE }}:${{ github.sha }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:${{ github.sha }} \
             --revision-suffix sha-${GITHUB_SHA::8} \
             --set-env-vars \
               NODE_ENV=production \
@@ -389,7 +363,7 @@ jobs:
               DATABASE_PASSWORD=secretref:database-password \
               REDIS_CONNECTION_STRING=secretref:redis-conn-string \
               ANTHROPIC_API_KEY=secretref:anthropic-api-key \
-              ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
+              ANTHROPIC_MODEL=${{ vars.ANTHROPIC_MODEL }} \
               BC_TENANT_ID=secretref:bc-tenant-id \
               BC_CLIENT_ID=secretref:bc-client-id \
               BC_CLIENT_SECRET=secretref:bc-client-secret \
@@ -434,12 +408,12 @@ jobs:
 
           # Get the new revision name and its dedicated FQDN for health checks
           NEW_REV=$(az containerapp revision list \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "sort_by([],&properties.createdTime)[-1].name" -o tsv)
           NEW_FQDN=$(az containerapp show \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.latestRevisionFqdn -o tsv)
           echo "new_revision=$NEW_REV" >> $GITHUB_OUTPUT
           echo "new_fqdn=$NEW_FQDN" >> $GITHUB_OUTPUT
@@ -450,19 +424,19 @@ jobs:
         id: deploy_frontend
         run: |
           az containerapp update \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:${{ github.sha }} \
             --revision-suffix sha-${GITHUB_SHA::8}
 
           # Get the new revision name and its dedicated FQDN for health checks
           NEW_REV=$(az containerapp revision list \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "sort_by([],&properties.createdTime)[-1].name" -o tsv)
           NEW_FQDN=$(az containerapp show \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.latestRevisionFqdn -o tsv)
           echo "new_revision=$NEW_REV" >> $GITHUB_OUTPUT
           echo "new_fqdn=$NEW_FQDN" >> $GITHUB_OUTPUT
@@ -493,14 +467,14 @@ jobs:
 
           while [ $ELAPSED -lt $MAX_WAIT ]; do
             BACKEND_STATE=$(az containerapp revision show \
-              --name ${{ env.BACKEND_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ vars.BACKEND_APP_NAME }} \
+              --resource-group ${{ vars.RESOURCE_GROUP }} \
               --revision "${{ needs.deploy-containers.outputs.backend-new-revision }}" \
               --query properties.runningState -o tsv 2>/dev/null || echo "unknown")
 
             FRONTEND_STATE=$(az containerapp revision show \
-              --name ${{ env.FRONTEND_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ vars.FRONTEND_APP_NAME }} \
+              --resource-group ${{ vars.RESOURCE_GROUP }} \
               --revision "${{ needs.deploy-containers.outputs.frontend-new-revision }}" \
               --query properties.runningState -o tsv 2>/dev/null || echo "unknown")
 
@@ -614,16 +588,16 @@ jobs:
       - name: Shift backend traffic to new revision
         run: |
           az containerapp ingress traffic set \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --revision-weight \
               ${{ needs.deploy-containers.outputs.backend-new-revision }}=100
 
       - name: Shift frontend traffic to new revision
         run: |
           az containerapp ingress traffic set \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --revision-weight \
               ${{ needs.deploy-containers.outputs.frontend-new-revision }}=100
 
@@ -633,16 +607,16 @@ jobs:
           # Deactivate old backend revision
           if [ -n "${{ needs.deploy-containers.outputs.backend-old-revision }}" ]; then
             az containerapp revision deactivate \
-              --name ${{ env.BACKEND_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ vars.BACKEND_APP_NAME }} \
+              --resource-group ${{ vars.RESOURCE_GROUP }} \
               --revision "${{ needs.deploy-containers.outputs.backend-old-revision }}" || true
           fi
 
           # Deactivate old frontend revision
           if [ -n "${{ needs.deploy-containers.outputs.frontend-old-revision }}" ]; then
             az containerapp revision deactivate \
-              --name ${{ env.FRONTEND_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ vars.FRONTEND_APP_NAME }} \
+              --resource-group ${{ vars.RESOURCE_GROUP }} \
               --revision "${{ needs.deploy-containers.outputs.frontend-old-revision }}" || true
           fi
 
@@ -655,12 +629,12 @@ jobs:
           echo "**Frontend revision:** \`${{ needs.deploy-containers.outputs.frontend-new-revision }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           BACKEND_FQDN=$(az containerapp show \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn -o tsv)
           FRONTEND_FQDN=$(az containerapp show \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn -o tsv)
           echo "**Backend URL:** https://$BACKEND_FQDN" >> $GITHUB_STEP_SUMMARY
           echo "**Frontend URL:** https://$FRONTEND_FQDN" >> $GITHUB_STEP_SUMMARY
@@ -685,8 +659,8 @@ jobs:
         if: needs.deploy-containers.outputs.backend-old-revision != ''
         run: |
           az containerapp ingress traffic set \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --revision-weight \
               ${{ needs.deploy-containers.outputs.backend-old-revision }}=100 || true
 
@@ -694,8 +668,8 @@ jobs:
         if: needs.deploy-containers.outputs.frontend-old-revision != ''
         run: |
           az containerapp ingress traffic set \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --revision-weight \
               ${{ needs.deploy-containers.outputs.frontend-old-revision }}=100 || true
 
@@ -704,16 +678,16 @@ jobs:
           # Deactivate failed backend revision
           if [ -n "${{ needs.deploy-containers.outputs.backend-new-revision }}" ]; then
             az containerapp revision deactivate \
-              --name ${{ env.BACKEND_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ vars.BACKEND_APP_NAME }} \
+              --resource-group ${{ vars.RESOURCE_GROUP }} \
               --revision "${{ needs.deploy-containers.outputs.backend-new-revision }}" || true
           fi
 
           # Deactivate failed frontend revision
           if [ -n "${{ needs.deploy-containers.outputs.frontend-new-revision }}" ]; then
             az containerapp revision deactivate \
-              --name ${{ env.FRONTEND_APP_NAME }} \
-              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --name ${{ vars.FRONTEND_APP_NAME }} \
+              --resource-group ${{ vars.RESOURCE_GROUP }} \
               --revision "${{ needs.deploy-containers.outputs.frontend-new-revision }}" || true
           fi
 

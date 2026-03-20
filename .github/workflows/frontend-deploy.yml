@@ -10,13 +10,6 @@ on:
       - '.github/workflows/frontend-deploy.yml'
   workflow_dispatch:
 
-env:
-  AZURE_CONTAINER_REGISTRY: crbcagentdev
-  CONTAINER_APP_NAME: app-bcagent-frontend-dev
-  RESOURCE_GROUP: rg-BCAgentPrototype-app-dev
-  CONTAINER_APPS_ENVIRONMENT: cae-bcagent-dev
-  IMAGE_NAME: bcagent-frontend
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -38,15 +31,15 @@ jobs:
         id: get_backend_url
         run: |
           BACKEND_URL=$(az containerapp show \
-            --name app-bcagent-backend-dev \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv 2>/dev/null || echo "")
 
           if [ -z "$BACKEND_URL" ]; then
             echo "Backend app not found, using placeholder"
-            echo "api_url=https://backend-placeholder.azurecontainerapps.io" >> $GITHUB_OUTPUT
-            echo "ws_url=wss://backend-placeholder.azurecontainerapps.io" >> $GITHUB_OUTPUT
+            echo "api_url=https://${{ vars.BACKEND_DOMAIN }}" >> $GITHUB_OUTPUT
+            echo "ws_url=wss://${{ vars.BACKEND_DOMAIN }}" >> $GITHUB_OUTPUT
           else
             echo "api_url=https://$BACKEND_URL" >> $GITHUB_OUTPUT
             echo "ws_url=wss://$BACKEND_URL" >> $GITHUB_OUTPUT
@@ -54,7 +47,7 @@ jobs:
 
       - name: Log in to Azure Container Registry
         run: |
-          az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+          az acr login --name ${{ vars.ACR_NAME }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -67,15 +60,15 @@ jobs:
             NEXT_PUBLIC_WS_URL=${{ steps.get_backend_url.outputs.ws_url }}
             NEXT_PUBLIC_ENV=production
           tags: |
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:${{ github.sha }}
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Check if Container App exists
         id: check_app
         run: |
-          if az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &>/dev/null; then
+          if az containerapp show --name ${{ vars.FRONTEND_APP_NAME }} --resource-group ${{ vars.RESOURCE_GROUP }} &>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
@@ -87,9 +80,9 @@ jobs:
           # Step 1: Create with a public placeholder image and system-assigned identity
           echo "Creating Container App with placeholder image..."
           az containerapp create \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --environment ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --environment ${{ vars.CAE_NAME }} \
             --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
             --target-port 80 \
             --ingress external \
@@ -101,8 +94,8 @@ jobs:
 
           # Get the system-assigned identity principal ID
           PRINCIPAL_ID=$(az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query identity.principalId -o tsv)
 
           echo "Container App Principal ID: $PRINCIPAL_ID"
@@ -116,17 +109,17 @@ jobs:
 
           # Step 2: Configure ACR registry with managed identity
           az containerapp registry set \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --server ${{ vars.ACR_NAME }}.azurecr.io \
             --identity system
 
           # Step 3: Update to the actual frontend image with env vars
           echo "Updating to frontend image..."
           az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:${{ github.sha }} \
             --min-replicas 1 \
             --max-replicas 5 \
             --set-env-vars \
@@ -137,17 +130,17 @@ jobs:
 
           # Update ingress configuration for the frontend
           az containerapp ingress update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --target-port 3000
 
       - name: Update Container App (if exists)
         if: steps.check_app.outputs.exists == 'true'
         run: |
           az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:${{ github.sha }} \
             --min-replicas 1 \
             --max-replicas 5 \
             --set-env-vars \
@@ -160,8 +153,8 @@ jobs:
         id: get_url
         run: |
           URL=$(az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv)
           echo "url=https://$URL" >> $GITHUB_OUTPUT
@@ -179,5 +172,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Frontend URL:** ${{ steps.get_url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "**Backend URL:** ${{ steps.get_backend_url.outputs.api_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.FRONTEND_IMAGE }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

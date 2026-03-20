@@ -10,14 +10,6 @@ on:
       - '.github/workflows/backend-deploy.yml'
   workflow_dispatch:
 
-env:
-  AZURE_CONTAINER_REGISTRY: crbcagentdev
-  CONTAINER_APP_NAME: app-bcagent-backend-dev
-  RESOURCE_GROUP: rg-BCAgentPrototype-app-dev
-  CONTAINER_APPS_ENVIRONMENT: cae-bcagent-dev
-  IMAGE_NAME: bcagent-backend
-  KEY_VAULT_URI: https://kv-bcagent-dev.vault.azure.net
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -37,7 +29,7 @@ jobs:
 
       - name: Log in to Azure Container Registry
         run: |
-          az acr login --name ${{ env.AZURE_CONTAINER_REGISTRY }}
+          az acr login --name ${{ vars.ACR_NAME }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -46,15 +38,15 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
-            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:${{ github.sha }}
+            ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Check if Container App exists
         id: check_app
         run: |
-          if az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} &>/dev/null; then
+          if az containerapp show --name ${{ vars.BACKEND_APP_NAME }} --resource-group ${{ vars.RESOURCE_GROUP }} &>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
@@ -66,9 +58,9 @@ jobs:
           # Step 1: Create with a public placeholder image and system-assigned identity
           echo "Creating Container App with placeholder image..."
           az containerapp create \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --environment ${{ env.CONTAINER_APPS_ENVIRONMENT }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --environment ${{ vars.CAE_NAME }} \
             --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
             --target-port 80 \
             --ingress external \
@@ -80,8 +72,8 @@ jobs:
 
           # Get the system-assigned identity principal ID
           PRINCIPAL_ID=$(az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query identity.principalId -o tsv)
 
           echo "Container App Principal ID: $PRINCIPAL_ID"
@@ -95,52 +87,52 @@ jobs:
 
           # Step 2: Configure ACR registry with managed identity
           az containerapp registry set \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --server ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --server ${{ vars.ACR_NAME }}.azurecr.io \
             --identity system
 
           # Step 3: Configure secrets from Key Vault
           echo "Configuring secrets from Key Vault..."
           az containerapp secret set \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --secrets \
-              sql-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
-              redis-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
-              anthropic-api-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
-              bc-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
-              bc-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
-              bc-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
-              stor-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
-              session-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
-              encryption-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
-              microsoft-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
-              ms-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
-              microsoft-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
-              openai-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
-              azure-openai-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
-              search-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
-              azure-search-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
-              vision-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
-              azure-vision-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
-              azure-di-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
-              azure-di-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
-              azure-audio-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
-              azure-audio-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
-              appinsights-conn=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
-              graph-webhook-url=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
+              sql-conn-string=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/SqlDb-ConnectionString,identityref:system \
+              redis-conn-string=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Redis-ConnectionString,identityref:system \
+              anthropic-api-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Claude-ApiKey,identityref:system \
+              bc-tenant-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/BC-TenantId,identityref:system \
+              bc-client-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/BC-ClientId,identityref:system \
+              bc-client-secret=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/BC-ClientSecret,identityref:system \
+              stor-conn-string=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Storage-ConnectionString,identityref:system \
+              session-secret=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/SESSION-SECRET,identityref:system \
+              encryption-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/ENCRYPTION-KEY,identityref:system \
+              microsoft-client-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Microsoft-ClientId,identityref:system \
+              ms-client-secret=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Microsoft-ClientSecret,identityref:system \
+              microsoft-tenant-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Microsoft-TenantId,identityref:system \
+              openai-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
+              azure-openai-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-OPENAI-KEY,identityref:system \
+              search-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
+              azure-search-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-SEARCH-KEY,identityref:system \
+              vision-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-VISION-ENDPOINT,identityref:system \
+              azure-vision-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-VISION-KEY,identityref:system \
+              azure-di-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/DocumentIntelligence-Endpoint,identityref:system \
+              azure-di-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/DocumentIntelligence-Key,identityref:system \
+              azure-audio-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
+              azure-audio-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-AUDIO-KEY,identityref:system \
+              appinsights-conn=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/ApplicationInsights-ConnectionString,identityref:system \
+              graph-webhook-url=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Graph-WebhookBaseUrl,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
           # Get frontend URL for CORS configuration
           FRONTEND_FQDN=$(az containerapp show \
-            --name app-bcagent-frontend-dev \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv 2>/dev/null || echo "")
 
           if [ -z "$FRONTEND_FQDN" ]; then
-            FRONTEND_URL="https://app-bcagent-frontend-dev.placeholder.azurecontainerapps.io"
+            FRONTEND_URL="https://${{ vars.FRONTEND_DOMAIN }}"
           else
             FRONTEND_URL="https://$FRONTEND_FQDN"
           fi
@@ -149,9 +141,9 @@ jobs:
           echo "Updating to backend image..."
 
           az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:${{ github.sha }} \
             --min-replicas 1 \
             --max-replicas 3 \
             --set-env-vars \
@@ -160,7 +152,7 @@ jobs:
               DATABASE_CONNECTION_STRING=secretref:sql-conn-string \
               REDIS_CONNECTION_STRING=secretref:redis-conn-string \
               ANTHROPIC_API_KEY=secretref:anthropic-api-key \
-              ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
+              ANTHROPIC_MODEL=${{ vars.ANTHROPIC_MODEL }} \
               BC_TENANT_ID=secretref:bc-tenant-id \
               BC_CLIENT_ID=secretref:bc-client-id \
               BC_CLIENT_SECRET=secretref:bc-client-secret \
@@ -176,7 +168,7 @@ jobs:
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
               MICROSOFT_CLIENT_SECRET=secretref:ms-client-secret \
               MICROSOFT_TENANT_ID=secretref:microsoft-tenant-id \
-              MICROSOFT_REDIRECT_URI=https://app-bcagent-backend-dev.ambitiousflower-b4d27c1a.westeurope.azurecontainerapps.io/api/auth/callback \
+              MICROSOFT_REDIRECT_URI=https://${{ vars.BACKEND_DOMAIN }}/api/auth/callback \
               AZURE_OPENAI_ENDPOINT=secretref:openai-endpoint \
               AZURE_OPENAI_KEY=secretref:azure-openai-key \
               AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
@@ -205,41 +197,41 @@ jobs:
 
           # Update ingress configuration for the backend
           az containerapp ingress update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --target-port 3001
 
       - name: Configure Container App Secrets
         run: |
           echo "Configuring secrets from Key Vault..."
           az containerapp secret set \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --secrets \
-              sql-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SqlDb-ConnectionString,identityref:system \
-              redis-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Redis-ConnectionString,identityref:system \
-              anthropic-api-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Claude-ApiKey,identityref:system \
-              bc-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-TenantId,identityref:system \
-              bc-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientId,identityref:system \
-              bc-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/BC-ClientSecret,identityref:system \
-              stor-conn-string=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Storage-ConnectionString,identityref:system \
-              session-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/SESSION-SECRET,identityref:system \
-              encryption-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ENCRYPTION-KEY,identityref:system \
-              microsoft-client-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientId,identityref:system \
-              ms-client-secret=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-ClientSecret,identityref:system \
-              microsoft-tenant-id=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Microsoft-TenantId,identityref:system \
-              openai-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
-              azure-openai-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-OPENAI-KEY,identityref:system \
-              search-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
-              azure-search-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-SEARCH-KEY,identityref:system \
-              vision-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-ENDPOINT,identityref:system \
-              azure-vision-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-VISION-KEY,identityref:system \
-              azure-di-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Endpoint,identityref:system \
-              azure-di-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/DocumentIntelligence-Key,identityref:system \
-              azure-audio-endpoint=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
-              azure-audio-key=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/AZURE-AUDIO-KEY,identityref:system \
-              appinsights-conn=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/ApplicationInsights-ConnectionString,identityref:system \
-              graph-webhook-url=keyvaultref:${{ env.KEY_VAULT_URI }}/secrets/Graph-WebhookBaseUrl,identityref:system
+              sql-conn-string=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/SqlDb-ConnectionString,identityref:system \
+              redis-conn-string=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Redis-ConnectionString,identityref:system \
+              anthropic-api-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Claude-ApiKey,identityref:system \
+              bc-tenant-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/BC-TenantId,identityref:system \
+              bc-client-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/BC-ClientId,identityref:system \
+              bc-client-secret=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/BC-ClientSecret,identityref:system \
+              stor-conn-string=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Storage-ConnectionString,identityref:system \
+              session-secret=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/SESSION-SECRET,identityref:system \
+              encryption-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/ENCRYPTION-KEY,identityref:system \
+              microsoft-client-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Microsoft-ClientId,identityref:system \
+              ms-client-secret=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Microsoft-ClientSecret,identityref:system \
+              microsoft-tenant-id=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Microsoft-TenantId,identityref:system \
+              openai-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-OPENAI-ENDPOINT,identityref:system \
+              azure-openai-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-OPENAI-KEY,identityref:system \
+              search-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-SEARCH-ENDPOINT,identityref:system \
+              azure-search-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-SEARCH-KEY,identityref:system \
+              vision-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-VISION-ENDPOINT,identityref:system \
+              azure-vision-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-VISION-KEY,identityref:system \
+              azure-di-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/DocumentIntelligence-Endpoint,identityref:system \
+              azure-di-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/DocumentIntelligence-Key,identityref:system \
+              azure-audio-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-AUDIO-ENDPOINT,identityref:system \
+              azure-audio-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/AZURE-AUDIO-KEY,identityref:system \
+              appinsights-conn=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/ApplicationInsights-ConnectionString,identityref:system \
+              graph-webhook-url=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Graph-WebhookBaseUrl,identityref:system
           echo "✅ Secrets configured from Key Vault"
 
       - name: Update Container App (if exists)
@@ -247,13 +239,13 @@ jobs:
         run: |
           # Get frontend URL for CORS configuration
           FRONTEND_FQDN=$(az containerapp show \
-            --name app-bcagent-frontend-dev \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv 2>/dev/null || echo "")
 
           if [ -z "$FRONTEND_FQDN" ]; then
-            FRONTEND_URL="https://app-bcagent-frontend-dev.placeholder.azurecontainerapps.io"
+            FRONTEND_URL="https://${{ vars.FRONTEND_DOMAIN }}"
           else
             FRONTEND_URL="https://$FRONTEND_FQDN"
           fi
@@ -261,9 +253,9 @@ jobs:
           echo "Frontend URL for CORS: $FRONTEND_URL"
 
           az containerapp update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --image ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:${{ github.sha }} \
             --min-replicas 1 \
             --max-replicas 3 \
             --set-env-vars \
@@ -272,7 +264,7 @@ jobs:
               DATABASE_CONNECTION_STRING=secretref:sql-conn-string \
               REDIS_CONNECTION_STRING=secretref:redis-conn-string \
               ANTHROPIC_API_KEY=secretref:anthropic-api-key \
-              ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
+              ANTHROPIC_MODEL=${{ vars.ANTHROPIC_MODEL }} \
               BC_TENANT_ID=secretref:bc-tenant-id \
               BC_CLIENT_ID=secretref:bc-client-id \
               BC_CLIENT_SECRET=secretref:bc-client-secret \
@@ -288,7 +280,7 @@ jobs:
               MICROSOFT_CLIENT_ID=secretref:microsoft-client-id \
               MICROSOFT_CLIENT_SECRET=secretref:ms-client-secret \
               MICROSOFT_TENANT_ID=secretref:microsoft-tenant-id \
-              MICROSOFT_REDIRECT_URI=https://app-bcagent-backend-dev.ambitiousflower-b4d27c1a.westeurope.azurecontainerapps.io/api/auth/callback \
+              MICROSOFT_REDIRECT_URI=https://${{ vars.BACKEND_DOMAIN }}/api/auth/callback \
               AZURE_OPENAI_ENDPOINT=secretref:openai-endpoint \
               AZURE_OPENAI_KEY=secretref:azure-openai-key \
               AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
@@ -319,8 +311,8 @@ jobs:
         run: |
           echo "Ensuring ingress is configured for port 3001..."
           az containerapp ingress update \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --target-port 3001
           echo "✅ Ingress configured for port 3001"
 
@@ -328,8 +320,8 @@ jobs:
         id: get_url
         run: |
           URL=$(az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query properties.configuration.ingress.fqdn \
             --output tsv)
           echo "url=https://$URL" >> $GITHUB_OUTPUT
@@ -341,24 +333,24 @@ jobs:
           echo ""
           echo "📦 Revision Status:"
           az containerapp revision list \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "[].{name:name, runningState:properties.runningState, trafficWeight:trafficWeight}" \
             -o table
 
           echo ""
           echo "🌐 Ingress Configuration:"
           az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "properties.configuration.ingress.{targetPort:targetPort, external:external, fqdn:fqdn}" \
             -o json
 
           echo ""
           echo "🔐 Secrets Configured:"
           az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "properties.configuration.secrets[].name" \
             -o tsv | wc -l
           echo "secrets total"
@@ -366,8 +358,8 @@ jobs:
           echo ""
           echo "📝 Environment Variables:"
           az containerapp show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "properties.template.containers[0].env[].name" \
             -o tsv | head -20
           echo "... (first 20 shown)"
@@ -419,14 +411,14 @@ jobs:
           echo ""
           echo "=== DIAGNOSTIC: Container Logs (last 50 lines) ==="
           az containerapp logs show \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --tail 50 || echo "Could not fetch logs"
           echo ""
           echo "=== DIAGNOSTIC: Revision Status ==="
           az containerapp revision list \
-            --name ${{ env.CONTAINER_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
             --query "[].{name:name, runningState:properties.runningState, healthState:properties.healthState, replicas:properties.replicas}" \
             -o table || echo "Could not fetch revision status"
 
@@ -437,5 +429,5 @@ jobs:
           echo "### Deployment Successful! 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Backend URL:** ${{ steps.get_url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ vars.ACR_NAME }}.azurecr.io/${{ vars.BACKEND_IMAGE }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

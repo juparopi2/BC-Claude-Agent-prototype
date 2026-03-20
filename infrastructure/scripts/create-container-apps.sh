@@ -109,6 +109,7 @@ else
     --environment "$CAE_NAME" \
     --image "$PLACEHOLDER_IMAGE" \
     --system-assigned \
+    --revision-mode multiple \
     --ingress external \
     --target-port 3001 \
     --transport http \
@@ -117,7 +118,7 @@ else
     --cpu 0.5 \
     --memory 1.0Gi \
     --output none
-  echo -e "${GREEN}✓ Backend Container App created${NC}"
+  echo -e "${GREEN}✓ Backend Container App created (multi-revision mode)${NC}"
 fi
 
 # ── Create frontend Container App ─────────────────────────────────────────────
@@ -133,6 +134,7 @@ else
     --environment "$CAE_NAME" \
     --image "$PLACEHOLDER_IMAGE" \
     --system-assigned \
+    --revision-mode multiple \
     --ingress external \
     --target-port 3000 \
     --transport http \
@@ -141,7 +143,7 @@ else
     --cpu 0.25 \
     --memory 0.5Gi \
     --output none
-  echo -e "${GREEN}✓ Frontend Container App created${NC}"
+  echo -e "${GREEN}✓ Frontend Container App created (multi-revision mode)${NC}"
 fi
 
 echo ""

@@ -155,7 +155,7 @@ jobs:
 
       - name: Fetch secrets from Key Vault
         run: |
-          KV="kv-bcagent-dev"
+          KV="${{ vars.KEY_VAULT_NAME }}"
 
           fetch() {
             local kv_name=$1 env_name=$2

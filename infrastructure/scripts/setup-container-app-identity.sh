@@ -103,6 +103,16 @@ setup_app() {
     2>/dev/null || echo -e "${BLUE}(Role assignment might already exist)${NC}"
   echo -e "${GREEN}✓ AcrPull role assigned${NC}"
 
+  # Configure ACR registry on Container App (tells it to use managed identity for pulls)
+  echo -e "${YELLOW}Configuring ACR registry with managed identity...${NC}"
+  az containerapp registry set \
+    --name "$APP_NAME" \
+    --resource-group "$RESOURCE_GROUP" \
+    --server "${ACR_NAME}.azurecr.io" \
+    --identity system \
+    2>/dev/null || echo -e "${BLUE}(Registry might already be configured, or revision timed out — config persists)${NC}"
+  echo -e "${GREEN}✓ ACR registry configured${NC}"
+
   # Key Vault access (backend only)
   if [ "$NEEDS_KV" = "true" ]; then
     echo -e "${YELLOW}Assigning Key Vault access policy...${NC}"

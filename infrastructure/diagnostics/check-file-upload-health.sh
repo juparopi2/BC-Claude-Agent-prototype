@@ -3,6 +3,14 @@
 # check-file-upload-health.sh
 # Comprehensive health check for file upload infrastructure
 # Verifies Azure Storage connectivity, permissions, firewall, and CORS
+#
+# Usage:
+#   ./check-file-upload-health.sh [--env|-E <dev|prod>] [--help|-h]
+#
+# Environment selection (highest to lowest precedence):
+#   1. --env / -E flag
+#   2. ENVIRONMENT env variable
+#   3. Default: dev
 
 set -euo pipefail
 
@@ -12,18 +20,84 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Configuration
-RESOURCE_GROUP_DATA="rg-BCAgentPrototype-data-dev"
-RESOURCE_GROUP_SEC="rg-BCAgentPrototype-sec-dev"
-RESOURCE_GROUP_APP="rg-BCAgentPrototype-app-dev"
-STORAGE_ACCOUNT="sabcagentdev"
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+ENVIRONMENT="${ENVIRONMENT:-dev}"
+
+show_help() {
+  cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Comprehensive health check for MyWorkMate file upload infrastructure.
+
+OPTIONS:
+  -E, --env <dev|prod>   Target environment (default: dev)
+                         Can also be set via the ENVIRONMENT env variable.
+  -h, --help             Show this help message and exit
+
+EXAMPLES:
+  $(basename "$0")                # Check dev environment
+  $(basename "$0") --env prod     # Check prod environment
+  ENVIRONMENT=prod $(basename "$0")  # Same, using env variable
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -E|--env)
+      if [[ -z "${2:-}" ]]; then
+        echo "Error: --env requires an argument (dev or prod)" >&2
+        exit 1
+      fi
+      ENVIRONMENT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      show_help
+      exit 1
+      ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Environment-specific configuration
+# ---------------------------------------------------------------------------
 CONTAINER_NAME="user-files"
-BACKEND_APP_NAME="app-bcagent-backend-dev"
-MANAGED_IDENTITY_NAME="mi-bcagent-backend-dev"
-KEY_VAULT_NAME="kv-bcagent-dev"
+
+case "$ENVIRONMENT" in
+  dev)
+    RESOURCE_GROUP_DATA="rg-BCAgentPrototype-data-dev"
+    RESOURCE_GROUP_SEC="rg-BCAgentPrototype-sec-dev"
+    RESOURCE_GROUP_APP="rg-BCAgentPrototype-app-dev"
+    STORAGE_ACCOUNT="sabcagentdev"
+    BACKEND_APP_NAME="app-bcagent-backend-dev"
+    KEY_VAULT_NAME="kv-bcagent-dev"
+    KV_STORAGE_SECRET="StorageConnectionString"
+    ;;
+  prod)
+    RESOURCE_GROUP_DATA="rg-myworkmate-data-prod"
+    RESOURCE_GROUP_SEC="rg-myworkmate-sec-prod"
+    RESOURCE_GROUP_APP="rg-myworkmate-app-prod"
+    STORAGE_ACCOUNT="samyworkmateprod"
+    BACKEND_APP_NAME="app-myworkmate-backend-prod"
+    KEY_VAULT_NAME="kv-myworkmate-prod"
+    KV_STORAGE_SECRET="Storage-ConnectionString"
+    ;;
+  *)
+    echo "Error: Unknown environment '$ENVIRONMENT'. Must be 'dev' or 'prod'." >&2
+    exit 1
+    ;;
+esac
 
 echo "=================================================="
 echo "File Upload Health Check for MyWorkMate"
+echo "Environment: $ENVIRONMENT"
 echo "=================================================="
 echo ""
 
@@ -135,13 +209,20 @@ else
 fi
 echo ""
 
-# Check 6: Managed Identity Configuration
-echo "=== 6. Managed Identity Configuration ==="
-if az identity show --name "$MANAGED_IDENTITY_NAME" --resource-group "$RESOURCE_GROUP_SEC" &>/dev/null; then
-  print_status "OK" "Managed identity '$MANAGED_IDENTITY_NAME' exists"
+# Check 6: System-Assigned Identity Configuration
+echo "=== 6. System-Assigned Identity Configuration ==="
+PRINCIPAL_ID=$(az containerapp show \
+  --name "$BACKEND_APP_NAME" \
+  --resource-group "$RESOURCE_GROUP_APP" \
+  --query identity.principalId \
+  -o tsv 2>/dev/null || true)
 
-  # Get principal ID
-  PRINCIPAL_ID=$(az identity show --name "$MANAGED_IDENTITY_NAME" --resource-group "$RESOURCE_GROUP_SEC" --query principalId -o tsv)
+if [ -z "$PRINCIPAL_ID" ] || [ "$PRINCIPAL_ID" = "None" ] || [ "$PRINCIPAL_ID" = "null" ]; then
+  print_status "FAIL" "No system-assigned identity found on '$BACKEND_APP_NAME'"
+  echo "  Enable it: az containerapp identity assign --system-assigned \\"
+  echo "             --name $BACKEND_APP_NAME --resource-group $RESOURCE_GROUP_APP"
+else
+  print_status "OK" "System-assigned identity enabled on '$BACKEND_APP_NAME'"
   echo "  Principal ID: $PRINCIPAL_ID"
 
   # Check role assignments on storage account
@@ -164,18 +245,16 @@ if az identity show --name "$MANAGED_IDENTITY_NAME" --resource-group "$RESOURCE_
       print_status "WARN" "Missing recommended role: 'Storage Blob Data Contributor'"
     fi
   fi
-else
-  print_status "FAIL" "Managed identity '$MANAGED_IDENTITY_NAME' not found"
 fi
 echo ""
 
 # Check 7: Key Vault Secrets
 echo "=== 7. Key Vault Connection String ==="
-if az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "StorageConnectionString" &>/dev/null; then
-  print_status "OK" "Secret 'StorageConnectionString' exists in Key Vault"
+if az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "$KV_STORAGE_SECRET" &>/dev/null; then
+  print_status "OK" "Secret '$KV_STORAGE_SECRET' exists in Key Vault"
 
   # Get secret value (redacted)
-  SECRET_VALUE=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "StorageConnectionString" --query value -o tsv)
+  SECRET_VALUE=$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "$KV_STORAGE_SECRET" --query value -o tsv)
 
   # Validate connection string format
   if [[ "$SECRET_VALUE" == *"AccountName=$STORAGE_ACCOUNT"* ]]; then
@@ -190,9 +269,9 @@ if az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name "StorageConnect
     print_status "FAIL" "Connection string missing AccountKey or SAS token"
   fi
 else
-  print_status "FAIL" "Secret 'StorageConnectionString' not found in Key Vault"
+  print_status "FAIL" "Secret '$KV_STORAGE_SECRET' not found in Key Vault"
   echo "  Create it: az keyvault secret set --vault-name $KEY_VAULT_NAME \\"
-  echo "             --name StorageConnectionString --value '<connection-string>'"
+  echo "             --name $KV_STORAGE_SECRET --value '<connection-string>'"
 fi
 echo ""
 
@@ -260,7 +339,7 @@ echo "If all checks passed (✅), file upload should work."
 echo "If any checks failed (❌), address them before retrying."
 echo ""
 echo "Common fixes:"
-echo "1. Missing role assignment: Assign 'Storage Blob Data Contributor' to managed identity"
+echo "1. Missing role assignment: Assign 'Storage Blob Data Contributor' to system-assigned identity"
 echo "2. Firewall blocking: Add Container App IPs to storage allowlist or enable Azure Services bypass"
 echo "3. Wrong connection string: Update Key Vault secret with correct value"
 echo "4. Container name mismatch: Update STORAGE_CONTAINER_NAME environment variable"

@@ -50,32 +50,8 @@ echo -e "${GREEN}✓ Admin key retrieved${NC}"
 
 SEARCH_ENDPOINT="https://${SEARCH_SERVICE_NAME}.search.windows.net"
 
-# Step 2: Check if index exists and has imageVector
-echo -e "\n${BLUE}Step 2: Checking current index schema...${NC}"
-CURRENT_SCHEMA=$(curl -s "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
-  -H "api-key: ${SEARCH_KEY}")
-
-# Check for errors
-if echo "$CURRENT_SCHEMA" | grep -q '"error"'; then
-  echo -e "${RED}✗ Index not found or error:${NC}"
-  echo "$CURRENT_SCHEMA" | head -20
-  exit 1
-fi
-
-# Check if imageVector already exists
-if echo "$CURRENT_SCHEMA" | grep -q '"imageVector"'; then
-  echo -e "${GREEN}✓ Index already has imageVector field - no update needed${NC}"
-  exit 0
-fi
-
-echo -e "${YELLOW}⚠ Index missing imageVector field - updating...${NC}"
-
-# Step 3: Create updated schema JSON
-# IMPORTANT: We preserve the existing algorithm name (hnsw-algorithm) and profile name (hnsw-profile)
-# and ADD new ones for images (hnsw-algorithm-image, hnsw-profile-image)
-echo -e "\n${BLUE}Step 3: Preparing updated schema...${NC}"
-
-UPDATED_SCHEMA=$(cat <<'EOF'
+# Full index schema — all fields matching the dev index
+FULL_SCHEMA=$(cat <<'EOF'
 {
   "name": "file-chunks-index",
   "fields": [
@@ -117,7 +93,7 @@ UPDATED_SCHEMA=$(cat <<'EOF'
       "name": "contentVector",
       "type": "Collection(Edm.Single)",
       "searchable": true,
-      "retrievable": false,
+      "retrievable": true,
       "dimensions": 1536,
       "vectorSearchProfile": "hnsw-profile"
     },
@@ -168,6 +144,71 @@ UPDATED_SCHEMA=$(cat <<'EOF'
       "filterable": true,
       "sortable": false,
       "facetable": true
+    },
+    {
+      "name": "mimeType",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true
+    },
+    {
+      "name": "fileStatus",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true
+    },
+    {
+      "name": "fileModifiedAt",
+      "type": "Edm.DateTimeOffset",
+      "searchable": false,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false
+    },
+    {
+      "name": "fileName",
+      "type": "Edm.String",
+      "searchable": true,
+      "filterable": true,
+      "sortable": false,
+      "facetable": false,
+      "analyzer": "standard.lucene"
+    },
+    {
+      "name": "sizeBytes",
+      "type": "Edm.Int32",
+      "searchable": false,
+      "filterable": true,
+      "sortable": true,
+      "facetable": false
+    },
+    {
+      "name": "siteId",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true
+    },
+    {
+      "name": "sourceType",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": true
+    },
+    {
+      "name": "parentFolderId",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": true,
+      "sortable": false,
+      "facetable": false
     }
   ],
   "vectorSearch": {
@@ -203,57 +244,168 @@ UPDATED_SCHEMA=$(cat <<'EOF'
         }
       }
     ]
+  },
+  "semantic": {
+    "defaultConfiguration": "semantic-config",
+    "configurations": [
+      {
+        "name": "semantic-config",
+        "prioritizedFields": {
+          "prioritizedContentFields": [
+            { "fieldName": "content" }
+          ]
+        }
+      }
+    ]
   }
 }
 EOF
 )
 
-# Step 4: Update the index
-echo -e "\n${BLUE}Step 4: Updating index schema...${NC}"
+# The complete set of fields that must be present in the index
+REQUIRED_FIELDS=(
+  "chunkId"
+  "fileId"
+  "userId"
+  "content"
+  "contentVector"
+  "chunkIndex"
+  "tokenCount"
+  "embeddingModel"
+  "createdAt"
+  "imageVector"
+  "isImage"
+  "mimeType"
+  "fileStatus"
+  "fileModifiedAt"
+  "fileName"
+  "sizeBytes"
+  "siteId"
+  "sourceType"
+  "parentFolderId"
+)
 
-RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+# Step 2: Check if index exists
+echo -e "\n${BLUE}Step 2: Checking whether index exists...${NC}"
+CURRENT_SCHEMA=$(curl -s -w "\n%{http_code}" \
   "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
-  -H "api-key: ${SEARCH_KEY}" \
-  -H "Content-Type: application/json" \
-  -d "$UPDATED_SCHEMA")
-
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | sed '$d')
-
-if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "204" ]; then
-  echo -e "${GREEN}✓ Index schema updated successfully!${NC}"
-  echo ""
-  echo -e "${BLUE}New fields added:${NC}"
-  echo "  - imageVector (Collection(Edm.Single), 1024 dimensions)"
-  echo "  - isImage (Edm.Boolean, filterable)"
-  echo ""
-  echo -e "${BLUE}New vector search profiles:${NC}"
-  echo "  - hnsw-profile-image"
-  echo "  - hnsw-algorithm-image"
-else
-  echo -e "${RED}✗ Failed to update index (HTTP $HTTP_CODE)${NC}"
-  echo "$BODY" | head -30
-  exit 1
-fi
-
-# Step 5: Verify the update
-echo -e "\n${BLUE}Step 5: Verifying update...${NC}"
-VERIFY=$(curl -s "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
   -H "api-key: ${SEARCH_KEY}")
 
-if echo "$VERIFY" | grep -q '"imageVector"'; then
-  echo -e "${GREEN}✓ Verified: imageVector field exists${NC}"
+CURRENT_HTTP=$(echo "$CURRENT_SCHEMA" | tail -1)
+CURRENT_BODY=$(echo "$CURRENT_SCHEMA" | sed '$d')
+
+if [ "$CURRENT_HTTP" = "404" ]; then
+  # ----------------------------------------------------------------
+  # INDEX DOES NOT EXIST — create it
+  # ----------------------------------------------------------------
+  echo -e "${YELLOW}⚠ Index not found — creating from scratch...${NC}"
+  echo -e "\n${BLUE}Step 3: Creating index with full schema...${NC}"
+
+  CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+    "${SEARCH_ENDPOINT}/indexes?api-version=${API_VERSION}" \
+    -H "api-key: ${SEARCH_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "$FULL_SCHEMA")
+
+  CREATE_HTTP=$(echo "$CREATE_RESPONSE" | tail -1)
+  CREATE_BODY=$(echo "$CREATE_RESPONSE" | sed '$d')
+
+  if [ "$CREATE_HTTP" = "200" ] || [ "$CREATE_HTTP" = "201" ]; then
+    echo -e "${GREEN}✓ Index created successfully (HTTP $CREATE_HTTP)${NC}"
+  else
+    echo -e "${RED}✗ Failed to create index (HTTP $CREATE_HTTP)${NC}"
+    echo "$CREATE_BODY" | head -30
+    exit 1
+  fi
+
+elif [ "$CURRENT_HTTP" = "200" ]; then
+  # ----------------------------------------------------------------
+  # INDEX EXISTS — check for missing fields and update if needed
+  # ----------------------------------------------------------------
+  echo -e "${GREEN}✓ Index exists${NC}"
+
+  echo -e "\n${BLUE}Step 3: Checking for missing fields...${NC}"
+
+  MISSING_FIELDS=()
+  for FIELD in "${REQUIRED_FIELDS[@]}"; do
+    if ! echo "$CURRENT_BODY" | grep -q "\"$FIELD\""; then
+      MISSING_FIELDS+=("$FIELD")
+    fi
+  done
+
+  # Also check that semantic configuration is present
+  HAS_SEMANTIC=true
+  if ! echo "$CURRENT_BODY" | grep -q '"semantic"'; then
+    HAS_SEMANTIC=false
+    echo -e "${YELLOW}⚠ Semantic configuration missing${NC}"
+  fi
+
+  if [ ${#MISSING_FIELDS[@]} -eq 0 ] && [ "$HAS_SEMANTIC" = "true" ]; then
+    echo -e "${GREEN}✓ Index schema is up to date — no update needed${NC}"
+    exit 0
+  fi
+
+  if [ ${#MISSING_FIELDS[@]} -gt 0 ]; then
+    echo -e "${YELLOW}⚠ Missing fields:${NC}"
+    for FIELD in "${MISSING_FIELDS[@]}"; do
+      echo "    - $FIELD"
+    done
+  fi
+
+  echo -e "\n${BLUE}Step 4: Updating index schema via PUT...${NC}"
+
+  UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+    "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
+    -H "api-key: ${SEARCH_KEY}" \
+    -H "Content-Type: application/json" \
+    -d "$FULL_SCHEMA")
+
+  UPDATE_HTTP=$(echo "$UPDATE_RESPONSE" | tail -1)
+  UPDATE_BODY=$(echo "$UPDATE_RESPONSE" | sed '$d')
+
+  if [ "$UPDATE_HTTP" = "200" ] || [ "$UPDATE_HTTP" = "201" ] || [ "$UPDATE_HTTP" = "204" ]; then
+    echo -e "${GREEN}✓ Index schema updated successfully (HTTP $UPDATE_HTTP)${NC}"
+  else
+    echo -e "${RED}✗ Failed to update index (HTTP $UPDATE_HTTP)${NC}"
+    echo "$UPDATE_BODY" | head -30
+    exit 1
+  fi
+
 else
-  echo -e "${RED}✗ Verification failed: imageVector not found${NC}"
+  # Unexpected HTTP status
+  echo -e "${RED}✗ Unexpected response checking index (HTTP $CURRENT_HTTP)${NC}"
+  echo "$CURRENT_BODY" | head -20
   exit 1
 fi
 
-if echo "$VERIFY" | grep -q '"isImage"'; then
-  echo -e "${GREEN}✓ Verified: isImage field exists${NC}"
+# Step 5: Verify the result
+echo -e "\n${BLUE}Step 5: Verifying index schema...${NC}"
+VERIFY=$(curl -s \
+  "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
+  -H "api-key: ${SEARCH_KEY}")
+
+VERIFY_FAILED=false
+
+for FIELD in "${REQUIRED_FIELDS[@]}"; do
+  if echo "$VERIFY" | grep -q "\"$FIELD\""; then
+    echo -e "${GREEN}✓ Field present: $FIELD${NC}"
+  else
+    echo -e "${RED}✗ Field missing: $FIELD${NC}"
+    VERIFY_FAILED=true
+  fi
+done
+
+if echo "$VERIFY" | grep -q '"semantic"'; then
+  echo -e "${GREEN}✓ Semantic configuration present${NC}"
 else
-  echo -e "${RED}✗ Verification failed: isImage not found${NC}"
+  echo -e "${RED}✗ Semantic configuration missing${NC}"
+  VERIFY_FAILED=true
+fi
+
+if [ "$VERIFY_FAILED" = "true" ]; then
+  echo -e "\n${RED}✗ Verification failed — one or more fields or configurations are missing${NC}"
   exit 1
 fi
 
 echo -e "\n${GREEN}=== Schema update complete! ===${NC}"
-echo -e "You can now upload images and they will be indexed correctly."
+echo -e "Index '${INDEX_NAME}' on '${SEARCH_SERVICE_NAME}' is fully up to date."

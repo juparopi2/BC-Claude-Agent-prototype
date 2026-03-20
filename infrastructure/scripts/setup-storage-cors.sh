@@ -43,6 +43,7 @@ case "$ENVIRONMENT" in
     FRONTEND_APP_NAME="app-bcagent-frontend-dev"
     # Development origins (localhost)
     DEV_ORIGINS=("http://localhost:3000" "http://127.0.0.1:3000")
+    CUSTOM_DOMAINS=()
     ;;
   test)
     STORAGE_ACCOUNT="sabcagenttest"
@@ -50,6 +51,7 @@ case "$ENVIRONMENT" in
     RESOURCE_GROUP_APP="rg-BCAgentPrototype-app-test"
     FRONTEND_APP_NAME="app-bcagent-frontend-test"
     DEV_ORIGINS=()
+    CUSTOM_DOMAINS=()
     ;;
   prod|production)
     STORAGE_ACCOUNT="samyworkmateprod"
@@ -57,6 +59,8 @@ case "$ENVIRONMENT" in
     RESOURCE_GROUP_APP="rg-myworkmate-app-prod"
     FRONTEND_APP_NAME="app-myworkmate-frontend-prod"
     DEV_ORIGINS=()
+    # Custom domains served by the frontend (must be kept in sync with DNS/Container App config)
+    CUSTOM_DOMAINS=("https://myworkmate.ai" "https://www.myworkmate.ai")
     ;;
   *)
     echo -e "${RED}Unknown environment: $ENVIRONMENT${NC}"
@@ -147,6 +151,20 @@ if [ -n "$PROD_ORIGIN" ]; then
   echo -e "${GREEN}  Production origin added${NC}"
 fi
 
+# Add custom domain origins (if any — production only)
+for CUSTOM_ORIGIN in "${CUSTOM_DOMAINS[@]}"; do
+  echo "  Adding custom domain origin: $CUSTOM_ORIGIN"
+  az storage cors add \
+    --account-name "$STORAGE_ACCOUNT" \
+    --services b \
+    --methods $METHODS \
+    --origins "$CUSTOM_ORIGIN" \
+    --allowed-headers "$ALLOWED_HEADERS" \
+    --exposed-headers "$EXPOSED_HEADERS" \
+    --max-age $MAX_AGE
+  echo -e "${GREEN}  Custom domain origin added${NC}"
+done
+
 # Add development origins (if any)
 for DEV_ORIGIN in "${DEV_ORIGINS[@]}"; do
   echo "  Adding development origin: $DEV_ORIGIN"
@@ -179,15 +197,17 @@ echo -e "${GREEN}=============================================${NC}"
 echo ""
 echo "Configured origins:"
 if [ -n "$PROD_ORIGIN" ]; then
-  echo -e "  ${GREEN}$PROD_ORIGIN${NC} (production)"
+  echo -e "  ${GREEN}$PROD_ORIGIN${NC} (Azure FQDN)"
 fi
+for CUSTOM_ORIGIN in "${CUSTOM_DOMAINS[@]}"; do
+  echo -e "  ${GREEN}$CUSTOM_ORIGIN${NC} (custom domain)"
+done
 for DEV_ORIGIN in "${DEV_ORIGINS[@]}"; do
   echo -e "  ${YELLOW}$DEV_ORIGIN${NC} (development)"
 done
 echo ""
 echo "These origins can now upload files directly to Azure Blob Storage."
 echo ""
-echo -e "${YELLOW}NOTE: If you add a custom domain to the frontend, you must:${NC}"
-echo "  1. Add the custom domain as an additional CORS origin"
-echo "  2. Or re-run this script after updating the Container App"
+echo -e "${YELLOW}NOTE: If you add a new custom domain, update the CUSTOM_DOMAINS${NC}"
+echo -e "${YELLOW}array in this script and re-run it.${NC}"
 echo ""

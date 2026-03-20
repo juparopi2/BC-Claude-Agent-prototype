@@ -6,6 +6,10 @@ on:
       - production
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 concurrency:
   group: production-deploy
   cancel-in-progress: false
@@ -320,6 +324,8 @@ jobs:
       frontend-old-revision: ${{ steps.record_revisions.outputs.frontend_old }}
       backend-new-revision: ${{ steps.deploy_backend.outputs.new_revision }}
       frontend-new-revision: ${{ steps.deploy_frontend.outputs.new_revision }}
+      backend-new-fqdn: ${{ steps.deploy_backend.outputs.new_fqdn }}
+      frontend-new-fqdn: ${{ steps.deploy_frontend.outputs.new_fqdn }}
 
     steps:
       - name: Log in to Azure
@@ -377,6 +383,10 @@ jobs:
               NODE_ENV=production \
               PORT=3001 \
               DATABASE_CONNECTION_STRING=secretref:sql-conn-string \
+              DATABASE_SERVER=secretref:database-server \
+              DATABASE_NAME=secretref:database-name \
+              DATABASE_USER=secretref:database-user \
+              DATABASE_PASSWORD=secretref:database-password \
               REDIS_CONNECTION_STRING=secretref:redis-conn-string \
               ANTHROPIC_API_KEY=secretref:anthropic-api-key \
               ANTHROPIC_MODEL=claude-sonnet-4-20250514 \
@@ -422,13 +432,19 @@ jobs:
               SUBSCRIPTION_RENEWAL_BUFFER_HOURS=48 \
               SUBSCRIPTION_MAX_DURATION_DAYS=29
 
-          # Get the new revision name
+          # Get the new revision name and its dedicated FQDN for health checks
           NEW_REV=$(az containerapp revision list \
             --name ${{ env.BACKEND_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --query "sort_by([],&properties.createdTime)[-1].name" -o tsv)
+          NEW_FQDN=$(az containerapp show \
+            --name ${{ env.BACKEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.latestRevisionFqdn -o tsv)
           echo "new_revision=$NEW_REV" >> $GITHUB_OUTPUT
+          echo "new_fqdn=$NEW_FQDN" >> $GITHUB_OUTPUT
           echo "New backend revision: $NEW_REV"
+          echo "New backend revision FQDN: $NEW_FQDN"
 
       - name: Deploy frontend (0% traffic)
         id: deploy_frontend
@@ -439,16 +455,22 @@ jobs:
             --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
             --revision-suffix sha-${GITHUB_SHA::8}
 
-          # Get the new revision name
+          # Get the new revision name and its dedicated FQDN for health checks
           NEW_REV=$(az containerapp revision list \
             --name ${{ env.FRONTEND_APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --query "sort_by([],&properties.createdTime)[-1].name" -o tsv)
+          NEW_FQDN=$(az containerapp show \
+            --name ${{ env.FRONTEND_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query properties.latestRevisionFqdn -o tsv)
           echo "new_revision=$NEW_REV" >> $GITHUB_OUTPUT
+          echo "new_fqdn=$NEW_FQDN" >> $GITHUB_OUTPUT
           echo "New frontend revision: $NEW_REV"
+          echo "New frontend revision FQDN: $NEW_FQDN"
 
   # ==========================================================================
-  # Health checks on new revisions
+  # Health checks on new revisions (using revision-specific FQDNs, not main FQDN)
   # ==========================================================================
   health-checks:
     name: Health Checks
@@ -462,22 +484,57 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Wait for containers to start
-        run: sleep 60
-
-      - name: Backend liveness check
+      - name: Wait for revisions to provision
         run: |
-          BACKEND_FQDN=$(az containerapp show \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "Waiting for new revisions to start..."
+          MAX_WAIT=120
+          INTERVAL=10
+          ELAPSED=0
 
-          echo "Checking backend liveness at https://$BACKEND_FQDN/health/liveness"
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            BACKEND_STATE=$(az containerapp revision show \
+              --name ${{ env.BACKEND_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "${{ needs.deploy-containers.outputs.backend-new-revision }}" \
+              --query properties.runningState -o tsv 2>/dev/null || echo "unknown")
+
+            FRONTEND_STATE=$(az containerapp revision show \
+              --name ${{ env.FRONTEND_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --revision "${{ needs.deploy-containers.outputs.frontend-new-revision }}" \
+              --query properties.runningState -o tsv 2>/dev/null || echo "unknown")
+
+            echo "Backend: $BACKEND_STATE | Frontend: $FRONTEND_STATE (${ELAPSED}s)"
+
+            if [ "$BACKEND_STATE" = "Running" ] && [ "$FRONTEND_STATE" = "Running" ]; then
+              echo "Both revisions are running!"
+              break
+            fi
+
+            if [ "$BACKEND_STATE" = "Failed" ] || [ "$FRONTEND_STATE" = "Failed" ]; then
+              echo "A revision has failed to start"
+              echo "Backend: $BACKEND_STATE, Frontend: $FRONTEND_STATE"
+              exit 1
+            fi
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          if [ $ELAPSED -ge $MAX_WAIT ]; then
+            echo "Revisions did not reach Running state within ${MAX_WAIT}s"
+            exit 1
+          fi
+
+      - name: Backend liveness check (revision FQDN)
+        run: |
+          REVISION_FQDN="${{ needs.deploy-containers.outputs.backend-new-fqdn }}"
+          echo "Checking backend liveness at https://$REVISION_FQDN/health/liveness"
 
           MAX_RETRIES=5
-          RETRY_DELAY=20
+          RETRY_DELAY=15
           for i in $(seq 1 $MAX_RETRIES); do
-            RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" --max-time 30 "https://$BACKEND_FQDN/health/liveness" 2>&1)
+            RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" --max-time 30 "https://$REVISION_FQDN/health/liveness" 2>&1)
             HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
             BODY=$(echo "$RESPONSE" | grep -v "HTTP_CODE:")
 
@@ -494,22 +551,23 @@ jobs:
             sleep $RETRY_DELAY
           done
 
-      - name: Backend readiness check
+      - name: Backend readiness check (revision FQDN)
         run: |
-          BACKEND_FQDN=$(az containerapp show \
-            --name ${{ env.BACKEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn -o tsv)
-
-          echo "Checking backend readiness at https://$BACKEND_FQDN/health"
+          REVISION_FQDN="${{ needs.deploy-containers.outputs.backend-new-fqdn }}"
+          echo "Checking backend readiness at https://$REVISION_FQDN/health"
 
           MAX_RETRIES=3
           for i in $(seq 1 $MAX_RETRIES); do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$BACKEND_FQDN/health" 2>&1)
+            RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" --max-time 30 "https://$REVISION_FQDN/health" 2>&1)
+            HTTP_CODE=$(echo "$RESPONSE" | grep "HTTP_CODE:" | cut -d':' -f2)
+            BODY=$(echo "$RESPONSE" | grep -v "HTTP_CODE:")
+
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Backend readiness check passed!"
+              echo "Response: $BODY"
               break
             fi
+
             echo "Attempt $i/$MAX_RETRIES failed (HTTP $HTTP_CODE)"
             if [ $i -eq $MAX_RETRIES ]; then
               echo "Backend readiness check failed"
@@ -518,18 +576,14 @@ jobs:
             sleep 15
           done
 
-      - name: Frontend health check
+      - name: Frontend health check (revision FQDN)
         run: |
-          FRONTEND_FQDN=$(az containerapp show \
-            --name ${{ env.FRONTEND_APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --query properties.configuration.ingress.fqdn -o tsv)
-
-          echo "Checking frontend at https://$FRONTEND_FQDN"
+          REVISION_FQDN="${{ needs.deploy-containers.outputs.frontend-new-fqdn }}"
+          echo "Checking frontend at https://$REVISION_FQDN"
 
           MAX_RETRIES=5
           for i in $(seq 1 $MAX_RETRIES); do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$FRONTEND_FQDN" 2>&1)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$REVISION_FQDN" 2>&1)
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Frontend health check passed!"
               break
@@ -539,7 +593,7 @@ jobs:
               echo "Frontend health check failed"
               exit 1
             fi
-            sleep 20
+            sleep 15
           done
 
   # ==========================================================================

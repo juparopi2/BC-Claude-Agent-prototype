@@ -34,10 +34,9 @@ vi.mock('@/modules/agents/business-central/tools', () => ({
   getEndpointDocumentationTool: { name: 'get_endpoint_documentation', invoke: vi.fn() },
 }));
 
-// Mock RAG Agent tools
+// Mock RAG Agent tools (PRD-200: 2 tools)
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
   searchKnowledgeTool: { name: 'search_knowledge', invoke: vi.fn() },
-  visualImageSearchTool: { name: 'visual_image_search', invoke: vi.fn() },
   findSimilarImagesTool: { name: 'find_similar_images', invoke: vi.fn() },
 }));
 

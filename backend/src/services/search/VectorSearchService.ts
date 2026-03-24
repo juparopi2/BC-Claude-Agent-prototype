@@ -737,7 +737,18 @@ export class VectorSearchService {
       finalTopK = 10,
       minScore = 0,
       searchMode = 'text',
+      // PRD-200: New power search fields — derive from legacy searchMode when not provided
+      queryType: explicitQueryType,
+      useVectorSearch: explicitUseVectorSearch,
+      useSemanticRanker: explicitUseSemanticRanker,
+      vectorWeights: explicitVectorWeights,
+      orderBy,
     } = query;
+
+    // Backward compat: derive from legacy searchMode if new fields not set
+    const useSemanticRanker = explicitUseSemanticRanker ?? (searchMode !== 'image');
+    const useVectorSearch = explicitUseVectorSearch ?? true;
+    const effectiveQueryType = explicitQueryType ?? (useSemanticRanker ? 'semantic' : 'simple');
 
     // Security: Always enforce userId filter (D24: normalize userId)
     // Also exclude files marked for deletion (fileStatus ne 'deleting')
@@ -749,55 +760,68 @@ export class VectorSearchService {
       searchFilter += ` and ${query.additionalFilter}`;
     }
 
-    // Build search options — conditionally enable Semantic Ranker
-    // Image mode: disable Semantic Ranker since it only reads the content (caption) field,
-    // which defeats the purpose of visual similarity search via imageVector
+    // Build search options
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top: fetchTopK,
       select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage'],
     };
 
-    if (searchMode !== 'image') {
+    // Conditionally enable Semantic Ranker (PRD-200: controlled by useSemanticRanker + queryType)
+    if (useSemanticRanker && effectiveQueryType === 'semantic') {
       searchOptions.queryType = 'semantic';
       searchOptions.semanticSearchOptions = {
         configurationName: SEMANTIC_CONFIG_NAME,
       };
     }
 
-    // Add vector search queries if embeddings provided — with mode-dependent weights
-    const vectorQueries: Array<Record<string, unknown>> = [];
-
-    if (textEmbedding && textEmbedding.length > 0) {
-      vectorQueries.push({
-        kind: 'vector',
-        vector: textEmbedding,
-        fields: ['contentVector'],
-        kNearestNeighborsCount: fetchTopK,
-        weight: searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_CONTENT : VECTOR_WEIGHTS.TEXT_MODE_CONTENT,
-      });
+    // PRD-200: orderBy passthrough for date-based sorting
+    if (orderBy) {
+      searchOptions.orderBy = [orderBy];
     }
 
-    if (imageEmbedding && imageEmbedding.length > 0) {
-      vectorQueries.push({
-        kind: 'vector',
-        vector: imageEmbedding,
-        fields: ['imageVector'],
-        kNearestNeighborsCount: fetchTopK,
-        weight: searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_IMAGE : VECTOR_WEIGHTS.TEXT_MODE_IMAGE,
-      });
+    // Add vector search queries if enabled and embeddings provided (PRD-200: controlled by useVectorSearch)
+    if (useVectorSearch) {
+      const vectorQueries: Array<Record<string, unknown>> = [];
+
+      // Resolve vector weights: explicit overrides > searchMode-based defaults
+      const contentWeight = explicitVectorWeights?.contentVector
+        ?? (searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_CONTENT : VECTOR_WEIGHTS.TEXT_MODE_CONTENT);
+      const imageWeight = explicitVectorWeights?.imageVector
+        ?? (searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_IMAGE : VECTOR_WEIGHTS.TEXT_MODE_IMAGE);
+
+      if (textEmbedding && textEmbedding.length > 0) {
+        vectorQueries.push({
+          kind: 'vector',
+          vector: textEmbedding,
+          fields: ['contentVector'],
+          kNearestNeighborsCount: fetchTopK,
+          weight: contentWeight,
+        });
+      }
+
+      if (imageEmbedding && imageEmbedding.length > 0) {
+        vectorQueries.push({
+          kind: 'vector',
+          vector: imageEmbedding,
+          fields: ['imageVector'],
+          kNearestNeighborsCount: fetchTopK,
+          weight: imageWeight,
+        });
+      }
+
+      if (vectorQueries.length > 0) {
+        searchOptions.vectorSearchOptions = { queries: vectorQueries };
+      }
     }
 
-    if (vectorQueries.length > 0) {
-      searchOptions.vectorSearchOptions = { queries: vectorQueries };
-    }
-
-    // Execute search:
-    // - Image mode: pass '*' to skip keyword search and get pure vector similarity scores (0-1).
-    //   Without this, Azure uses RRF to fuse keyword + vector results, producing scores ~0.016
-    //   that are incompatible with the cosine-based minScore threshold (~0.47).
-    // - Text mode: pass user query for keyword+vector hybrid, scored by Semantic Ranker (0-4→0-1).
-    const searchText = searchMode === 'image' ? '*' : text;
+    // Determine search text:
+    // - Image mode (legacy): pass '*' to skip keyword matching → pure vector similarity scores (0-1)
+    // - Keyword mode (no vectors, no reranker): pass user query for BM25 text matching
+    // - Hybrid/semantic: pass user query for keyword+vector scoring
+    const searchText = (searchMode === 'image' && explicitUseVectorSearch === undefined)
+      ? '*'
+      : text;
     const searchResults = await this.searchClient.search(searchText, searchOptions);
 
     // Process results
@@ -815,12 +839,12 @@ export class VectorSearchService {
       // Semantic Ranker score is in rerankerScore property (0-4 scale)
       const rerankerScore = (result as unknown as { rerankerScore?: number }).rerankerScore;
 
-      // Calculate combined score:
-      // - Image mode: always use vectorScore (Semantic Ranker is disabled, pure visual similarity)
-      // - Text mode: prefer rerankerScore if available (normalized to 0-1), else vectorScore
-      const score = (searchMode === 'image')
-        ? vectorScore
-        : (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore);
+      // Calculate combined score (PRD-200: use useSemanticRanker flag instead of searchMode)
+      // - When Semantic Ranker is ON: prefer rerankerScore/4 (normalized to 0-1), else vectorScore
+      // - When Semantic Ranker is OFF: always use vectorScore (pure vector or BM25)
+      const score = useSemanticRanker
+        ? (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore)
+        : vectorScore;
 
       // Filter by minimum score
       if (score < minScore) continue;
@@ -842,7 +866,9 @@ export class VectorSearchService {
     const finalResults = results.slice(0, finalTopK);
 
     // Track usage for billing (fire-and-forget)
-    this.trackSearchUsage(userId, 'semantic', finalResults.length, fetchTopK).catch((err) => {
+    const trackingType: 'vector' | 'hybrid' | 'semantic' | 'keyword' =
+      (!useVectorSearch && !useSemanticRanker) ? 'keyword' : 'semantic';
+    this.trackSearchUsage(userId, trackingType, finalResults.length, fetchTopK).catch((err) => {
       logger.warn({ err, userId, resultCount: finalResults.length }, 'Failed to track semantic search usage');
     });
 
@@ -856,8 +882,12 @@ export class VectorSearchService {
         hasTextEmbedding: !!textEmbedding,
         hasImageEmbedding: !!imageEmbedding,
         searchMode,
+        useVectorSearch,
+        useSemanticRanker,
+        effectiveQueryType,
+        hasOrderBy: !!orderBy,
       },
-      'Semantic search completed (D26)'
+      'Semantic search completed (D26/PRD-200)'
     );
 
     return finalResults;
@@ -873,7 +903,7 @@ export class VectorSearchService {
    */
   private async trackSearchUsage(
     userId: string,
-    searchType: 'vector' | 'hybrid' | 'semantic',
+    searchType: 'vector' | 'hybrid' | 'semantic' | 'keyword',
     resultCount: number,
     topK: number
   ): Promise<void> {

@@ -39,7 +39,7 @@ vi.mock('@/services/files/FileService', () => ({
   }),
 }));
 
-import { searchKnowledgeTool, visualImageSearchTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
+import { searchKnowledgeTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
 
 describe('searchKnowledgeTool', () => {
   beforeEach(() => {
@@ -163,7 +163,7 @@ describe('searchKnowledgeTool', () => {
     expect(parsed.searchMetadata.query).toBe('empty query');
   });
 
-  it('returns StructuredSearchResult with error for failures (no _type)', async () => {
+  it('returns is_error with guidance for failures (PRD-200 error passthrough)', async () => {
     mockSearchRelevantFiles.mockRejectedValue(new Error('Service unavailable'));
 
     const result = await searchKnowledgeTool.invoke(
@@ -172,8 +172,8 @@ describe('searchKnowledgeTool', () => {
     );
 
     const parsed = JSON.parse(result);
-    expect(parsed._type).toBeUndefined();
-    expect(parsed.error).toBe('Service unavailable');
+    expect(parsed.is_error).toBe(true);
+    expect(parsed.message).toContain('Service unavailable');
   });
 
   it('returns error when no userId in config', async () => {
@@ -185,108 +185,143 @@ describe('searchKnowledgeTool', () => {
     const parsed = JSON.parse(result);
     expect(parsed.error).toContain('No user context');
   });
-});
 
-describe('visualImageSearchTool', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns CitationResult for successful visual search', async () => {
-    mockSearchRelevantFiles.mockResolvedValue({
-      results: [
-        {
-          fileId: 'FILE-1',
-          fileName: 'truck.jpg',
-          mimeType: 'image/jpeg',
-          relevanceScore: 0.85,
-          isImage: true,
-          topChunks: [
-            { content: 'A red truck [Image: truck.jpg]', score: 0.85, chunkIndex: 0 },
-          ],
-        },
-      ],
-      totalChunksSearched: 50,
-      threshold: 0.6,
-    });
-
-    const result = await visualImageSearchTool.invoke(
-      { query: 'red truck' },
-      { configurable: { userId: 'USER-1' } }
-    );
-
-    const parsed = JSON.parse(result);
-    expect(parsed._type).toBe('citation_result');
-    expect(parsed.documents).toHaveLength(1);
-    expect(parsed.documents[0].fileId).toBe('FILE-1');
-    expect(parsed.summary).toContain('visual similarity');
-  });
-
-  it('passes searchMode: image to searchRelevantFiles', async () => {
+  it('passes searchType and sortBy to searchRelevantFiles', async () => {
     mockSearchRelevantFiles.mockResolvedValue({
       results: [],
       totalChunksSearched: 0,
       threshold: 0.6,
     });
 
-    await visualImageSearchTool.invoke(
-      { query: 'sunset' },
+    await searchKnowledgeTool.invoke(
+      { query: 'INV-2026-0042', searchType: 'keyword', top: 3 },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    expect(mockSearchRelevantFiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'USER-1',
+        query: 'INV-2026-0042',
+        searchType: 'keyword',
+        maxFiles: 3,
+      })
+    );
+  });
+
+  it('passes searchMode image when fileTypeCategory is images', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [{
+        fileId: 'FILE-1',
+        fileName: 'truck.jpg',
+        mimeType: 'image/jpeg',
+        relevanceScore: 0.85,
+        isImage: true,
+        topChunks: [
+          { content: 'A red truck [Image: truck.jpg]', score: 0.85, chunkIndex: 0 },
+        ],
+      }],
+      totalChunksSearched: 50,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'red truck', fileTypeCategory: 'images' },
       { configurable: { userId: 'USER-1' } }
     );
 
     expect(mockSearchRelevantFiles).toHaveBeenCalledWith(
       expect.objectContaining({
         searchMode: 'image',
-        userId: 'USER-1',
-        query: 'sunset',
+        searchType: 'hybrid',
       })
     );
+
+    const parsed = JSON.parse(result);
+    expect(parsed._type).toBe('citation_result');
+    expect(parsed.documents[0].isImage).toBe(true);
   });
 
-  it('passes date filter when provided', async () => {
+  it('passes sortBy newest to searchRelevantFiles', async () => {
     mockSearchRelevantFiles.mockResolvedValue({
       results: [],
       totalChunksSearched: 0,
       threshold: 0.6,
     });
 
-    await visualImageSearchTool.invoke(
-      { query: 'sunset', dateFrom: '2025-01-01', dateTo: '2025-06-30' },
+    await searchKnowledgeTool.invoke(
+      { query: '*', fileTypeCategory: 'spreadsheets', dateFrom: '2026-01-01', dateTo: '2026-03-31', sortBy: 'newest' },
       { configurable: { userId: 'USER-1' } }
     );
 
+    // query '*' forces keyword mode via validation overrides
     expect(mockSearchRelevantFiles).toHaveBeenCalledWith(
       expect.objectContaining({
-        dateFilter: { from: '2025-01-01', to: '2025-06-30' },
+        searchType: 'keyword',
+        sortBy: 'newest',
       })
     );
   });
 
-  it('returns error when no userId in config', async () => {
-    const result = await visualImageSearchTool.invoke(
-      { query: 'test' },
-      { configurable: {} }
+  it('returns is_error with guidance when search throws', async () => {
+    const azureError = new Error('Service unavailable');
+    mockSearchRelevantFiles.mockRejectedValue(azureError);
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test query' },
+      { configurable: { userId: 'USER-1' } }
     );
 
     const parsed = JSON.parse(result);
-    expect(parsed.error).toContain('No user context');
+    expect(parsed.is_error).toBe(true);
+    expect(parsed.message).toContain('Search failed');
   });
 
-  it('returns empty result when no images match', async () => {
+  it('returns guidance when no results found', async () => {
     mockSearchRelevantFiles.mockResolvedValue({
       results: [],
       totalChunksSearched: 50,
       threshold: 0.6,
     });
 
-    const result = await visualImageSearchTool.invoke(
-      { query: 'nonexistent' },
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'nonexistent', minRelevanceScore: 0.8 },
       { configurable: { userId: 'USER-1' } }
     );
 
     const parsed = JSON.parse(result);
-    expect(parsed._type).toBeUndefined();
-    expect(parsed.sources).toEqual([]);
+    expect(parsed.guidance).toBeDefined();
+    expect(parsed.guidance).toContain('Suggestions');
+    expect(parsed.guidance).toContain('minRelevanceScore');
+  });
+
+  it('returns validation error for invalid date format', async () => {
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test', dateFrom: '01-15-2026' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.is_error).toBe(true);
+    expect(parsed.message).toContain('Invalid dateFrom format');
+  });
+
+  it('accepts presentations as fileTypeCategory', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [],
+      totalChunksSearched: 0,
+      threshold: 0.6,
+    });
+
+    await searchKnowledgeTool.invoke(
+      { query: 'quarterly review', fileTypeCategory: 'presentations' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    expect(mockSearchRelevantFiles).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filterMimeTypes: expect.arrayContaining([expect.stringContaining('presentation')]),
+      })
+    );
   });
 });
 

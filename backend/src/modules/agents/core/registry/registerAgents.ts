@@ -24,7 +24,6 @@ import {
 } from '@/modules/agents/business-central/tools';
 import {
   searchKnowledgeTool,
-  visualImageSearchTool,
   findSimilarImagesTool,
 } from '@/modules/agents/rag-knowledge/tools';
 import {
@@ -72,11 +71,10 @@ export function registerAgents(): void {
     ],
   });
 
-  // RAG Agent: 3 static tools (userId resolved via config.configurable at runtime)
+  // RAG Agent: 2 static tools (PRD-200: visual_image_search merged into search_knowledge)
   registry.registerWithTools(ragAgentDefinition, {
     staticTools: [
       searchKnowledgeTool,
-      visualImageSearchTool,
       findSimilarImagesTool,
     ],
   });

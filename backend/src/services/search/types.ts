@@ -146,8 +146,19 @@ export interface SemanticSearchQuery {
   minScore?: number;
   /** Additional OData filter to append (e.g., mimeType filtering) */
   additionalFilter?: string;
-  /** Search mode: 'text' (default) uses Semantic Ranker, 'image' prioritizes visual similarity */
+  /** Search mode: 'text' (default) uses Semantic Ranker, 'image' prioritizes visual similarity — legacy, use new fields */
   searchMode?: SearchMode;
+  // PRD-200: New fields for power search — all optional, backward-compat via searchMode fallback
+  /** Azure AI Search queryType: 'simple' (BM25 only) or 'semantic' (with reranker). Derived from searchMode if not set. */
+  queryType?: 'simple' | 'semantic';
+  /** When false, skip all vector queries (keyword-only mode). Default: true. */
+  useVectorSearch?: boolean;
+  /** When false, disable Semantic Ranker. Default: derived from searchMode. */
+  useSemanticRanker?: boolean;
+  /** Override per-field vector weights for RRF scoring */
+  vectorWeights?: { contentVector: number; imageVector: number };
+  /** Azure AI Search orderBy clause (e.g., 'fileModifiedAt desc') */
+  orderBy?: string;
 }
 
 /**

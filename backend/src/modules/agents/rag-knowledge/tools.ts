@@ -1,8 +1,13 @@
 /**
- * RAG Knowledge Tools
+ * RAG Knowledge Tools (PRD-200: Power Search)
  *
- * Tools for semantic search and knowledge retrieval.
- * Returns structured JSON with file metadata for citation extraction.
+ * Two tools for semantic search and knowledge retrieval:
+ * 1. search_knowledge — Power search tool with LLM-controlled parameters
+ * 2. find_similar_images — Image-to-image similarity search
+ *
+ * Decision rule (zero ambiguity):
+ *   User has a reference image (fileId, attachment) → find_similar_images
+ *   Everything else                                → search_knowledge
  *
  * Uses config.configurable.userId for user-scoped queries,
  * enabling compile-once agents (createReactAgent pattern).
@@ -14,8 +19,8 @@ import { z } from 'zod';
 import { tool } from '@langchain/core/tools';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import type { CitationResult, CitedDocument, CitationPassage, FileTypeCategory } from '@bc-agent/shared';
-import { getMimeTypesForCategory, getValidCategories } from '@bc-agent/shared';
-import { getSemanticSearchService, SEMANTIC_THRESHOLD } from '@/services/search/semantic';
+import { getMimeTypesForCategory } from '@bc-agent/shared';
+import { getSemanticSearchService } from '@/services/search/semantic';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getImageEmbeddingRepository } from '@/repositories/ImageEmbeddingRepository';
 import { getFileService } from '@/services/files/FileService';
@@ -24,14 +29,11 @@ import {
   createEmptySearchResult,
   createErrorSearchResult,
 } from './schemas';
+import { validateSearchInput } from './validation';
+import type { ValidatedSearchInput } from './validation';
+import { classifySearchError, formatNoResultsGuidance } from './error-handler';
 
 const logger = createChildLogger({ service: 'RagTools' });
-
-/**
- * RAG tool threshold multiplier for broader recall.
- * Applied to SEMANTIC_THRESHOLD (0.55) to get ~0.47.
- */
-const RAG_THRESHOLD_MULTIPLIER = 0.85;
 
 /**
  * Build an OData scope filter from the LangGraph config.
@@ -88,73 +90,69 @@ function buildCombinedFilter(config: RunnableConfig, dateFrom?: string, dateTo?:
   return parts.length > 0 ? parts.join(' and ') : undefined;
 }
 
+// ===== Tool 1: search_knowledge (Power Search) =====
+
 /**
- * Unified knowledge search tool that reads userId from config.configurable.
+ * Power search tool — PRD-200.
  *
- * Merges the former knowledgeSearchTool and filteredKnowledgeSearchTool into
- * a single tool. When fileTypeCategory is omitted, it behaves like the basic
- * search (no MIME-type filter). When provided, it narrows the search to that
- * file type category.
- *
- * This tool is compiled once at startup and bound to createReactAgent.
- * The userId is provided at runtime via LangGraph's config propagation:
- *   supervisor.invoke(messages, { configurable: { userId } })
- *   → LangGraph propagates configurable to all child agents
- *   → tool receives config.configurable.userId
- *
- * @example
- * ```typescript
- * const result = await searchKnowledgeTool.invoke(
- *   { query: 'invoice workflow' },
- *   { configurable: { userId: 'USER-123' } }
- * );
- * ```
+ * Exposes Azure AI Search capabilities directly to the LLM with 8 controllable
+ * parameters. A validation pipeline clamps, defaults, and overrides bad states
+ * before execution. Errors are classified and returned with actionable guidance.
  */
 export const searchKnowledgeTool = tool(
-  async ({ query, fileTypeCategory, dateFrom, dateTo }, config: RunnableConfig): Promise<string> => {
+  async (rawInput, config: RunnableConfig): Promise<string> => {
     const userId = config?.configurable?.userId as string | undefined;
 
     if (!userId) {
-      const errorResult = createErrorSearchResult(query, 'No user context available for knowledge search');
+      const errorResult = createErrorSearchResult(rawInput.query, 'No user context available for knowledge search');
       return JSON.stringify(errorResult);
     }
 
-    // Validate category if provided
-    if (fileTypeCategory) {
-      const validCategories = getValidCategories();
-      if (!validCategories.includes(fileTypeCategory as FileTypeCategory)) {
-        const errorResult = createErrorSearchResult(
-          query,
-          `Invalid file type category: "${fileTypeCategory}". Valid categories: ${validCategories.join(', ')}`
-        );
-        return JSON.stringify(errorResult);
-      }
+    // 1. Validate input through the pipeline (clamp → defaults → overrides → dates)
+    const validated = validateSearchInput(rawInput);
+    if ('is_error' in validated) {
+      return JSON.stringify(validated);
     }
 
-    const mimeTypes = fileTypeCategory ? getMimeTypesForCategory(fileTypeCategory as FileTypeCategory) : undefined;
+    // 2. Resolve MIME types from fileTypeCategory
+    const mimeTypes = validated.fileTypeCategory
+      ? getMimeTypesForCategory(validated.fileTypeCategory as FileTypeCategory)
+      : undefined;
+
+    // 3. Determine internal searchMode for image vector weight selection
+    const isImageSearch = validated.fileTypeCategory === 'images';
+    const searchMode = (isImageSearch && validated.searchType !== 'keyword') ? 'image' as const : 'text' as const;
 
     try {
+      // 4. Execute search via SemanticSearchService
       const searchService = getSemanticSearchService();
       const results = await searchService.searchRelevantFiles({
         userId,
-        query,
-        maxFiles: 5,
-        threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
+        query: validated.query,
+        maxFiles: validated.top,
+        threshold: validated.minRelevanceScore,
         filterMimeTypes: mimeTypes ? [...mimeTypes] : undefined,
-        dateFilter: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined,
-        additionalFilter: buildCombinedFilter(config, dateFrom, dateTo),
+        searchMode,
+        searchType: validated.searchType,
+        sortBy: validated.sortBy,
+        dateFilter: (validated.dateFrom || validated.dateTo)
+          ? { from: validated.dateFrom, to: validated.dateTo }
+          : undefined,
+        additionalFilter: buildCombinedFilter(config, validated.dateFrom, validated.dateTo),
       });
 
+      // 5. Handle empty results with guidance
       if (results.results.length === 0) {
-        const emptyResult = createEmptySearchResult(query, results.threshold);
-        return JSON.stringify(emptyResult);
+        const guidance = formatNoResultsGuidance(validated);
+        const emptyResult = createEmptySearchResult(validated.query, results.threshold);
+        return JSON.stringify({ ...emptyResult, guidance });
       }
 
-      // Build CitationResult for rich rendering (PRD-071)
+      // 6. Build CitationResult for rich rendering
       const documents: CitedDocument[] = results.results.map((r) => ({
         fileId: r.fileId,
         fileName: r.fileName,
-        mimeType: r.mimeType ?? 'application/octet-stream',
+        mimeType: r.mimeType ?? (isImageSearch ? 'image/jpeg' : 'application/octet-stream'),
         sourceType: 'blob_storage' as const,
         isImage: r.isImage ?? false,
         documentRelevance: r.relevanceScore,
@@ -165,114 +163,97 @@ export const searchKnowledgeTool = tool(
         })),
       }));
 
-      const summaryLabel = fileTypeCategory
-        ? `${results.results.length} ${fileTypeCategory} file(s)`
+      const summaryLabel = validated.fileTypeCategory
+        ? `${results.results.length} ${validated.fileTypeCategory} file(s)`
         : `${results.results.length} relevant document${results.results.length !== 1 ? 's' : ''}`;
 
       const citationResult: CitationResult = {
         _type: 'citation_result',
         documents,
-        summary: `Found ${summaryLabel} for "${query}"`,
+        summary: `Found ${summaryLabel} for "${validated.query}"`,
         totalResults: results.results.length,
-        query,
-        ...(fileTypeCategory ? { fileTypeCategory: fileTypeCategory as FileTypeCategory } : {}),
+        query: validated.query,
+        ...(validated.fileTypeCategory ? { fileTypeCategory: validated.fileTypeCategory as FileTypeCategory } : {}),
       };
 
       return JSON.stringify(citationResult);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      const errorResult = createErrorSearchResult(query, message);
-      return JSON.stringify(errorResult);
+      // 7. Error passthrough with classification
+      return classifySearchError(error, validated as ValidatedSearchInput);
     }
   },
   {
     name: 'search_knowledge',
     description:
-      'Search the knowledge base for relevant documents. Optionally filter by file type category and date range. Returns structured JSON with file metadata and citations.',
+      'Search the user\'s knowledge base using Azure AI Search. Supports keyword search, ' +
+      'semantic (AI-powered) search, and hybrid search (keyword + vector + semantic reranking). ' +
+      'Returns matching files with relevance scores, citations, and excerpts.\n\n' +
+      'SEARCH TYPES:\n' +
+      '- "hybrid" (default): Best general-purpose search. Combines exact term matching with ' +
+      'conceptual understanding. Use for most queries.\n' +
+      '- "semantic": Pure conceptual search with AI reranking. Use when the user asks a question ' +
+      'in natural language and exact terms may not appear in documents.\n' +
+      '- "keyword": Exact BM25 text matching. Use for product codes, identifiers, filenames, ' +
+      'or when the user wants literal string matches.\n\n' +
+      'FILTERING:\n' +
+      '- Use fileTypeCategory to narrow by file type (documents, images, spreadsheets, code, presentations)\n' +
+      '- Use dateFrom/dateTo for date range filtering\n' +
+      '- Combine both for targeted searches (e.g., "all spreadsheets from January")\n' +
+      '- Use query "*" with filters for pure browsing (no semantic matching)\n\n' +
+      'TUNING:\n' +
+      '- Adjust "top" based on query breadth (3-5 for specific, 15-30 for exploratory)\n' +
+      '- Adjust "minRelevanceScore" based on precision needs (0.6+ for precise, 0.2-0.3 for broad)\n' +
+      '- Use "sortBy" for chronological browsing vs relevance ranking',
     schema: z.object({
-      query: z.string().describe('The search query to find relevant information.'),
-      fileTypeCategory: z.enum(['images', 'documents', 'spreadsheets', 'code']).optional()
-        .describe('Optional category to filter: images (JPEG/PNG/GIF/WebP), documents (PDF/DOCX/TXT/MD), spreadsheets (XLSX/CSV), or code (JSON/JS/HTML/CSS).'),
-      dateFrom: z.string().optional().describe('ISO date (YYYY-MM-DD). Only return files from this date onward.'),
-      dateTo: z.string().optional().describe('ISO date (YYYY-MM-DD). Only return files up to this date.'),
+      query: z.string().describe(
+        'Search query text. Use specific terms for keyword search, natural language for semantic/hybrid. ' +
+        'Use "*" for filter-only searches (e.g., all images, all files from a date range). ' +
+        'For images, describe visual content (e.g., "red truck in parking lot", "organizational chart"). ' +
+        'For documents, describe the information needed (e.g., "Q3 revenue forecast", "return policy").'
+      ),
+      searchType: z.enum(['hybrid', 'semantic', 'keyword']).optional().describe(
+        'Search strategy to use. ' +
+        '"hybrid" (DEFAULT): keyword matching + vector similarity + semantic reranking. Best for most queries. ' +
+        '"semantic": vector similarity with semantic reranking. Best for natural language questions and conceptual searches. ' +
+        '"keyword": BM25 text matching only. Best for exact terms, product codes, identifiers, or filenames. ' +
+        'When fileTypeCategory is "images", hybrid and semantic use visual similarity matching automatically.'
+      ),
+      fileTypeCategory: z.enum(['images', 'documents', 'spreadsheets', 'code', 'presentations']).optional()
+        .describe(
+          'Filter results to a specific file type category. ' +
+          'When set to "images", search prioritizes visual similarity matching (image embeddings). ' +
+          'Omit to search across all file types.'
+        ),
+      top: z.number().int().min(1).max(50).optional().describe(
+        'Maximum number of files to return (1-50). ' +
+        'Default: 5 for documents/spreadsheets/code, 10 for images, 10 for cross-type searches. ' +
+        'Use higher values (15-30) for broad research queries or when exploring a topic. ' +
+        'Use lower values (3-5) for specific, targeted lookups.'
+      ),
+      minRelevanceScore: z.number().min(0).max(1).optional().describe(
+        'Minimum relevance score threshold (0.0 to 1.0). Default: 0.47. ' +
+        'Increase to 0.6-0.8 when high precision is needed (user wants only the most relevant results). ' +
+        'Decrease to 0.2-0.3 for broad exploratory searches when recall matters more than precision. ' +
+        'Set to 0.0 to return all results regardless of relevance (use with date/type filters).'
+      ),
+      dateFrom: z.string().optional().describe(
+        'ISO date (YYYY-MM-DD). Only return files modified from this date onward. ' +
+        'Example: "2026-01-01" for files from January 2026 onward.'
+      ),
+      dateTo: z.string().optional().describe(
+        'ISO date (YYYY-MM-DD). Only return files modified up to this date. ' +
+        'Example: "2026-03-31" for files up to end of March 2026.'
+      ),
+      sortBy: z.enum(['relevance', 'newest', 'oldest']).optional().describe(
+        'Result ordering. Default: "relevance" (highest score first). ' +
+        '"newest": most recently modified first. "oldest": least recently modified first. ' +
+        'Use "newest"/"oldest" when the user wants to browse by date rather than by relevance.'
+      ),
     }),
   }
 );
 
-/**
- * Visual image search tool — searches images by visual similarity.
- *
- * Uses image mode to prioritize imageVector (1024d) over caption text.
- * This is the tool for "images with red color", "photos of trucks", etc.
- */
-export const visualImageSearchTool = tool(
-  async ({ query, dateFrom, dateTo }, config: RunnableConfig): Promise<string> => {
-    const userId = config?.configurable?.userId as string | undefined;
-
-    if (!userId) {
-      const errorResult = createErrorSearchResult(query, 'No user context available for visual search');
-      return JSON.stringify(errorResult);
-    }
-
-    try {
-      const searchService = getSemanticSearchService();
-      const results = await searchService.searchRelevantFiles({
-        userId,
-        query,
-        maxFiles: 10, // Images: show more results
-        threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
-        searchMode: 'image',
-        dateFilter: (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined,
-        additionalFilter: buildCombinedFilter(config, dateFrom, dateTo),
-      });
-
-      if (results.results.length === 0) {
-        const emptyResult = createEmptySearchResult(query, results.threshold);
-        return JSON.stringify(emptyResult);
-      }
-
-      const documents: CitedDocument[] = results.results.map((r) => ({
-        fileId: r.fileId,
-        fileName: r.fileName,
-        mimeType: r.mimeType ?? 'image/jpeg',
-        sourceType: 'blob_storage' as const,
-        isImage: r.isImage ?? true,
-        documentRelevance: r.relevanceScore,
-        passages: r.topChunks.map((chunk, idx): CitationPassage => ({
-          citationId: `${r.fileId}-${idx}`,
-          excerpt: chunk.content.slice(0, 500),
-          relevanceScore: chunk.score,
-        })),
-      }));
-
-      const citationResult: CitationResult = {
-        _type: 'citation_result',
-        documents,
-        summary: `Found ${results.results.length} image(s) matching "${query}" by visual similarity`,
-        totalResults: results.results.length,
-        query,
-      };
-
-      return JSON.stringify(citationResult);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      const errorResult = createErrorSearchResult(query, message);
-      return JSON.stringify(errorResult);
-    }
-  },
-  {
-    name: 'visual_image_search',
-    description:
-      'Search images by visual similarity. Use when the user describes WHAT images look like ' +
-      '(colors, objects, scenes, visual properties). This searches by visual content, not just file names or descriptions. ' +
-      'Also supports date range filtering.',
-    schema: z.object({
-      query: z.string().describe('Visual description: colors, objects, scenes. Examples: "red truck", "sunset", "damaged parts".'),
-      dateFrom: z.string().optional().describe('ISO date (YYYY-MM-DD). Only return images from this date onward.'),
-      dateTo: z.string().optional().describe('ISO date (YYYY-MM-DD). Only return images up to this date.'),
-    }),
-  }
-);
+// ===== Tool 2: find_similar_images (unchanged schema) =====
 
 /**
  * Find similar images tool — image-to-image similarity search.
@@ -368,7 +349,7 @@ export const findSimilarImagesTool = tool(
       // 4. Exclude the source KB image from results (not applicable for chat attachments)
       // Use resolvedFileId (UUID) for filtering, not original fileId (which might be a filename)
       const filtered = resolvedFileId
-        ? results.filter(r => r.fileId.toUpperCase() !== resolvedFileId.toUpperCase())
+        ? results.filter(r => r.fileId.toUpperCase() !== resolvedFileId!.toUpperCase())
         : results;
       const finalResults = filtered.slice(0, maxResults);
 
@@ -413,8 +394,16 @@ export const findSimilarImagesTool = tool(
   {
     name: 'find_similar_images',
     description:
-      'Find images visually similar to a specific reference image. Use when the user points to ' +
-      'a specific image and wants to find similar ones in their collection.',
+      'Find images visually similar to a SPECIFIC reference image that the user has pointed to. ' +
+      'Use ONLY when the user references an existing image and wants to find similar ones.\n\n' +
+      'WHEN TO USE:\n' +
+      '- User says "find images similar to @photo.jpg" → use fileId from <mention id="..."> attribute\n' +
+      '- User says "find images like the one I attached" → use chatAttachmentId from the attachment\n\n' +
+      'WHEN NOT TO USE:\n' +
+      '- User describes what they want in text (e.g., "find photos of cats") → use search_knowledge with fileTypeCategory "images" instead\n' +
+      '- User asks a question about documents → use search_knowledge\n\n' +
+      'Requires either fileId (from @mention or previous search results) OR chatAttachmentId (from chat attachment). ' +
+      'Returns images ranked by visual similarity percentage.',
     schema: z.object({
       fileId: z.string().optional().describe('File ID of a Knowledge Base image to find similar images for.'),
       chatAttachmentId: z.string().optional().describe('Chat attachment ID of an ephemeral image to find similar images for.'),
@@ -428,4 +417,3 @@ export const findSimilarImagesTool = tool(
     ),
   }
 );
-

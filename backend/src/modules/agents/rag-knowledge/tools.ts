@@ -22,6 +22,7 @@ import type { CitationResult, CitedDocument, CitationPassage, FileTypeCategory }
 import { getMimeTypesForCategory } from '@bc-agent/shared';
 import { getSemanticSearchService } from '@/services/search/semantic';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
+import { isUnifiedIndexEnabled } from '@/services/search/embeddings/EmbeddingServiceFactory';
 import { getImageEmbeddingRepository } from '@/repositories/ImageEmbeddingRepository';
 import { getFileService } from '@/services/files/FileService';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -335,6 +336,17 @@ export const findSimilarImagesTool = tool(
           return JSON.stringify(errorResult);
         }
         sourceEmbedding = dbEmbedding;
+
+        // PRD-202: Dimension safety check during transition period
+        // Images indexed before re-embedding have 1024d (Azure Vision) embeddings.
+        // V2 index uses 1536d (Cohere) — querying with mismatched dimensions will fail.
+        if (isUnifiedIndexEnabled() && dbEmbedding.dimensions !== 1536) {
+          return JSON.stringify(createErrorSearchResult(
+            'similar images',
+            'This image has not been re-embedded with the unified model yet. ' +
+              'Please use search_knowledge with fileTypeCategory "images" and describe what you see in the image instead.',
+          ));
+        }
       }
 
       // 3. Use searchImages() — pure vector on imageVector, no Semantic Ranker

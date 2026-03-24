@@ -49,6 +49,26 @@ export class VectorSearchService {
   }
 
   /**
+   * Get the v2 SearchClient directly, initializing if needed.
+   * Used by migration scripts and operations that need to write to v2
+   * regardless of the USE_UNIFIED_INDEX feature flag state.
+   */
+  async getV2SearchClient(): Promise<SearchClient<Record<string, unknown>>> {
+    if (!this.searchClientV2) {
+      await this.initializeClients();
+    }
+    if (!this.searchClientV2) {
+      // Force create v2 client even if USE_UNIFIED_INDEX is false
+      this.searchClientV2 = new SearchClient(
+        env.AZURE_SEARCH_ENDPOINT!,
+        INDEX_NAME_V2,
+        new AzureKeyCredential(env.AZURE_SEARCH_KEY!)
+      );
+    }
+    return this.searchClientV2;
+  }
+
+  /**
    * Initializes the SearchIndexClient and SearchClient if they haven't been already.
    * This allows for lazy initialization and easier testing (mocking dependencies).
    */
@@ -636,10 +656,12 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
-    // NOTE (PRD-201): Always use v1 client for image similarity search.
-    // Stored embeddings in ImageEmbeddingRepository are 1024d (Azure Vision).
-    // V2 index uses 1536d (Cohere) — dimension mismatch until PRD-202 re-embeds images.
-    const imageSearchClient = this.searchClient;
+    // PRD-202: Route image search by index version
+    // V2 (Cohere): unified embeddingVector field (1536d) — images re-embedded
+    // V1 (legacy): separate imageVector field (1024d Azure Vision)
+    const useUnified = env.USE_UNIFIED_INDEX && !!this.searchClientV2;
+    const imageSearchClient = useUnified ? this.searchClientV2! : this.searchClient;
+    const vectorFieldName = useUnified ? 'embeddingVector' : 'imageVector';
 
     const { embedding, userId, top = 10, minScore = 0 } = query;
 
@@ -661,7 +683,7 @@ export class VectorSearchService {
           {
             kind: 'vector',
             vector: embedding,
-            fields: ['imageVector'],
+            fields: [vectorFieldName],
             kNearestNeighborsCount: top,
           },
         ],

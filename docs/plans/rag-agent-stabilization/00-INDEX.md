@@ -77,11 +77,12 @@ This initiative addresses all three through tool consolidation, power tool desig
 
 | PRD | Title | Phase | Status | Est. Effort |
 |---|---|---|---|---|
-| [PRD-200](./PRD-200-tool-consolidation-power-search.md) | Tool Consolidation & Power Search Design | 1 — Tool Redesign | **In Progress** | 3-4 days |
+| [PRD-200](./PRD-200-tool-consolidation-power-search.md) | Tool Consolidation & Power Search Design | 1 — Tool Redesign | **Implemented** (code) | 3-4 days |
 | [PRD-201](./PRD-201-cohere-embed4-infrastructure.md) | Cohere Embed 4 — Infrastructure & Index | 2 — Embedding Model | **Implemented** (code) | 2-3 days |
-| [PRD-202](./PRD-202-cohere-embed4-data-cutover.md) | Cohere Embed 4 — Re-Embedding & Cutover | 3 — Data Migration | Proposed | 3-4 days |
+| [PRD-202](./PRD-202-cohere-embed4-data-cutover.md) | Cohere Embed 4 — Re-Embedding & Cutover | 3 — Data Migration | **Implemented** (code) | 3-4 days |
 | [PRD-203](./PRD-203-advanced-search-optimization.md) | Advanced Search Capabilities | 4 — Optimization | Proposed | 2-3 days |
 | — | [Deployment Runbook](./01-DEPLOYMENT-RUNBOOK.md) | All | **Active** | — |
+| — | [Cleanup Checklist](./03-CLEANUP-CHECKLIST.md) | Post-cutover | Reference | — |
 
 ### Dependency Chain
 
@@ -123,7 +124,7 @@ PRD-203 (Advanced Search)
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Cohere Embed 4 quality < text-embedding-3-small for business docs | High | A/B test with 100-doc sample before full migration. Keep old index until validated. |
-| Re-embedding 100M+ chunks takes too long | Medium | BullMQ batch jobs with parallelism. Incremental progress. Resumable. |
+| Re-embedding 100M+ chunks takes too long | Medium | One-time migration script (`migrate-embeddings.ts`). Idempotent — safe to re-run. Batched with configurable concurrency. |
 | LLM sends invalid parameters to power tool | Low | Validation layer clamps/overrides. Errors returned with guidance. |
 | Azure AI Foundry vectorizer adds latency at query time | Medium | Benchmark query-time vectorization vs. pre-computed. Fall back to pre-computed if >100ms overhead. |
 | Cohere pricing ($0.12/1M) vs. OpenAI ($0.02/1M) | Medium | Offset by eliminating Azure Vision cost. Single model vs. two. Calculate total cost before committing. |

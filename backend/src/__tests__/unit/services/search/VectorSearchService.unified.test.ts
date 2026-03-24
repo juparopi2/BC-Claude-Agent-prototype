@@ -263,13 +263,13 @@ describe('VectorSearchService — Unified Index Routing (PRD-201)', () => {
   });
 
   // -------------------------------------------------------------------------
-  // searchImages — always uses v1 client for dimension safety
+  // searchImages — PRD-202: routes by feature flag
   // -------------------------------------------------------------------------
 
   describe('searchImages', () => {
-    it('always uses the v1 client even when USE_UNIFIED_INDEX is true (dimension safety)', async () => {
+    it('uses the v2 client and embeddingVector field when USE_UNIFIED_INDEX is true (PRD-202)', async () => {
       mockEnv.USE_UNIFIED_INDEX = true;
-      const embedding = new Array(1024).fill(0.1);
+      const embedding = new Array(1536).fill(0.1);
 
       await service.searchImages({
         embedding,
@@ -277,24 +277,49 @@ describe('VectorSearchService — Unified Index Routing (PRD-201)', () => {
         top: 5,
       });
 
-      // v1 must be called; v2 must NOT be called
-      expect(mockClientV1.search).toHaveBeenCalledTimes(1);
-      expect(mockClientV2.search).not.toHaveBeenCalled();
+      // v2 must be called; v1 must NOT be called
+      expect(mockClientV2.search).toHaveBeenCalledTimes(1);
+      expect(mockClientV1.search).not.toHaveBeenCalled();
     });
 
-    it('queries imageVector field (not embeddingVector) in both unified and legacy modes', async () => {
+    it('queries embeddingVector field when unified index is enabled (PRD-202)', async () => {
       mockEnv.USE_UNIFIED_INDEX = true;
-      const embedding = new Array(1024).fill(0.1);
+      const embedding = new Array(1536).fill(0.1);
 
       await service.searchImages({
         embedding,
         userId: 'user-abc',
         top: 5,
       });
+
+      const callOptions = mockClientV2.search.mock.calls[0]?.[1] as Record<string, unknown>;
+      const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
+
+      expect(vectorQueries?.[0]?.fields).toEqual(['embeddingVector']);
+    });
+
+    it('uses the v1 client and imageVector field when USE_UNIFIED_INDEX is false (legacy)', async () => {
+      mockEnv.USE_UNIFIED_INDEX = false;
+      // Reset singleton so getActiveSearchClient picks v1
+      (VectorSearchService as unknown as { instance: undefined }).instance = undefined;
+      const legacyService = VectorSearchService.getInstance();
+      await legacyService.initializeClients(
+        mockIndexClient as unknown as SearchIndexClient,
+        mockClientV1 as unknown as SearchClient<Record<string, unknown>>,
+        // No v2 client passed — legacy mode
+      );
+
+      const embedding = new Array(1024).fill(0.1);
+      await legacyService.searchImages({
+        embedding,
+        userId: 'user-abc',
+        top: 5,
+      });
+
+      expect(mockClientV1.search).toHaveBeenCalledTimes(1);
 
       const callOptions = mockClientV1.search.mock.calls[0]?.[1] as Record<string, unknown>;
       const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
-
       expect(vectorQueries?.[0]?.fields).toEqual(['imageVector']);
     });
   });

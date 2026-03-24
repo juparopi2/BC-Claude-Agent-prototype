@@ -2,7 +2,7 @@
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
 **Created**: 2026-03-24
-**Last Updated**: 2026-03-24 (PRD-201 code complete)
+**Last Updated**: 2026-03-24 (PRD-202 section added)
 
 ## Purpose
 
@@ -166,41 +166,123 @@ curl -X POST "<COHERE_ENDPOINT>/v2/embed" \
 
 ---
 
-## PRD-202: Cohere Embed 4 — Re-Embedding & Cutover
+## PRD-202: Re-Embedding & Data Cutover
 
-**Status:** ☐ Pending
-<!-- This section is filled in when PRD-202 implementation starts -->
+**Status**: Ready for deployment
+**Prerequisites**: PRD-201 fully deployed (Cohere endpoint active, Key Vault secrets set, index v2 created)
 
-### Env Vars
-| Variable | Change | Notes |
+### Code Changes Delivered
+
+- `migrate-embeddings.ts` — One-time migration script (scan v1 → re-embed with Cohere → write to v2)
+- `VectorSearchService.searchImages()` — Routes to v2/embeddingVector when unified=true
+- `VectorSearchService.getV2SearchClient()` — Direct v2 client access for scripts
+- `FileEmbedWorker` — Uses Cohere embedTextBatch when unified=true
+- `ImageProcessor` — Uses Cohere embedImage when unified=true (keeps Azure Vision captions)
+- `FileChunkingService` — Skips captionContentVector when unified=true
+- `findSimilarImagesTool` — Dimension safety check during transition
+
+### Step 1: Verify Prerequisites
+
+```bash
+# Verify Cohere endpoint is accessible
+curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$COHERE_ENDPOINT/v2/embed" \
+  -H "Authorization: Bearer $COHERE_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"texts":["test"],"input_type":"search_document","embedding_types":["float"]}'
+# Expected: 200
+
+# Verify v2 index exists
+az search index show --service-name <search-service> --name file-chunks-index-v2
+```
+
+### Step 2: Dry Run (Dev)
+
+```bash
+cd backend
+npx tsx scripts/operations/migrate-embeddings.ts --dry-run
+# Output: total text chunks, image chunks count
+# Verify counts look reasonable
+```
+
+### Step 3: Migrate (Dev)
+
+```bash
+# Optional: test with single user first
+npx tsx scripts/operations/migrate-embeddings.ts --user-id <TEST-USER-UUID>
+
+# Full migration
+npx tsx scripts/operations/migrate-embeddings.ts
+# Monitor progress. Expected: <1 hour for dev data
+# Script reports batch progress, failures, and final summary
+```
+
+### Step 4: Validate (Dev)
+
+```bash
+npx tsx scripts/operations/migrate-embeddings.ts --validate
+# Criteria (from PRD-202 §4.3):
+#   ≥60% file overlap in top-5 results
+#   ≤15% average score drop
+# Script exits 0 if passed, 1 if failed
+```
+
+### Step 5: Cutover (Dev)
+
+```bash
+# Set feature flag
+# In .env or Azure Container App config:
+USE_UNIFIED_INDEX=true
+
+# Restart backend
+# Then verify manually:
+# - search_knowledge returns results from v2 index
+# - find_similar_images works with 1536d embeddings
+# - Keyword search still works
+# - New file uploads use Cohere embeddings
+```
+
+### Step 6: Production Deployment
+
+Repeat Steps 1-5 against production environment:
+
+1. Deploy PRD-202 code to production (Container App)
+2. Run `--dry-run` against prod AI Search
+3. Run full migration (estimated 2-6 hours for large datasets)
+4. Run `--validate` against prod data
+5. Set `USE_UNIFIED_INDEX=true` in prod Container App config (no code deploy needed)
+6. Monitor for 7 days:
+   - Search latency (p95 within 20% of baseline)
+   - Error rate (< 0.5%)
+   - Search quality (user feedback)
+
+### Rollback
+
+```bash
+# Instant rollback — config change only, no code deploy
+USE_UNIFIED_INDEX=false
+# Restart containers
+# Old index (file-chunks-index) still active and serving
+
+# Retain old index for 30 days
+# After 30 days with no rollback needed:
+#   - Delete file-chunks-index (v1) from AI Search
+#   - Remove USE_UNIFIED_INDEX flag (always true)
+#   - Remove legacy embedding code (OpenAI + Azure Vision)
+```
+
+### Environment Variables
+
+| Variable | Value | Notes |
 |---|---|---|
-| `USE_UNIFIED_INDEX` | `false` → `true` | Cutover toggle |
-<!-- Additional vars TBD -->
+| `USE_UNIFIED_INDEX` | `false` → `true` | Feature flag for cutover |
+| `COHERE_ENDPOINT` | Azure AI Foundry URL | Set in PRD-201 |
+| `COHERE_API_KEY` | API key | Set in PRD-201 |
 
-### Resources
-- Re-embedding BullMQ job queue and worker
-- Redis progress tracking keys (`reembedding:progress`, `reembedding:failures`)
-<!-- Additional resources TBD -->
+### Known Limitations
 
-### Migrations
-- `ImageEmbeddingRepository` schema: update dimension from 1024 to 1536
-- Re-embed all text chunks with Cohere Embed 4 (`search_document` input type)
-- Re-embed all images with Cohere Embed 4 (base64 → `embeddingVector`)
-<!-- Additional migrations TBD -->
-
-### Feature Flags
-- `USE_UNIFIED_INDEX=true` — production cutover (after quality validation)
-
-### Commands
-<!-- TBD: re-embedding script, quality validation, cutover toggle, rollback procedure -->
-
-### Post-Deploy Verification
-- [ ] All text chunks re-embedded in `file-chunks-index-v2`
-- [ ] All images re-embedded in `file-chunks-index-v2`
-- [ ] Quality validation: top-5 result overlap ≥ 80% with current index
-- [ ] `USE_UNIFIED_INDEX=true` enabled in production
-- [ ] `find_similar_images` works with new 1536d Cohere embeddings
-- [ ] 30-day rollback window: old index (`file-chunks-index`) preserved
+- External files (OneDrive/SharePoint) are skipped during migration — they require OAuth tokens not available in script context. These files will be re-embedded automatically on the next delta sync cycle after cutover.
+- The migration script is idempotent (uses `mergeOrUploadDocuments`) — safe to re-run if interrupted.
 
 ---
 

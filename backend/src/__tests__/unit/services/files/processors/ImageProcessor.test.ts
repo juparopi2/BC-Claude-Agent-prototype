@@ -13,10 +13,11 @@ vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
-// Mock environment (default: Azure Vision NOT configured)
+// Mock environment (default: Azure Vision NOT configured, unified index disabled)
 const mockEnv = vi.hoisted(() => ({
   AZURE_VISION_ENDPOINT: '',
   AZURE_VISION_KEY: '',
+  USE_UNIFIED_INDEX: false as boolean,
 }));
 
 vi.mock('@/infrastructure/config/environment', () => ({
@@ -34,7 +35,7 @@ vi.mock('@/services/files/utils/ImageCompressor', () => ({
   })),
 }));
 
-// Mock EmbeddingService
+// Mock EmbeddingService (legacy Azure Vision path)
 const mockGenerateImageEmbedding = vi.hoisted(() => vi.fn());
 const mockGenerateImageCaption = vi.hoisted(() => vi.fn());
 
@@ -45,6 +46,16 @@ vi.mock('@services/embeddings/EmbeddingService', () => ({
       generateImageCaption: mockGenerateImageCaption,
     })),
   },
+}));
+
+// PRD-202: Mock EmbeddingServiceFactory for Cohere path
+const mockCohereEmbedImage = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/search/embeddings/EmbeddingServiceFactory', () => ({
+  isUnifiedIndexEnabled: () => mockEnv.USE_UNIFIED_INDEX,
+  getUnifiedEmbeddingService: vi.fn(() => ({
+    embedImage: mockCohereEmbedImage,
+  })),
 }));
 
 // Mock UsageTrackingService
@@ -68,9 +79,10 @@ describe('ImageProcessor', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset environment to defaults (Vision NOT configured)
+    // Reset environment to defaults (Vision NOT configured, unified index disabled)
     mockEnv.AZURE_VISION_ENDPOINT = '';
     mockEnv.AZURE_VISION_KEY = '';
+    mockEnv.USE_UNIFIED_INDEX = false;
     processor = new ImageProcessor();
   });
 
@@ -424,6 +436,140 @@ describe('ImageProcessor', () => {
       // Without caption the text should use the fallback template
       expect(result.text).toContain('[Image: photo.jpg]');
       expect(result.text).toContain('jpeg');
+    });
+  });
+
+  // ===========================================================================
+  // Suite 3b: PRD-202 — Cohere Embed 4 path (USE_UNIFIED_INDEX=true)
+  // ===========================================================================
+
+  describe('PRD-202: Cohere Embed 4 path (USE_UNIFIED_INDEX=true)', () => {
+    beforeEach(() => {
+      // Enable both Azure Vision (required for caption) and unified index (Cohere embedding)
+      mockEnv.AZURE_VISION_ENDPOINT = 'https://test.cognitiveservices.azure.com';
+      mockEnv.AZURE_VISION_KEY = 'test-key';
+      mockEnv.USE_UNIFIED_INDEX = true;
+    });
+
+    afterEach(() => {
+      mockEnv.AZURE_VISION_ENDPOINT = '';
+      mockEnv.AZURE_VISION_KEY = '';
+      mockEnv.USE_UNIFIED_INDEX = false;
+    });
+
+    it('uses Cohere embedImage when unified index enabled', async () => {
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.4),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
+      });
+      mockGenerateImageCaption.mockResolvedValue({
+        caption: 'A flowchart diagram',
+        confidence: 0.88,
+        modelVersion: 'cv-model-2023',
+      });
+
+      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      await processor.extractText(buffer, 'diagram.jpg');
+
+      // Cohere embedImage must have been called
+      expect(mockCohereEmbedImage).toHaveBeenCalledOnce();
+      // Legacy Azure Vision embedding must NOT have been called
+      expect(mockGenerateImageEmbedding).not.toHaveBeenCalled();
+    });
+
+    it('still generates Azure Vision caption when using Cohere embeddings', async () => {
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.4),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
+      });
+      mockGenerateImageCaption.mockResolvedValue({
+        caption: 'A pie chart showing revenue breakdown',
+        confidence: 0.91,
+        modelVersion: 'cv-model-2023',
+      });
+
+      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      const result = await processor.extractText(buffer, 'pie-chart.jpg');
+
+      // Caption generation always goes through Azure Vision (for BM25/keyword search)
+      expect(mockGenerateImageCaption).toHaveBeenCalledOnce();
+      expect(result.imageCaption).toBe('A pie chart showing revenue breakdown');
+      expect(result.text).toContain('A pie chart showing revenue breakdown');
+    });
+
+    it('uses legacy Azure Vision embedding when unified disabled (regression)', async () => {
+      mockEnv.USE_UNIFIED_INDEX = false;
+
+      mockGenerateImageEmbedding.mockResolvedValue({
+        embedding: new Array(1024).fill(0.1),
+        model: 'cv-model-2023',
+        imageSize: 6,
+        userId: 'USER-1',
+        createdAt: new Date(),
+      });
+      mockGenerateImageCaption.mockResolvedValue({
+        caption: 'Legacy caption',
+        confidence: 0.85,
+        modelVersion: 'cv-model-2023',
+      });
+
+      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      await processor.extractText(buffer, 'legacy.jpg');
+
+      // When unified is disabled, Azure Vision embedding must be used
+      expect(mockGenerateImageEmbedding).toHaveBeenCalledOnce();
+      expect(mockCohereEmbedImage).not.toHaveBeenCalled();
+    });
+
+    it('passes base64 data to Cohere embedImage', async () => {
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.5),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
+      });
+      mockGenerateImageCaption.mockResolvedValue({
+        caption: 'Test image',
+        confidence: 0.9,
+        modelVersion: 'cv-model-2023',
+      });
+
+      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xab, 0xcd]);
+      await processor.extractText(buffer, 'photo.jpg');
+
+      expect(mockCohereEmbedImage).toHaveBeenCalledOnce();
+      const [base64Arg, inputTypeArg] = mockCohereEmbedImage.mock.calls[0] as [string, string];
+
+      // Must receive valid base64 string (not raw bytes)
+      expect(typeof base64Arg).toBe('string');
+      // Buffer.from(base64Arg, 'base64') should reproduce the buffer data
+      expect(Buffer.from(base64Arg, 'base64').equals(buffer)).toBe(true);
+
+      expect(inputTypeArg).toBe('search_document');
+    });
+
+    it('handles Cohere embedding failure gracefully', async () => {
+      mockCohereEmbedImage.mockRejectedValue(new Error('Cohere API timeout'));
+      mockGenerateImageCaption.mockResolvedValue({
+        caption: 'Still captioned',
+        confidence: 0.8,
+        modelVersion: 'cv-model-2023',
+      });
+
+      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      // Must NOT throw — handled with Promise.allSettled
+      const result = await processor.extractText(buffer, 'photo.jpg');
+
+      expect((result.metadata as ImageMetadata).embeddingGenerated).toBe(false);
+      expect(result.imageEmbedding).toBeUndefined();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fileName: 'photo.jpg',
+          error: 'Cohere API timeout',
+        }),
+        'Failed to generate Cohere image embedding - continuing without it',
+      );
     });
   });
 

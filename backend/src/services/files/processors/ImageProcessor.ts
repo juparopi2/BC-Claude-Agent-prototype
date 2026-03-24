@@ -166,8 +166,10 @@ export class ImageProcessor implements DocumentProcessor {
         };
       }
 
-      // Step 4: Generate image embedding AND caption in parallel (D26 feature)
-      logger.info({ fileName }, 'Generating image embedding and caption via Azure Computer Vision');
+      // Step 4: Generate image embedding AND caption (D26 feature)
+      // Caption: always via Azure Computer Vision (feeds BM25/keyword search)
+      // Embedding: Cohere Embed 4 when USE_UNIFIED_INDEX=true, else Azure Vision
+      logger.info({ fileName }, 'Generating image embedding and caption');
 
       // Store embedding and caption for return in result
       let generatedEmbedding: number[] | undefined;
@@ -176,79 +178,161 @@ export class ImageProcessor implements DocumentProcessor {
 
       const embeddingService = EmbeddingService.getInstance();
 
-      // Generate embedding and caption in parallel for better performance
-      // Use skipTracking: true because tracking will be done in FileProcessingService
-      // with correct userId and fileId (UUIDs) after persistence
+      // PRD-202: Check whether to use Cohere Embed 4 or legacy Azure Vision for embedding.
+      // Caption generation always uses Azure Vision regardless of this flag.
+      const { isUnifiedIndexEnabled, getUnifiedEmbeddingService } = await import(
+        '@/services/search/embeddings/EmbeddingServiceFactory'
+      );
+      const useCohere = isUnifiedIndexEnabled();
+
+      // Always generate caption via Azure Vision for BM25/keyword search relevance
       const placeholderUserId = crypto.randomUUID().toUpperCase();
       const placeholderFileId = crypto.randomUUID().toUpperCase();
 
-      const [embeddingResult, captionResult] = await Promise.allSettled([
-        embeddingService.generateImageEmbedding(
-          processBuffer,
-          placeholderUserId,
-          placeholderFileId,
-          { skipTracking: true } // Tracking done in FileProcessingService with real IDs
-        ),
-        embeddingService.generateImageCaption(
-          processBuffer,
-          placeholderUserId,
-          placeholderFileId,
-          { skipTracking: true } // Tracking done in FileProcessingService with real IDs
-        ),
-      ]);
+      if (useCohere) {
+        // PRD-202: Cohere Embed 4 path — generate embedding and caption in parallel.
+        // Embedding: Cohere 1536d unified vector space
+        // Caption: Azure Vision (kept for content/BM25 search path)
+        logger.info({ fileName }, 'Using Cohere Embed 4 for image embedding (unified index)');
 
-      // Process embedding result
-      if (embeddingResult.status === 'fulfilled') {
-        generatedEmbedding = embeddingResult.value.embedding;
-        metadata.embeddingGenerated = true;
-        metadata.embeddingDimensions = embeddingResult.value.embedding.length;
-        metadata.visionModelVersion = embeddingResult.value.model;
+        const cohereService = getUnifiedEmbeddingService()!;
+        const base64Data = processBuffer.toString('base64');
 
-        logger.info(
-          {
-            fileName,
-            embeddingDimensions: embeddingResult.value.embedding.length,
-            modelVersion: embeddingResult.value.model,
-          },
-          'Image embedding generated successfully'
-        );
+        const [cohereEmbeddingResult, captionResult] = await Promise.allSettled([
+          cohereService.embedImage(base64Data, 'search_document'),
+          embeddingService.generateImageCaption(
+            processBuffer,
+            placeholderUserId,
+            placeholderFileId,
+            { skipTracking: true } // Tracking done in FileProcessingService with real IDs
+          ),
+        ]);
+
+        // Process Cohere embedding result
+        if (cohereEmbeddingResult.status === 'fulfilled') {
+          generatedEmbedding = cohereEmbeddingResult.value.embedding;
+          metadata.embeddingGenerated = true;
+          metadata.embeddingDimensions = cohereEmbeddingResult.value.embedding.length;
+          metadata.visionModelVersion = cohereEmbeddingResult.value.model;
+
+          logger.info(
+            {
+              fileName,
+              embeddingDimensions: cohereEmbeddingResult.value.embedding.length,
+              modelVersion: cohereEmbeddingResult.value.model,
+            },
+            'Cohere image embedding generated successfully'
+          );
+        } else {
+          logger.warn(
+            {
+              fileName,
+              error: cohereEmbeddingResult.reason instanceof Error
+                ? cohereEmbeddingResult.reason.message
+                : String(cohereEmbeddingResult.reason),
+            },
+            'Failed to generate Cohere image embedding - continuing without it'
+          );
+        }
+
+        // Process caption result
+        if (captionResult.status === 'fulfilled') {
+          generatedCaption = captionResult.value.caption;
+          captionConfidence = captionResult.value.confidence;
+          metadata.captionGenerated = true;
+          metadata.captionConfidence = captionConfidence;
+
+          logger.info(
+            {
+              fileName,
+              captionLength: generatedCaption.length,
+              confidence: captionConfidence,
+            },
+            'Image caption generated successfully'
+          );
+        } else {
+          logger.warn(
+            {
+              fileName,
+              error: captionResult.reason instanceof Error
+                ? captionResult.reason.message
+                : String(captionResult.reason),
+            },
+            'Failed to generate image caption - continuing without it'
+          );
+        }
       } else {
-        logger.warn(
-          {
-            fileName,
-            error: embeddingResult.reason instanceof Error
-              ? embeddingResult.reason.message
-              : String(embeddingResult.reason),
-          },
-          'Failed to generate image embedding - continuing without it'
-        );
-      }
+        // Legacy path: Azure Vision generates both the embedding and the caption in parallel
+        // Use skipTracking: true because tracking will be done in FileProcessingService
+        // with correct userId and fileId (UUIDs) after persistence
+        const [embeddingResult, captionResult] = await Promise.allSettled([
+          embeddingService.generateImageEmbedding(
+            processBuffer,
+            placeholderUserId,
+            placeholderFileId,
+            { skipTracking: true } // Tracking done in FileProcessingService with real IDs
+          ),
+          embeddingService.generateImageCaption(
+            processBuffer,
+            placeholderUserId,
+            placeholderFileId,
+            { skipTracking: true } // Tracking done in FileProcessingService with real IDs
+          ),
+        ]);
 
-      // Process caption result (D26 feature)
-      if (captionResult.status === 'fulfilled') {
-        generatedCaption = captionResult.value.caption;
-        captionConfidence = captionResult.value.confidence;
-        metadata.captionGenerated = true;
-        metadata.captionConfidence = captionConfidence;
+        // Process embedding result
+        if (embeddingResult.status === 'fulfilled') {
+          generatedEmbedding = embeddingResult.value.embedding;
+          metadata.embeddingGenerated = true;
+          metadata.embeddingDimensions = embeddingResult.value.embedding.length;
+          metadata.visionModelVersion = embeddingResult.value.model;
 
-        logger.info(
-          {
-            fileName,
-            captionLength: generatedCaption.length,
-            confidence: captionConfidence,
-          },
-          'Image caption generated successfully'
-        );
-      } else {
-        logger.warn(
-          {
-            fileName,
-            error: captionResult.reason instanceof Error
-              ? captionResult.reason.message
-              : String(captionResult.reason),
-          },
-          'Failed to generate image caption - continuing without it'
-        );
+          logger.info(
+            {
+              fileName,
+              embeddingDimensions: embeddingResult.value.embedding.length,
+              modelVersion: embeddingResult.value.model,
+            },
+            'Image embedding generated successfully'
+          );
+        } else {
+          logger.warn(
+            {
+              fileName,
+              error: embeddingResult.reason instanceof Error
+                ? embeddingResult.reason.message
+                : String(embeddingResult.reason),
+            },
+            'Failed to generate image embedding - continuing without it'
+          );
+        }
+
+        // Process caption result (D26 feature)
+        if (captionResult.status === 'fulfilled') {
+          generatedCaption = captionResult.value.caption;
+          captionConfidence = captionResult.value.confidence;
+          metadata.captionGenerated = true;
+          metadata.captionConfidence = captionConfidence;
+
+          logger.info(
+            {
+              fileName,
+              captionLength: generatedCaption.length,
+              confidence: captionConfidence,
+            },
+            'Image caption generated successfully'
+          );
+        } else {
+          logger.warn(
+            {
+              fileName,
+              error: captionResult.reason instanceof Error
+                ? captionResult.reason.message
+                : String(captionResult.reason),
+            },
+            'Failed to generate image caption - continuing without it'
+          );
+        }
       }
 
       // Step 5: Return result with embedding and caption

@@ -64,6 +64,13 @@ const mockGenerateEmbeddings = vi.fn();
 const mockIndexChunksBatch = vi.fn();
 const mockEmitReadiness = vi.fn();
 
+// PRD-202: Cohere embedding service mocks
+const mockIsUnifiedIndexEnabled = vi.fn<() => boolean>(() => false);
+const mockEmbedTextBatch = vi.fn();
+const mockGetUnifiedEmbeddingService = vi.fn(() => ({
+  embedTextBatch: mockEmbedTextBatch,
+}));
+
 // Mock logger
 const mockLogger = {
   info: vi.fn(),
@@ -115,6 +122,12 @@ vi.mock('@/domains/files/emission', () => ({
   getFileEventEmitter: vi.fn(() => ({
     emitReadinessChanged: mockEmitReadiness,
   })),
+}));
+
+// PRD-202: Mock EmbeddingServiceFactory so tests can toggle unified vs legacy path
+vi.mock('@/services/search/embeddings/EmbeddingServiceFactory', () => ({
+  isUnifiedIndexEnabled: () => mockIsUnifiedIndexEnabled(),
+  getUnifiedEmbeddingService: () => mockGetUnifiedEmbeddingService(),
 }));
 
 describe('FileEmbedWorker', () => {
@@ -393,6 +406,141 @@ describe('FileEmbedWorker', () => {
     it('should create instance with default logger', () => {
       const instance = getFileEmbedWorker();
       expect(instance).toBeInstanceOf(FileEmbedWorker);
+    });
+  });
+
+  // =========================================================================
+  // PRD-202: Cohere Embed 4 branch tests
+  // =========================================================================
+
+  describe('PRD-202: Cohere embedding branch (unified index enabled)', () => {
+    const COHERE_EMBEDDINGS = [
+      { embedding: new Array(1536).fill(0.1), model: 'Cohere-embed-v4' },
+      { embedding: new Array(1536).fill(0.2), model: 'Cohere-embed-v4' },
+      { embedding: new Array(1536).fill(0.3), model: 'Cohere-embed-v4' },
+    ];
+
+    beforeEach(() => {
+      // Switch to unified (Cohere) path for all tests in this block
+      mockIsUnifiedIndexEnabled.mockReturnValue(true);
+      mockEmbedTextBatch.mockResolvedValue(COHERE_EMBEDDINGS);
+    });
+
+    it('uses Cohere embedTextBatch when unified index enabled', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
+      mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
+      mockTransitionStatus.mockResolvedValue({ success: true, currentStatus: PIPELINE_STATUS.READY });
+
+      await worker.process(mockJob);
+
+      // Cohere service must have been called with the chunk texts
+      expect(mockEmbedTextBatch).toHaveBeenCalledOnce();
+      expect(mockEmbedTextBatch).toHaveBeenCalledWith(
+        ['First chunk text', 'Second chunk text', 'Third chunk text'],
+        'search_document',
+      );
+
+      // Legacy EmbeddingService must NOT have been used
+      expect(mockGenerateEmbeddings).not.toHaveBeenCalled();
+    });
+
+    it('uses legacy EmbeddingService when unified index disabled', async () => {
+      mockIsUnifiedIndexEnabled.mockReturnValue(false);
+
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
+      mockGenerateEmbeddings.mockResolvedValue(SAMPLE_EMBEDDINGS);
+      mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
+      mockTransitionStatus.mockResolvedValue({ success: true, currentStatus: PIPELINE_STATUS.READY });
+
+      await worker.process(mockJob);
+
+      expect(mockGenerateEmbeddings).toHaveBeenCalledOnce();
+      expect(mockEmbedTextBatch).not.toHaveBeenCalled();
+    });
+
+    it('embeddings from Cohere have correct shape (embedding + model fields)', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
+      mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
+      mockTransitionStatus.mockResolvedValue({ success: true, currentStatus: PIPELINE_STATUS.READY });
+
+      await worker.process(mockJob);
+
+      // indexChunksBatch must receive chunks with the Cohere embedding & model
+      expect(mockIndexChunksBatch).toHaveBeenCalledOnce();
+      const indexedChunks = mockIndexChunksBatch.mock.calls[0]?.[0] as Array<Record<string, unknown>>;
+
+      expect(indexedChunks).toHaveLength(3);
+      indexedChunks.forEach((chunk, i) => {
+        expect(chunk['embedding']).toEqual(COHERE_EMBEDDINGS[i]?.embedding);
+        expect(chunk['embeddingModel']).toBe('Cohere-embed-v4');
+      });
+    });
+
+    it('indexes chunks correctly with Cohere embeddings via VectorSearchService', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
+      mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
+      mockTransitionStatus.mockResolvedValue({ success: true, currentStatus: PIPELINE_STATUS.READY });
+
+      await worker.process(mockJob);
+
+      // VectorSearchService.indexChunksBatch must have been called with correct chunk structure
+      expect(mockIndexChunksBatch).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            chunkId: 'chunk-1',
+            fileId: SAMPLE_JOB_DATA.fileId,
+            userId: SAMPLE_JOB_DATA.userId,
+            content: 'First chunk text',
+            embedding: COHERE_EMBEDDINGS[0]?.embedding,
+            chunkIndex: 0,
+            tokenCount: 50,
+            embeddingModel: 'Cohere-embed-v4',
+            mimeType: 'application/pdf',
+          }),
+        ]),
+      );
+    });
+
+    it('transitions file state to READY after Cohere embedding', async () => {
+      mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
+      mockFindByFileId.mockResolvedValue(SAMPLE_CHUNKS);
+      mockGetFileWithScopeMetadata.mockResolvedValue(SAMPLE_FILE_META);
+      mockIndexChunksBatch.mockResolvedValue(SAMPLE_SEARCH_IDS);
+      mockUpdateSearchDocumentIds.mockResolvedValue(undefined);
+      mockTransitionStatus.mockResolvedValue({ success: true, currentStatus: PIPELINE_STATUS.READY });
+
+      await worker.process(mockJob);
+
+      // State transition must have been called with EMBEDDING → READY
+      expect(mockTransitionStatus).toHaveBeenCalledWith(
+        SAMPLE_JOB_DATA.fileId,
+        SAMPLE_JOB_DATA.userId,
+        PIPELINE_STATUS.EMBEDDING,
+        PIPELINE_STATUS.READY,
+      );
+
+      // Readiness event must be emitted
+      await vi.waitFor(() => {
+        expect(mockEmitReadiness).toHaveBeenCalledWith(
+          { fileId: SAMPLE_JOB_DATA.fileId, userId: SAMPLE_JOB_DATA.userId },
+          {
+            previousState: FILE_READINESS_STATE.PROCESSING,
+            newState: FILE_READINESS_STATE.READY,
+          },
+        );
+      });
     });
   });
 });

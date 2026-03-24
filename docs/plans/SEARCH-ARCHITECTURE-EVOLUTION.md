@@ -1,192 +1,223 @@
-# Evolución de la Arquitectura de Búsqueda: Multimodal + Agentic Retrieval
+# RAG Agent: Estabilización y Optimización de Tools
 
-> **Fecha**: 2026-03-23
-> **Estado**: Análisis y Recomendación
-> **Alcance**: Pipeline de búsqueda RAG, búsqueda de imágenes, Azure Agentic Retrieval
+> **Fecha**: 2026-03-24
+> **Estado**: Propuesta de implementación
+> **Alcance**: Consolidación de tools del agente RAG, eliminación de ambiguedades, quick wins
 
 ---
 
-## 1. Estado Actual del Sistema
+## 1. Resumen Ejecutivo de la Investigación
 
-### Arquitectura de Embeddings Existente
+Se investigaron tres líneas para evolucionar la búsqueda:
 
-| Componente | Modelo | Dimensiones | Estado |
-|---|---|---|---|
-| **Text Embeddings** | OpenAI `text-embedding-3-small` | 1536 | Producción |
-| **Image Embeddings** | Azure Vision `VectorizeImage` | 1024 | Producción |
-| **Image Query (text→image)** | Azure Vision `VectorizeText` | 1024 | Producción |
-| **Image Captions** | Azure Vision Image Analysis API | N/A (texto) | Producción |
+1. **Azure Agentic Retrieval**: Preview sin SLA ni fecha de GA. Solo soporta texto como input (no imágenes). Requiere modelos OpenAI exclusivamente para query planning. Agrega latencia y costo sin resolver nuestros casos de uso clave. **Descartado.**
 
-### Índice de Azure AI Search (`file-chunks-index`)
+2. **Migración a modelo multimodal unificado**: Azure Vision (1024d, 70 palabras max) es insuficiente para RAG textual. Cohere Embed v4 requiere migración total sin vectorizer nativo en AI Search. Ningún modelo multimodal iguala a text-embedding-3-small para documentos de negocio. **Descartado.**
 
-| Campo | Tipo | Dims | Propósito |
-|---|---|---|---|
-| `contentVector` | Collection(Single) | 1536 | Embedding de texto (OpenAI) |
-| `imageVector` | Collection(Single) | 1024 | Embedding de imagen (Vision) |
-| `content` | String | — | Texto extraído o caption de imagen |
-| `isImage` | Boolean | — | Discriminador texto/imagen |
-| `userId` | String | — | Aislamiento multi-tenant |
-| `fileStatus` | String | — | Soft-delete (`deleting`) |
+3. **Optimización del stack actual**: La arquitectura dual (text-embedding-3-small 1536d + Azure Vision 1024d) ya es la recomendada por Microsoft para producción. El foco debe ser **estabilizar los tools del agente**, no cambiar modelos. **Aprobado.**
 
-**Perfiles vectoriales**: Dos HNSW separados — `hnsw-profile` (texto 1536d) y `hnsw-profile-image` (imagen 1024d).
+**Conclusión**: No migrar. Invertir en que el agente RAG use correctamente lo que ya tiene.
 
-### Infraestructura Provisionada
+---
 
-- **Azure AI Search**: Basic tier, West Europe
-- **Azure OpenAI**: S0, text-embedding-3-small (120K TPM dev / 200K TPM prod)
-- **Azure Computer Vision**: S1, West Europe
-- **Azure Document Intelligence**: S0, East US (OCR para PDFs)
-- **IaC**: Bicep con módulos (`cognitive.bicep`, `data.bicep`)
+## 2. Problema Actual: Ambiguedad entre Tools
 
-### Pipeline de Indexación Actual
+### Tools actuales (3)
 
-```
-Upload → FILE_PROCESSING (extrae texto/imagen) → FILE_CHUNKING (512 tokens, 50 overlap)
-  ├─ Texto → EMBEDDING_GENERATION (text-embedding-3-small) → Azure AI Search (contentVector)
-  └─ Imagen → VectorizeImage (1024d) → Azure AI Search (imageVector)
-               + Image Analysis (caption) → content field + contentVector
-```
-
-### Capacidades de Búsqueda Actuales
-
-| Tipo de búsqueda | Implementado | Cómo funciona |
+| Tool | Propósito | Modo de búsqueda |
 |---|---|---|
-| Texto → Texto | ✅ | Hybrid search (keyword + contentVector) + Semantic Ranker |
-| Texto → Imagen | ✅ | VectorizeText genera vector 1024d, busca en imageVector |
-| Imagen → Imagen | ✅ Parcial | Embedding almacenado, pero no hay tool del agente para recibir imagen como query |
-| Caption search | ✅ | Captions indexadas como `content`, buscables por texto |
-| Multi-tenant | ✅ | `userId eq '{ID}'` en todo query |
+| `search_knowledge` | Búsqueda general + filtros por tipo/fecha | Texto (1536d + Semantic Ranker) |
+| `visual_image_search` | Búsqueda visual por descripción | Imagen (1024d, sin Semantic Ranker) |
+| `find_similar_images` | Imágenes similares a una referencia | Imagen-a-imagen (vector puro 1024d) |
+
+### El problema de ambiguedad
+
+Cuando el usuario dice **"busca fotos de carros rojos"**, el LLM tiene dos opciones válidas:
+
+1. `search_knowledge(query: "carros rojos", fileTypeCategory: "images")` — busca imágenes cuyo **caption textual** mencione "carros rojos" (modo texto)
+2. `visual_image_search(query: "carros rojos")` — busca imágenes que **visualmente se parezcan** a carros rojos (modo imagen)
+
+El system prompt intenta resolver esto con reglas como "use visual_image_search when describing WHAT images look like" vs "use search_knowledge when browsing images". Pero esta distinción es subjetiva y el LLM frecuentemente elige mal.
+
+**Resultado**: El agente a veces usa la tool incorrecta, o peor, no usa ninguna de las dos porque no puede decidir.
 
 ---
 
-## 2. Azure Agentic Retrieval — Evaluación
+## 3. Propuesta: Consolidar a 2 Tools Sin Ambiguedad
 
-### Qué es
-Pipeline de multi-query en Azure AI Search que usa un LLM (gpt-4o/4.1/5) para descomponer preguntas complejas en subqueries paralelas, ejecutarlas contra múltiples knowledge sources, y fusionar resultados con semantic reranking.
+### Regla de diseño
 
-### Qué aporta vs lo actual
+El criterio de decisión debe ser **la naturaleza del input**, no la intención inferida:
 
-| Capacidad | Sistema actual | Con Agentic Retrieval |
-|---|---|---|
-| Query decomposition | Manual (1 query) | Automática (LLM genera ~3 subqueries) |
-| Chat history context | No integrado en search | LLM usa historial para contextualizar |
-| Multi-source search | 1 índice | Múltiples knowledge sources en paralelo |
-| Spell correction / synonyms | No | Incluido en query planning |
-| Answer synthesis | No (solo chunks) | Opcional — respuesta con citas |
-| Query planning control | Total | Automático (no customizable) |
+- **Input = texto** → `search_knowledge` (siempre)
+- **Input = referencia a imagen existente** → `find_similar_images` (siempre)
 
-### Limitaciones críticas para MyWorkMate
+### Tool 1: `search_knowledge` (unificado)
 
-1. **Preview sin SLA** — `2025-11-01-preview`. Sin fecha de GA (marzo 2026). Breaking changes entre versiones.
-2. **Solo texto como input de query** — El query planner NO puede recibir imágenes. No soporta "buscar imágenes similares a esta foto".
-3. **Modelos LLM limitados** — Solo gpt-4o, gpt-4.1, gpt-5 para query planning. No Claude.
-4. **Semantic ranker incompatible con nested multi-vector** — Si usas campos vectoriales complejos (nested), el semantic ranker no funciona.
-5. **Latencia adicional** — ~2-3 segundos extra por query planning LLM.
-6. **Costo dual** — Azure AI Search tokens + Azure OpenAI tokens para query planning.
-7. **`filterAddOn` funciona** — `userId eq 'X'` se aplica a TODAS las subqueries. Multi-tenant seguro.
-
-### Veredicto: NO migrar a Agentic Retrieval ahora
-
-**Razones:**
-- Preview con breaking changes activos — riesgo para producción
-- No resuelve el caso de uso de image-as-query (búsqueda visual)
-- Agrega costo y latencia por un query planning que podemos implementar nosotros con Claude
-- El Supervisor agent ya hace routing inteligente — la descomposición de queries se puede hacer en el RAG agent
-
-**Monitorear para futuro:**
-- Cuando llegue a GA con SLA
-- Si agregan soporte para image queries
-- Si agregan soporte para modelos no-OpenAI en query planning
-
----
-
-## 3. Modelos Multimodales de Embeddings — Evaluación
-
-### Modelos evaluados
-
-| Modelo | Dims | Modalidades | Azure | Estado | Precio |
-|---|---|---|---|---|---|
-| **Azure AI Vision** | 1024 | Texto + Imagen | ✅ Nativo | **GA** | $0.014/1K text, $0.10/1K img |
-| **Cohere Embed v4** | 256-1536 | Texto + Imagen + Interleaved | ✅ AI Foundry | **GA** | ~$0.12/MTok |
-| **Gemini Embedding 2** | 768-3072 | Texto + Imagen + Audio + Video | ❌ Solo Google | Preview | $0.20/MTok |
-| **Amazon Titan MM** | 256-1024 | Texto + Imagen | ❌ Solo AWS | GA | $0.0008/1K tok |
-| **OpenAI CLIP** | 512-768 | Texto + Imagen | ❌ Self-host | Open source | Infra propia |
-| **OpenAI text-embedding-3** | 1536-3072 | Solo texto | ✅ | GA | $0.02-0.13/MTok |
-
-### Análisis: ¿Unificar en un solo modelo multimodal?
-
-#### Opción A: Modelo unificado (Azure Vision para todo)
-- **Pro**: Un solo espacio vectorial, cross-modal nativo, arquitectura simple
-- **Contra**: Texto limitado a 70 palabras, 1024d — **significativamente peor para RAG textual** vs text-embedding-3-small (8K tokens, 1536d)
-- **Veredicto**: ❌ Inaceptable para RAG de documentos de negocio
-
-#### Opción B: Modelo unificado (Cohere Embed v4)
-- **Pro**: 128K tokens, 1536d, multimodal nativo, interleaved text+image
-- **Contra**: Azure limita a un tipo de input por request. Requiere migrar TODOS los embeddings. Sin vectorizer nativo en AI Search.
-- **Veredicto**: ⚠️ Prometedor pero requiere migración completa y cambio de vectorizer
-
-#### Opción C: Dual-model mejorado (Recomendado)
-- Mantener text-embedding-3-small (1536d) para RAG textual de alta calidad
-- Mantener Azure Vision (1024d) para búsqueda visual
-- Mejorar el pipeline de captions para bridge text↔image
-- Agregar tools del agente para image-as-query
-- **Veredicto**: ✅ **Mejor relación costo/beneficio/riesgo**
-
----
-
-## 4. Arquitectura Recomendada: Evolución Incremental
-
-### Fase 1: Mejoras al sistema actual (sin cambio de modelos)
-
-#### 1.1 Image Search Tool para el agente RAG
-
-Agregar un tool dedicado `searchImagesTool` que permita al agente RAG:
-- Buscar imágenes por descripción textual (text→image via VectorizeText)
-- Buscar imágenes similares a una imagen referenciada (image→image via embedding almacenado)
-- Filtrar por tipo MIME, fecha, scope
+Absorbe `visual_image_search`. Cuando `fileTypeCategory: 'images'`, el service layer automáticamente usa **modo imagen** (1024d, sin Semantic Ranker). Cuando es cualquier otra categoría o sin filtro, usa **modo texto** (1536d + Semantic Ranker).
 
 ```typescript
-// Nuevo tool: searchImagesTool
-{
-  name: 'searchImages',
-  description: 'Search for images by visual description or similarity to another image',
-  parameters: {
-    query: z.string().describe('Visual description of what to find'),
-    similarToFileId: z.string().optional().describe('Find images visually similar to this file'),
-    dateFrom: z.string().optional(),
-    dateTo: z.string().optional(),
-  }
-}
+// Cambio en la implementación (NO en el schema del tool)
+const searchMode = fileTypeCategory === 'images' ? 'image' : 'text';
+const maxFiles = fileTypeCategory === 'images' ? 10 : 5;
+
+const results = await searchService.searchRelevantFiles({
+  userId,
+  query,
+  maxFiles,
+  threshold: SEMANTIC_THRESHOLD * RAG_THRESHOLD_MULTIPLIER,
+  filterMimeTypes: mimeTypes ? [...mimeTypes] : undefined,
+  searchMode, // <-- automático basado en fileTypeCategory
+  dateFilter: ...,
+  additionalFilter: ...,
+});
 ```
 
-#### 1.2 Mejora de Image Captions con LLM
+**Descripcion propuesta del tool:**
 
-Reemplazar Azure Vision Image Analysis captions (genéricos) con captions generadas por Claude/GPT-4o:
-- Descripciones más ricas y contextuales
-- Incluir colores, objetos, texto en imagen (OCR visual), composición
-- Indexar caption extendida en `content` para mejor bridge text↔image
+```
+Search the user's knowledge base for relevant files. Returns documents with
+citations and relevance scores.
 
-#### 1.3 Image Comparison Tool
+Use fileTypeCategory to narrow results:
+- 'documents': PDF, Word, TXT, Markdown files
+- 'spreadsheets': Excel, CSV files
+- 'images': JPEG, PNG, GIF, WebP (automatically uses visual similarity matching)
+- 'code': JSON, JS, HTML, CSS files
 
-Tool que permite al usuario comparar dos archivos/imágenes:
+When searching for images, describe the visual content (colors, objects, scenes).
+When searching for documents, describe the information you need.
+```
+
+**Schema** (sin cambios al schema actual — solo cambia la implementación):
 
 ```typescript
-{
-  name: 'compareFiles',
-  description: 'Compare two files or images visually or by content',
-  parameters: {
-    fileId1: z.string(),
-    fileId2: z.string(),
-    comparisonType: z.enum(['visual', 'content', 'both']),
-  }
-}
+z.object({
+  query: z.string().describe(
+    'Search query. For documents: describe the information needed. ' +
+    'For images: describe visual content (e.g., "red truck", "organizational chart", "damaged parts").'
+  ),
+  fileTypeCategory: z.enum(['images', 'documents', 'spreadsheets', 'code']).optional()
+    .describe(
+      'Filter by file type. When set to "images", search uses visual similarity matching. ' +
+      'Omit for cross-type search.'
+    ),
+  dateFrom: z.string().optional()
+    .describe('ISO date (YYYY-MM-DD). Only return files modified from this date onward.'),
+  dateTo: z.string().optional()
+    .describe('ISO date (YYYY-MM-DD). Only return files modified up to this date.'),
+})
 ```
 
-### Fase 2: Optimización del pipeline de embeddings
+### Tool 2: `find_similar_images` (sin cambios)
 
-#### 2.1 Azure Vision Vectorizer nativo en AI Search
+Se mantiene exactamente como está. Su input es fundamentalmente diferente: **una referencia a una imagen existente** (fileId o chatAttachmentId), no un texto.
 
-Configurar el vectorizer `aiServicesVision` directamente en el índice para que Azure AI Search pueda vectorizar queries automáticamente:
+```
+Find images visually similar to a specific reference image.
+Use ONLY when the user points to an existing image and wants similar ones.
+Requires either a fileId (from @mention or previous search results)
+or a chatAttachmentId (from an image attached to the chat).
+```
+
+### Matriz de decisión (cero ambiguedad)
+
+| Escenario del usuario | Tool | Parámetros |
+|---|---|---|
+| "busca documentos sobre ventas Q4" | `search_knowledge` | `query: "ventas Q4"` |
+| "busca archivos de enero" | `search_knowledge` | `query: "*", dateFrom: "2026-01-01", dateTo: "2026-01-31"` |
+| "busca hojas de cálculo de presupuesto" | `search_knowledge` | `query: "presupuesto", fileTypeCategory: "spreadsheets"` |
+| "busca fotos de carros rojos" | `search_knowledge` | `query: "carros rojos", fileTypeCategory: "images"` |
+| "muestra mis imágenes" | `search_knowledge` | `query: "*", fileTypeCategory: "images"` |
+| "busca imágenes de partes dañadas" | `search_knowledge` | `query: "damaged parts", fileTypeCategory: "images"` |
+| "busca imágenes parecidas a @foto.jpg" | `find_similar_images` | `fileId: "UUID-from-mention"` |
+| "encuentra fotos similares a la que te adjunté" | `find_similar_images` | `chatAttachmentId: "attachment-id"` |
+
+**Regla simple para el LLM**: Si el usuario tiene una imagen de referencia → `find_similar_images`. En todo otro caso → `search_knowledge`.
+
+---
+
+## 4. System Prompt Propuesto
+
+```
+You are the Knowledge Base specialist within MyWorkMate.
+
+TOOLS (2 tools):
+1. search_knowledge — Search files by text query. Supports filtering by file type and date range.
+   - For images: set fileTypeCategory to "images" and describe what the images look like
+   - For documents/spreadsheets/code: describe the information you need
+   - For date filtering: use dateFrom/dateTo with a broad query like "*"
+
+2. find_similar_images — Find images similar to a SPECIFIC reference image.
+   - Use ONLY when the user references an existing image (via @mention or chat attachment)
+   - Requires fileId (from mention's id attribute) or chatAttachmentId
+
+DECISION RULE:
+- User has a reference image → find_similar_images
+- Everything else → search_knowledge
+
+EXECUTION RULES:
+1. MUST call a tool for EVERY message. NEVER answer from training data.
+2. If no results found, say so and suggest uploading relevant documents.
+3. Always cite source documents (fileName + relevant excerpts).
+4. Can call tools multiple times to refine results.
+
+PARAMETER TIPS:
+- @MENTIONED FILES: Use the UUID from <mention id="..."> attribute, NEVER the filename
+- @MENTIONED FOLDERS: Search is automatically scoped — no special action needed
+- DATE SEARCHES: Use query "*" with dateFrom/dateTo (semantic query not needed for pure date filtering)
+- COMBINED FILTERS: Can combine date + fileTypeCategory in one call
+```
+
+---
+
+## 5. Quick Wins — Implementación Inmediata
+
+### 5.1 Merge `visual_image_search` en `search_knowledge` (code change)
+
+**Archivo**: `backend/src/modules/agents/rag-knowledge/tools.ts`
+
+**Cambio**: En `searchKnowledgeTool`, detectar `fileTypeCategory === 'images'` y pasar `searchMode: 'image'` + `maxFiles: 10` al service.
+
+**Impacto**: Eliminar `visualImageSearchTool` y su registro. Reducir tools de 3 a 2.
+
+**Esfuerzo**: ~30 min. Sin cambios en servicios de búsqueda, schema del índice, ni frontend.
+
+### 5.2 Actualizar system prompt del agente RAG
+
+**Archivo**: `backend/src/modules/agents/core/definitions/rag-agent.definition.ts`
+
+**Cambio**: Reemplazar con el prompt propuesto en sección 4. Mucho más corto, sin ambiguedad.
+
+**Esfuerzo**: ~15 min.
+
+### 5.3 Actualizar registro de tools en el agente
+
+**Archivo**: `backend/src/modules/agents/rag-knowledge/rag-agent.ts` (o donde se registren los tools)
+
+**Cambio**: Remover `visualImageSearchTool` del array de tools del agente.
+
+**Esfuerzo**: ~5 min.
+
+### 5.4 Mejorar descripción de `find_similar_images`
+
+**Cambio**: Hacer la descripción más explícita sobre cuándo usarlo.
+
+```typescript
+description:
+  'Find images visually similar to a SPECIFIC reference image that the user has pointed to. ' +
+  'Use ONLY when the user references an existing image (via @mention or chat attachment) ' +
+  'and wants to find similar ones. Do NOT use for text-based image searches — ' +
+  'use search_knowledge with fileTypeCategory "images" instead.'
+```
+
+**Esfuerzo**: ~5 min.
+
+### 5.5 Agregar vectorizers nativos al índice de Azure AI Search
+
+**Archivo**: `infrastructure/scripts/update-search-index-schema.sh`
+
+**Cambio**: Agregar configuración de vectorizers al schema del índice. No cambia el comportamiento de búsqueda actual, pero habilita query-time vectorization integrada.
 
 ```json
 {
@@ -195,7 +226,7 @@ Configurar el vectorizer `aiServicesVision` directamente en el índice para que 
       "name": "openai-vectorizer",
       "kind": "azureOpenAI",
       "azureOpenAIParameters": {
-        "resourceUri": "https://<openai>.openai.azure.com/",
+        "resourceUri": "https://<openai-resource>.openai.azure.com/",
         "deploymentId": "text-embedding-3-small",
         "modelName": "text-embedding-3-small"
       }
@@ -204,7 +235,7 @@ Configurar el vectorizer `aiServicesVision` directamente en el índice para que 
       "name": "vision-vectorizer",
       "kind": "aiServicesVision",
       "aiServicesVisionParameters": {
-        "resourceUri": "https://<vision>.cognitiveservices.azure.com/",
+        "resourceUri": "https://<vision-resource>.cognitiveservices.azure.com/",
         "modelVersion": "2023-04-15"
       }
     }
@@ -212,162 +243,25 @@ Configurar el vectorizer `aiServicesVision` directamente en el índice para que 
 }
 ```
 
-**Beneficio**: Habilita query-time vectorization integrada. Necesario si en el futuro adoptamos Agentic Retrieval.
+**Esfuerzo**: ~1 hora (script + validación en dev).
 
-#### 2.2 Mejorar caption embeddings
-
-Actualmente las imágenes tienen caption como `content` y opcionalmente `contentVector` (embedding del caption). Asegurar que **todas** las imágenes tengan:
-- `imageVector` (1024d) — para búsqueda visual
-- `contentVector` (1536d del caption) — para búsqueda semántica por texto
-- `content` (caption enriquecido) — para keyword search y semantic ranker
-
-### Fase 3: Evaluación de Cohere Embed v4 (futuro)
-
-#### Cuándo evaluar
-- Si Azure AI Foundry mejora la integración (vectorizer nativo para Cohere)
-- Si necesitamos embeddings de documentos interleaved (PDF pages con texto+imágenes como unidad)
-- Si la calidad de texto RAG con Cohere v4 (1536d) iguala o supera a text-embedding-3-small
-
-#### Qué evaluaría
-- Quality benchmark: Cohere v4 1536d vs text-embedding-3-small 1536d en nuestros documentos
-- Cross-modal quality: Cohere v4 text→image vs Azure Vision text→image
-- Costo total: Cohere vs OpenAI + Vision separados
-- Complejidad de migración: re-embed todos los documentos
-
-### Fase 4: Agentic Retrieval (futuro, post-GA)
-
-#### Cuándo adoptar
-- Cuando Azure Agentic Retrieval alcance GA con SLA
-- Prerequisito: vectorizers nativos ya configurados (Fase 2.1)
-- Prerequisito: semantic configuration validada
-
-#### Qué aportaría
-- Query decomposition automática para preguntas complejas
-- Chat history como contexto de búsqueda
-- Answer synthesis con citas directas
-- MCP endpoint para integración con otros agentes
-
-#### Qué mantendríamos
-- El índice `file-chunks-index` sin cambios
-- El pipeline de indexación sin cambios
-- Los tools del agente RAG como fallback/complemento
-- Multi-tenant via `filterAddOn`
+**Beneficio**: Azure AI Search puede vectorizar queries sin pasar por nuestro código. Prerequisito si en el futuro se adopta Agentic Retrieval o cualquier feature que requiera integrated vectorization.
 
 ---
 
-## 5. Tools del Agente RAG — Definición Propuesta
+## 6. Validación Post-Implementación
 
-### Inventario actual
-| Tool | Estado | Propósito |
-|---|---|---|
-| `searchKnowledgeTool` | ✅ Existe | Búsqueda unificada texto + imagen |
+### Tests unitarios a agregar/modificar
 
-### Inventario propuesto
+1. **`search_knowledge` con `fileTypeCategory: 'images'`** — verificar que se pasa `searchMode: 'image'` y `maxFiles: 10`
+2. **`search_knowledge` sin `fileTypeCategory`** — verificar que se mantiene `searchMode: 'text'` y `maxFiles: 5`
+3. **`search_knowledge` con `fileTypeCategory: 'documents'`** — verificar modo texto con filtro MIME
 
-| Tool | Estado | Propósito |
-|---|---|---|
-| `searchKnowledge` | ✅ Mantener | Búsqueda semántica de documentos (texto RAG) |
-| `searchImages` | 🆕 Nuevo | Búsqueda visual por descripción o similitud |
-| `compareFiles` | 🆕 Nuevo | Comparación visual/contenido entre archivos |
-| `getFileDetails` | 🆕 Evaluar | Obtener metadatos + preview de un archivo específico |
+### Escenarios de aceptación
 
-### Flujo de decisión del agente
-
-```
-User query → Supervisor → RAG Agent
-  ├─ "busca documentos sobre ventas Q4" → searchKnowledge(query, fileType: 'documents')
-  ├─ "encuentra imágenes con carros rojos" → searchImages(query: 'carros rojos')
-  ├─ "busca imágenes parecidas a este archivo" → searchImages(similarToFileId: 'FILE-UUID')
-  ├─ "compara estos dos archivos" → compareFiles(fileId1, fileId2)
-  └─ "busca todo sobre el proyecto X" → searchKnowledge(query) + searchImages(query)
-```
-
----
-
-## 6. Impacto en Infraestructura
-
-### Fase 1 — Sin cambios de infraestructura
-- Solo cambios de código (tools del agente, mejora de captions)
-- Usa recursos ya provisionados (Azure Vision S1, OpenAI)
-
-### Fase 2 — Cambio menor en index schema
-- Agregar vectorizers al índice via script (`update-search-index-schema.sh`)
-- **NO requiere re-indexar** documentos existentes
-- Script actualizado:
-
-```bash
-# Agregar a update-search-index-schema.sh
-"vectorizers": [
-  {
-    "name": "openai-vectorizer",
-    "kind": "azureOpenAI",
-    ...
-  },
-  {
-    "name": "vision-vectorizer",
-    "kind": "aiServicesVision",
-    ...
-  }
-]
-```
-
-### Fase 3-4 — Evaluación futura
-- Cohere: requeriría agregar Azure AI Foundry endpoint en `cognitive.bicep`
-- Agentic Retrieval: requeriría crear Knowledge Base + Knowledge Source (REST API, no Bicep)
-
----
-
-## 7. Estimación de Costos
-
-### Costos actuales (estimados)
-
-| Recurso | Costo/mes (dev) | Costo/mes (prod) |
-|---|---|---|
-| Azure AI Search (Basic) | ~$70 | ~$70 |
-| OpenAI Embeddings (text-embedding-3-small) | ~$2-5 | ~$10-20 |
-| Azure Vision (S1) | ~$10-15 | ~$20-50 |
-| Semantic Ranker | Incluido en Basic+ | Incluido |
-
-### Costos adicionales por fase
-
-| Fase | Costo adicional |
-|---|---|
-| Fase 1 (tools + captions LLM) | +$5-15/mes (Claude/GPT-4o para captions mejoradas) |
-| Fase 2 (vectorizers) | $0 (configuración, no consumo nuevo) |
-| Fase 3 (Cohere eval) | +$20-50 uno-vez (benchmark) |
-| Fase 4 (Agentic Retrieval) | +$5-15/mes (LLM query planning) + $0.022/MTok (search tokens) |
-
----
-
-## 8. Decisiones Pendientes
-
-| # | Decisión | Opciones | Recomendación |
+| Input del usuario | Tool llamado | searchMode | Resultado esperado |
 |---|---|---|---|
-| 1 | ¿Mejorar captions con LLM? | Claude / GPT-4o / mantener Vision API | GPT-4o (menor latencia, ya provisionado) |
-| 2 | ¿Agregar `searchImages` tool ya? | Sí / Esperar Agentic Retrieval | Sí — valor inmediato, independiente |
-| 3 | ¿Configurar vectorizers nativos? | Ahora / Con Agentic Retrieval | Ahora — prerequisito y mejora independiente |
-| 4 | ¿Evaluar Cohere v4? | Ahora / Q3 2026 | Q3 2026 — esperar mejor integración Azure |
-| 5 | ¿Image-as-query input en UI? | Upload / Clipboard / Referencia archivo | Referencia archivo (simpler, ya están indexados) |
-
----
-
-## 9. Resumen Ejecutivo
-
-### Situación
-El sistema ya tiene una arquitectura de búsqueda multimodal funcional con text embeddings (1536d) e image embeddings (1024d) en espacios vectoriales separados. Azure Agentic Retrieval ofrece query decomposition automatizada pero está en preview sin SLA.
-
-### Recomendación
-**Evolución incremental** en 4 fases, no migración disruptiva:
-
-1. **Ahora**: Agregar tools especializados (searchImages, compareFiles) + mejorar captions con LLM
-2. **Corto plazo**: Configurar vectorizers nativos en el índice
-3. **Medio plazo**: Evaluar Cohere Embed v4 cuando mejore la integración Azure
-4. **Futuro**: Adoptar Agentic Retrieval cuando alcance GA
-
-### Por qué no unificar a un solo modelo multimodal ahora
-- Azure Vision (1024d, 70 palabras max) es **insuficiente** para RAG textual de documentos de negocio
-- Cohere v4 requiere migración completa y no tiene vectorizer nativo en AI Search
-- La arquitectura dual actual es la recomendada por Microsoft para producción
-
-### Valor inmediato sin riesgo
-Los tools `searchImages` y `compareFiles` se pueden implementar **con la infraestructura existente**, sin cambiar modelos ni migrar datos. El usuario obtiene capacidad de búsqueda visual inmediata.
+| "busca fotos de gatos" | `search_knowledge(images)` | `image` | Imágenes visualmente similares a gatos |
+| "busca documentos de ventas" | `search_knowledge(documents)` | `text` | PDFs/DOCXs sobre ventas |
+| "busca archivos de enero" | `search_knowledge(*)` | `text` | Todos los archivos de enero |
+| "busca imágenes parecidas a @car.jpg" | `find_similar_images` | vector puro | Imágenes visualmente similares |

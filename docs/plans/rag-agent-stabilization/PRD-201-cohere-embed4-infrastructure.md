@@ -165,18 +165,22 @@ const indexSchema = {
 
 #### New: `CohereEmbeddingService`
 
+> **Errata (2026-03-24)**: Azure AIServices exposes two separate embedding APIs. Text embeddings use the OpenAI-compatible endpoint (`/openai/deployments/embed-v-4-0/embeddings`). Image embeddings require the **Azure Foundry Models endpoint** (`/models/images/embeddings`) on a different domain (`*.services.ai.azure.com` instead of `*.cognitiveservices.azure.com`). The service auto-derives the image endpoint from `COHERE_ENDPOINT`. See `01-DEPLOYMENT-RUNBOOK.md` errata for full details.
+
 ```typescript
 export class CohereEmbeddingService {
   /**
    * Generate embeddings for text content.
    * Uses input_type: 'search_document' for indexing, 'search_query' for queries.
+   * On Azure: routes to OpenAI-compatible API (/openai/deployments/.../embeddings)
    */
   async embedText(text: string, inputType: 'search_document' | 'search_query'): Promise<number[]>;
 
   /**
    * Generate embeddings for an image.
    * Accepts base64-encoded image data.
-   * Uses Cohere's interleaved input format.
+   * On Azure: routes to Foundry Models API (/models/images/embeddings) — NOT OpenAI API.
+   * On native Cohere: routes to /v2/embed with images parameter.
    */
   async embedImage(imageBase64: string, inputType: 'search_document' | 'search_query'): Promise<number[]>;
 

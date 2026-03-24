@@ -542,3 +542,64 @@ USE_UNIFIED_INDEX=false
 # AML vectorizer: remove from index schema via createOrUpdateIndex()
 # Extractive answers: disable in SemanticSearchService
 ```
+
+---
+
+## Errata — Azure Image Embedding Endpoint (2026-03-24)
+
+### Discovery
+
+The Azure OpenAI-compatible API (`/openai/deployments/embed-v-4-0/embeddings`) does **NOT** support image input. When `CohereEmbeddingService` sent base64 image data URIs through this endpoint, the model treated them as literal text strings, producing semantically useless embeddings and consuming massive token quotas (1MB JPEG = 1.3MB text), causing 429 rate limits.
+
+### Solution: Dual-Endpoint Architecture
+
+Azure AIServices resources expose **two separate embedding APIs** on different domains:
+
+| API | Domain | Path | Supports |
+|-----|--------|------|----------|
+| OpenAI-compatible (text) | `*.cognitiveservices.azure.com` | `/openai/deployments/embed-v-4-0/embeddings` | Text only |
+| Foundry Models (images) | `*.services.ai.azure.com` | `/models/images/embeddings?api-version=2024-05-01-preview` | Images + image-text pairs |
+
+Both APIs use the **same API key** and the **same underlying resource** — just different domain aliases and paths.
+
+### Implementation
+
+`CohereEmbeddingService` now has two API methods:
+- `callCohereApi()` — text embeddings via OpenAI-compatible endpoint (unchanged)
+- `callAzureImageApi()` — image embeddings via Foundry Models endpoint (new)
+
+The image endpoint is **auto-derived** from `COHERE_ENDPOINT` by replacing `.cognitiveservices.azure.com` with `.services.ai.azure.com`. Override via optional `COHERE_IMAGE_ENDPOINT` env var if needed.
+
+### Request format for Azure image embedding
+```json
+POST https://<resource>.services.ai.azure.com/models/images/embeddings?api-version=2024-05-01-preview
+Headers: { "api-key": "<same-key>", "Content-Type": "application/json" }
+{
+  "model": "embed-v-4-0",
+  "input": [{ "image": "data:image/jpeg;base64,..." }],
+  "input_type": "document"
+}
+```
+
+### New environment variable
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `COHERE_IMAGE_ENDPOINT` | No | Auto-derived from `COHERE_ENDPOINT` | Override Azure Foundry Models image endpoint |
+
+### Deployment updates needed
+- Key Vault: `COHERE_IMAGE_ENDPOINT` only if auto-derivation doesn't work for the prod resource
+- CI/CD workflows already updated with Cohere secret refs; image endpoint auto-derives at runtime
+
+### Additional fix: FileEmbedWorker validation
+
+When a file has 0 text chunks, `FileEmbedWorker` now checks the file's mime type before advancing:
+- Image files (`image/jpeg`, `image/png`, `image/gif`, `image/webp`) → advance to READY (correct behavior)
+- Non-image files with 0 chunks → transition to FAILED (prevents silent failures)
+
+### Additional fix: Scripts V2 index support
+
+All operational scripts (`verify-storage`, `purge-user-search-docs`, `purge-storage`, `verify-sync`) now respect `USE_UNIFIED_INDEX`:
+- `_shared/azure.ts` exports `getActiveIndexName()` which returns `file-chunks-index-v2` when `USE_UNIFIED_INDEX=true`
+- `purge-user-search-docs.ts` supports `--v1`, `--v2`, `--all-indexes` flags
+- `verify-storage.ts` validates against V2 schema when unified index is active

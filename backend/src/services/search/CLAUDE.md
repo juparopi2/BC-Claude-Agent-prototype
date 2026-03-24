@@ -75,10 +75,20 @@ Index name: `file-chunks-index`
 
 ### Vector Profiles
 
+**V1 Index** (`file-chunks-index`):
+
 | Profile | Algorithm | Dimensions | Metric | Use Case |
 |---|---|---|---|---|
 | `hnsw-profile` | HNSW (`m=4`, `efConstruction=400`, `efSearch=500`) | 1536 | Cosine | Text chunk search |
 | `hnsw-profile-image` | HNSW (`m=4`, `efConstruction=400`, `efSearch=500`) | 1024 | Cosine | Image similarity search |
+
+**V2 Index** (`file-chunks-index-v2`, when `USE_UNIFIED_INDEX=true`):
+
+| Profile | Algorithm | Dimensions | Metric | Use Case |
+|---|---|---|---|---|
+| `hnsw-profile-unified` | HNSW (configurable via env) | 1536 | Cosine | All content (text + images in same space) |
+
+V2 uses a single `embeddingVector` field (1536d, Cohere Embed v4) replacing dual `contentVector` + `imageVector`.
 
 ### Semantic Configuration
 
@@ -124,7 +134,37 @@ The primary search mode (D26). Combines:
 Parameters: `fetchTopK` (candidates before reranking, default 30), `finalTopK` (results after reranking, default 10).
 
 ### 4. Image Search (`VectorSearchService.searchImages()`)
-Pure vector search on `imageVector` field, filtered to `isImage eq true`. Returns `ImageSearchResult[]` with extracted file names from content.
+Pure vector search on `imageVector` field (V1) or `embeddingVector` field (V2), filtered to `isImage eq true`. Returns `ImageSearchResult[]` with extracted file names from content.
+
+## Image Embedding Architecture (V2 — `USE_UNIFIED_INDEX=true`)
+
+When the unified index is enabled, image embeddings use **Cohere Embed v4** in the same 1536d vector space as text:
+
+### Dual-Endpoint on Azure AIServices
+
+Azure exposes two separate APIs on the same resource:
+
+| API | Domain | Path | Used For |
+|-----|--------|------|----------|
+| OpenAI-compatible | `*.cognitiveservices.azure.com` | `/openai/deployments/embed-v-4-0/embeddings` | Text embeddings |
+| Foundry Models | `*.services.ai.azure.com` | `/models/images/embeddings?api-version=2024-05-01-preview` | Image embeddings |
+
+`CohereEmbeddingService` auto-derives the image endpoint by replacing the domain. Override via `COHERE_IMAGE_ENDPOINT` env var.
+
+### Pipeline Flow (Image Files with V2)
+
+```
+ImageProcessor.extractText()
+  ├── cohereService.embedImage(base64) → callAzureImageApi() → 1536d visual embedding
+  └── embeddingService.generateImageCaption() → caption text (for BM25/keyword search)
+      ↓
+FileChunkingService.indexImageEmbedding()
+  └── VectorSearchService.indexImageEmbedding()
+      └── embeddingVector: 1536d (Cohere), content: caption, embeddingModel: 'Cohere-embed-v4'
+```
+
+### Key Constraint
+The OpenAI-compatible embedding endpoint does **NOT** accept image input. Sending base64 data URIs as text produces garbage embeddings. `transformRequestForAzure()` now throws an error if images are passed through the text endpoint as a safety net.
 
 ## SemanticSearchService Orchestration
 
@@ -132,8 +172,8 @@ Pure vector search on `imageVector` field, filtered to `isImage eq true`. Return
 
 ```
 1. Generate embeddings in parallel
-   ├── Text embedding (1536d) via EmbeddingService
-   └── Image query embedding (1024d) via EmbeddingService (optional, non-fatal)
+   ├── Text embedding (1536d) via EmbeddingService/CohereEmbeddingService
+   └── Image query embedding (1024d V1 / 1536d V2) (optional, non-fatal)
 
 2. Execute unified semantic search (D26)
    └── VectorSearchService.semanticSearch() with text + image embeddings

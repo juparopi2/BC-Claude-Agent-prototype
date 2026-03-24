@@ -21,7 +21,7 @@
 import 'dotenv/config';
 import { createInterface } from 'readline/promises';
 import { createPrisma } from '../_shared/prisma';
-import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from '../_shared/azure';
+import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, getActiveIndexName } from '../_shared/azure';
 import { getFlag, hasFlag } from '../_shared/args';
 
 type PurgeTarget = 'db' | 'blobs' | 'search' | 'all';
@@ -208,29 +208,46 @@ async function purgeBlobs(): Promise<PurgeResult['blobs']> {
 
 async function purgeSearch(): Promise<PurgeResult['search']> {
   console.log(`\n${YELLOW}Purging Azure AI Search...${RESET}`);
-  const searchClient = createSearchClient<ChunkDocument>();
+  const indexName = getActiveIndexName();
+  const searchClient = createSearchClient<ChunkDocument>(indexName);
 
   if (!searchClient) {
     console.log('AI Search credentials not configured, skipping.');
     return null;
   }
 
-  console.log(`Index: ${INDEX_NAME}`);
+  console.log(`Index: ${indexName}`);
 
-  // Search for all documents
+  // Paginated search for all documents (avoids async iterator hangs)
   console.log('Searching for all documents...');
   const documentsToDelete: string[] = [];
+  const PAGE_SIZE = 500;
+  let skip = 0;
 
   try {
-    const searchResults = searchClient.search('*', {
-      select: ['chunkId'],
-      top: 10000,
-    });
+    while (true) {
+      const searchResults = await searchClient.search('*', {
+        select: ['chunkId'] as any,
+        top: PAGE_SIZE,
+        skip,
+        includeTotalCount: skip === 0,
+      });
 
-    for await (const result of searchResults.results) {
-      if (result.document.chunkId) {
-        documentsToDelete.push(result.document.chunkId);
+      if (skip === 0 && searchResults.count !== undefined) {
+        console.log(`  Total documents in index: ${searchResults.count}`);
       }
+
+      const batch: string[] = [];
+      for await (const result of searchResults.results) {
+        if ((result.document as any).chunkId) {
+          batch.push((result.document as any).chunkId);
+        }
+      }
+
+      documentsToDelete.push(...batch);
+
+      if (batch.length < PAGE_SIZE) break;
+      skip += PAGE_SIZE;
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -263,14 +280,11 @@ async function purgeSearch(): Promise<PurgeResult['search']> {
 
   // Verify deletion
   try {
-    const verifyResults = searchClient.search('*', { top: 1 });
-    let remainingCount = 0;
-    for await (const _ of verifyResults.results) {
-      remainingCount++;
-    }
+    const verifyResults = await searchClient.search('*', { top: 0, includeTotalCount: true });
+    const remaining = verifyResults.count ?? 0;
 
-    if (remainingCount > 0) {
-      console.error(`${RED}Warning: ${remainingCount} documents still remain in index!${RESET}`);
+    if (remaining > 0) {
+      console.error(`${RED}Warning: ${remaining} documents still remain in index!${RESET}`);
     } else {
       console.log(`${GREEN}AI Search purge complete. Deleted ${deletedCount} documents.${RESET}`);
     }

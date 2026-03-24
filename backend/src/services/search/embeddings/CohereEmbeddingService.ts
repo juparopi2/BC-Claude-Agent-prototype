@@ -46,6 +46,9 @@ const AZURE_DEPLOYMENT_NAME = 'embed-v-4-0';
 /** Azure OpenAI-compatible API version */
 const AZURE_API_VERSION = '2024-06-01';
 
+/** Azure AI Foundry Models image embedding API version */
+const AZURE_IMAGE_API_VERSION = '2024-05-01-preview';
+
 // ---------------------------------------------------------------------------
 // Internal API response types
 // ---------------------------------------------------------------------------
@@ -90,6 +93,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
   private readonly endpoint: string;
   private readonly apiKey: string;
   private readonly isAzureEndpoint: boolean;
+  private readonly azureImageEndpoint: string | null;
   private cache?: Redis;
 
   constructor() {
@@ -102,6 +106,12 @@ export class CohereEmbeddingService implements IEmbeddingService {
     this.endpoint = env.COHERE_ENDPOINT;
     this.apiKey = env.COHERE_API_KEY;
     this.isAzureEndpoint = this.endpoint.includes('.cognitiveservices.azure.com');
+    if (this.isAzureEndpoint) {
+      this.azureImageEndpoint = env.COHERE_IMAGE_ENDPOINT
+        ?? this.endpoint.replace('.cognitiveservices.azure.com', '.services.ai.azure.com');
+    } else {
+      this.azureImageEndpoint = null;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -173,12 +183,17 @@ export class CohereEmbeddingService implements IEmbeddingService {
     }
 
     const startTime = Date.now();
-    const response = await this.callCohereApi({
-      images: [imageWithPrefix],
-      input_type: inputType,
-      embedding_types: ['float'],
-      truncate: 'END',
-    });
+    let response: CohereEmbedResponse;
+    if (this.isAzureEndpoint) {
+      response = await this.callAzureImageApi([imageWithPrefix], inputType);
+    } else {
+      response = await this.callCohereApi({
+        images: [imageWithPrefix],
+        input_type: inputType,
+        embedding_types: ['float'],
+        truncate: 'END',
+      });
+    }
     const durationMs = Date.now() - startTime;
 
     const embedding = response.embeddings.float[0];
@@ -230,11 +245,32 @@ export class CohereEmbeddingService implements IEmbeddingService {
     });
 
     const startTime = Date.now();
-    const response = await this.callCohereApi({
-      inputs,
-      input_type: inputType,
-      embedding_types: ['float'],
-    });
+    // On Azure, the OpenAI-compatible text endpoint does not support image input.
+    // Route to the dedicated image endpoint when any image items are present.
+    const hasImages = content.some((item) => item.type === 'image_base64');
+    let response: CohereEmbedResponse;
+    if (this.isAzureEndpoint && hasImages) {
+      // Collect all image data URIs from the content for the Azure image endpoint.
+      const imageUris = content
+        .filter((item): item is { type: 'image_base64'; data: string } => item.type === 'image_base64')
+        .map((item) =>
+          item.data.startsWith('data:image/') ? item.data : `data:image/jpeg;base64,${item.data}`
+        );
+      response = await this.callAzureImageApi(imageUris, inputType);
+    } else if (this.isAzureEndpoint) {
+      // Text-only interleaved — use existing text endpoint path
+      response = await this.callCohereApi({
+        inputs,
+        input_type: inputType,
+        embedding_types: ['float'],
+      });
+    } else {
+      response = await this.callCohereApi({
+        inputs,
+        input_type: inputType,
+        embedding_types: ['float'],
+      });
+    }
     const durationMs = Date.now() - startTime;
 
     const embedding = response.embeddings.float[0];
@@ -522,6 +558,95 @@ export class CohereEmbeddingService implements IEmbeddingService {
   }
 
   /**
+   * Execute a POST request to the Azure AI Foundry Models image embedding endpoint.
+   * Endpoint: /models/images/embeddings (separate from the OpenAI-compatible text endpoint)
+   *
+   * Input types are mapped from Cohere conventions to Azure conventions:
+   * - search_document → document
+   * - search_query    → query
+   * - other values    → passed through unchanged
+   */
+  private async callAzureImageApi(
+    images: string[],
+    inputType: EmbeddingInputType,
+  ): Promise<CohereEmbedResponse> {
+    if (!this.azureImageEndpoint) {
+      throw new Error('azureImageEndpoint is not configured — callAzureImageApi requires isAzureEndpoint=true');
+    }
+
+    const startTime = Date.now();
+
+    // Map Cohere input_type values to Azure image endpoint conventions
+    const inputTypeMap: Record<string, string> = {
+      search_document: 'document',
+      search_query: 'query',
+    };
+    const mappedType = inputTypeMap[inputType] ?? inputType;
+
+    const baseUrl = this.azureImageEndpoint.endsWith('/')
+      ? this.azureImageEndpoint.slice(0, -1)
+      : this.azureImageEndpoint;
+    const url = `${baseUrl}/models/images/embeddings?api-version=${AZURE_IMAGE_API_VERSION}`;
+
+    const requestBody = {
+      model: AZURE_DEPLOYMENT_NAME,
+      input: images.map((img) => ({ image: img })),
+      input_type: mappedType,
+    };
+
+    const headers: Record<string, string> = {
+      'api-key': this.apiKey,
+      'Content-Type': 'application/json',
+    };
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody),
+      });
+    } catch (err: unknown) {
+      const errorInfo = err instanceof Error
+        ? { message: err.message, name: err.name, stack: err.stack }
+        : { value: String(err) };
+      logger.error(
+        { error: errorInfo, endpoint: this.azureImageEndpoint },
+        'Azure image embedding API network error — fetch failed'
+      );
+      throw new Error(
+        `Azure image embedding API network error (endpoint: ${this.azureImageEndpoint}): ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '(could not read response body)');
+      const isRateLimit = response.status === 429;
+      const message = isRateLimit
+        ? `Azure image embedding rate limit exceeded. Retry after cooling period. Status: ${response.status}`
+        : `Azure image embedding API error: ${response.status} ${response.statusText} - ${errorText}`;
+
+      logger.error(
+        { status: response.status, durationMs, endpoint: this.azureImageEndpoint },
+        message
+      );
+      throw new Error(message);
+    }
+
+    const azureData = (await response.json()) as AzureEmbedResponse;
+    const data = this.transformResponseFromAzure(azureData);
+
+    logger.debug(
+      { durationMs, inputCount: data.embeddings?.float?.length ?? 0, inputType },
+      'Azure image embedding API call completed'
+    );
+
+    return data;
+  }
+
+  /**
    * Transform Cohere-style request body to Azure OpenAI-compatible format.
    * Cohere: { texts: [...], input_type, embedding_types, truncate }
    * Azure:  { input: [...], model: "embed-v-4-0" }
@@ -536,11 +661,10 @@ export class CohereEmbeddingService implements IEmbeddingService {
     }
 
     if (images && images.length > 0) {
-      // Azure OpenAI embedding endpoint does not support image input directly.
-      // Fall back to sending the image data URI as text input — the model
-      // may not produce visual embeddings in this mode.
-      logger.warn('Azure AIServices endpoint does not natively support image embedding via OpenAI API — using text fallback');
-      return { input: images, model: AZURE_DEPLOYMENT_NAME };
+      throw new Error(
+        'Image embedding via Azure OpenAI text endpoint is not supported. ' +
+        'Use callAzureImageApi() for image embedding on Azure.'
+      );
     }
 
     // Interleaved content (inputs array) — extract text portions only

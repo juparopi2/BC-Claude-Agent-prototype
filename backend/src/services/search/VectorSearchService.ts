@@ -578,7 +578,7 @@ export class VectorSearchService {
           }),
       chunkIndex: 0,
       tokenCount: 0,
-      embeddingModel: 'azure-vision-vectorize-image',
+      embeddingModel: env.USE_UNIFIED_INDEX ? 'Cohere-embed-v4' : 'azure-vision-vectorize-image',
       createdAt: new Date(),
       isImage: true,
       mimeType: mimeType || null,

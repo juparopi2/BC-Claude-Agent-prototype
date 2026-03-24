@@ -6,6 +6,8 @@ import {
   createSearchIndexClient,
   CONTAINER_NAME,
   INDEX_NAME,
+  INDEX_NAME_V2,
+  getActiveIndexName,
 } from '../_shared/azure';
 import {
   getFlag,
@@ -867,11 +869,19 @@ async function verifySchemaSection(
     return { hasErrors: false, hasWarnings: true };
   }
 
-  // Import expected schema
+  const activeIndexName = getActiveIndexName();
+  const useV2 = activeIndexName === INDEX_NAME_V2;
+
+  // Import expected schema (V2 or V1 based on USE_UNIFIED_INDEX)
   let expectedSchema;
   try {
-    const schemaModule = await import('../src/services/search/schema');
-    expectedSchema = schemaModule.indexSchema;
+    if (useV2) {
+      const schemaModule = await import('../../src/services/search/schema-v2');
+      expectedSchema = schemaModule.indexSchemaV2;
+    } else {
+      const schemaModule = await import('../../src/services/search/schema');
+      expectedSchema = schemaModule.indexSchema;
+    }
   } catch (error) {
     const errorInfo = error instanceof Error
       ? { message: error.message, name: error.name }
@@ -884,7 +894,7 @@ async function verifySchemaSection(
   // Fetch current index
   let currentIndex;
   try {
-    currentIndex = await searchIndexClient.getIndex(INDEX_NAME);
+    currentIndex = await searchIndexClient.getIndex(activeIndexName);
   } catch (error) {
     const errorInfo = error instanceof Error
       ? { message: error.message, name: error.name }
@@ -895,7 +905,7 @@ async function verifySchemaSection(
   }
 
   printSubsection('Schema Comparison');
-  printStatus('Index name', INDEX_NAME);
+  printStatus('Index name', activeIndexName);
   printStatus('Expected fields', expectedSchema.fields.length);
   printStatus('Actual fields', currentIndex.fields.length);
 

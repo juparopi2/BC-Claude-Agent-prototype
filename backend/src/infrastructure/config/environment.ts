@@ -114,6 +114,7 @@ const envSchema = z.object({
   USE_UNIFIED_INDEX: z.string().default('false').transform((v) => v === 'true'),
   COHERE_ENDPOINT: z.string().url().optional(),
   COHERE_API_KEY: z.string().optional(),
+  COHERE_IMAGE_ENDPOINT: z.string().url().optional(),
   // PRD-203: Query-time vectorization via Azure AI Search native vectorizer
   USE_QUERY_TIME_VECTORIZATION: z.string().default('false').transform((v) => v === 'true'),
   // PRD-203 F5: Configurable HNSW parameters for search performance tuning

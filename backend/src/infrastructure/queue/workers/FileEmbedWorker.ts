@@ -74,23 +74,39 @@ export class FileEmbedWorker {
       const chunks = await chunkRepo.findByFileId(fileId, userId);
 
       if (chunks.length === 0) {
-        // Check if this is an image file (images skip chunking, have 0 chunks)
-        // Image embedding is handled by FileChunkingService.indexImageEmbedding()
-        // which was called in the chunk stage. Just advance to ready.
-        jobLogger.info('No text chunks found — advancing to ready (may be image file)');
+        // Validate: only image files should have 0 chunks (images skip text chunking)
+        const fileMeta = await repo.getFileWithScopeMetadata(fileId, userId);
+        const mimeType = fileMeta?.mime_type ?? '';
+        const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
-        const advanceResult = await repo.transitionStatus(
-          fileId, userId,
-          PIPELINE_STATUS.EMBEDDING,
-          PIPELINE_STATUS.READY,
-        );
+        if (IMAGE_MIME_TYPES.has(mimeType)) {
+          jobLogger.info({ mimeType }, 'Image file — no text chunks expected, advancing to ready');
 
-        if (!advanceResult.success) {
-          throw new Error(`State advance to ready failed: ${advanceResult.error}`);
+          const advanceResult = await repo.transitionStatus(
+            fileId, userId,
+            PIPELINE_STATUS.EMBEDDING,
+            PIPELINE_STATUS.READY,
+          );
+
+          if (!advanceResult.success) {
+            throw new Error(`State advance to ready failed: ${advanceResult.error}`);
+          }
+
+          this.emitReadinessChanged(fileId, userId);
+          return;
+        } else {
+          jobLogger.error(
+            { mimeType, fileId },
+            'Non-image file has 0 text chunks — text extraction likely failed, marking as FAILED',
+          );
+
+          await repo.transitionStatus(
+            fileId, userId,
+            PIPELINE_STATUS.EMBEDDING,
+            PIPELINE_STATUS.FAILED,
+          );
+          return;
         }
-
-        this.emitReadinessChanged(fileId, userId);
-        return;
       }
 
       // 3. Generate embeddings

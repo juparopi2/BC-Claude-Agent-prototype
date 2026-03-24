@@ -1,11 +1,14 @@
 /**
  * Cohere Embed 4 Embedding Service (PRD-201)
  *
- * Implements IEmbeddingService using the Cohere Embed v4 REST API via
- * Azure AI Foundry serverless endpoint. Produces 1536-dimensional vectors
- * in a unified text+image embedding space, replacing the two-model setup
- * (OpenAI text-embedding-3-small + Azure Computer Vision) when
- * USE_UNIFIED_INDEX=true.
+ * Implements IEmbeddingService using Cohere Embed v4 for 1536-dimensional vectors
+ * in a unified text+image embedding space. Supports two deployment modes:
+ * - Azure AIServices: model deployment accessed via OpenAI-compatible API
+ * - Native Cohere serverless: accessed via Cohere v2 REST API
+ *
+ * Auto-detects the endpoint type from the URL pattern and adapts request/response
+ * format accordingly. Replaces the two-model setup (OpenAI text-embedding-3-small
+ * + Azure Computer Vision) when USE_UNIFIED_INDEX=true.
  *
  * Key capabilities:
  * - Text embedding (search_document / search_query input types)
@@ -37,6 +40,12 @@ const MAX_BATCH_SIZE = 96;
 /** Cache TTL in seconds (1 hour) */
 const CACHE_TTL_SECONDS = 3600;
 
+/** Azure AIServices deployment name for Cohere Embed v4 */
+const AZURE_DEPLOYMENT_NAME = 'embed-v-4-0';
+
+/** Azure OpenAI-compatible API version */
+const AZURE_API_VERSION = '2024-06-01';
+
 // ---------------------------------------------------------------------------
 // Internal API response types
 // ---------------------------------------------------------------------------
@@ -51,6 +60,13 @@ interface CohereEmbedResponse {
     api_version?: { version: string };
     billed_units?: { input_tokens?: number };
   };
+}
+
+/** Azure OpenAI-compatible embeddings response */
+interface AzureEmbedResponse {
+  data: Array<{ index: number; embedding: number[] }>;
+  model: string;
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +89,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
 
   private readonly endpoint: string;
   private readonly apiKey: string;
+  private readonly isAzureEndpoint: boolean;
   private cache?: Redis;
 
   constructor() {
@@ -84,6 +101,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
     }
     this.endpoint = env.COHERE_ENDPOINT;
     this.apiKey = env.COHERE_API_KEY;
+    this.isAzureEndpoint = this.endpoint.includes('.cognitiveservices.azure.com');
   }
 
   // -------------------------------------------------------------------------
@@ -416,22 +434,47 @@ export class CohereEmbeddingService implements IEmbeddingService {
   }
 
   /**
-   * Execute a POST request to the Cohere v2 Embed endpoint.
-   * Handles HTTP error mapping (rate limits get a descriptive message)
-   * and logs duration for benchmarking.
+   * Execute a POST request to the embedding endpoint.
+   * Supports two modes:
+   * - Azure AIServices: OpenAI-compatible API (/openai/deployments/.../embeddings)
+   * - Native Cohere: Cohere v2 API (/v2/embed)
+   *
+   * Auto-detected by endpoint URL pattern (.cognitiveservices.azure.com → Azure).
    */
   private async callCohereApi(body: Record<string, unknown>): Promise<CohereEmbedResponse> {
     const startTime = Date.now();
 
     let response: Response;
+    let url: string;
+    let headers: Record<string, string>;
+
+    if (this.isAzureEndpoint) {
+      // Azure AIServices — OpenAI-compatible API
+      const baseUrl = this.endpoint.endsWith('/') ? this.endpoint.slice(0, -1) : this.endpoint;
+      url = `${baseUrl}/openai/deployments/${AZURE_DEPLOYMENT_NAME}/embeddings?api-version=${AZURE_API_VERSION}`;
+      headers = {
+        'api-key': this.apiKey,
+        'Content-Type': 'application/json',
+      };
+    } else {
+      // Native Cohere serverless endpoint
+      url = `${this.endpoint}/v2/embed`;
+      headers = {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      };
+    }
+
+    // Transform request body for Azure
+    const requestBody = this.isAzureEndpoint
+      ? this.transformRequestForAzure(body)
+      : body;
+
     try {
-      response = await fetch(`${this.endpoint}/v2/embed`, {
+      response = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+        headers,
+        body: JSON.stringify(requestBody),
       });
     } catch (err: unknown) {
       const errorInfo = err instanceof Error
@@ -462,11 +505,72 @@ export class CohereEmbeddingService implements IEmbeddingService {
       throw new Error(message);
     }
 
-    const data = (await response.json()) as CohereEmbedResponse;
+    // Transform Azure response to standard Cohere format
+    let data: CohereEmbedResponse;
+    if (this.isAzureEndpoint) {
+      const azureData = (await response.json()) as AzureEmbedResponse;
+      data = this.transformResponseFromAzure(azureData);
+    } else {
+      data = (await response.json()) as CohereEmbedResponse;
+    }
+
     logger.debug(
-      { durationMs, inputCount: data.embeddings?.float?.length ?? 0 },
+      { durationMs, inputCount: data.embeddings?.float?.length ?? 0, isAzure: this.isAzureEndpoint },
       'Cohere API call completed'
     );
     return data;
+  }
+
+  /**
+   * Transform Cohere-style request body to Azure OpenAI-compatible format.
+   * Cohere: { texts: [...], input_type, embedding_types, truncate }
+   * Azure:  { input: [...], model: "embed-v-4-0" }
+   */
+  private transformRequestForAzure(body: Record<string, unknown>): Record<string, unknown> {
+    // Extract input text(s) — Cohere uses `texts` for text, `images` for images
+    const texts = body.texts as string[] | undefined;
+    const images = body.images as string[] | undefined;
+
+    if (texts && texts.length > 0) {
+      return { input: texts, model: AZURE_DEPLOYMENT_NAME };
+    }
+
+    if (images && images.length > 0) {
+      // Azure OpenAI embedding endpoint does not support image input directly.
+      // Fall back to sending the image data URI as text input — the model
+      // may not produce visual embeddings in this mode.
+      logger.warn('Azure AIServices endpoint does not natively support image embedding via OpenAI API — using text fallback');
+      return { input: images, model: AZURE_DEPLOYMENT_NAME };
+    }
+
+    // Interleaved content (inputs array) — extract text portions only
+    const inputs = body.inputs as Array<{ text?: string; image?: string }> | undefined;
+    if (inputs && inputs.length > 0) {
+      const textInputs = inputs
+        .map((item) => item.text ?? item.image ?? '')
+        .filter((t) => t.length > 0);
+      return { input: textInputs, model: AZURE_DEPLOYMENT_NAME };
+    }
+
+    return { input: [], model: AZURE_DEPLOYMENT_NAME };
+  }
+
+  /**
+   * Transform Azure OpenAI-compatible response to standard Cohere format.
+   */
+  private transformResponseFromAzure(azure: AzureEmbedResponse): CohereEmbedResponse {
+    // Sort by index to ensure correct order
+    const sorted = [...azure.data].sort((a, b) => a.index - b.index);
+    return {
+      id: `azure-${Date.now()}`,
+      embeddings: {
+        float: sorted.map((d) => d.embedding),
+      },
+      meta: {
+        billed_units: {
+          input_tokens: azure.usage?.prompt_tokens ?? 0,
+        },
+      },
+    };
   }
 }

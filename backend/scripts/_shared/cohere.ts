@@ -8,6 +8,10 @@ import 'dotenv/config';
 
 const MAX_BATCH_SIZE = 96;
 
+/** Azure AIServices deployment name for Cohere Embed v4 */
+const AZURE_DEPLOYMENT_NAME = 'embed-v-4-0';
+const AZURE_API_VERSION = '2024-06-01';
+
 export interface CohereEmbedResult {
   embedding: number[];
   model: string;
@@ -18,6 +22,12 @@ interface CohereApiResponse {
   id: string;
   embeddings: { float: number[][] };
   meta?: { billed_units?: { input_tokens?: number } };
+}
+
+interface AzureEmbedResponse {
+  data: Array<{ index: number; embedding: number[] }>;
+  model: string;
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
 /**
@@ -36,11 +46,13 @@ export function createCohereClient(): CohereClient | null {
 export class CohereClient {
   private readonly endpoint: string;
   private readonly apiKey: string;
+  private readonly isAzureEndpoint: boolean;
   readonly modelName = 'Cohere-embed-v4';
 
   constructor(endpoint: string, apiKey: string) {
     this.endpoint = endpoint;
     this.apiKey = apiKey;
+    this.isAzureEndpoint = endpoint.includes('.cognitiveservices.azure.com');
   }
 
   /** Embed a single text */
@@ -101,13 +113,24 @@ export class CohereClient {
   }
 
   private async callApi(body: Record<string, unknown>): Promise<CohereApiResponse> {
-    const response = await fetch(`${this.endpoint}/v2/embed`, {
+    let url: string;
+    let headers: Record<string, string>;
+
+    if (this.isAzureEndpoint) {
+      const baseUrl = this.endpoint.endsWith('/') ? this.endpoint.slice(0, -1) : this.endpoint;
+      url = `${baseUrl}/openai/deployments/${AZURE_DEPLOYMENT_NAME}/embeddings?api-version=${AZURE_API_VERSION}`;
+      headers = { 'api-key': this.apiKey, 'Content-Type': 'application/json' };
+    } else {
+      url = `${this.endpoint}/v2/embed`;
+      headers = { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' };
+    }
+
+    const requestBody = this.isAzureEndpoint ? this.transformForAzure(body) : body;
+
+    const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+      headers,
+      body: JSON.stringify(requestBody),
     });
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
@@ -116,6 +139,30 @@ export class CohereClient {
       }
       throw new Error(`Cohere API error ${response.status}: ${errorText}`);
     }
+
+    if (this.isAzureEndpoint) {
+      const azure = (await response.json()) as AzureEmbedResponse;
+      const sorted = [...azure.data].sort((a, b) => a.index - b.index);
+      return {
+        id: `azure-${Date.now()}`,
+        embeddings: { float: sorted.map((d) => d.embedding) },
+        meta: { billed_units: { input_tokens: azure.usage?.prompt_tokens ?? 0 } },
+      };
+    }
+
     return (await response.json()) as CohereApiResponse;
+  }
+
+  private transformForAzure(body: Record<string, unknown>): Record<string, unknown> {
+    const texts = body.texts as string[] | undefined;
+    if (texts && texts.length > 0) {
+      return { input: texts, model: AZURE_DEPLOYMENT_NAME };
+    }
+    const images = body.images as string[] | undefined;
+    if (images && images.length > 0) {
+      console.warn('Warning: Azure AIServices does not natively support image embedding via OpenAI API — sending as text fallback');
+      return { input: images, model: AZURE_DEPLOYMENT_NAME };
+    }
+    return { input: [], model: AZURE_DEPLOYMENT_NAME };
   }
 }

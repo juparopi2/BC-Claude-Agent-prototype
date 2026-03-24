@@ -39,6 +39,15 @@ vi.mock('@/services/files/FileService', () => ({
   }),
 }));
 
+// Force v1 index path — these tests mock only the v1 SearchClient
+vi.mock('@/infrastructure/config/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/infrastructure/config/environment')>();
+  return {
+    ...actual,
+    env: { ...actual.env, USE_UNIFIED_INDEX: false },
+  };
+});
+
 import { searchKnowledgeTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
 
 describe('searchKnowledgeTool', () => {

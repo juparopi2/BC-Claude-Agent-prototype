@@ -223,7 +223,7 @@ async function scanV1Index(client: SearchClient<Record<string, unknown>>): Promi
       top: pageSize,
       skip,
       select: selectFields as string[],
-      orderBy: ['chunkId asc'],
+      orderBy: ['createdAt asc'],
     });
 
     const batch: ChunkRef[] = [];

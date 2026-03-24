@@ -6,6 +6,95 @@
 
 ---
 
+## 0. Deployment Findings (2026-03-24) — Must Address During Cleanup
+
+### Azure AIServices API Compatibility
+
+Cohere Embed v4 is deployed as a model deployment on Azure `AIServices` resources (not as a standalone Cohere serverless endpoint). This means:
+
+- The model is accessed via the **OpenAI-compatible API** (`/openai/deployments/embed-v-4-0/embeddings?api-version=2024-06-01`) with `api-key` header
+- The **Cohere native API** (`/v2/embed` with `Authorization: Bearer`) returns 404 on Azure AIServices
+- Both `CohereEmbeddingService.ts` and `scripts/_shared/cohere.ts` were adapted with dual-mode detection (`isAzureEndpoint` flag based on `.cognitiveservices.azure.com` URL pattern) and request/response transformation
+
+**Cleanup action**: When removing the feature flag, simplify `CohereEmbeddingService` to only support the Azure AIServices path (remove native Cohere path unless planning to support non-Azure deployments). Remove `isAzureEndpoint` branching, `transformRequestForAzure()`, and `transformResponseFromAzure()` — make the Azure format the default.
+
+### Image Embedding Limitation
+
+The Azure OpenAI-compatible API does **not** support image input (base64 data URIs). During migration:
+- Image chunks were sent as text fallback (the base64 string as text input)
+- This produces text embeddings of the base64 string, NOT visual embeddings
+- 174 local image chunks failed with 429 rate limits due to massive token consumption from base64 strings
+- Images will be re-embedded via the file processing pipeline using their **text captions** (from Azure Vision OCR), which produces meaningful semantic embeddings
+
+**Cleanup action**: Remove the image fallback warning and text fallback path in `CohereEmbeddingService.transformRequestForAzure()`. Instead, image embeddings should always go through the caption text path (already handled by `ImageProcessor.ts` when `USE_UNIFIED_INDEX=true`). Document that Cohere Embed v4 on Azure AIServices produces text-based embeddings for images (via captions), not visual embeddings.
+
+### Test Environment Isolation
+
+Four test files were updated to explicitly mock `env.USE_UNIFIED_INDEX = false` so they don't break when the developer's `.env` has `USE_UNIFIED_INDEX=true`:
+
+| File | Mock Added |
+|---|---|
+| `VectorSearchService.test.ts` | `vi.mock('@/infrastructure/config/environment', ...)` |
+| `tools.test.ts` | Same pattern |
+| `FileChunkingService.test.ts` | Same pattern |
+| `SemanticSearchService.test.ts` | Same pattern |
+
+**Cleanup action**: When removing the feature flag, delete these env mocks from all four test files. The v1-specific tests themselves should be deleted (section 8 below). The v2 tests become the only tests.
+
+### Scripts Created During Deployment
+
+| Script | Purpose | Cleanup Action |
+|---|---|---|
+| `backend/scripts/search/create-index-v2.ts` | Create `file-chunks-index-v2` in Azure AI Search | **Delete** after v1 index decommissioned |
+| `backend/scripts/_shared/cohere.ts` | Azure-adapted Cohere client for scripts | **Delete** (section 7) |
+| `backend/scripts/operations/migrate-embeddings.ts` | One-time v1→v2 migration | **Delete** (section 7) |
+
+### Azure Deployment Capacity
+
+The Cohere Embed v4 deployment was scaled to `capacity=350` (350 req/min, 350K tokens/min) for migration. After migration completes:
+
+```bash
+# Scale down for normal operations (dev)
+az cognitiveservices account deployment create \
+  --name jpi-ml9pu7mq-eastus2 \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --deployment-name embed-v-4-0 \
+  --model-name embed-v-4-0 --model-version 1 --model-format Cohere \
+  --sku-name GlobalStandard --sku-capacity 20
+```
+
+### GDPR Region Constraint
+
+- **Dev** deployment: `jpi-ml9pu7mq-eastus2` (eastus2) — acceptable for dev, no real user data
+- **Prod** deployment: must be in **westeurope** (new dedicated `AIServices` resource required)
+- `embed-v-4-0` is available in westeurope — verified 2026-03-24
+- See `01-DEPLOYMENT-RUNBOOK.md` "Region & GDPR Analysis" section for full details
+
+### CI/CD Infrastructure Gaps Fixed
+
+The following files were missing Cohere secret references and were fixed during this deployment:
+
+| File | What Was Missing |
+|---|---|
+| `.github/workflows/backend-deploy.yml` | Cohere secret refs in 2 `secret set` blocks + env vars in 2 `set-env-vars` blocks |
+| `.github/workflows/production-deploy.yml` | Cohere env vars in `set-env-vars` block |
+| `infrastructure/scripts/create-container-apps.sh` | 2 Cohere KV secret references (now 30 total) |
+| `backend/src/infrastructure/keyvault/keyvault.ts` | `COHERE_ENDPOINT`/`COHERE_API_KEY` in `SECRET_NAMES` + `loadSecretsFromKeyVault()` |
+| `backend/.env.example` | PRD-203 tuning variables |
+
+**Lesson learned**: When adding new Key Vault secrets via Bicep, always update ALL consumers: `keyvault-secrets.bicep`, `keyvault.ts`, `create-container-apps.sh`, `backend-deploy.yml`, `production-deploy.yml`, and `.env.example`.
+
+### Migration Results (Dev — 2026-03-24)
+
+| Category | Count | Status |
+|---|---|---|
+| Text chunks | 1236 | **Migrated** (100%) |
+| Image chunks (local) | 179 | ~5 migrated, ~174 failed (429 — will re-embed via pipeline) |
+| External files (OneDrive/SP) | 346 | Skipped — will re-embed on next delta sync |
+| **V2 index total** | **1241** | Out of 1761 in v1 |
+
+---
+
 ## 1. Azure Resources to Delete
 
 | Resource | Type | Location | Notes |
@@ -32,7 +121,7 @@
 |---|---|
 | `backend/src/services/search/embeddings/EmbeddingServiceFactory.ts` | **Delete entire file**. No more branching needed — always use CohereEmbeddingService directly. |
 | `backend/src/services/search/embeddings/types.ts` | Keep — `IEmbeddingService` interface is still used by CohereEmbeddingService. |
-| `backend/src/services/search/embeddings/CohereEmbeddingService.ts` | Keep — this is the active service. |
+| `backend/src/services/search/embeddings/CohereEmbeddingService.ts` | Keep — but simplify: remove `isAzureEndpoint` dual-mode branching, `transformRequestForAzure()`, `transformResponseFromAzure()`, native Cohere `/v2/embed` path. Make Azure AIServices the only path (see section 0). |
 | `backend/src/services/embeddings/EmbeddingService.ts` | **Delete entire file** — legacy OpenAI text-embedding-3-small service. |
 | `backend/src/services/embeddings/` | **Delete entire directory** if EmbeddingService.ts is the only file. |
 
@@ -67,11 +156,12 @@
 
 ---
 
-## 7. Code to Remove — Migration Script
+## 7. Code to Remove — Migration & Deployment Scripts
 
 | File | Action |
 |---|---|
 | `backend/scripts/operations/migrate-embeddings.ts` | **Delete** — one-time migration already completed. |
+| `backend/scripts/search/create-index-v2.ts` | **Delete** — one-time index creation script. |
 | `backend/scripts/_shared/cohere.ts` | **Delete** — only used by migration script. |
 
 ---

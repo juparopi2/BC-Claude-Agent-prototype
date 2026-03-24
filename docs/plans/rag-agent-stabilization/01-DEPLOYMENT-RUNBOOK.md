@@ -2,7 +2,7 @@
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
 **Created**: 2026-03-24
-**Last Updated**: 2026-03-24 (PRD-203 section added)
+**Last Updated**: 2026-03-24 (infrastructure gaps fixed, GDPR region analysis added)
 
 ## Purpose
 
@@ -15,6 +15,85 @@ Single reference for all infrastructure, configuration, migration, and deploymen
 - Bicep CLI installed (`az bicep install`)
 - Backend running locally or in Container Apps
 - Node.js + npm workspace setup (`npm install` from root)
+
+## Cohere Embed v4 — Region & GDPR Analysis
+
+> **Discovery (2026-03-24)**: Cohere Embed v4 is deployed as a model deployment (`embed-v-4-0`, format `Cohere`, SKU `GlobalStandard`) on an existing `kind: AIServices` resource — NOT via Azure AI Foundry Portal as originally planned. No ML workspace needed.
+
+### Model availability (`embed-v-4-0`)
+
+| Region | Available | GDPR-compliant |
+|---|---|---|
+| **westeurope** | **Yes** | **Yes** |
+| swedencentral | Yes | Yes |
+| francecentral | Yes | Yes |
+| germanywestcentral | Yes | Yes |
+| norwayeast | Yes | Yes |
+| switzerlandnorth | Yes | Yes |
+| uksouth | Yes | Post-Brexit, evaluate |
+| eastus / eastus2 | Yes | **No** |
+| northeurope | No | N/A |
+
+### Deployment strategy per environment
+
+| Environment | AIServices Resource | Region | Rationale |
+|---|---|---|---|
+| **Development** | `jpi-ml9pu7mq-eastus2` (existing) | eastus2 | Already deployed. Acceptable for dev — no real user data under GDPR. |
+| **Production** | **New resource required in westeurope** | westeurope | GDPR compliance: user document content is sent to the embedding endpoint for vectorization. This constitutes data processing and must remain in the EU. |
+
+### Production GDPR constraint
+
+The existing prod `AIServices` resource (`speech-myworkmate-prod`) is in **eastus2**. For GDPR-compliant Cohere embeddings in production:
+
+**Option A (Recommended)**: Add a dedicated `AIServices` resource in westeurope via Bicep (`cognitive.bicep`). This keeps embedding processing in the EU while the existing speech resource stays in eastus2.
+
+```bash
+# Provisioning command (after Bicep update):
+az cognitiveservices account create \
+  --name cohere-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --kind AIServices --sku S0 \
+  --location westeurope \
+  --custom-domain cohere-myworkmate-prod
+
+az cognitiveservices account deployment create \
+  --name cohere-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --deployment-name embed-v-4-0 \
+  --model-name embed-v-4-0 --model-version 1 --model-format Cohere \
+  --sku-name GlobalStandard --sku-capacity 1
+```
+
+**Option B**: Deploy `embed-v-4-0` on the existing `speech-myworkmate-prod` in eastus2. Faster but **NOT GDPR-compliant** — user content leaves the EU during embedding.
+
+### Dev deployment (completed 2026-03-24)
+
+```bash
+# Model deployed on existing AIServices resource
+az cognitiveservices account deployment create \
+  --name jpi-ml9pu7mq-eastus2 \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --deployment-name embed-v-4-0 \
+  --model-name embed-v-4-0 --model-version 1 --model-format Cohere \
+  --sku-name GlobalStandard --sku-capacity 1
+
+# Endpoint: https://jpi-ml9pu7mq-eastus2.cognitiveservices.azure.com/
+# API Key: same as existing AIServices resource key (shared across deployments)
+```
+
+## Infrastructure Gaps Found & Fixed (2026-03-24)
+
+During QA review, we discovered that the CI/CD pipelines, bootstrap scripts, and Key Vault loader were missing Cohere secret references. Without these fixes, deployment to Azure Container Apps would fail when `USE_UNIFIED_INDEX=true`.
+
+| File | Gap | Fix |
+|---|---|---|
+| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths | Added `cohere-endpoint` + `cohere-api-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY`, `USE_UNIFIED_INDEX`, `USE_QUERY_TIME_VECTORIZATION` to both `set-env-vars` blocks |
+| `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 4 env vars to `set-env-vars` block |
+| `infrastructure/scripts/create-container-apps.sh` | Only 28 KV secret refs, missing Cohere | Added 2 Cohere KV refs (now 30 total) |
+| `backend/src/infrastructure/keyvault/keyvault.ts` | `SECRET_NAMES` and `loadSecretsFromKeyVault()` missing Cohere | Added `COHERE_ENDPOINT` + `COHERE_API_KEY` entries |
+| `backend/.env.example` | Missing PRD-203 tuning variables | Added `USE_QUERY_TIME_VECTORIZATION`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `HNSW_EF_SEARCH`, `SEARCH_FETCH_MULTIPLIER` |
+
+**Lesson**: When adding new Key Vault secrets via Bicep, always update ALL secret consumers: `keyvault-secrets.bicep`, `keyvault.ts`, `create-container-apps.sh`, `backend-deploy.yml`, `production-deploy.yml`, and `.env.example`.
 
 ---
 
@@ -75,22 +154,55 @@ git checkout production && git merge main && git push origin production
 **Design decisions that affect deployment:**
 - `searchImages()` (find_similar_images) stays on v1 index until PRD-202 re-embeds images (1024d → 1536d dimension mismatch)
 - AML vectorizer deferred to PRD-203 (not in schema-v2 yet)
-- Cohere endpoint deployed manually via Azure Portal (no ML workspace in Bicep)
+- Cohere deployed via Azure CLI as model deployment on existing `AIServices` resource (no ML workspace needed)
+- Dev uses eastus2 (existing resource); prod requires new `AIServices` resource in westeurope (GDPR)
 - `USE_UNIFIED_INDEX=false` by default — zero impact on production until toggled
 
-### 1. Azure AI Foundry — Deploy Cohere Embed 4 (Manual)
+### 1. Deploy Cohere Embed v4 Model
 
-Deploy via Azure Portal (no Bicep IaC for ML workspace yet):
+Deploy `embed-v-4-0` as a model deployment on an existing `kind: AIServices` resource via Azure CLI. No AI Foundry Portal or ML workspace needed.
 
+```bash
+# ===== Development (eastus2 — existing AIServices resource) =====
+az cognitiveservices account deployment create \
+  --name jpi-ml9pu7mq-eastus2 \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --deployment-name embed-v-4-0 \
+  --model-name embed-v-4-0 --model-version 1 --model-format Cohere \
+  --sku-name GlobalStandard --sku-capacity 1
+
+# ===== Production (westeurope — new dedicated resource for GDPR) =====
+# Step 1: Create AIServices resource in EU
+az cognitiveservices account create \
+  --name cohere-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --kind AIServices --sku S0 \
+  --location westeurope \
+  --custom-domain cohere-myworkmate-prod
+
+# Step 2: Deploy model
+az cognitiveservices account deployment create \
+  --name cohere-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --deployment-name embed-v-4-0 \
+  --model-name embed-v-4-0 --model-version 1 --model-format Cohere \
+  --sku-name GlobalStandard --sku-capacity 1
 ```
-Portal: Azure AI Foundry → Model Catalog → "Cohere-embed-v4" → Deploy as Serverless
-Region: Same as existing resources (eastus recommended — matches OpenAI deployment)
-Deployment type: Serverless (pay-per-token)
+
+After deployment, the endpoint and key come from the **parent AIServices resource** (shared across all deployments on that resource):
+
+```bash
+# Get endpoint
+az cognitiveservices account show --name <resource-name> --resource-group <rg> \
+  --query "properties.endpoint" -o tsv
+
+# Get API key
+az cognitiveservices account keys list --name <resource-name> --resource-group <rg> \
+  --query "key1" -o tsv
 ```
 
-After deployment, note:
-- **Endpoint URL**: `https://<name>.<region>.models.ai.azure.com`
-- **API Key**: Shown in deployment details
+**Endpoint format**: `https://<custom-domain>.cognitiveservices.azure.com/`
+**Important**: The API key is shared with other deployments on the same AIServices resource (e.g., `gpt-4o-mini-transcribe` in dev).
 
 ### 2. Environment Variables
 
@@ -377,27 +489,34 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
 ### Production Environment
 
 1. [ ] All dev environment verification passed
-2. [ ] Cohere Embed 4 endpoint deployed to AI Foundry (prod region)
-3. [ ] `COHERE_ENDPOINT` + `COHERE_API_KEY` in Key Vault (prod):
+2. [ ] **GDPR**: New `AIServices` resource created in **westeurope** for Cohere (see Region & GDPR Analysis above)
+3. [ ] Cohere Embed v4 (`embed-v-4-0`) deployed on westeurope resource
+4. [ ] `COHERE_ENDPOINT` + `COHERE_API_KEY` in Key Vault (prod):
    ```bash
+   # Get values from the NEW westeurope resource
+   ENDPOINT=$(az cognitiveservices account show --name cohere-myworkmate-prod \
+     --resource-group rg-myworkmate-app-prod --query "properties.endpoint" -o tsv)
+   KEY=$(az cognitiveservices account keys list --name cohere-myworkmate-prod \
+     --resource-group rg-myworkmate-app-prod --query "key1" -o tsv)
+
    az keyvault secret set --vault-name kv-myworkmate-prod \
-     --name COHERE-ENDPOINT --value "<prod-endpoint>"
+     --name COHERE-ENDPOINT --value "$ENDPOINT"
    az keyvault secret set --vault-name kv-myworkmate-prod \
-     --name COHERE-API-KEY --value "<prod-key>"
+     --name COHERE-API-KEY --value "$KEY"
    ```
-4. [ ] Bicep deployment (if updating infrastructure):
+5. [ ] Bicep deployment (if updating infrastructure):
    ```bash
    bash infrastructure/scripts/deploy.sh
    ```
-5. [ ] Production pipeline: push to `production` branch
+6. [ ] Production pipeline: push to `production` branch
    ```bash
    git checkout production && git merge main && git push origin production
    ```
-6. [ ] PRD-202 re-embedding job run against prod data
-7. [ ] Quality validation passed (prod)
-8. [ ] `USE_UNIFIED_INDEX=true` enabled (prod Container App config)
-9. [ ] Monitor for 7 days: latency, error rates, search quality
-10. [ ] Old index `file-chunks-index` decommissioned after 30-day rollback window
+7. [ ] PRD-202 re-embedding job run against prod data
+8. [ ] Quality validation passed (prod)
+9. [ ] `USE_UNIFIED_INDEX=true` enabled (prod Container App config)
+10. [ ] Monitor for 7 days: latency, error rates, search quality
+11. [ ] Old index `file-chunks-index` decommissioned after 30-day rollback window
 
 ---
 

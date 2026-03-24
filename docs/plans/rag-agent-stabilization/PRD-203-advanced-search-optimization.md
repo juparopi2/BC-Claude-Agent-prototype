@@ -1,10 +1,11 @@
 # PRD-203: Advanced Search Capabilities & Optimization
 
 **Phase**: 4 — Optimization
-**Status**: Proposed
+**Status**: **Implemented** (code) — F1-F3 shipped, F4-F5 deferred
 **Prerequisites**: PRD-202 (Cohere Data Cutover)
 **Estimated Effort**: 2-3 days
 **Created**: 2026-03-24
+**Last Updated**: 2026-03-24
 
 ---
 
@@ -138,34 +139,41 @@ All changes require A/B benchmarking before deployment.
 
 ## 4. Implementation Priority
 
-| Feature | Effort | Impact | Priority |
-|---|---|---|---|
-| Extractive answers & captions | Low (config change) | High (direct answers, fewer tokens) | **P1** |
-| Response format control | Medium (tool + service change) | Medium (token savings) | **P2** |
-| Query-time vectorization | Low (conditional flag) | Medium (simplification) | **P2** |
-| Interleaved embeddings | Medium (pipeline change) | Low (niche use case) | **P3** |
-| Performance tuning | Medium (benchmarking) | Low-Medium (latency) | **P3** |
+| Feature | Effort | Impact | Priority | Status |
+|---|---|---|---|---|
+| Extractive answers & captions | Low (config change) | High (direct answers, fewer tokens) | **P1** | **Implemented** |
+| Response format control | Medium (tool + service change) | Medium (token savings) | **P2** | **Implemented** |
+| Query-time vectorization | Low (conditional flag) | Medium (simplification) | **P2** | **Implemented** (flag OFF) |
+| Interleaved embeddings | Medium (pipeline change) | Low (niche use case) | **P3** | Deferred |
+| Performance tuning | Medium (benchmarking) | Low-Medium (latency) | **P3** | Deferred |
 
 ---
 
 ## 5. Complete File Inventory
 
-### Modified Files (6)
+### Modified Files (9)
 
 | File | Change |
 |---|---|
-| `backend/src/modules/agents/rag-knowledge/tools.ts` | Add `responseDetail` parameter to search_knowledge schema |
-| `backend/src/modules/agents/rag-knowledge/validation.ts` | Handle `responseDetail` in validation pipeline |
-| `backend/src/services/search/VectorSearchService.ts` | Add extractive answers/captions to query. Support `kind: 'text'` vectorizer queries. |
-| `backend/src/services/search/semantic/SemanticSearchService.ts` | Format extractive answers into CitationResult. Support concise mode. |
-| `packages/shared/src/schemas/citation-result.schemas.ts` | Add `extractiveAnswers` and `highlightedCaption` fields |
-| `backend/src/services/search/schema-v2.ts` | Tune HNSW parameters (after benchmarking) |
+| `packages/shared/src/schemas/citation-result.schemas.ts` | Add `ExtractiveAnswerSchema`, `highlightedCaption` to passages, `extractiveAnswers` to result |
+| `packages/shared/src/schemas/index.ts` | Export `ExtractiveAnswerSchema` and `ExtractiveAnswer` type |
+| `packages/shared/src/types/index.ts` | Export `ExtractiveAnswer` type |
+| `backend/src/services/search/types.ts` | Add `captionText`/`captionHighlights` to `SemanticSearchResult`, `ExtractiveSearchAnswer`, `SemanticSearchFullResult` |
+| `backend/src/services/search/VectorSearchService.ts` | Request extractive answers/captions, capture results, support `kind: 'text'` queries, return `SemanticSearchFullResult` |
+| `backend/src/services/search/semantic/types.ts` | Add `highlightedCaption` to `SemanticChunk`, `ResolvedExtractiveAnswer`, `extractiveAnswers` to response |
+| `backend/src/services/search/semantic/SemanticSearchService.ts` | Propagate extractive features, resolve chunkId→fileId, skip embedding for query-time vectorization |
+| `backend/src/modules/agents/rag-knowledge/tools.ts` | Add `responseDetail` parameter, concise mode, map extractive answers to CitationResult |
+| `backend/src/modules/agents/rag-knowledge/validation.ts` | Add `responseDetail` to input/output types and defaults |
+| `backend/src/services/search/schema-v2.ts` | Add conditional Cohere vectorizer to vector search config |
+| `backend/src/infrastructure/config/environment.ts` | Add `USE_QUERY_TIME_VECTORIZATION` feature flag |
 
-### New Files (1)
+### New Files (3)
 
 | File | Purpose |
 |---|---|
-| `backend/scripts/operations/benchmark-search.ts` | Script to benchmark search quality and latency across configurations |
+| `backend/scripts/operations/benchmark-search.ts` | Benchmark search quality and latency: app-side vs query-time vectorization |
+| `backend/src/__tests__/unit/services/search/VectorSearchService.extractive.test.ts` | Tests for extractive answers and captions |
+| `backend/src/__tests__/unit/services/search/VectorSearchService.queryTimeVectorization.test.ts` | Tests for query-time vectorization flag |
 
 ---
 

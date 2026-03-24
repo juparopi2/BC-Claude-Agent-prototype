@@ -549,7 +549,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results[0].score).toBe(0.8); // 3.2 / 4 = 0.8
       expect(results[0].rerankerScore).toBe(3.2);
@@ -567,7 +567,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results[0].score).toBe(0.75);
       expect(results[0].rerankerScore).toBeUndefined();
@@ -587,7 +587,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         minScore: 0.5,
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results).toHaveLength(2);
       expect(results.map(r => r.chunkId)).toEqual(['3', '2']); // Sorted by score desc
@@ -609,7 +609,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         finalTopK: 3,
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results).toHaveLength(3);
     });
@@ -627,7 +627,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results.map(r => r.score)).toEqual([0.9, 0.7, 0.5]);
       expect(results.map(r => r.chunkId)).toEqual(['2', '3', '1']);
@@ -689,7 +689,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results[0].isImage).toBe(false);
       expect(results[1].isImage).toBe(true);
@@ -828,7 +828,7 @@ describe('VectorSearchService - Image Search Mode', () => {
       searchMode: 'image',
     };
 
-    const results = await service.semanticSearch(query);
+    const { results } = await service.semanticSearch(query);
 
     // Image mode: should use vectorScore (0.7), NOT rerankerScore/4 (0.8)
     expect(results[0].score).toBe(0.7);
@@ -847,7 +847,7 @@ describe('VectorSearchService - Image Search Mode', () => {
       searchMode: 'text',
     };
 
-    const results = await service.semanticSearch(query);
+    const { results } = await service.semanticSearch(query);
 
     // Text mode: should use rerankerScore/4 = 0.8
     expect(results[0].score).toBe(0.8);
@@ -865,7 +865,7 @@ describe('VectorSearchService - Image Search Mode', () => {
       // searchMode not specified
     };
 
-    const results = await service.semanticSearch(query);
+    const { results } = await service.semanticSearch(query);
 
     // Default (text mode): should use rerankerScore
     expect(results[0].score).toBe(0.5); // 2.0 / 4

@@ -460,6 +460,7 @@ export type {
   CitationPassage,
   CitedDocument,
   CitationResult,
+  ExtractiveAnswer,
 } from '../schemas/citation-result.schemas';
 
 // DLQ types (PRD-04)

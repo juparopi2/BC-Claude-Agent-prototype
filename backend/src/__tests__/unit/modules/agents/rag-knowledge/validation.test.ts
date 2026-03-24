@@ -80,6 +80,21 @@ describe('applyDefaults', () => {
     expect(result.minRelevanceScore).toBeCloseTo(DEFAULT_THRESHOLD, 4);
   });
 
+  it('defaults responseDetail to "detailed" when not provided', () => {
+    const result = applyDefaults({ query: 'test' });
+    expect(result.responseDetail).toBe('detailed');
+  });
+
+  it('passes through responseDetail "concise" unchanged', () => {
+    const result = applyDefaults({ query: 'test', responseDetail: 'concise' });
+    expect(result.responseDetail).toBe('concise');
+  });
+
+  it('passes through responseDetail "detailed" unchanged', () => {
+    const result = applyDefaults({ query: 'test', responseDetail: 'detailed' });
+    expect(result.responseDetail).toBe('detailed');
+  });
+
   it('defaults top to DEFAULT_TOP_IMAGES for images', () => {
     const result = applyDefaults({ query: 'test', fileTypeCategory: 'images' });
     expect(result.top).toBe(DEFAULT_TOP_IMAGES);
@@ -313,5 +328,36 @@ describe('validateSearchInput (end-to-end pipeline)', () => {
   it('returns error for invalid date in full pipeline', () => {
     const result = validateSearchInput({ query: 'test', dateFrom: 'bad-date' });
     expect('is_error' in result).toBe(true);
+  });
+
+  it('includes responseDetail in output with default "detailed"', () => {
+    const result = validateSearchInput({ query: 'test' });
+    expect('is_error' in result).toBe(false);
+    if (!('is_error' in result)) {
+      expect(result.responseDetail).toBe('detailed');
+    }
+  });
+
+  it('includes responseDetail "concise" in output when provided', () => {
+    const result = validateSearchInput({ query: 'test', responseDetail: 'concise' });
+    expect('is_error' in result).toBe(false);
+    if (!('is_error' in result)) {
+      expect(result.responseDetail).toBe('concise');
+    }
+  });
+
+  it('responseDetail survives the full pipeline (clamp → defaults → overrides → dates)', () => {
+    const result = validateSearchInput({
+      query: 'quarterly report',
+      searchType: 'semantic',
+      top: 5,
+      responseDetail: 'concise',
+      dateFrom: '2026-01-01',
+      dateTo: '2026-03-31',
+    });
+    expect('is_error' in result).toBe(false);
+    if (!('is_error' in result)) {
+      expect(result.responseDetail).toBe('concise');
+    }
   });
 });

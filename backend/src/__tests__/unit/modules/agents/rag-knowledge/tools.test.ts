@@ -323,6 +323,242 @@ describe('searchKnowledgeTool', () => {
       })
     );
   });
+
+  it('concise responseDetail returns only 1 passage per document with excerpt max 100 chars', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            { chunkId: 'chunk-0', content: 'A'.repeat(200), score: 0.9, chunkIndex: 0 },
+            { chunkId: 'chunk-1', content: 'B'.repeat(200), score: 0.8, chunkIndex: 1 },
+            { chunkId: 'chunk-2', content: 'C'.repeat(200), score: 0.7, chunkIndex: 2 },
+          ],
+        },
+      ],
+      totalChunksSearched: 100,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test', responseDetail: 'concise' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed._type).toBe('citation_result');
+    // concise: only the first chunk (slice(0, 1))
+    expect(parsed.documents[0].passages).toHaveLength(1);
+    // concise: excerpt is capped at 100 chars
+    expect(parsed.documents[0].passages[0].excerpt.length).toBeLessThanOrEqual(100);
+  });
+
+  it('detailed responseDetail (default) returns all passages with excerpt max 500 chars', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            { chunkId: 'chunk-0', content: 'A'.repeat(600), score: 0.9, chunkIndex: 0 },
+            { chunkId: 'chunk-1', content: 'B'.repeat(600), score: 0.8, chunkIndex: 1 },
+            { chunkId: 'chunk-2', content: 'C'.repeat(600), score: 0.7, chunkIndex: 2 },
+          ],
+        },
+      ],
+      totalChunksSearched: 100,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test', responseDetail: 'detailed' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed._type).toBe('citation_result');
+    // detailed: all 3 chunks returned
+    expect(parsed.documents[0].passages).toHaveLength(3);
+    // detailed: excerpt is capped at 500 chars
+    for (const passage of parsed.documents[0].passages) {
+      expect(passage.excerpt.length).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it('detailed responseDetail is the default when responseDetail is omitted', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            { chunkId: 'chunk-0', content: 'First chunk content', score: 0.9, chunkIndex: 0 },
+            { chunkId: 'chunk-1', content: 'Second chunk content', score: 0.8, chunkIndex: 1 },
+          ],
+        },
+      ],
+      totalChunksSearched: 50,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    // Without responseDetail, default is 'detailed' → all chunks returned
+    expect(parsed.documents[0].passages).toHaveLength(2);
+  });
+
+  it('concise responseDetail uses highlightedCaption as excerpt when available', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            {
+              chunkId: 'chunk-0',
+              content: 'A'.repeat(200),
+              score: 0.9,
+              chunkIndex: 0,
+              highlightedCaption: 'Highlighted caption text from semantic ranker',
+            },
+          ],
+        },
+      ],
+      totalChunksSearched: 50,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test', responseDetail: 'concise' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    // concise path: excerpt = highlightedCaption ?? content.slice(0, 100)
+    expect(parsed.documents[0].passages[0].excerpt).toBe('Highlighted caption text from semantic ranker');
+  });
+
+  it('detailed responseDetail includes highlightedCaption field in passages when available', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            {
+              chunkId: 'chunk-0',
+              content: 'Full content of the document chunk here',
+              score: 0.9,
+              chunkIndex: 0,
+              highlightedCaption: 'Highlighted caption from ranker',
+            },
+          ],
+        },
+      ],
+      totalChunksSearched: 50,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'test', responseDetail: 'detailed' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed.documents[0].passages[0].highlightedCaption).toBe('Highlighted caption from ranker');
+    // detailed path: excerpt comes from content, not highlightedCaption
+    expect(parsed.documents[0].passages[0].excerpt).toBe('Full content of the document chunk here');
+  });
+
+  it('includes extractiveAnswers in CitationResult when available from search results', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            { chunkId: 'chunk-0', content: 'Revenue was $5M in Q3.', score: 0.9, chunkIndex: 0 },
+          ],
+        },
+      ],
+      totalChunksSearched: 50,
+      threshold: 0.6,
+      extractiveAnswers: [
+        {
+          text: 'Revenue was $5M in Q3.',
+          score: 0.95,
+          highlights: 'Revenue was <em>$5M</em> in Q3.',
+          sourceChunkId: 'chunk-0',
+          sourceFileId: 'FILE-1',
+        },
+      ],
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'Q3 revenue' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed._type).toBe('citation_result');
+    expect(parsed.extractiveAnswers).toHaveLength(1);
+    expect(parsed.extractiveAnswers[0].text).toBe('Revenue was $5M in Q3.');
+    expect(parsed.extractiveAnswers[0].score).toBe(0.95);
+    expect(parsed.extractiveAnswers[0].highlights).toBe('Revenue was <em>$5M</em> in Q3.');
+    expect(parsed.extractiveAnswers[0].sourceChunkId).toBe('chunk-0');
+    expect(parsed.extractiveAnswers[0].sourceFileId).toBe('FILE-1');
+  });
+
+  it('omits extractiveAnswers from CitationResult when not present in search results', async () => {
+    mockSearchRelevantFiles.mockResolvedValue({
+      results: [
+        {
+          fileId: 'FILE-1',
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          relevanceScore: 0.9,
+          isImage: false,
+          topChunks: [
+            { chunkId: 'chunk-0', content: 'Some content.', score: 0.9, chunkIndex: 0 },
+          ],
+        },
+      ],
+      totalChunksSearched: 50,
+      threshold: 0.6,
+    });
+
+    const result = await searchKnowledgeTool.invoke(
+      { query: 'some query' },
+      { configurable: { userId: 'USER-1' } }
+    );
+
+    const parsed = JSON.parse(result);
+    expect(parsed._type).toBe('citation_result');
+    expect(parsed.extractiveAnswers).toBeUndefined();
+  });
 });
 
 describe('findSimilarImagesTool', () => {

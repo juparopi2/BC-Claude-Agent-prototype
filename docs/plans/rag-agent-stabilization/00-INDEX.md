@@ -80,7 +80,7 @@ This initiative addresses all three through tool consolidation, power tool desig
 | [PRD-200](./PRD-200-tool-consolidation-power-search.md) | Tool Consolidation & Power Search Design | 1 — Tool Redesign | **Implemented** (code) | 3-4 days |
 | [PRD-201](./PRD-201-cohere-embed4-infrastructure.md) | Cohere Embed 4 — Infrastructure & Index | 2 — Embedding Model | **Implemented** (code) | 2-3 days |
 | [PRD-202](./PRD-202-cohere-embed4-data-cutover.md) | Cohere Embed 4 — Re-Embedding & Cutover | 3 — Data Migration | **Implemented** (code) | 3-4 days |
-| [PRD-203](./PRD-203-advanced-search-optimization.md) | Advanced Search Capabilities | 4 — Optimization | Proposed | 2-3 days |
+| [PRD-203](./PRD-203-advanced-search-optimization.md) | Advanced Search Capabilities | 4 — Optimization | **Implemented** (code) | 2-3 days |
 | — | [Deployment Runbook](./01-DEPLOYMENT-RUNBOOK.md) | All | **Active** | — |
 | — | [Cleanup Checklist](./03-CLEANUP-CHECKLIST.md) | Post-cutover | Reference | — |
 

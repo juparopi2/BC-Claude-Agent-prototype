@@ -197,7 +197,9 @@ export const indexSchemaV2: SearchIndex = {
     profiles: [
       {
         name: UNIFIED_PROFILE_NAME,
-        algorithmConfigurationName: UNIFIED_ALGORITHM_NAME
+        algorithmConfigurationName: UNIFIED_ALGORITHM_NAME,
+        // PRD-203: Link to vectorizer for query-time vectorization (when configured)
+        ...(process.env.COHERE_ENDPOINT ? { vectorizerName: 'cohere-vectorizer' } : {}),
       },
     ],
     algorithms: [
@@ -211,7 +213,23 @@ export const indexSchemaV2: SearchIndex = {
           metric: 'cosine'
         }
       },
-    ]
+    ],
+    // PRD-203: Native query-time vectorizer via Cohere Embed 4 (Azure AI Foundry)
+    // Only included when Cohere endpoint is configured.
+    // Enables `kind: 'text'` vector queries (Azure generates embeddings at query time).
+    ...(process.env.COHERE_ENDPOINT ? {
+      vectorizers: [
+        {
+          vectorizerName: 'cohere-vectorizer',
+          kind: 'customWebApi' as const,
+          parameters: {
+            uri: `${process.env.COHERE_ENDPOINT}/v2/embed`,
+            httpHeaders: {},
+            httpMethod: 'POST',
+          },
+        },
+      ],
+    } : {}),
   },
 
   // Semantic Search Configuration for Reranking

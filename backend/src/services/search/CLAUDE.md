@@ -84,6 +84,15 @@ Index name: `file-chunks-index`
 
 Name: `semantic-config`. Uses Azure AI Search Semantic Ranker to rerank results by semantic meaning. Content field: `content`. Pricing: Free tier = 1000 queries/month; Standard = unlimited (paid).
 
+**PRD-203 Extractive Features** (always requested when semantic ranker is ON):
+- **Extractive Answers**: Direct answers to questions, extracted from document content. Returns up to 3 answers with confidence scores. Available at top-level `SemanticSearchFullResult.extractiveAnswers`.
+- **Extractive Captions**: Highlighted snippets per result with `<em>` tags. Available per-result as `captionText`/`captionHighlights`.
+- **Response Format Control**: `responseDetail: 'concise'` returns 1 passage/doc with short excerpts (~65% token reduction).
+
+### Query-Time Vectorization (PRD-203)
+
+When `USE_QUERY_TIME_VECTORIZATION=true` (and `USE_UNIFIED_INDEX=true`), Azure AI Search generates embeddings via the native Cohere vectorizer configured in `schema-v2.ts`. The application skips embedding generation and sends `kind: 'text'` vector queries instead of `kind: 'vector'`. Feature flag defaults to `false` — enable after benchmarking confirms overhead < 100ms.
+
 ## Search Modes
 
 ### 1. Vector Search (`VectorSearchService.search()`)

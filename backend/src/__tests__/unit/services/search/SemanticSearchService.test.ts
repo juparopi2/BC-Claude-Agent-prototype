@@ -74,7 +74,7 @@ describe('SemanticSearchService', () => {
     // Helper to setup standard mocks for text-only tests
     const setupStandardMocks = () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
     };
 
     // Helper to create SemanticSearchResult format
@@ -136,7 +136,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
 
       mockFileService.getFile.mockResolvedValue({
         id: 'file-1',
@@ -176,7 +176,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
 
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: `${fid}.txt` } as ParsedFile)
@@ -210,7 +210,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
 
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: `${fid}.txt` } as ParsedFile)
@@ -259,7 +259,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({ userId, query, maxFiles: 3, maxChunksPerFile: 2 });
 
@@ -294,7 +294,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
 
       mockFileService.getFile.mockResolvedValue({
         id: 'file-1',
@@ -326,7 +326,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
 
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: `${fid}.txt` } as ParsedFile)
@@ -360,7 +360,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
 
       mockFileService.getFile.mockResolvedValue({
         id: 'file-1',
@@ -392,7 +392,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       const result = await service.searchRelevantFiles({
         userId,
@@ -502,7 +502,7 @@ describe('SemanticSearchService', () => {
     it('should call semanticSearch with both text and image embeddings', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({ userId, query });
 
@@ -533,7 +533,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: fid === 'file-2' ? 'photo.jpg' : 'doc.txt', mimeType: fid === 'file-2' ? 'image/jpeg' : 'text/plain' } as ParsedFile)
       );
@@ -559,7 +559,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: 'test', mimeType: 'text/plain' } as ParsedFile)
       );
@@ -586,7 +586,7 @@ describe('SemanticSearchService', () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockRejectedValue(
         new Error('Azure Vision not configured')
       );
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
       mockFileService.getFile.mockResolvedValue({ id: 'file-1', name: 'doc.txt' } as ParsedFile);
 
       const result = await service.searchRelevantFiles({ userId, query });
@@ -612,7 +612,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: 'photo.jpg' } as ParsedFile)
       );
@@ -637,7 +637,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
       mockFileService.getFile.mockImplementation((uid: string, fid: string) =>
         Promise.resolve({ id: fid, name: 'test' } as ParsedFile)
       );
@@ -657,7 +657,7 @@ describe('SemanticSearchService', () => {
 
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue(semanticResults);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: semanticResults, extractiveAnswers: [] });
       mockFileService.getFile.mockResolvedValue({ id: 'file-1', name: 'doc.pdf' } as ParsedFile);
 
       const result = await service.searchRelevantFiles({ userId, query });
@@ -681,7 +681,7 @@ describe('SemanticSearchService', () => {
 
     it('should only generate image embedding in image mode (skip text embedding)', async () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -698,7 +698,7 @@ describe('SemanticSearchService', () => {
 
     it('should pass searchMode: image to vectorSearchService.semanticSearch', async () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -720,7 +720,7 @@ describe('SemanticSearchService', () => {
 
     it('should add isImage eq true filter in image mode', async () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -737,7 +737,7 @@ describe('SemanticSearchService', () => {
 
     it('should combine isImage filter with date filter in image mode', async () => {
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -774,7 +774,7 @@ describe('SemanticSearchService', () => {
     it('should add dateFrom filter in text mode', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -792,7 +792,7 @@ describe('SemanticSearchService', () => {
     it('should add dateTo filter in text mode', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -810,7 +810,7 @@ describe('SemanticSearchService', () => {
     it('should combine dateFrom and dateTo filters', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -828,7 +828,7 @@ describe('SemanticSearchService', () => {
     it('should combine mimeType filter with date filter', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,
@@ -847,7 +847,7 @@ describe('SemanticSearchService', () => {
     it('should not add date filter when dateFilter is undefined', async () => {
       mockEmbeddingService.generateTextEmbedding.mockResolvedValue(mockTextEmbedding);
       mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue(mockImageQueryEmbedding);
-      mockVectorSearchService.semanticSearch.mockResolvedValue([]);
+      mockVectorSearchService.semanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
 
       await service.searchRelevantFiles({
         userId,

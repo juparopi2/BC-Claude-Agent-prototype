@@ -181,4 +181,36 @@ export interface SemanticSearchResult {
   chunkIndex: number;
   /** Whether this is an image result */
   isImage: boolean;
+  /** Extractive caption text from Semantic Ranker (PRD-203) */
+  captionText?: string;
+  /** Highlighted caption with <em> tags from Semantic Ranker (PRD-203) */
+  captionHighlights?: string;
+}
+
+// ===== PRD-203: Extractive Search Types =====
+
+/**
+ * Extractive answer from Azure AI Search Semantic Ranker (PRD-203).
+ * Available at the top-level search results (not per-document).
+ */
+export interface ExtractiveSearchAnswer {
+  /** Extracted answer text */
+  text: string;
+  /** Highlighted answer text with <em> tags */
+  highlights?: string;
+  /** Relevance score */
+  score: number;
+  /** Index document key (chunkId) */
+  key: string;
+}
+
+/**
+ * Full result from semanticSearch() including extractive features (PRD-203).
+ * Wraps the per-document results with top-level extractive answers.
+ */
+export interface SemanticSearchFullResult {
+  /** Per-document search results */
+  results: SemanticSearchResult[];
+  /** Top-level extractive answers from Semantic Ranker */
+  extractiveAnswers: ExtractiveSearchAnswer[];
 }

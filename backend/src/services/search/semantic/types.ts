@@ -24,6 +24,8 @@ export interface SemanticChunk {
   content: string;
   score: number;
   chunkIndex: number;
+  /** Highlighted caption from Azure AI Search Semantic Ranker (PRD-203) */
+  highlightedCaption?: string;
 }
 
 export interface SemanticSearchResult {
@@ -35,11 +37,22 @@ export interface SemanticSearchResult {
   mimeType?: string;       // MIME type for frontend display
 }
 
+/** Extractive answer resolved with file context (PRD-203) */
+export interface ResolvedExtractiveAnswer {
+  text: string;
+  score: number;
+  highlights?: string;
+  sourceChunkId: string;
+  sourceFileId?: string;
+}
+
 export interface SemanticSearchResponse {
   results: SemanticSearchResult[];
   query: string;
   threshold: number;
   totalChunksSearched: number;
+  /** Extractive answers from Azure AI Search Semantic Ranker (PRD-203) */
+  extractiveAnswers?: ResolvedExtractiveAnswer[];
 }
 
 export const SEMANTIC_THRESHOLD = 0.55;

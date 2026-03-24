@@ -14,6 +14,8 @@ import {
   ImageSearchResult,
   SemanticSearchQuery,
   SemanticSearchResult,
+  SemanticSearchFullResult,
+  ExtractiveSearchAnswer,
   VECTOR_WEIGHTS,
 } from './types';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
@@ -796,7 +798,7 @@ export class VectorSearchService {
    * @param query - Semantic search query parameters
    * @returns Reranked search results
    */
-  async semanticSearch(query: SemanticSearchQuery): Promise<SemanticSearchResult[]> {
+  async semanticSearch(query: SemanticSearchQuery): Promise<SemanticSearchFullResult> {
     if (!this.searchClient) {
       await this.initializeClients();
     }
@@ -842,10 +844,13 @@ export class VectorSearchService {
     };
 
     // Conditionally enable Semantic Ranker (PRD-200: controlled by useSemanticRanker + queryType)
+    // PRD-203: Always request extractive answers and captions when semantic ranker is ON
     if (useSemanticRanker && effectiveQueryType === 'semantic') {
       searchOptions.queryType = 'semantic';
       searchOptions.semanticSearchOptions = {
         configurationName: SEMANTIC_CONFIG_NAME,
+        answers: { answerType: 'extractive', count: 3, threshold: 0.5 },
+        captions: { captionType: 'extractive', highlight: true },
       };
     }
 
@@ -859,9 +864,18 @@ export class VectorSearchService {
       const vectorQueries: Array<Record<string, unknown>> = [];
 
       if (env.USE_UNIFIED_INDEX) {
-        // PRD-201: Unified path — single vector query on embeddingVector
-        // In unified mode, textEmbedding IS the Cohere embedding (covers both text and image content)
-        if (textEmbedding && textEmbedding.length > 0) {
+        // PRD-203: Query-time vectorization — Azure AI Search generates embedding via native vectorizer
+        if (env.USE_QUERY_TIME_VECTORIZATION) {
+          vectorQueries.push({
+            kind: 'text',
+            text,
+            fields: ['embeddingVector'],
+            kNearestNeighborsCount: fetchTopK,
+            weight: 1.0,
+          });
+        } else if (textEmbedding && textEmbedding.length > 0) {
+          // PRD-201: Unified path — single vector query on embeddingVector
+          // In unified mode, textEmbedding IS the Cohere embedding (covers both text and image content)
           vectorQueries.push({
             kind: 'vector',
             vector: textEmbedding,
@@ -912,6 +926,17 @@ export class VectorSearchService {
       : text;
     const searchResults = await client.search(searchText, searchOptions);
 
+    // PRD-203: Capture top-level extractive answers from Semantic Ranker
+    const rawAnswers = (searchResults as unknown as {
+      answers?: Array<{ score: number; key: string; text: string; highlights?: string }>;
+    }).answers;
+    const extractiveAnswers: ExtractiveSearchAnswer[] = (rawAnswers ?? []).map(a => ({
+      text: a.text,
+      highlights: a.highlights,
+      score: a.score,
+      key: a.key,
+    }));
+
     // Process results
     const results: SemanticSearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -926,6 +951,11 @@ export class VectorSearchService {
       const vectorScore = result.score ?? 0;
       // Semantic Ranker score is in rerankerScore property (0-4 scale)
       const rerankerScore = (result as unknown as { rerankerScore?: number }).rerankerScore;
+
+      // PRD-203: Extract per-result captions from Semantic Ranker
+      const captions = (result as unknown as {
+        captions?: Array<{ text?: string; highlights?: string }>;
+      }).captions;
 
       // Calculate combined score (PRD-200: use useSemanticRanker flag instead of searchMode)
       // - When Semantic Ranker is ON: prefer rerankerScore/4 (normalized to 0-1), else vectorScore
@@ -946,6 +976,8 @@ export class VectorSearchService {
         score,
         chunkIndex: doc.chunkIndex,
         isImage: doc.isImage ?? false,
+        captionText: captions?.[0]?.text,
+        captionHighlights: captions?.[0]?.highlights,
       });
     }
 
@@ -975,10 +1007,10 @@ export class VectorSearchService {
         effectiveQueryType,
         hasOrderBy: !!orderBy,
       },
-      'Semantic search completed (D26/PRD-200)'
+      'Semantic search completed (D26/PRD-200/PRD-203)'
     );
 
-    return finalResults;
+    return { results: finalResults, extractiveAnswers };
   }
 
   /**

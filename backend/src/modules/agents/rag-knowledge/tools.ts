@@ -150,6 +150,8 @@ export const searchKnowledgeTool = tool(
       }
 
       // 6. Build CitationResult for rich rendering
+      // PRD-203: responseDetail controls passage verbosity
+      const isConcise = validated.responseDetail === 'concise';
       const documents: CitedDocument[] = results.results.map((r) => ({
         fileId: r.fileId,
         fileName: r.fileName,
@@ -157,11 +159,19 @@ export const searchKnowledgeTool = tool(
         sourceType: 'blob_storage' as const,
         isImage: r.isImage ?? false,
         documentRelevance: r.relevanceScore,
-        passages: r.topChunks.map((chunk, idx): CitationPassage => ({
-          citationId: `${r.fileId}-${idx}`,
-          excerpt: chunk.content.slice(0, 500),
-          relevanceScore: chunk.score,
-        })),
+        passages: isConcise
+          ? r.topChunks.slice(0, 1).map((chunk, idx): CitationPassage => ({
+              citationId: `${r.fileId}-${idx}`,
+              excerpt: chunk.highlightedCaption ?? chunk.content.slice(0, 100),
+              relevanceScore: chunk.score,
+              highlightedCaption: chunk.highlightedCaption,
+            }))
+          : r.topChunks.map((chunk, idx): CitationPassage => ({
+              citationId: `${r.fileId}-${idx}`,
+              excerpt: chunk.content.slice(0, 500),
+              relevanceScore: chunk.score,
+              highlightedCaption: chunk.highlightedCaption,
+            })),
       }));
 
       const summaryLabel = validated.fileTypeCategory
@@ -175,6 +185,16 @@ export const searchKnowledgeTool = tool(
         totalResults: results.results.length,
         query: validated.query,
         ...(validated.fileTypeCategory ? { fileTypeCategory: validated.fileTypeCategory as FileTypeCategory } : {}),
+        // PRD-203: Include extractive answers when available
+        ...(results.extractiveAnswers?.length ? {
+          extractiveAnswers: results.extractiveAnswers.map(a => ({
+            text: a.text,
+            score: a.score,
+            highlights: a.highlights,
+            sourceChunkId: a.sourceChunkId,
+            sourceFileId: a.sourceFileId,
+          })),
+        } : {}),
       };
 
       return JSON.stringify(citationResult);
@@ -249,6 +269,12 @@ export const searchKnowledgeTool = tool(
         'Result ordering. Default: "relevance" (highest score first). ' +
         '"newest": most recently modified first. "oldest": least recently modified first. ' +
         'Use "newest"/"oldest" when the user wants to browse by date rather than by relevance.'
+      ),
+      responseDetail: z.enum(['concise', 'detailed']).optional().describe(
+        'Controls response verbosity. Default: "detailed". ' +
+        '"concise": returns file names, relevance scores, and extractive answers only (fewer tokens). ' +
+        '"detailed": returns full passages with excerpts (current behavior). ' +
+        'Use "concise" for initial exploration or when you just need to know which files are relevant.'
       ),
     }),
   }

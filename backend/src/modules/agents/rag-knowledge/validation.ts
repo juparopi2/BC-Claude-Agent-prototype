@@ -26,6 +26,8 @@ export interface RawSearchInput {
   dateFrom?: string;
   dateTo?: string;
   sortBy?: 'relevance' | 'newest' | 'oldest';
+  /** PRD-203: Controls response verbosity */
+  responseDetail?: 'concise' | 'detailed';
 }
 
 /** After clamping + defaults + overrides + date validation — all required fields resolved */
@@ -38,6 +40,8 @@ export interface ValidatedSearchInput {
   dateFrom?: string;
   dateTo?: string;
   sortBy: 'relevance' | 'newest' | 'oldest';
+  /** PRD-203: Controls response verbosity (default: 'detailed') */
+  responseDetail: 'concise' | 'detailed';
 }
 
 /** Validation error returned to agent with is_error: true */
@@ -80,6 +84,7 @@ export function applyDefaults(params: RawSearchInput): ValidatedSearchInput {
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
     sortBy: params.sortBy ?? 'relevance',
+    responseDetail: params.responseDetail ?? 'detailed',
   };
 }
 

@@ -122,7 +122,7 @@ describe('SemanticSearchService — Unified Index Path (PRD-201)', () => {
     mockGenerateTextEmbedding.mockClear();
     mockGenerateImageQueryEmbedding.mockClear();
     mockSemanticSearch.mockClear();
-    mockSemanticSearch.mockResolvedValue([]);
+    mockSemanticSearch.mockResolvedValue({ results: [], extractiveAnswers: [] });
   });
 
   // -------------------------------------------------------------------------

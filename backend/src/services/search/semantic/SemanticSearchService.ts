@@ -3,6 +3,7 @@ import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { VECTOR_WEIGHTS } from '@/services/search/types';
 import { getFileService } from '@/services/files/FileService';
 import { createChildLogger } from '@/shared/utils/logger';
+import { env } from '@/infrastructure/config/environment';
 import { getUnifiedEmbeddingService, isUnifiedIndexEnabled } from '../embeddings/EmbeddingServiceFactory';
 import type {
   SemanticSearchOptions,
@@ -101,13 +102,15 @@ export class SemanticSearchService {
     const orderBy = resolveOrderBy(sortBy);
 
     // PRD-200: Route by effective search type (keyword / semantic / hybrid)
+    // PRD-203: Destructure SemanticSearchFullResult to capture extractive answers
     let semanticResults: import('@/services/search/types').SemanticSearchResult[];
+    let extractiveAnswers: import('@/services/search/types').ExtractiveSearchAnswer[] = [];
 
     try {
 
     if (effectiveSearchType === 'keyword') {
       // Keyword mode: BM25 text matching only — skip ALL embedding generation
-      semanticResults = await vectorSearchService.semanticSearch({
+      const fullResult = await vectorSearchService.semanticSearch({
         text: query,
         // No embeddings — pure keyword
         userId,
@@ -122,20 +125,28 @@ export class SemanticSearchService {
         useSemanticRanker: false,
         orderBy,
       });
+      semanticResults = fullResult.results;
+      extractiveAnswers = fullResult.extractiveAnswers;
     } else if (isUnifiedIndexEnabled()) {
       // PRD-201: Unified path — single Cohere embedding for ALL search types
       // In unified vector space, the same text embedding works for both text and image content.
       // searchMode='image' is handled via OData filter (isImage eq true), not a different embedding.
-      const unifiedService = getUnifiedEmbeddingService();
-      if (!unifiedService) {
-        throw new Error('USE_UNIFIED_INDEX is true but Cohere embedding service is not available. Check COHERE_ENDPOINT and COHERE_API_KEY.');
+
+      // PRD-203: When query-time vectorization is enabled, skip application-side embedding.
+      // Azure AI Search generates the embedding via native vectorizer.
+      let textEmbeddingVector: number[] | undefined;
+      if (!env.USE_QUERY_TIME_VECTORIZATION) {
+        const unifiedService = getUnifiedEmbeddingService();
+        if (!unifiedService) {
+          throw new Error('USE_UNIFIED_INDEX is true but Cohere embedding service is not available. Check COHERE_ENDPOINT and COHERE_API_KEY.');
+        }
+        const queryEmbedding = await unifiedService.embedQuery(query);
+        textEmbeddingVector = queryEmbedding.embedding;
       }
 
-      const queryEmbedding = await unifiedService.embedQuery(query);
-
-      semanticResults = await vectorSearchService.semanticSearch({
-        text: effectiveSearchType === 'hybrid' ? query : '',
-        textEmbedding: queryEmbedding.embedding,
+      const fullResult = await vectorSearchService.semanticSearch({
+        text: effectiveSearchType === 'hybrid' || env.USE_QUERY_TIME_VECTORIZATION ? query : '',
+        textEmbedding: textEmbeddingVector,
         // No imageEmbedding — unified vector space covers both text and image content
         userId,
         fetchTopK: maxFiles * maxChunksPerFile * 3,
@@ -148,12 +159,14 @@ export class SemanticSearchService {
         useSemanticRanker: true,
         orderBy,
       });
+      semanticResults = fullResult.results;
+      extractiveAnswers = fullResult.extractiveAnswers;
     } else if (isImageMode) {
       // Image mode (semantic or hybrid): only generate image query embedding (1024d)
       // Visual similarity is the primary signal — no text embedding needed
       const imageQueryEmbedding = await embeddingService.generateImageQueryEmbedding(query, userId, 'visual-search');
 
-      semanticResults = await vectorSearchService.semanticSearch({
+      const fullResult = await vectorSearchService.semanticSearch({
         text: effectiveSearchType === 'hybrid' ? query : '',
         imageEmbedding: imageQueryEmbedding.embedding,
         userId,
@@ -172,6 +185,8 @@ export class SemanticSearchService {
         },
         orderBy,
       });
+      semanticResults = fullResult.results;
+      extractiveAnswers = fullResult.extractiveAnswers;
     } else {
       // Text mode (semantic or hybrid): generate BOTH embeddings in parallel
       const [textEmbedding, imageQueryEmbedding] = await Promise.all([
@@ -183,7 +198,7 @@ export class SemanticSearchService {
         }),
       ]);
 
-      semanticResults = await vectorSearchService.semanticSearch({
+      const fullResult = await vectorSearchService.semanticSearch({
         text: effectiveSearchType === 'hybrid' ? query : '',
         textEmbedding: textEmbedding.embedding,
         imageEmbedding: imageQueryEmbedding?.embedding,
@@ -200,6 +215,8 @@ export class SemanticSearchService {
         },
         orderBy,
       });
+      semanticResults = fullResult.results;
+      extractiveAnswers = fullResult.extractiveAnswers;
     }
 
     } catch (error: unknown) {
@@ -221,6 +238,12 @@ export class SemanticSearchService {
       result => !excludeFileIds.includes(result.fileId)
     );
 
+    // PRD-203: Build chunkId→fileId map for resolving extractive answer sources
+    const chunkToFileMap = new Map<string, string>();
+    for (const result of filteredResults) {
+      chunkToFileMap.set(result.chunkId, result.fileId);
+    }
+
     // 4. Group results by fileId (separate text chunks from images)
     const fileMap = new Map<string, {
       chunks: SemanticChunk[];
@@ -230,6 +253,8 @@ export class SemanticSearchService {
 
     for (const result of filteredResults) {
       const existing = fileMap.get(result.fileId);
+      // PRD-203: Propagate highlighted caption from Semantic Ranker
+      const highlightedCaption = result.captionHighlights ?? result.captionText;
 
       if (result.isImage) {
         // Images: store as single entry with their caption in content
@@ -240,6 +265,7 @@ export class SemanticSearchService {
               content: result.content,
               score: result.score,
               chunkIndex: result.chunkIndex,
+              highlightedCaption,
             }],
             isImage: true,
             maxScore: result.score,
@@ -256,6 +282,7 @@ export class SemanticSearchService {
               content: result.content,
               score: result.score,
               chunkIndex: result.chunkIndex,
+              highlightedCaption,
             }],
             isImage: false,
             maxScore: result.score,
@@ -266,6 +293,7 @@ export class SemanticSearchService {
             content: result.content,
             score: result.score,
             chunkIndex: result.chunkIndex,
+            highlightedCaption,
           });
           if (result.score > existing.maxScore) {
             existing.maxScore = result.score;
@@ -328,13 +356,26 @@ export class SemanticSearchService {
       searchMode,
       sortBy: sortBy ?? 'relevance',
       unifiedIndex: isUnifiedIndexEnabled(),
-    }, 'PRD-200: Semantic search completed');
+      extractiveAnswerCount: extractiveAnswers.length,
+    }, 'PRD-200/PRD-203: Semantic search completed');
+
+    // PRD-203: Resolve extractive answers with file context
+    const resolvedAnswers = extractiveAnswers.length > 0
+      ? extractiveAnswers.map(a => ({
+          text: a.text,
+          score: a.score,
+          highlights: a.highlights,
+          sourceChunkId: a.key,
+          sourceFileId: chunkToFileMap.get(a.key),
+        }))
+      : undefined;
 
     return {
       results: finalResults,
       query,
       threshold,
       totalChunksSearched: semanticResults.length,
+      extractiveAnswers: resolvedAnswers,
     };
   }
 }

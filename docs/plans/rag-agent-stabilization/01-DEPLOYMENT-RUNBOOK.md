@@ -2,7 +2,7 @@
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
 **Created**: 2026-03-24
-**Last Updated**: 2026-03-24 (PRD-202 section added)
+**Last Updated**: 2026-03-24 (PRD-203 section added)
 
 ## Purpose
 
@@ -288,32 +288,62 @@ USE_UNIFIED_INDEX=false
 
 ## PRD-203: Advanced Search Optimization
 
-**Status:** ☐ Pending
-<!-- This section is filled in when PRD-203 implementation starts -->
+**Status:** ☑ Code Complete — pending deployment
+
+### Code Changes Delivered (2026-03-24)
+
+| Component | What was built |
+|---|---|
+| Extractive Answers (F1) | Semantic Ranker returns answers + captions. Propagated through VectorSearchService → SemanticSearchService → tools.ts → CitationResult. |
+| Response Format (F2) | `responseDetail` parameter on `search_knowledge`. Concise mode: 1 passage/doc, ~100 chars. |
+| Query-Time Vectorization (F3) | Vectorizer in schema-v2, `kind: 'text'` queries, skip app-side embedding. Behind feature flag. |
+| Benchmark Script | `scripts/operations/benchmark-search.ts` — compares latency and result quality. |
 
 ### Env Vars
-<!-- TBD -->
+
+| Variable | Value | Where | Required When |
+|---|---|---|---|
+| `USE_QUERY_TIME_VECTORIZATION` | `false` (default) | `.env` / Container App config | Optional — enable after benchmarking |
 
 ### Resources
-- AML vectorizer on `file-chunks-index-v2` (Cohere query-time vectorization)
-<!-- Additional resources TBD -->
+- Cohere vectorizer linked to `file-chunks-index-v2` HNSW profile (conditionally added when `COHERE_ENDPOINT` is set)
 
 ### Migrations
-- Update index schema with AML vectorizer via `createOrUpdateIndex()`
-<!-- Additional migrations TBD -->
+
+Update the v2 index schema to include the vectorizer configuration:
+```bash
+# This happens automatically when the app creates/updates the index
+# Or manually:
+cd backend && npx tsx scripts/search/create-index-v2.ts
+```
 
 ### Feature Flags
-<!-- TBD -->
+
+| Flag | Default | Enable When |
+|---|---|---|
+| `USE_QUERY_TIME_VECTORIZATION` | `false` | After benchmark confirms overhead < 100ms |
+
+F1 (extractive answers) and F2 (response format) have **no feature flags** — they are additive and backward-compatible.
 
 ### Commands
-<!-- TBD: schema update script, vectorizer configuration -->
+
+```bash
+# Benchmark query-time vectorization (requires USE_UNIFIED_INDEX=true)
+cd backend
+npx tsx scripts/operations/benchmark-search.ts --user-id <TEST-USER-UUID>
+# Pass if avg overhead < 100ms
+```
 
 ### Post-Deploy Verification
-- [ ] Extractive answers enabled for semantic queries
-- [ ] Query-time vectorization working (native AML vectorizer)
-- [ ] Response format control (`concise` vs `full`)
-- [ ] HNSW parameter tuning applied
-<!-- Additional verification TBD -->
+
+- [ ] Extractive answers returned for factual queries (e.g., "what is the return policy?")
+- [ ] Highlighted captions present in citation passages
+- [ ] `search_knowledge` tool schema now has 9 parameters (added `responseDetail`)
+- [ ] `responseDetail: 'concise'` returns 1 short passage per document
+- [ ] `responseDetail: 'detailed'` returns full passages (existing behavior)
+- [ ] Keyword search returns no extractive answers (semantic ranker OFF)
+- [ ] `USE_QUERY_TIME_VECTORIZATION=false` → no behavior change
+- [ ] After benchmark: `USE_QUERY_TIME_VECTORIZATION=true` → search works without app-side embedding
 
 ---
 
@@ -331,9 +361,11 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
 6. [ ] **PRD-202**: Quality validation passed (top-5 overlap ≥ 80%)
 7. [ ] **PRD-202**: `USE_UNIFIED_INDEX=true` enabled (dev)
 8. [ ] **PRD-202**: `find_similar_images` verified with 1536d Cohere embeddings
-9. [ ] **PRD-203**: Advanced search optimizations deployed
-10. [ ] **PRD-203**: AML vectorizer configured on `file-chunks-index-v2`
-11. [ ] **PRD-203**: Extractive answers and query-time vectorization verified
+9. [ ] **PRD-203**: Advanced search optimizations deployed (extractive answers, response format, query-time vectorization)
+10. [ ] **PRD-203**: Extractive answers verified for factual queries
+11. [ ] **PRD-203**: `responseDetail: 'concise'` verified (fewer tokens)
+12. [ ] **PRD-203**: Benchmark script run: `npx tsx scripts/operations/benchmark-search.ts`
+13. [ ] **PRD-203**: (Optional) `USE_QUERY_TIME_VECTORIZATION=true` after benchmark passes
 12. [ ] **Cleanup**: Old OpenAI/Vision embedding code paths removed
 13. [ ] **Cleanup**: Old `file-chunks-index` decommissioned (after 30-day rollback window)
 

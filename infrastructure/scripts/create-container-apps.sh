@@ -218,9 +218,11 @@ az containerapp secret set \
     "ms-client-secret=keyvaultref:${KV_REF}/Microsoft-ClientSecret,identityref:system" \
     "microsoft-tenant-id=keyvaultref:${KV_REF}/Microsoft-TenantId,identityref:system" \
     "graph-webhook-url=keyvaultref:${KV_REF}/Graph-WebhookBaseUrl,identityref:system" \
+    "cohere-endpoint=keyvaultref:${KV_REF}/COHERE-ENDPOINT,identityref:system" \
+    "cohere-api-key=keyvaultref:${KV_REF}/COHERE-API-KEY,identityref:system" \
   --output none
 
-echo -e "${GREEN}✓ Backend secrets configured (28 KV references)${NC}"
+echo -e "${GREEN}✓ Backend secrets configured (30 KV references)${NC}"
 echo ""
 
 # ── Grant ACR pull to both apps ───────────────────────────────────────────────

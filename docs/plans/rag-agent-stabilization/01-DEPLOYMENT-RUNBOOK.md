@@ -371,8 +371,8 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
 11. [ ] **PRD-203**: `responseDetail: 'concise'` verified (fewer tokens)
 12. [ ] **PRD-203**: Benchmark script run: `npx tsx scripts/operations/benchmark-search.ts`
 13. [ ] **PRD-203**: (Optional) `USE_QUERY_TIME_VECTORIZATION=true` after benchmark passes
-12. [ ] **Cleanup**: Old OpenAI/Vision embedding code paths removed
-13. [ ] **Cleanup**: Old `file-chunks-index` decommissioned (after 30-day rollback window)
+14. [ ] **Cleanup**: Old OpenAI/Vision embedding code paths removed
+15. [ ] **Cleanup**: Old `file-chunks-index` decommissioned (after 30-day rollback window)
 
 ### Production Environment
 

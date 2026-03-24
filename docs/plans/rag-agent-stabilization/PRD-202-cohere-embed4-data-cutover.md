@@ -268,3 +268,9 @@ After confirming no rollback needed:
 - Extractive answers / semantic captions (PRD-203)
 - Interleaved embedding for documents with embedded images (PRD-203)
 - Cost optimization (batch API pricing vs. real-time) — monitor after cutover
+
+---
+
+## 8. Deployment Runbook
+
+After implementing this PRD, update the deployment section in [01-DEPLOYMENT-RUNBOOK.md](./01-DEPLOYMENT-RUNBOOK.md) with actual commands, env vars, and verification steps.

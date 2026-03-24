@@ -2,6 +2,7 @@ import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/sear
 import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
 import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from './schema';
+import { indexSchemaV2, INDEX_NAME_V2 } from './schema-v2';
 import {
   IndexStats,
   FileChunkWithEmbedding,
@@ -22,6 +23,7 @@ const logger = createChildLogger({ service: 'VectorSearchService' });
 export class VectorSearchService {
   private static instance?: VectorSearchService;
   private searchClient?: SearchClient<Record<string, unknown>>;
+  private searchClientV2?: SearchClient<Record<string, unknown>>;
   private indexClient?: SearchIndexClient;
 
   private constructor() {}
@@ -52,7 +54,8 @@ export class VectorSearchService {
    */
   async initializeClients(
     indexClientOverride?: SearchIndexClient,
-    searchClientOverride?: SearchClient<Record<string, unknown>>
+    searchClientOverride?: SearchClient<Record<string, unknown>>,
+    searchClientV2Override?: SearchClient<Record<string, unknown>>,
   ): Promise<void> {
     if (indexClientOverride) {
       this.indexClient = indexClientOverride;
@@ -78,6 +81,35 @@ export class VectorSearchService {
             new AzureKeyCredential(env.AZURE_SEARCH_KEY)
         );
     }
+
+    // V2 client: initialize when unified index is enabled (PRD-201)
+    if (searchClientV2Override) {
+      this.searchClientV2 = searchClientV2Override;
+    } else if (!this.searchClientV2 && env.USE_UNIFIED_INDEX) {
+      if (!env.AZURE_SEARCH_ENDPOINT || !env.AZURE_SEARCH_KEY) {
+        throw new Error('Azure AI Search credentials not configured');
+      }
+      this.searchClientV2 = new SearchClient(
+        env.AZURE_SEARCH_ENDPOINT,
+        INDEX_NAME_V2,
+        new AzureKeyCredential(env.AZURE_SEARCH_KEY)
+      );
+    }
+  }
+
+  /**
+   * Returns the appropriate SearchClient based on the USE_UNIFIED_INDEX flag.
+   * When unified: returns v2 client (file-chunks-index-v2)
+   * When legacy: returns v1 client (file-chunks-index)
+   */
+  private getActiveSearchClient(): SearchClient<Record<string, unknown>> {
+    if (env.USE_UNIFIED_INDEX && this.searchClientV2) {
+      return this.searchClientV2;
+    }
+    if (!this.searchClient) {
+      throw new Error('Search client not initialized');
+    }
+    return this.searchClient;
   }
 
   async ensureIndexExists(): Promise<void> {
@@ -99,6 +131,22 @@ export class VectorSearchService {
       } else {
         logger.error({ error }, 'Error checking/creating index');
         throw error;
+      }
+    }
+
+    // PRD-201: Also ensure v2 index exists when unified index is enabled
+    if (env.USE_UNIFIED_INDEX) {
+      try {
+        await this.indexClient.getIndex(INDEX_NAME_V2);
+        logger.info(`Index '${INDEX_NAME_V2}' already exists.`);
+      } catch (error: unknown) {
+        if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 404) {
+          logger.info(`Index '${INDEX_NAME_V2}' not found. Creating...`);
+          await this.indexClient.createIndex(indexSchemaV2);
+          logger.info(`Index '${INDEX_NAME_V2}' created successfully.`);
+        } else {
+          throw error;
+        }
       }
     }
   }
@@ -164,9 +212,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     // Normalize IDs to UPPERCASE for consistency
     const documents = chunks.map(chunk => ({
@@ -174,7 +220,10 @@ export class VectorSearchService {
       fileId: chunk.fileId.toUpperCase(),
       userId: chunk.userId.toUpperCase(),
       content: chunk.content,
-      contentVector: chunk.embedding,
+      // PRD-201: Set correct vector field based on index mode
+      ...(env.USE_UNIFIED_INDEX
+        ? { embeddingVector: chunk.embedding }
+        : { contentVector: chunk.embedding }),
       chunkIndex: chunk.chunkIndex,
       tokenCount: chunk.tokenCount,
       embeddingModel: chunk.embeddingModel,
@@ -193,6 +242,7 @@ export class VectorSearchService {
     // Per-document mimeType trace for diagnosing per-chunk field gaps
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i]!;
+      const docRecord = doc as Record<string, unknown>;
       logger.debug({
         docIndex: i,
         chunkId: doc.chunkId,
@@ -201,13 +251,16 @@ export class VectorSearchService {
         mimeTypeType: typeof doc.mimeType,
         isImage: doc.isImage,
         fileStatus: doc.fileStatus,
-        hasContentVector: !!doc.contentVector,
+        hasEmbeddingVector: env.USE_UNIFIED_INDEX ? !!docRecord['embeddingVector'] : !!docRecord['contentVector'],
       }, '[TRACE] indexChunksBatch - per-document field values');
     }
 
     // Diagnostic: log field values for first document to trace field coverage gaps
     if (documents.length > 0) {
       const sample = documents[0]!;
+      const sampleRecord = sample as Record<string, unknown>;
+      const vectorField = env.USE_UNIFIED_INDEX ? 'embeddingVector' : 'contentVector';
+      const vectorValue = sampleRecord[vectorField] as number[] | undefined;
       logger.info(
         {
           sampleChunkId: sample.chunkId,
@@ -216,15 +269,16 @@ export class VectorSearchService {
           mimeTypeType: typeof sample.mimeType,
           isImage: sample.isImage,
           fileStatus: sample.fileStatus,
-          hasContentVector: !!sample.contentVector,
-          contentVectorLength: sample.contentVector?.length ?? 0,
+          hasVectorField: !!vectorValue,
+          vectorFieldName: vectorField,
+          vectorLength: vectorValue?.length ?? 0,
           totalDocuments: documents.length,
         },
         'Indexing text chunks batch - field diagnostic'
       );
     }
 
-    const result = await this.searchClient.uploadDocuments(documents);
+    const result = await client.uploadDocuments(documents);
 
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -245,9 +299,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     const { embedding, userId, top = 10, filter } = query;
 
@@ -267,14 +319,14 @@ export class VectorSearchService {
           {
             kind: 'vector',
             vector: embedding,
-            fields: ['contentVector'],
+            fields: [env.USE_UNIFIED_INDEX ? 'embeddingVector' : 'contentVector'],
             kNearestNeighborsCount: top
           }
         ]
       }
     };
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
     
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -301,9 +353,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     const { text, embedding, userId, top = 10 } = query;
 
@@ -320,14 +370,14 @@ export class VectorSearchService {
           {
             kind: 'vector',
             vector: embedding,
-            fields: ['contentVector'],
+            fields: [env.USE_UNIFIED_INDEX ? 'embeddingVector' : 'contentVector'],
             kNearestNeighborsCount: top
           }
         ]
       }
     };
 
-    const searchResults = await this.searchClient.search(text, searchOptions);
+    const searchResults = await client.search(text, searchOptions);
 
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -354,12 +404,10 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
-    
+    const client = this.getActiveSearchClient();
+
     // Deletion by key is efficient and specific
-    const result = await this.searchClient.deleteDocuments('chunkId', [chunkId]);
+    const result = await client.deleteDocuments('chunkId', [chunkId]);
     
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -372,9 +420,6 @@ export class VectorSearchService {
   async deleteChunksForFile(fileId: string, userId: string): Promise<void> {
     if (!this.searchClient) {
       await this.initializeClients();
-    }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
     }
 
     // 1. Find chunks first
@@ -409,9 +454,6 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
 
     // D24: Normalize userId for Azure AI Search compatibility
     const normalizedUserId = this.normalizeUserId(userId);
@@ -430,12 +472,10 @@ export class VectorSearchService {
    * @returns Number of documents deleted
    */
   private async deleteByQuery(searchOptions: Record<string, unknown>): Promise<number> {
-    if (!this.searchClient) {
-      throw new Error('Search client not initialized');
-    }
+    const client = this.getActiveSearchClient();
 
     // Helper to perform search-then-delete
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
 
     const chunkIds: string[] = [];
     for await (const result of searchResults.results) {
@@ -463,7 +503,7 @@ export class VectorSearchService {
     // For this implementation scope, simple call is sufficient, SDK often handles batching logic or throws if too large,
     // requiring manual batching. Given strict TDD scope, simple is good.
 
-    const result = await this.searchClient.deleteDocuments('chunkId', chunkIds);
+    const result = await client.deleteDocuments('chunkId', chunkIds);
 
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -489,9 +529,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes, fileModifiedAt, siteId, sourceType, parentFolderId } = params;
     const normalizedFileId = fileId.toUpperCase();
@@ -509,7 +547,13 @@ export class VectorSearchService {
       fileId: normalizedFileId,
       userId: normalizedUserId,
       content,
-      imageVector: embedding,
+      // PRD-201: Set correct vector field based on index mode
+      ...(env.USE_UNIFIED_INDEX
+        ? { embeddingVector: embedding }
+        : {
+            imageVector: embedding,
+            ...(contentVector && contentVector.length > 0 ? { contentVector } : {}),
+          }),
       chunkIndex: 0,
       tokenCount: 0,
       embeddingModel: 'azure-vision-vectorize-image',
@@ -536,14 +580,9 @@ export class VectorSearchService {
       mimeTypeOrNullResult: mimeType || null,
       isImage: document.isImage,
       fileStatus: document.fileStatus,
-      hasImageVector: !!document.imageVector,
+      hasEmbeddingVector: env.USE_UNIFIED_INDEX ? !!document.embeddingVector : !!document.imageVector,
       contentLength: typeof document.content === 'string' ? (document.content as string).length : 0,
     }, '[TRACE] indexImageEmbedding - mimeType before SDK upload');
-
-    // Add text embedding of caption for contentVector search path (if available)
-    if (contentVector && contentVector.length > 0) {
-      document.contentVector = contentVector;
-    }
 
     // Diagnostic: log all field values to trace field coverage gaps
     logger.info(
@@ -556,6 +595,7 @@ export class VectorSearchService {
         isImage: document.isImage,
         fileStatus: document.fileStatus,
         hasImageVector: !!document.imageVector,
+        hasEmbeddingVector: !!document.embeddingVector,
         hasContentVector: !!document.contentVector,
         contentVectorLength: (document.contentVector as number[] | undefined)?.length ?? 0,
         contentPreview: typeof document.content === 'string' ? document.content.substring(0, 80) : '(none)',
@@ -565,7 +605,7 @@ export class VectorSearchService {
       'Indexing image embedding - field diagnostic'
     );
 
-    const result = await this.searchClient.uploadDocuments([document]);
+    const result = await client.uploadDocuments([document]);
 
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -596,6 +636,10 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    // NOTE (PRD-201): Always use v1 client for image similarity search.
+    // Stored embeddings in ImageEmbeddingRepository are 1024d (Azure Vision).
+    // V2 index uses 1536d (Cohere) — dimension mismatch until PRD-202 re-embeds images.
+    const imageSearchClient = this.searchClient;
 
     const { embedding, userId, top = 10, minScore = 0 } = query;
 
@@ -624,7 +668,7 @@ export class VectorSearchService {
       },
     };
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await imageSearchClient.search('*', searchOptions);
 
     const results: ImageSearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -702,6 +746,16 @@ export class VectorSearchService {
       logger.error({ error }, 'Failed to update index schema');
       throw error;
     }
+
+    // PRD-201: Also update v2 index schema when unified index is enabled
+    if (env.USE_UNIFIED_INDEX) {
+      try {
+        await this.indexClient.createOrUpdateIndex(indexSchemaV2);
+        logger.info('Index v2 schema updated');
+      } catch (error) {
+        logger.warn({ error }, 'Failed to update v2 index schema (may not exist yet)');
+      }
+    }
   }
 
 
@@ -724,9 +778,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     const {
       text,
@@ -784,30 +836,44 @@ export class VectorSearchService {
     if (useVectorSearch) {
       const vectorQueries: Array<Record<string, unknown>> = [];
 
-      // Resolve vector weights: explicit overrides > searchMode-based defaults
-      const contentWeight = explicitVectorWeights?.contentVector
-        ?? (searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_CONTENT : VECTOR_WEIGHTS.TEXT_MODE_CONTENT);
-      const imageWeight = explicitVectorWeights?.imageVector
-        ?? (searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_IMAGE : VECTOR_WEIGHTS.TEXT_MODE_IMAGE);
+      if (env.USE_UNIFIED_INDEX) {
+        // PRD-201: Unified path — single vector query on embeddingVector
+        // In unified mode, textEmbedding IS the Cohere embedding (covers both text and image content)
+        if (textEmbedding && textEmbedding.length > 0) {
+          vectorQueries.push({
+            kind: 'vector',
+            vector: textEmbedding,
+            fields: ['embeddingVector'],
+            kNearestNeighborsCount: fetchTopK,
+            weight: 1.0,
+          });
+        }
+      } else {
+        // Legacy path: dual vector queries with per-mode weights
+        const contentWeight = explicitVectorWeights?.contentVector
+          ?? (searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_CONTENT : VECTOR_WEIGHTS.TEXT_MODE_CONTENT);
+        const imageWeight = explicitVectorWeights?.imageVector
+          ?? (searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_IMAGE : VECTOR_WEIGHTS.TEXT_MODE_IMAGE);
 
-      if (textEmbedding && textEmbedding.length > 0) {
-        vectorQueries.push({
-          kind: 'vector',
-          vector: textEmbedding,
-          fields: ['contentVector'],
-          kNearestNeighborsCount: fetchTopK,
-          weight: contentWeight,
-        });
-      }
+        if (textEmbedding && textEmbedding.length > 0) {
+          vectorQueries.push({
+            kind: 'vector',
+            vector: textEmbedding,
+            fields: ['contentVector'],
+            kNearestNeighborsCount: fetchTopK,
+            weight: contentWeight,
+          });
+        }
 
-      if (imageEmbedding && imageEmbedding.length > 0) {
-        vectorQueries.push({
-          kind: 'vector',
-          vector: imageEmbedding,
-          fields: ['imageVector'],
-          kNearestNeighborsCount: fetchTopK,
-          weight: imageWeight,
-        });
+        if (imageEmbedding && imageEmbedding.length > 0) {
+          vectorQueries.push({
+            kind: 'vector',
+            vector: imageEmbedding,
+            fields: ['imageVector'],
+            kNearestNeighborsCount: fetchTopK,
+            weight: imageWeight,
+          });
+        }
       }
 
       if (vectorQueries.length > 0) {
@@ -822,7 +888,7 @@ export class VectorSearchService {
     const searchText = (searchMode === 'image' && explicitUseVectorSearch === undefined)
       ? '*'
       : text;
-    const searchResults = await this.searchClient.search(searchText, searchOptions);
+    const searchResults = await client.search(searchText, searchOptions);
 
     // Process results
     const results: SemanticSearchResult[] = [];
@@ -942,9 +1008,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     const normalizedUserId = this.normalizeUserId(userId);
     const normalizedFileId = fileId.toUpperCase();
@@ -961,7 +1025,7 @@ export class VectorSearchService {
       'Marking file as deleting in AI Search'
     );
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
 
     const chunkIds: string[] = [];
     for await (const result of searchResults.results) {
@@ -988,7 +1052,7 @@ export class VectorSearchService {
 
     for (let i = 0; i < mergeDocuments.length; i += batchSize) {
       const batch = mergeDocuments.slice(i, i + batchSize);
-      const result = await this.searchClient.mergeDocuments(batch);
+      const result = await client.mergeDocuments(batch);
 
       const succeeded = result.results.filter(r => r.succeeded).length;
       updatedCount += succeeded;
@@ -1025,9 +1089,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     // Normalize userId to uppercase for Azure AI Search compatibility (D24)
     const normalizedUserId = userId.toUpperCase();
@@ -1040,7 +1102,7 @@ export class VectorSearchService {
     };
 
     const fileIds = new Set<string>();
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
 
     for await (const result of searchResults.results) {
       const doc = result.document as { fileId?: string };
@@ -1071,9 +1133,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
+    const client = this.getActiveSearchClient();
 
     // Normalize userId to uppercase for Azure AI Search compatibility (D24)
     // Also query both cases of fileId to handle legacy data
@@ -1089,7 +1149,7 @@ export class VectorSearchService {
       includeTotalCount: true,
     };
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
     const count = searchResults.count ?? 0;
 
     logger.debug(

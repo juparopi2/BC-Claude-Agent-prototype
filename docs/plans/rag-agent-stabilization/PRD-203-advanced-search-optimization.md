@@ -188,3 +188,9 @@ All changes require A/B benchmarking before deployment.
 - Custom scoring profiles (pre-configured is sufficient)
 - Multi-index federation (single unified index is the goal)
 - Agentic Retrieval (Azure preview, no SLA — revisit when GA)
+
+---
+
+## 8. Deployment Runbook
+
+After implementing this PRD, update the deployment section in [01-DEPLOYMENT-RUNBOOK.md](./01-DEPLOYMENT-RUNBOOK.md) with actual commands, env vars, and verification steps.

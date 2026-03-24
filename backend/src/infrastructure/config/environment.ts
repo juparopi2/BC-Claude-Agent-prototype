@@ -110,6 +110,11 @@ const envSchema = z.object({
   AZURE_VISION_ENDPOINT: z.string().url().optional(),
   AZURE_VISION_KEY: z.string().optional(),
 
+  // Cohere Embed 4 (Unified Embedding Model — PRD-201)
+  USE_UNIFIED_INDEX: z.string().default('false').transform((v) => v === 'true'),
+  COHERE_ENDPOINT: z.string().url().optional(),
+  COHERE_API_KEY: z.string().optional(),
+
   // Azure Audio Services (Speech-to-Text)
   AZURE_AUDIO_ENDPOINT: z.string().url().optional(),
   AZURE_AUDIO_KEY: z.string().optional(),

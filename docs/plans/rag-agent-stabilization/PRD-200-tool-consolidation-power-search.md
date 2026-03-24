@@ -639,3 +639,9 @@ LLM tool_call
 - Pagination (skip/offset — not useful in RAG context where top-K is sufficient)
 - Changes to `CitationResult` schema (output format stays the same)
 - Frontend changes (tools are backend-only; the UI renders CitationResult as-is)
+
+---
+
+## 8. Deployment Runbook
+
+After implementing this PRD, update the deployment section in [01-DEPLOYMENT-RUNBOOK.md](./01-DEPLOYMENT-RUNBOOK.md) with actual commands, env vars, and verification steps.

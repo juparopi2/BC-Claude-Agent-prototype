@@ -114,6 +114,13 @@ param microsoftClientSecret string
 @secure()
 param microsoftTenantId string
 
+@description('Endpoint URL of the Cohere embedding service.')
+param cohereEndpoint string = ''
+
+@description('Primary access key for the Cohere embedding service.')
+@secure()
+param cohereApiKey string = ''
+
 // ============================================================
 // COMPUTED NAMING VARIABLES
 // ============================================================
@@ -306,6 +313,10 @@ module keyvaultSecrets 'modules/keyvault-secrets.bicep' = {
     microsoftClientId: microsoftClientId
     microsoftClientSecret: microsoftClientSecret
     microsoftTenantId: microsoftTenantId
+
+    // ── Optional: Cohere embedding service ────────────────
+    cohereEndpoint: cohereEndpoint
+    cohereApiKey: cohereApiKey
   }
   dependsOn: [
     security

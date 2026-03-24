@@ -3,6 +3,7 @@ import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { VECTOR_WEIGHTS } from '@/services/search/types';
 import { getFileService } from '@/services/files/FileService';
 import { createChildLogger } from '@/shared/utils/logger';
+import { getUnifiedEmbeddingService, isUnifiedIndexEnabled } from '../embeddings/EmbeddingServiceFactory';
 import type {
   SemanticSearchOptions,
   SemanticSearchResult,
@@ -102,6 +103,8 @@ export class SemanticSearchService {
     // PRD-200: Route by effective search type (keyword / semantic / hybrid)
     let semanticResults: import('@/services/search/types').SemanticSearchResult[];
 
+    try {
+
     if (effectiveSearchType === 'keyword') {
       // Keyword mode: BM25 text matching only — skip ALL embedding generation
       semanticResults = await vectorSearchService.semanticSearch({
@@ -117,6 +120,32 @@ export class SemanticSearchService {
         queryType: 'simple',
         useVectorSearch: false,
         useSemanticRanker: false,
+        orderBy,
+      });
+    } else if (isUnifiedIndexEnabled()) {
+      // PRD-201: Unified path — single Cohere embedding for ALL search types
+      // In unified vector space, the same text embedding works for both text and image content.
+      // searchMode='image' is handled via OData filter (isImage eq true), not a different embedding.
+      const unifiedService = getUnifiedEmbeddingService();
+      if (!unifiedService) {
+        throw new Error('USE_UNIFIED_INDEX is true but Cohere embedding service is not available. Check COHERE_ENDPOINT and COHERE_API_KEY.');
+      }
+
+      const queryEmbedding = await unifiedService.embedQuery(query);
+
+      semanticResults = await vectorSearchService.semanticSearch({
+        text: effectiveSearchType === 'hybrid' ? query : '',
+        textEmbedding: queryEmbedding.embedding,
+        // No imageEmbedding — unified vector space covers both text and image content
+        userId,
+        fetchTopK: maxFiles * maxChunksPerFile * 3,
+        finalTopK: maxFiles * maxChunksPerFile * 2,
+        minScore: threshold,
+        additionalFilter: isImageMode
+          ? (additionalFilter ? `isImage eq true and ${additionalFilter}` : 'isImage eq true')
+          : additionalFilter,
+        useVectorSearch: true,
+        useSemanticRanker: true,
         orderBy,
       });
     } else if (isImageMode) {
@@ -171,6 +200,20 @@ export class SemanticSearchService {
         },
         orderBy,
       });
+    }
+
+    } catch (error: unknown) {
+      // Graceful degradation: embedding or search failures return empty results
+      // The RAG tool (searchKnowledgeTool) also wraps this call, but catching here
+      // ensures the service is safe to call directly from any context.
+      const errorInfo = error instanceof Error
+        ? { message: error.message, name: error.name }
+        : { value: String(error) };
+      this.logger.error(
+        { error: errorInfo, userId, query: query.slice(0, 100), effectiveSearchType, searchMode },
+        'Search execution failed — returning empty results'
+      );
+      return { results: [], query, threshold, totalChunksSearched: 0 };
     }
 
     // 3. Filter excluded files
@@ -284,6 +327,7 @@ export class SemanticSearchService {
       effectiveSearchType,
       searchMode,
       sortBy: sortBy ?? 'relevance',
+      unifiedIndex: isUnifiedIndexEnabled(),
     }, 'PRD-200: Semantic search completed');
 
     return {

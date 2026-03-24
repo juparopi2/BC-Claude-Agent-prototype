@@ -1,7 +1,7 @@
 # RAG Agent Stabilization — Master Plan
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
-**Status**: Proposed
+**Status**: In Progress
 **Created**: 2026-03-24
 **Last Updated**: 2026-03-24
 
@@ -77,10 +77,11 @@ This initiative addresses all three through tool consolidation, power tool desig
 
 | PRD | Title | Phase | Status | Est. Effort |
 |---|---|---|---|---|
-| [PRD-200](./PRD-200-tool-consolidation-power-search.md) | Tool Consolidation & Power Search Design | 1 — Tool Redesign | Proposed | 3-4 days |
-| [PRD-201](./PRD-201-cohere-embed4-infrastructure.md) | Cohere Embed 4 — Infrastructure & Index | 2 — Embedding Model | Proposed | 2-3 days |
+| [PRD-200](./PRD-200-tool-consolidation-power-search.md) | Tool Consolidation & Power Search Design | 1 — Tool Redesign | **In Progress** | 3-4 days |
+| [PRD-201](./PRD-201-cohere-embed4-infrastructure.md) | Cohere Embed 4 — Infrastructure & Index | 2 — Embedding Model | **Implemented** (code) | 2-3 days |
 | [PRD-202](./PRD-202-cohere-embed4-data-cutover.md) | Cohere Embed 4 — Re-Embedding & Cutover | 3 — Data Migration | Proposed | 3-4 days |
 | [PRD-203](./PRD-203-advanced-search-optimization.md) | Advanced Search Capabilities | 4 — Optimization | Proposed | 2-3 days |
+| — | [Deployment Runbook](./01-DEPLOYMENT-RUNBOOK.md) | All | **Active** | — |
 
 ### Dependency Chain
 

@@ -1,10 +1,11 @@
 # PRD-201: Cohere Embed 4 — Infrastructure & Index
 
 **Phase**: 2 — Embedding Model
-**Status**: Proposed
+**Status**: Implemented (code complete — pending infrastructure deployment)
 **Prerequisites**: PRD-200 (Tool Consolidation)
 **Estimated Effort**: 2-3 days
 **Created**: 2026-03-24
+**Implemented**: 2026-03-24
 
 ---
 
@@ -254,54 +255,76 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 
 ---
 
-## 5. Complete File Inventory
+## 5. Complete File Inventory (Actual Implementation)
 
-### New Files (4)
+### New Files (4 source + 4 tests)
 
 | File | Purpose |
 |---|---|
-| `backend/src/services/search/embeddings/CohereEmbeddingService.ts` | Cohere Embed 4 client: text, image, interleaved, and batch embedding |
-| `backend/src/services/search/embeddings/EmbeddingServiceFactory.ts` | Factory: returns Cohere or Legacy based on feature flag |
-| `backend/src/services/search/embeddings/types.ts` | `IEmbeddingService` interface shared by Cohere and Legacy implementations |
-| `backend/src/services/search/schema-v2.ts` | New index schema definition (unified vector field, AML vectorizer) |
+| `backend/src/services/search/embeddings/types.ts` | `IEmbeddingService` interface, `EmbeddingInputType`, `EmbeddingResult` |
+| `backend/src/services/search/embeddings/CohereEmbeddingService.ts` | Cohere Embed 4 client: text, image, interleaved, batch. Redis caching, usage tracking, latency logging. |
+| `backend/src/services/search/embeddings/EmbeddingServiceFactory.ts` | `getUnifiedEmbeddingService()` singleton + `isUnifiedIndexEnabled()` gate. NOT class-based — function-based for simplicity. |
+| `backend/src/services/search/schema-v2.ts` | `file-chunks-index-v2` schema: single `embeddingVector` (1536d), `hnsw-profile-unified`, semantic config. AML vectorizer deferred to PRD-203. |
+| `backend/src/__tests__/unit/services/search/embeddings/CohereEmbeddingService.test.ts` | 15 unit tests (text, image, batch, cache, errors, rate limit) |
+| `backend/src/__tests__/unit/services/search/embeddings/EmbeddingServiceFactory.test.ts` | 6 unit tests (flag routing, singleton, reset) |
+| `backend/src/__tests__/unit/services/search/VectorSearchService.unified.test.ts` | 7 tests (routing, field selection, searchImages v1 constraint) |
+| `backend/src/__tests__/unit/services/search/semantic/SemanticSearchService.unified.test.ts` | 7 tests (embedQuery, single vector, image filter, keyword, legacy regression) |
 
-### Modified Files (5)
+### Modified Files (7)
 
 | File | Change |
 |---|---|
-| `backend/src/services/search/VectorSearchService.ts` | Add index routing (v1 vs v2). Simplify vector queries when unified index. Support native vectorizer queries. |
-| `backend/src/services/search/semantic/SemanticSearchService.ts` | Use `EmbeddingServiceFactory`. Single embedding call instead of dual. Remove image embedding fallback logic. |
-| `backend/src/services/search/schema.ts` | Extract shared field definitions. Keep v1 schema as-is. |
-| `backend/src/core/config.ts` | Add `USE_UNIFIED_INDEX` and `COHERE_ENDPOINT` / `COHERE_API_KEY` env vars. |
-| `infrastructure/bicep/modules/cognitive.bicep` | Add Cohere Embed 4 serverless deployment to AI Foundry. |
+| `backend/src/infrastructure/config/environment.ts` | Added `USE_UNIFIED_INDEX` (boolean, default false), `COHERE_ENDPOINT` (URL, optional), `COHERE_API_KEY` (optional) to Zod schema. |
+| `backend/.env.example` | Added Cohere section with documentation. |
+| `backend/src/services/search/VectorSearchService.ts` | Added `searchClientV2`, `getActiveSearchClient()`. All CRUD/search methods route by flag. `searchImages()` stays on v1 (1024d dimension safety). |
+| `backend/src/services/search/semantic/SemanticSearchService.ts` | Added unified path: single `embedQuery()` call when flag=true. Added try/catch for graceful degradation (returns empty results on failure). |
+| `infrastructure/bicep/modules/keyvault-secrets.bicep` | Added conditional `COHERE-ENDPOINT` and `COHERE-API-KEY` secrets. |
+| `infrastructure/bicep/main.bicep` | Added `cohereEndpoint` and `cohereApiKey` parameters, passed to keyvault-secrets module. |
+| `docs/plans/rag-agent-stabilization/01-DEPLOYMENT-RUNBOOK.md` | Created deployment runbook with PRD-201 section complete. |
+
+### Not Modified (deviations from original spec)
+
+| Original Spec | Actual | Reason |
+|---|---|---|
+| `backend/src/services/search/schema.ts` | Not modified | v1 schema kept exactly as-is. New schema in `schema-v2.ts`. |
+| `backend/src/core/config.ts` | Not applicable | Config lives in `infrastructure/config/environment.ts` (correct location). |
+| `infrastructure/bicep/modules/cognitive.bicep` | Not modified | Cohere deployed manually via Azure Portal (no ML workspace in Bicep yet). Secrets via `keyvault-secrets.bicep` instead. |
+| AML vectorizer in schema-v2 | Deferred to PRD-203 | Requires infrastructure-specific params. Schema updated later via `createOrUpdateIndex()`. |
 
 ---
 
 ## 6. Success Criteria
 
-### Infrastructure
+### Infrastructure (pending manual deployment)
 
 - [ ] Cohere Embed 4 deployed as serverless endpoint on Azure AI Foundry (dev environment)
 - [ ] `COHERE_ENDPOINT` and `COHERE_API_KEY` in Key Vault
 - [ ] Endpoint returns 1536d vectors for both text and image inputs
 - [ ] Batch endpoint works for 100+ inputs per request
 
-### Index
+### Index (pending — created on first startup with flag=true)
 
 - [ ] `file-chunks-index-v2` created in Azure AI Search (dev environment)
-- [ ] Single `embeddingVector` field (1536d, HNSW cosine)
-- [ ] Native AML vectorizer configured and functional
-- [ ] Semantic configuration applied
-- [ ] All filterable/sortable fields present
+- [x] Single `embeddingVector` field (1536d, HNSW cosine) — defined in `schema-v2.ts`
+- [ ] ~~Native AML vectorizer configured and functional~~ → Deferred to PRD-203
+- [x] Semantic configuration applied — defined in `schema-v2.ts`
+- [x] All filterable/sortable fields present (17 fields matching v1)
 
-### Service
+### Service (all complete — 2026-03-24)
 
-- [ ] `CohereEmbeddingService` passes unit tests for text, image, interleaved, and batch
-- [ ] `EmbeddingServiceFactory` returns correct implementation based on flag
-- [ ] `VectorSearchService` queries correct index based on flag
-- [ ] `USE_UNIFIED_INDEX=false` preserves all existing behavior (no regression)
-- [ ] `npm run verify:types` passes
-- [ ] `npm run -w backend lint` passes
+- [x] `CohereEmbeddingService` passes unit tests for text, image, interleaved, and batch (15 tests)
+- [x] `EmbeddingServiceFactory` returns correct implementation based on flag (6 tests)
+- [x] `VectorSearchService` queries correct index based on flag (7 tests)
+- [x] `SemanticSearchService` uses single Cohere embedding when unified (7 tests)
+- [x] `USE_UNIFIED_INDEX=false` preserves all existing behavior (no regression — 4091 tests passing)
+- [x] `npm run verify:types` passes (exit code 0)
+- [x] `npm run -w backend lint` passes (0 errors)
+
+### Additional (discovered during implementation)
+
+- [x] `searchImages()` stays on v1 client to prevent 1024d/1536d dimension mismatch (until PRD-202)
+- [x] `SemanticSearchService` has graceful degradation: try/catch returns empty results on embedding/search failure
+- [x] Bicep templates updated: `keyvault-secrets.bicep` + `main.bicep` with conditional Cohere secrets
 
 ---
 
@@ -312,3 +335,9 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 - Removing old index or OpenAI/Vision embedding code (PRD-202)
 - Performance benchmarking Cohere vs. OpenAI (PRD-202 validation)
 - Query-time vectorizer benchmarking (PRD-203)
+
+---
+
+## 8. Deployment Runbook
+
+After implementing this PRD, update the deployment section in [01-DEPLOYMENT-RUNBOOK.md](./01-DEPLOYMENT-RUNBOOK.md) with actual commands, env vars, and verification steps.

@@ -139,6 +139,13 @@ param speechKey string
 @description('Public base URL for Graph webhook notifications (e.g. Container App FQDN). Set after first Container App deployment.')
 param graphWebhookBaseUrl string = ''
 
+@description('Endpoint URL of the Cohere embedding service.')
+param cohereEndpoint string = ''
+
+@description('Primary access key for the Cohere embedding service.')
+@secure()
+param cohereApiKey string = ''
+
 // ============================================================
 // COMPUTED VALUES
 // ============================================================
@@ -409,3 +416,29 @@ resource secretGraphWebhookBaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01
     value: graphWebhookBaseUrl
   }
 }
+
+resource secretCohereEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereEndpoint)) {
+  parent: keyVault
+  name: 'COHERE-ENDPOINT'
+  properties: {
+    value: cohereEndpoint
+  }
+}
+
+resource secretCohereApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereApiKey)) {
+  parent: keyVault
+  name: 'COHERE-API-KEY'
+  properties: {
+    value: cohereApiKey
+  }
+}
+
+// ============================================================
+// OUTPUTS
+// ============================================================
+
+@description('Name of the Cohere endpoint secret (empty string when not deployed).')
+output cohereEndpointSecretName string = !empty(cohereEndpoint) ? secretCohereEndpoint.name : ''
+
+@description('Name of the Cohere API key secret (empty string when not deployed).')
+output cohereApiKeySecretName string = !empty(cohereApiKey) ? secretCohereApiKey.name : ''

@@ -43,6 +43,12 @@ param speechLocation string = 'eastus2'
 @description('Speech / AI Services pricing tier.')
 param speechSku string = 'S0'
 
+@description('Audio transcription model deployment name.')
+param audioTranscriptionModel string = 'gpt-4o-mini-transcribe'
+
+@description('Audio transcription model capacity (tokens per minute, in thousands).')
+param audioTranscriptionCapacity int = 60
+
 // ============================================================
 // RESOURCES
 // ============================================================
@@ -128,6 +134,22 @@ resource speech 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   tags: {
     project: 'MyWorkMate'
     module: 'cognitive'
+  }
+}
+
+resource audioTranscriptionDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  name: audioTranscriptionModel
+  parent: speech
+  sku: {
+    name: 'GlobalStandard'
+    capacity: audioTranscriptionCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: audioTranscriptionModel
+      version: '2025-03-20'
+    }
   }
 }
 

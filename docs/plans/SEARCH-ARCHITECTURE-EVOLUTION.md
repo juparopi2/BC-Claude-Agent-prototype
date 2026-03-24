@@ -1,8 +1,10 @@
 # RAG Agent: Estabilización y Optimización de Tools
 
 > **Fecha**: 2026-03-24
-> **Estado**: Propuesta de implementación
+> **Estado**: ~~Propuesta de implementación~~ → **Superseded by [RAG Agent Stabilization PRDs](./rag-agent-stabilization/00-INDEX.md)**
 > **Alcance**: Consolidación de tools del agente RAG, eliminación de ambiguedades, quick wins
+>
+> **NOTA**: Este documento fue la investigación inicial. El plan de ejecución completo, incluyendo Power Search Tool, Cohere Embed 4, y búsqueda avanzada, está en [`docs/plans/rag-agent-stabilization/`](./rag-agent-stabilization/00-INDEX.md).
 
 ---
 

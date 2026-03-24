@@ -84,6 +84,25 @@ The following files were missing Cohere secret references and were fixed during 
 
 **Lesson learned**: When adding new Key Vault secrets via Bicep, always update ALL consumers: `keyvault-secrets.bicep`, `keyvault.ts`, `create-container-apps.sh`, `backend-deploy.yml`, `production-deploy.yml`, and `.env.example`.
 
+### Integration Tests: Hardcoded Image Vector Dimensions (Fixed 2026-03-24)
+
+Two integration test files had hardcoded 1024-dimension vectors for image embeddings. When `USE_UNIFIED_INDEX=true`, image embeddings route to the V2 index which expects 1536d (Cohere Embed v4), causing `RestError: vector field 'embeddingVector' expects length 1536 but got 1024`.
+
+| File | Fix Applied |
+|---|---|
+| `backend/src/__tests__/integration/search/VectorSearchService.integration.test.ts` | Added `imageDims = env.USE_UNIFIED_INDEX ? 1536 : 1024`, replaced all `new Array(1024)` with `new Array(imageDims)` |
+| `backend/src/__tests__/integration/search/SemanticSearchService.integration.test.ts` | Same pattern — both `describe` blocks updated |
+
+**Cleanup action**: When removing the feature flag, replace `imageDims` with literal `1536` — all image vectors will be 1536d in the unified-only architecture.
+
+### Unit Test: Missing MIME Mock in FileEmbedWorker (Fixed 2026-03-24)
+
+`FileEmbedWorkerV2.test.ts` test "should handle zero chunks (image file)" did not mock `getFileWithScopeMetadata` to return an image MIME type. Without it, the worker defaulted to `mime_type = ''` → non-image branch → `FAILED` instead of `READY`.
+
+**Fix**: Added `mockGetFileWithScopeMetadata.mockResolvedValue({ ...SAMPLE_FILE_META, mime_type: 'image/png' })`.
+
+**Cleanup action**: No further cleanup needed — the fix is permanent.
+
 ### Migration Results (Dev — 2026-03-24)
 
 | Category | Count | Status |

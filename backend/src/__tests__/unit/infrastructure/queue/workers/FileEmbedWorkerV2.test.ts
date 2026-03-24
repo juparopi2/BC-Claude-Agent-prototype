@@ -237,6 +237,7 @@ describe('FileEmbedWorker', () => {
       // Setup mocks
       mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.EMBEDDING);
       mockFindByFileId.mockResolvedValue([]); // No chunks
+      mockGetFileWithScopeMetadata.mockResolvedValue({ ...SAMPLE_FILE_META, mime_type: 'image/png' });
 
       mockTransitionStatus.mockResolvedValue({
         success: true,

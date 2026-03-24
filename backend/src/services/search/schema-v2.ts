@@ -1,4 +1,5 @@
 import type { SearchIndex } from '@azure/search-documents';
+import { env } from '@/infrastructure/config/environment';
 
 export const INDEX_NAME_V2 = 'file-chunks-index-v2';
 
@@ -207,9 +208,9 @@ export const indexSchemaV2: SearchIndex = {
         name: UNIFIED_ALGORITHM_NAME,
         kind: 'hnsw',
         parameters: {
-          m: 4,                // Bi-directional links per node (lower = faster build, less precision)
-          efConstruction: 400, // Size of dynamic candidate list during build
-          efSearch: 500,       // Size of dynamic candidate list during search (higher = better recall)
+          m: env.HNSW_M,                       // Bi-directional links per node (default: 4, proposed: 6 after benchmarking)
+          efConstruction: env.HNSW_EF_CONSTRUCTION, // Size of dynamic candidate list during build (default: 400)
+          efSearch: env.HNSW_EF_SEARCH,         // Size of dynamic candidate list during search (default: 500, proposed: 250)
           metric: 'cosine'
         }
       },

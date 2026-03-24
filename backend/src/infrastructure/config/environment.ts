@@ -116,6 +116,14 @@ const envSchema = z.object({
   COHERE_API_KEY: z.string().optional(),
   // PRD-203: Query-time vectorization via Azure AI Search native vectorizer
   USE_QUERY_TIME_VECTORIZATION: z.string().default('false').transform((v) => v === 'true'),
+  // PRD-203 F5: Configurable HNSW parameters for search performance tuning
+  // NOTE: m and efConstruction only take effect on NEW index creation (build-time params).
+  // efSearch is a query-time parameter and takes effect immediately on existing indexes.
+  HNSW_M: z.string().default('4').transform(Number).pipe(z.number().min(1).max(100)),
+  HNSW_EF_CONSTRUCTION: z.string().default('400').transform(Number).pipe(z.number().min(100).max(1000)),
+  HNSW_EF_SEARCH: z.string().default('500').transform(Number).pipe(z.number().min(100).max(1000)),
+  // Multiplier for fetchTopK = maxFiles * maxChunksPerFile * SEARCH_FETCH_MULTIPLIER
+  SEARCH_FETCH_MULTIPLIER: z.string().default('3').transform(Number).pipe(z.number().min(1).max(5)),
 
   // Azure Audio Services (Speech-to-Text)
   AZURE_AUDIO_ENDPOINT: z.string().url().optional(),

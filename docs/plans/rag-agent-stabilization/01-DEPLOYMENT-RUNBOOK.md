@@ -297,6 +297,7 @@ USE_UNIFIED_INDEX=false
 | Extractive Answers (F1) | Semantic Ranker returns answers + captions. Propagated through VectorSearchService → SemanticSearchService → tools.ts → CitationResult. |
 | Response Format (F2) | `responseDetail` parameter on `search_knowledge`. Concise mode: 1 passage/doc, ~100 chars. |
 | Query-Time Vectorization (F3) | Vectorizer in schema-v2, `kind: 'text'` queries, skip app-side embedding. Behind feature flag. |
+| Performance Tuning (F5) | HNSW params + fetchTopK multiplier configurable via env vars. Defaults unchanged. |
 | Benchmark Script | `scripts/operations/benchmark-search.ts` — compares latency and result quality. |
 
 ### Env Vars
@@ -304,6 +305,10 @@ USE_UNIFIED_INDEX=false
 | Variable | Value | Where | Required When |
 |---|---|---|---|
 | `USE_QUERY_TIME_VECTORIZATION` | `false` (default) | `.env` / Container App config | Optional — enable after benchmarking |
+| `HNSW_M` | `4` (default) | `.env` / Container App config | Optional — build-time param, requires index recreation |
+| `HNSW_EF_CONSTRUCTION` | `400` (default) | `.env` / Container App config | Optional — build-time param, requires index recreation |
+| `HNSW_EF_SEARCH` | `500` (default) | `.env` / Container App config | Optional — query-time param, takes effect immediately |
+| `SEARCH_FETCH_MULTIPLIER` | `3` (default) | `.env` / Container App config | Optional — controls fetchTopK in semantic search |
 
 ### Resources
 - Cohere vectorizer linked to `file-chunks-index-v2` HNSW profile (conditionally added when `COHERE_ENDPOINT` is set)

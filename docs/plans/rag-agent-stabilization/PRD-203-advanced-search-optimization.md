@@ -122,18 +122,25 @@ const embedding = await cohere.embedInterleaved([
 
 **Scope:** Only for documents where images are extracted during processing (PDFs with embedded images). Not a retroactive re-embedding — applies to newly processed/re-processed files.
 
-### 3.5 Performance Tuning
+**Status: DEFERRED** — `CohereEmbeddingService.embedInterleaved()` is fully implemented and tested. The blocker is the upstream file processing pipeline:
+1. `AzureDocIntelligenceProcessor` uses `prebuilt-read` model — extracts TEXT ONLY (no figures)
+2. Switching to `prebuilt-layout` gives bounding regions but NOT actual image pixels
+3. Extracting image pixels requires a PDF rendering library (`pdfjs-dist`, `pdf2pic`) — none in project
+4. Full pipeline change: processor model + page-level processing + image extraction + new chunk type + chunking service + embedding worker (est. 3-5 days)
+5. Impact is Low: most business documents are text-heavy. Standalone uploaded images already in unified vector space.
 
-Post-unification optimizations:
+### 3.5 Performance Tuning — IMPLEMENTED (Configurable)
 
-| Parameter | Current | Proposed | Rationale |
-|---|---|---|---|
-| HNSW `efSearch` | 500 | 250 | Single vector field needs fewer candidates. Benchmark first. |
-| HNSW `m` | 4 | 6 | Slightly higher connectivity for unified space. Benchmark first. |
-| `fetchTopK` multiplier | `maxFiles * maxChunksPerFile * 3` | `maxFiles * maxChunksPerFile * 2` | Unified field = less duplicate effort. |
-| Semantic ranker `k` | 50 (implicit) | 50 (explicit) | Keep at 50 per Microsoft recommendation. |
+All HNSW parameters and the fetchTopK multiplier are now configurable via environment variables. Defaults match current values (no behavioral change until explicitly tuned).
 
-All changes require A/B benchmarking before deployment.
+| Env Var | Default | Proposed | Rationale | Notes |
+|---|---|---|---|---|
+| `HNSW_EF_SEARCH` | 500 | 250 | Single vector field needs fewer candidates | Query-time param — takes effect immediately |
+| `HNSW_M` | 4 | 6 | Higher connectivity for unified space | Build-time param — requires index recreation |
+| `HNSW_EF_CONSTRUCTION` | 400 | 400 | Keep current | Build-time param — requires index recreation |
+| `SEARCH_FETCH_MULTIPLIER` | 3 | 2 | Unified field = less duplicate effort | Applied in SemanticSearchService fetchTopK calculation |
+
+**Important:** `HNSW_M` and `HNSW_EF_CONSTRUCTION` are build-time parameters — Azure AI Search ignores changes on existing indexes. Only `HNSW_EF_SEARCH` (query-time) can be tuned without index recreation. Run `benchmark-search.ts` before changing values in production.
 
 ---
 
@@ -144,8 +151,8 @@ All changes require A/B benchmarking before deployment.
 | Extractive answers & captions | Low (config change) | High (direct answers, fewer tokens) | **P1** | **Implemented** |
 | Response format control | Medium (tool + service change) | Medium (token savings) | **P2** | **Implemented** |
 | Query-time vectorization | Low (conditional flag) | Medium (simplification) | **P2** | **Implemented** (flag OFF) |
-| Interleaved embeddings | Medium (pipeline change) | Low (niche use case) | **P3** | Deferred |
-| Performance tuning | Medium (benchmarking) | Low-Medium (latency) | **P3** | Deferred |
+| Interleaved embeddings | Medium (pipeline change) | Low (niche use case) | **P3** | **Deferred** (see §3.4 rationale) |
+| Performance tuning | Low (configurable params) | Low-Medium (latency) | **P3** | **Implemented** (configurable, defaults unchanged) |
 
 ---
 

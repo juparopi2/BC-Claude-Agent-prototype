@@ -114,7 +114,7 @@ export class SemanticSearchService {
         text: query,
         // No embeddings — pure keyword
         userId,
-        fetchTopK: maxFiles * maxChunksPerFile * 3,
+        fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
         finalTopK: maxFiles * maxChunksPerFile * 2,
         minScore: threshold,
         additionalFilter: isImageMode
@@ -149,7 +149,7 @@ export class SemanticSearchService {
         textEmbedding: textEmbeddingVector,
         // No imageEmbedding — unified vector space covers both text and image content
         userId,
-        fetchTopK: maxFiles * maxChunksPerFile * 3,
+        fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
         finalTopK: maxFiles * maxChunksPerFile * 2,
         minScore: threshold,
         additionalFilter: isImageMode
@@ -170,7 +170,7 @@ export class SemanticSearchService {
         text: effectiveSearchType === 'hybrid' ? query : '',
         imageEmbedding: imageQueryEmbedding.embedding,
         userId,
-        fetchTopK: maxFiles * maxChunksPerFile * 3,
+        fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
         finalTopK: maxFiles * maxChunksPerFile * 2,
         minScore: threshold,
         additionalFilter: additionalFilter
@@ -203,7 +203,7 @@ export class SemanticSearchService {
         textEmbedding: textEmbedding.embedding,
         imageEmbedding: imageQueryEmbedding?.embedding,
         userId,
-        fetchTopK: maxFiles * maxChunksPerFile * 3,
+        fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
         finalTopK: maxFiles * maxChunksPerFile * 2,
         minScore: threshold,
         additionalFilter,

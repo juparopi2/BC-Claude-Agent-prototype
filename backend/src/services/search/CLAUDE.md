@@ -93,6 +93,19 @@ Name: `semantic-config`. Uses Azure AI Search Semantic Ranker to rerank results 
 
 When `USE_QUERY_TIME_VECTORIZATION=true` (and `USE_UNIFIED_INDEX=true`), Azure AI Search generates embeddings via the native Cohere vectorizer configured in `schema-v2.ts`. The application skips embedding generation and sends `kind: 'text'` vector queries instead of `kind: 'vector'`. Feature flag defaults to `false` — enable after benchmarking confirms overhead < 100ms.
 
+### Configurable HNSW Parameters (PRD-203 F5)
+
+HNSW algorithm parameters and the search fetch multiplier are configurable via environment variables:
+
+| Env Var | Default | Type | Description |
+|---|---|---|---|
+| `HNSW_M` | 4 | Build-time | Bi-directional links per node. Requires index recreation to take effect. |
+| `HNSW_EF_CONSTRUCTION` | 400 | Build-time | Candidate list size during index build. Requires index recreation. |
+| `HNSW_EF_SEARCH` | 500 | Query-time | Candidate list size during search. Takes effect immediately. |
+| `SEARCH_FETCH_MULTIPLIER` | 3 | App-side | `fetchTopK = maxFiles * maxChunksPerFile * multiplier`. Lower = fewer candidates, faster. |
+
+**Tuning guidance:** Run `npx tsx scripts/operations/benchmark-search.ts` before changing values. Proposed targets after benchmarking: `HNSW_EF_SEARCH=250`, `HNSW_M=6`, `SEARCH_FETCH_MULTIPLIER=2`.
+
 ## Search Modes
 
 ### 1. Vector Search (`VectorSearchService.search()`)

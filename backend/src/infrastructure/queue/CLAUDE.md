@@ -209,8 +209,23 @@ const registry = getWorkerRegistry();
 await registry.startAll();
 ```
 
+## Scheduled Jobs (MaintenanceWorker)
+
+The `FILE_MAINTENANCE` queue (`concurrency=1`) routes jobs to service singletons via `MaintenanceWorker`:
+
+| Job Name | Cron | Service |
+|---|---|---|
+| `stuck-file-recovery` | Every 15 min | `StuckFileRecoveryService` |
+| `orphan-cleanup` | Daily 03:00 UTC | `OrphanCleanupService` |
+| `batch-timeout` | Every hour | `BatchTimeoutService` |
+| `sync-health-check` | Every 15 min | `SyncHealthCheckService` (PRD-300) |
+| `sync-reconciliation` | Daily 04:00 UTC | `SyncReconciliationService` (PRD-300) |
+
+All jobs use dynamic `import()` inside switch cases (lazy loading). Registration happens in `ScheduledJobManager.initializeMaintenanceJobs()`.
+
 ## Related Documentation
 
 - Main CLAUDE.md: Section 3.1 (Message Processing)
 - File processing pipeline: `domains/files/CLAUDE.md`
+- Sync health: `../../services/sync/health/CLAUDE.md` — PRD-300 health check + reconciliation
 - WebSocket events: `@bc-agent/shared` FILE_WS_EVENTS

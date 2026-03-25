@@ -14,12 +14,22 @@ vi.mock('@/domains/files/cleanup/BatchTimeoutService', () => ({
   getBatchTimeoutService: vi.fn(),
 }));
 
+vi.mock('@/services/sync/health/SyncHealthCheckService', () => ({
+  getSyncHealthCheckService: vi.fn(),
+}));
+
+vi.mock('@/services/sync/health/SyncReconciliationService', () => ({
+  getSyncReconciliationService: vi.fn(),
+}));
+
 vi.mock('@/infrastructure/queue/constants', () => ({
   JOB_NAMES: {
     FILE_MAINTENANCE: {
       STUCK_FILE_RECOVERY: 'v2-stuck-file-recovery',
       ORPHAN_CLEANUP: 'v2-orphan-cleanup',
       BATCH_TIMEOUT: 'v2-batch-timeout',
+      SYNC_HEALTH_CHECK: 'sync-health-check',
+      SYNC_RECONCILIATION: 'sync-reconciliation',
     },
   },
 }));
@@ -29,6 +39,8 @@ describe('MaintenanceWorker', () => {
   let mockStuckService: { run: ReturnType<typeof vi.fn> };
   let mockOrphanService: { run: ReturnType<typeof vi.fn> };
   let mockBatchService: { run: ReturnType<typeof vi.fn> };
+  let mockHealthService: { run: ReturnType<typeof vi.fn> };
+  let mockReconciliationService: { run: ReturnType<typeof vi.fn> };
   let mockLogger: {
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
@@ -52,6 +64,8 @@ describe('MaintenanceWorker', () => {
     mockStuckService = { run: vi.fn().mockResolvedValue({ totalStuck: 0, reEnqueued: 0, permanentlyFailed: 0, byStatus: {} }) };
     mockOrphanService = { run: vi.fn().mockResolvedValue({ orphanBlobs: 0, abandonedUploads: 0, oldFailures: 0 }) };
     mockBatchService = { run: vi.fn().mockResolvedValue({ expiredBatches: 0, deletedFiles: 0 }) };
+    mockHealthService = { run: vi.fn().mockResolvedValue({ scopesChecked: 0, stuckDetected: 0, recovered: 0 }) };
+    mockReconciliationService = { run: vi.fn().mockResolvedValue([]) };
 
     const stuckMod = await import('@/domains/files/recovery/StuckFileRecoveryService');
     vi.mocked(stuckMod.getStuckFileRecoveryService).mockReturnValue(mockStuckService as never);
@@ -61,6 +75,12 @@ describe('MaintenanceWorker', () => {
 
     const batchMod = await import('@/domains/files/cleanup/BatchTimeoutService');
     vi.mocked(batchMod.getBatchTimeoutService).mockReturnValue(mockBatchService as never);
+
+    const healthMod = await import('@/services/sync/health/SyncHealthCheckService');
+    vi.mocked(healthMod.getSyncHealthCheckService).mockReturnValue(mockHealthService as never);
+
+    const reconciliationMod = await import('@/services/sync/health/SyncReconciliationService');
+    vi.mocked(reconciliationMod.getSyncReconciliationService).mockReturnValue(mockReconciliationService as never);
 
     // Mock logger with child() returning itself
     mockLogger = {
@@ -107,6 +127,32 @@ describe('MaintenanceWorker', () => {
     expect(mockBatchService.run).toHaveBeenCalledOnce();
     expect(mockStuckService.run).not.toHaveBeenCalled();
     expect(mockOrphanService.run).not.toHaveBeenCalled();
+  });
+
+  it('should route sync-health-check job to SyncHealthCheckService', async () => {
+    const job = makeJob('sync-health-check', { type: 'sync-health-check' });
+
+    const worker = new MaintenanceWorker({ logger: mockLogger });
+    await worker.process(job);
+
+    expect(mockHealthService.run).toHaveBeenCalledOnce();
+    expect(mockStuckService.run).not.toHaveBeenCalled();
+    expect(mockOrphanService.run).not.toHaveBeenCalled();
+    expect(mockBatchService.run).not.toHaveBeenCalled();
+    expect(mockReconciliationService.run).not.toHaveBeenCalled();
+  });
+
+  it('should route sync-reconciliation job to SyncReconciliationService', async () => {
+    const job = makeJob('sync-reconciliation', { type: 'sync-reconciliation' });
+
+    const worker = new MaintenanceWorker({ logger: mockLogger });
+    await worker.process(job);
+
+    expect(mockReconciliationService.run).toHaveBeenCalledOnce();
+    expect(mockStuckService.run).not.toHaveBeenCalled();
+    expect(mockOrphanService.run).not.toHaveBeenCalled();
+    expect(mockBatchService.run).not.toHaveBeenCalled();
+    expect(mockHealthService.run).not.toHaveBeenCalled();
   });
 
   it('should log warning for unknown job type without throwing', async () => {

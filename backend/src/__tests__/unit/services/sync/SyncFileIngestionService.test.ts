@@ -494,4 +494,101 @@ describe('SyncFileIngestionService', () => {
       expect(onBatchComplete).not.toHaveBeenCalled();
     });
   });
+
+  // ==========================================================================
+  // ingestAll() — deferred dispatch
+  // ==========================================================================
+
+  describe('ingestAll() — deferred dispatch', () => {
+    it('dispatches all files AFTER all batches complete (not interleaved)', async () => {
+      const items = Array.from({ length: 60 }, (_, i) =>
+        makeItem(`EXT-DD-${i}`, `deferred-${i}.pdf`)
+      );
+
+      // All files are new
+      mockFilesFindFirst.mockResolvedValue(null);
+      mockFilesCreate.mockResolvedValue({});
+
+      const callOrder: string[] = [];
+
+      mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const result = await fn(makeTxProxy());
+        callOrder.push('transaction');
+        return result;
+      });
+
+      mockAddFileProcessingFlow.mockImplementation(async () => {
+        callOrder.push('dispatch');
+      });
+
+      await service.ingestAll(items, defaultCtx());
+
+      // 60 items / 25 per batch = 3 batches
+      expect(mockTransaction).toHaveBeenCalledTimes(3);
+      // 60 new files dispatched
+      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(60);
+
+      // All 3 transactions must appear before any dispatch call
+      const firstDispatchIndex = callOrder.indexOf('dispatch');
+      const lastTransactionIndex = callOrder.lastIndexOf('transaction');
+
+      expect(firstDispatchIndex).toBeGreaterThan(-1);
+      expect(lastTransactionIndex).toBeGreaterThan(-1);
+      expect(firstDispatchIndex).toBeGreaterThan(lastTransactionIndex);
+
+      // Verify the exact ordering prefix: 3 transactions then all dispatches
+      expect(callOrder.slice(0, 3)).toEqual(['transaction', 'transaction', 'transaction']);
+      expect(callOrder.slice(3).every((entry) => entry === 'dispatch')).toBe(true);
+    });
+
+    it('ingestBatch still dispatches immediately (not deferred)', async () => {
+      const items = Array.from({ length: 5 }, (_, i) =>
+        makeItem(`EXT-IMM-${i}`, `immediate-${i}.pdf`)
+      );
+
+      // All files are new
+      mockFilesFindFirst.mockResolvedValue(null);
+      mockFilesCreate.mockResolvedValue({});
+
+      await service.ingestBatch(items, defaultCtx());
+
+      // ingestBatch() dispatches right after its single transaction — not deferred
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
+      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(5);
+    });
+
+    it('deferred dispatch sends correct file info for each created file', async () => {
+      const items = [
+        makeItem('EXT-DI-1', 'alpha.pdf', { mimeType: 'application/pdf' }),
+        makeItem('EXT-DI-2', 'beta.docx', { mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+      ];
+
+      // Both files are new
+      mockFilesFindFirst.mockResolvedValue(null);
+      mockFilesCreate.mockResolvedValue({});
+
+      await service.ingestAll(items, defaultCtx());
+
+      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(2);
+
+      // Each call must carry correct context fields and a valid UPPERCASE UUID
+      const calls = mockAddFileProcessingFlow.mock.calls;
+
+      expect(calls[0][0]).toMatchObject({
+        fileId: expect.stringMatching(/^[A-F0-9-]+$/),
+        batchId: SCOPE_ID,
+        userId: USER_ID,
+        mimeType: 'application/pdf',
+        fileName: 'alpha.pdf',
+      });
+
+      expect(calls[1][0]).toMatchObject({
+        fileId: expect.stringMatching(/^[A-F0-9-]+$/),
+        batchId: SCOPE_ID,
+        userId: USER_ID,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        fileName: 'beta.docx',
+      });
+    });
+  });
 });

@@ -83,7 +83,7 @@ export interface EventProcessingJob {
  * - Quota reset processing
  */
 export interface UsageAggregationJob {
-  type: 'hourly' | 'daily' | 'monthly' | 'monthly-invoices' | 'quota-reset';
+  type: string;
   /** Optional: process specific user, or all users if omitted */
   userId?: string;
   /** ISO 8601 date string */
@@ -238,7 +238,7 @@ export interface ExternalFileSyncJob {
  * - poll-delta: Polling fallback for missed webhooks
  */
 export interface SubscriptionMgmtJob {
-  type: 'renew-subscriptions' | 'poll-delta';
+  type: string;
 }
 
 /**

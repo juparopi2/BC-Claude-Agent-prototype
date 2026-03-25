@@ -305,6 +305,8 @@ export type {
   SubscriptionErrorPayload,
   ConnectionExpiredPayload,
   ConnectionDisconnectedPayload,
+  SyncHealthReportPayload,
+  SyncRecoveryCompletedPayload,
 
   // Sync Processing Event types (PRD-117)
   ProcessingProgressPayload,

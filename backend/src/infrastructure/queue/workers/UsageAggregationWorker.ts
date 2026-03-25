@@ -11,6 +11,7 @@ import type { Job } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 import type { UsageAggregationJob } from '../types';
+import { JOB_NAMES } from '../constants';
 
 /**
  * Dependencies for UsageAggregationWorker
@@ -72,31 +73,25 @@ export class UsageAggregationWorker {
       const billingService = getBillingService();
 
       switch (type) {
-        case 'hourly': {
+        case JOB_NAMES.USAGE_AGGREGATION.HOURLY: {
           const hourStart = periodStart ? new Date(periodStart) : this.getLastHourStart();
           const count = await aggregationService.aggregateHourly(hourStart, userId);
           jobLogger.info('Hourly aggregation completed', { usersProcessed: count });
           break;
         }
-        case 'daily': {
+        case JOB_NAMES.USAGE_AGGREGATION.DAILY: {
           const dayStart = periodStart ? new Date(periodStart) : this.getYesterdayStart();
           const count = await aggregationService.aggregateDaily(dayStart, userId);
           jobLogger.info('Daily aggregation completed', { usersProcessed: count });
           break;
         }
-        case 'monthly': {
-          const monthStart = periodStart ? new Date(periodStart) : this.getLastMonthStart();
-          const count = await aggregationService.aggregateMonthly(monthStart, userId);
-          jobLogger.info('Monthly aggregation completed', { usersProcessed: count });
-          break;
-        }
-        case 'monthly-invoices': {
+        case JOB_NAMES.USAGE_AGGREGATION.MONTHLY_INVOICES: {
           const invoiceMonth = periodStart ? new Date(periodStart) : this.getLastMonthStart();
           const count = await billingService.generateAllMonthlyInvoices(invoiceMonth);
           jobLogger.info('Monthly invoices generated', { invoicesCreated: count });
           break;
         }
-        case 'quota-reset': {
+        case JOB_NAMES.USAGE_AGGREGATION.QUOTA_RESET: {
           const count = await aggregationService.resetExpiredQuotas();
           jobLogger.info('Expired quotas reset', { usersReset: count });
           break;

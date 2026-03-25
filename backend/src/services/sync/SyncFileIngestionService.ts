@@ -52,22 +52,76 @@ interface CreatedFileInfo {
 
 export class SyncFileIngestionService {
   /**
-   * Ingest a batch of external file items atomically.
+   * Ingest a batch of external file items atomically AND dispatch to queue.
    *
    * Phase A: All DB writes happen inside a Prisma transaction.
    * Phase B: Queue dispatch happens after the transaction commits.
    *
-   * @returns IngestionResult with counts of created, updated, and errored files
+   * Use this for small/standalone batches. For bulk ingestion (e.g. initial sync),
+   * use ingestAll() which defers queue dispatch until ALL batches complete to
+   * prevent connection pool exhaustion from concurrent pipeline workers.
    */
   async ingestBatch(
     items: ExternalFileItem[],
     ctx: IngestionContext
   ): Promise<IngestionResult> {
+    const { result, createdFiles } = await this._ingestBatchCore(items, ctx);
+
+    // Phase B: Queue dispatch after commit
+    await this._dispatchToQueue(createdFiles, ctx);
+
+    return result;
+  }
+
+  /**
+   * Ingest all items by splitting into batches of INGESTION_BATCH_SIZE.
+   *
+   * IMPORTANT: Queue dispatch is deferred until ALL batches complete.
+   * This prevents connection pool exhaustion — pipeline workers (extract/chunk/embed)
+   * consume DB connections concurrently, and dispatching mid-ingestion can starve
+   * subsequent batch transactions of connections.
+   */
+  async ingestAll(
+    items: ExternalFileItem[],
+    ctx: IngestionContext,
+    onBatchComplete?: (processed: number, total: number) => void,
+  ): Promise<IngestionResult> {
+    const totalResult: IngestionResult = { created: 0, updated: 0, errors: 0 };
+    const allCreatedFiles: CreatedFileInfo[] = [];
+    let processed = 0;
+
+    // Phase A: All DB ingestion first (no queue dispatch)
+    for (let i = 0; i < items.length; i += INGESTION_BATCH_SIZE) {
+      const batch = items.slice(i, i + INGESTION_BATCH_SIZE);
+      const { result, createdFiles } = await this._ingestBatchCore(batch, ctx);
+
+      totalResult.created += result.created;
+      totalResult.updated += result.updated;
+      totalResult.errors += result.errors;
+      allCreatedFiles.push(...createdFiles);
+      processed += batch.length;
+
+      onBatchComplete?.(processed, items.length);
+    }
+
+    // Phase B: Queue dispatch AFTER all batches complete
+    await this._dispatchToQueue(allCreatedFiles, ctx);
+
+    return totalResult;
+  }
+
+  /**
+   * Core batch ingestion: transaction only, no queue dispatch.
+   * Used internally by both ingestBatch() and ingestAll().
+   */
+  private async _ingestBatchCore(
+    items: ExternalFileItem[],
+    ctx: IngestionContext
+  ): Promise<{ result: IngestionResult; createdFiles: CreatedFileInfo[] }> {
     const result: IngestionResult = { created: 0, updated: 0, errors: 0 };
 
-    // Phase A: Atomic DB writes
     // Wrapped in try/catch to prevent MSSQL adapter's EREQINPROG error from
-    // becoming an unhandled rejection that crashes the server (see PRD-119).
+    // becoming an unhandled rejection that crashes the server.
     let createdFiles: CreatedFileInfo[];
     try {
       createdFiles = await prisma.$transaction(async (tx) => {
@@ -102,18 +156,19 @@ export class SyncFileIngestionService {
         'Transaction failed during file ingestion batch'
       );
 
-      // Re-throw so callers (InitialSyncService) can update scope status.
-      // The error is now caught and logged within the promise chain,
-      // so it will NOT become an unhandled rejection.
       throw txErr;
     }
 
     result.created = createdFiles.length;
     result.updated = items.length - createdFiles.length - result.errors;
 
-    // Phase B: Queue dispatch after commit
+    return { result, createdFiles };
+  }
+
+  /** Dispatch created files to the processing queue. */
+  private async _dispatchToQueue(files: CreatedFileInfo[], ctx: IngestionContext): Promise<void> {
     const messageQueue = getMessageQueue();
-    for (const file of createdFiles) {
+    for (const file of files) {
       await messageQueue.addFileProcessingFlow({
         fileId: file.fileId,
         batchId: ctx.scopeId,
@@ -122,37 +177,6 @@ export class SyncFileIngestionService {
         fileName: file.fileName,
       });
     }
-
-    return result;
-  }
-
-  /**
-   * Ingest all items by splitting into batches of INGESTION_BATCH_SIZE.
-   *
-   * Handles the outer batch loop, progress reporting, and result aggregation.
-   * Each batch is processed via ingestBatch() with its own transaction.
-   */
-  async ingestAll(
-    items: ExternalFileItem[],
-    ctx: IngestionContext,
-    onBatchComplete?: (processed: number, total: number) => void,
-  ): Promise<IngestionResult> {
-    const totalResult: IngestionResult = { created: 0, updated: 0, errors: 0 };
-    let processed = 0;
-
-    for (let i = 0; i < items.length; i += INGESTION_BATCH_SIZE) {
-      const batch = items.slice(i, i + INGESTION_BATCH_SIZE);
-      const batchResult = await this.ingestBatch(batch, ctx);
-
-      totalResult.created += batchResult.created;
-      totalResult.updated += batchResult.updated;
-      totalResult.errors += batchResult.errors;
-      processed += batch.length;
-
-      onBatchComplete?.(processed, items.length);
-    }
-
-    return totalResult;
   }
 
   /**

@@ -56,6 +56,8 @@ export const JOB_NAMES = {
     STUCK_FILE_RECOVERY: 'stuck-file-recovery',
     ORPHAN_CLEANUP: 'orphan-cleanup',
     BATCH_TIMEOUT: 'batch-timeout',
+    SYNC_HEALTH_CHECK: 'sync-health-check',
+    SYNC_RECONCILIATION: 'sync-reconciliation',
   },
   EXTERNAL_FILE_SYNC: 'delta-sync',
   SUBSCRIPTION_MGMT: {
@@ -89,6 +91,8 @@ export const CRON_PATTERNS = {
   EVERY_12_HOURS: '0 */12 * * *',
   /** Every 30 minutes */
   EVERY_30_MIN: '*/30 * * * *',
+  /** Every day at 04:00 UTC (sync reconciliation — PRD-300) */
+  DAILY_AT_0400: '0 4 * * *',
 } as const;
 
 /**

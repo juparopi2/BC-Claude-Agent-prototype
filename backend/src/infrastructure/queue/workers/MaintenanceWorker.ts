@@ -1,12 +1,14 @@
 /**
- * MaintenanceWorker (PRD-05)
+ * MaintenanceWorker (PRD-05, PRD-300)
  *
  * Processes the FILE_MAINTENANCE queue. Routes jobs to the appropriate
  * maintenance service based on job name:
  *
- * - stuck-file-recovery → StuckFileRecoveryService
- * - orphan-cleanup → OrphanCleanupService
- * - batch-timeout → BatchTimeoutService
+ * - stuck-file-recovery    → StuckFileRecoveryService
+ * - orphan-cleanup         → OrphanCleanupService
+ * - batch-timeout          → BatchTimeoutService
+ * - sync-health-check      → SyncHealthCheckService  (PRD-300)
+ * - sync-reconciliation    → SyncReconciliationService (PRD-300)
  *
  * @module infrastructure/queue/workers
  */
@@ -65,6 +67,26 @@ export class MaintenanceWorker {
         const service = getBatchTimeoutService();
         const metrics = await service.run();
         jobLog.info({ metrics }, 'Batch timeout processing completed');
+        break;
+      }
+
+      case JOB_NAMES.FILE_MAINTENANCE.SYNC_HEALTH_CHECK: {
+        const { getSyncHealthCheckService } = await import(
+          '@/services/sync/health/SyncHealthCheckService'
+        );
+        const service = getSyncHealthCheckService();
+        const metrics = await service.run();
+        jobLog.info({ metrics }, 'Sync health check completed');
+        break;
+      }
+
+      case JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION: {
+        const { getSyncReconciliationService } = await import(
+          '@/services/sync/health/SyncReconciliationService'
+        );
+        const service = getSyncReconciliationService();
+        const reports = await service.run();
+        jobLog.info({ reportCount: reports.length }, 'Sync reconciliation completed');
         break;
       }
 

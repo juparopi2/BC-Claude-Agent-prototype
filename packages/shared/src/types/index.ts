@@ -400,6 +400,8 @@ export type {
   SubscriptionErrorPayload,
   ConnectionExpiredPayload,
   ConnectionDisconnectedPayload,
+  SyncHealthReportPayload,
+  SyncRecoveryCompletedPayload,
 } from './onedrive.types';
 
 // Sync Processing Event types (PRD-117)

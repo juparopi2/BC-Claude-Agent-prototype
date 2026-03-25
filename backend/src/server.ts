@@ -60,6 +60,7 @@ import folderDuplicateDetectionRoutes from '@/routes/uploads/folder-duplicate-de
 import batchUploadRoutes from '@/routes/uploads/batch.routes';
 import dlqRoutes from '@/routes/uploads/dlq.routes';
 import dashboardRoutes from '@/routes/uploads/dashboard.routes';
+import syncHealthRoutes from './routes/sync-health.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -854,6 +855,8 @@ function configureRoutes(): void {
     app.use('/api/audio', audioRoutes);
     // Connections endpoints (PRD-100)
     app.use('/api/connections', connectionsRoutes);
+    // Sync health and recovery endpoints (PRD-300)
+    app.use('/api/sync', syncHealthRoutes);
     // OneDrive OAuth flow (PRD-101)
     app.use('/api', onedriveAuthRoutes);
     // SharePoint OAuth flow (PRD-111)

@@ -12,6 +12,7 @@ import type { Job } from 'bullmq';
 import { createChildLogger } from '@/shared/utils/logger';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
 import type { SubscriptionMgmtJob } from '../types/jobs.types';
+import { JOB_NAMES } from '../constants';
 
 export class SubscriptionRenewalWorker {
   private readonly log: ILoggerMinimal;
@@ -26,10 +27,10 @@ export class SubscriptionRenewalWorker {
     this.log.info({ jobId: job.id, type }, 'Processing subscription management job');
 
     switch (type) {
-      case 'renew-subscriptions':
+      case JOB_NAMES.SUBSCRIPTION_MGMT.RENEW:
         await this.renewExpiring();
         break;
-      case 'poll-delta':
+      case JOB_NAMES.SUBSCRIPTION_MGMT.POLL:
         await this.pollDelta();
         break;
       default:

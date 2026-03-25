@@ -142,6 +142,38 @@ export interface ConnectionDisconnectedPayload {
   connectionId: string;
 }
 
+export interface SyncHealthReportPayload {
+  userId: string;
+  report: {
+    overallStatus: string;
+    summary: {
+      totalScopes: number;
+      healthyScopes: number;
+      degradedScopes: number;
+      unhealthyScopes: number;
+    };
+    scopes: Array<{
+      scopeId: string;
+      connectionId: string;
+      scopeName: string;
+      syncStatus: string;
+      healthStatus: string;
+      issues: Array<{ type: string; severity: string; message: string }>;
+      lastSyncedAt: string | null;
+    }>;
+  };
+}
+
+export interface SyncRecoveryCompletedPayload {
+  userId: string;
+  action: string;
+  result: {
+    scopesReset: number;
+    scopesRequeued: number;
+    filesRequeued: number;
+  };
+}
+
 export type SyncWebSocketEvent =
   | { type: 'sync:progress' } & SyncProgress
   | { type: 'sync:completed' } & SyncCompletedPayload
@@ -154,4 +186,6 @@ export type SyncWebSocketEvent =
   | { type: 'connection:expired' } & ConnectionExpiredPayload
   | { type: 'connection:disconnected' } & ConnectionDisconnectedPayload
   | { type: 'processing:progress' } & ProcessingProgressPayload
-  | { type: 'processing:completed' } & ProcessingCompletedPayload;
+  | { type: 'processing:completed' } & ProcessingCompletedPayload
+  | { type: 'sync:health_report' } & SyncHealthReportPayload
+  | { type: 'sync:recovery_completed' } & SyncRecoveryCompletedPayload;

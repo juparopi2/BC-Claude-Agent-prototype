@@ -4,7 +4,7 @@
 
 Three-tier sync pipeline for OneDrive and SharePoint: Discovery → Ingestion → Processing. Manages incremental delta sync, webhook subscriptions, folder hierarchy resolution, and scope lifecycle.
 
-## Architecture — 7 Stateless Singletons
+## Architecture — 10 Stateless Singletons
 
 | Service | Responsibility |
 |---|---|
@@ -15,6 +15,9 @@ Three-tier sync pipeline for OneDrive and SharePoint: Discovery → Ingestion �
 | `SubscriptionManager` | Graph webhook lifecycle. `clientState` = 64-byte hex UPPERCASE. Max 30-day expiry. |
 | `ScopeCleanupService` | Cascade deletion (guard: reject if syncing). NULL message_citations. Vector cleanup. |
 | `SyncProgressEmitter` | WebSocket events to per-user rooms (`user:{userId}`). |
+| `SyncHealthCheckService` | PRD-300. Cron every 15min: detect stuck/error scopes, delegate recovery, emit health reports. Also serves `GET /api/sync/health`. |
+| `SyncReconciliationService` | PRD-300. Cron daily 04:00 UTC: compare DB ready files vs Search index, detect drift, optional auto-repair. |
+| `SyncRecoveryService` | PRD-300. Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Manual + automated. |
 
 ## Delta Query Patterns
 
@@ -109,9 +112,11 @@ Tri-state inheritance for include/exclude scoping (PRD-112):
 | `SubscriptionManager.ts` | Graph webhook create/renew/delete |
 | `ScopeCleanupService.ts` | Cascade scope deletion + cleanup |
 | `SyncProgressEmitter.ts` | WebSocket sync progress events |
+| `health/` | Health monitoring + recovery subsystem (see `health/CLAUDE.md`) |
 
 ## Related
 
+- Health & Recovery: `health/CLAUDE.md` — PRD-300 health check, reconciliation, recovery
 - Connectors: `../connectors/CLAUDE.md` — Graph API clients, token management
 - Queue: `../../infrastructure/queue/CLAUDE.md` — BullMQ workers for sync jobs
 - Files domain: `../../domains/files/CLAUDE.md` — Processing pipeline after sync

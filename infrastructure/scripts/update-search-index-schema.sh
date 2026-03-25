@@ -15,10 +15,12 @@ case "$ENVIRONMENT" in
   dev)
     RESOURCE_GROUP="rg-BCAgentPrototype-data-dev"
     SEARCH_SERVICE_NAME="search-bcagent-dev"
+    KEY_VAULT_NAME="kv-bcagent-dev"
     ;;
   prod)
     RESOURCE_GROUP="rg-myworkmate-data-prod"
     SEARCH_SERVICE_NAME="search-myworkmate-prod"
+    KEY_VAULT_NAME="kv-myworkmate-prod"
     ;;
   *)
     echo -e "${RED}Unknown environment: $ENVIRONMENT. Use 'dev' or 'prod'.${NC}"
@@ -26,13 +28,14 @@ case "$ENVIRONMENT" in
     ;;
 esac
 
-INDEX_NAME="file-chunks-index"
-API_VERSION="2024-07-01"
+INDEX_NAME="file-chunks-index-v2"
+API_VERSION="2025-08-01-preview"
 
-echo -e "${BLUE}=== Azure AI Search Index Schema Update ===${NC}"
+echo -e "${BLUE}=== Azure AI Search Index Schema Update (V2) ===${NC}"
 echo -e "Environment: ${ENVIRONMENT}"
 echo -e "Service: ${SEARCH_SERVICE_NAME}"
 echo -e "Index: ${INDEX_NAME}"
+echo -e "API Version: ${API_VERSION}"
 echo ""
 
 # Step 1: Get Admin Key
@@ -50,10 +53,55 @@ echo -e "${GREEN}✓ Admin key retrieved${NC}"
 
 SEARCH_ENDPOINT="https://${SEARCH_SERVICE_NAME}.search.windows.net"
 
-# Full index schema — all fields matching the dev index
-FULL_SCHEMA=$(cat <<'EOF'
+# Step 2: Load vectorizer configuration
+# Prefer environment variables (local use); fall back to Key Vault (CI/CD)
+echo -e "\n${BLUE}Step 2: Loading vectorizer configuration...${NC}"
+
+if [ -n "$COHERE_VECTORIZER_ENDPOINT" ]; then
+  RESOLVED_VECTORIZER_URI="$COHERE_VECTORIZER_ENDPOINT"
+  echo -e "${GREEN}✓ COHERE_VECTORIZER_ENDPOINT loaded from environment${NC}"
+elif [ -n "$COHERE_ENDPOINT" ]; then
+  RESOLVED_VECTORIZER_URI="$COHERE_ENDPOINT"
+  echo -e "${YELLOW}⚠ COHERE_VECTORIZER_ENDPOINT not set — using COHERE_ENDPOINT fallback${NC}"
+else
+  echo -e "${YELLOW}  Fetching COHERE-VECTORIZER-ENDPOINT from Key Vault ${KEY_VAULT_NAME}...${NC}"
+  RESOLVED_VECTORIZER_URI=$(az keyvault secret show \
+    --vault-name "$KEY_VAULT_NAME" \
+    --name "COHERE-VECTORIZER-ENDPOINT" \
+    --query value -o tsv 2>/dev/null || true)
+  if [ -z "$RESOLVED_VECTORIZER_URI" ]; then
+    echo -e "${RED}✗ Could not resolve vectorizer URI from environment or Key Vault${NC}"
+    echo -e "${RED}  Set COHERE_VECTORIZER_ENDPOINT (or COHERE_ENDPOINT) env var, or ensure COHERE-VECTORIZER-ENDPOINT exists in Key Vault ${KEY_VAULT_NAME}${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✓ COHERE-VECTORIZER-ENDPOINT loaded from Key Vault${NC}"
+fi
+
+if [ -n "$COHERE_VECTORIZER_KEY" ]; then
+  RESOLVED_VECTORIZER_KEY="$COHERE_VECTORIZER_KEY"
+  echo -e "${GREEN}✓ COHERE_VECTORIZER_KEY loaded from environment${NC}"
+elif [ -n "$COHERE_API_KEY" ]; then
+  RESOLVED_VECTORIZER_KEY="$COHERE_API_KEY"
+  echo -e "${YELLOW}⚠ COHERE_VECTORIZER_KEY not set — using COHERE_API_KEY fallback${NC}"
+else
+  echo -e "${YELLOW}  Fetching COHERE-VECTORIZER-KEY from Key Vault ${KEY_VAULT_NAME}...${NC}"
+  RESOLVED_VECTORIZER_KEY=$(az keyvault secret show \
+    --vault-name "$KEY_VAULT_NAME" \
+    --name "COHERE-VECTORIZER-KEY" \
+    --query value -o tsv 2>/dev/null || true)
+  if [ -z "$RESOLVED_VECTORIZER_KEY" ]; then
+    echo -e "${RED}✗ Could not resolve vectorizer API key from environment or Key Vault${NC}"
+    echo -e "${RED}  Set COHERE_VECTORIZER_KEY (or COHERE_API_KEY) env var, or ensure COHERE-VECTORIZER-KEY exists in Key Vault ${KEY_VAULT_NAME}${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✓ COHERE-VECTORIZER-KEY loaded from Key Vault${NC}"
+fi
+
+# Full V2 index schema — single unified embeddingVector field (1536d, Cohere Embed v4)
+# Source of truth: backend/src/services/search/schema.ts
+FULL_SCHEMA=$(cat <<EOF
 {
-  "name": "file-chunks-index",
+  "name": "file-chunks-index-v2",
   "fields": [
     {
       "name": "chunkId",
@@ -90,12 +138,13 @@ FULL_SCHEMA=$(cat <<'EOF'
       "analyzer": "standard.lucene"
     },
     {
-      "name": "contentVector",
+      "name": "embeddingVector",
       "type": "Collection(Edm.Single)",
       "searchable": true,
-      "retrievable": true,
+      "stored": true,
+      "hidden": false,
       "dimensions": 1536,
-      "vectorSearchProfile": "hnsw-profile"
+      "vectorSearchProfile": "hnsw-profile-unified"
     },
     {
       "name": "chunkIndex",
@@ -128,14 +177,6 @@ FULL_SCHEMA=$(cat <<'EOF'
       "filterable": true,
       "sortable": true,
       "facetable": false
-    },
-    {
-      "name": "imageVector",
-      "type": "Collection(Edm.Single)",
-      "searchable": true,
-      "retrievable": false,
-      "dimensions": 1024,
-      "vectorSearchProfile": "hnsw-profile-image"
     },
     {
       "name": "isImage",
@@ -214,17 +255,14 @@ FULL_SCHEMA=$(cat <<'EOF'
   "vectorSearch": {
     "profiles": [
       {
-        "name": "hnsw-profile",
-        "algorithm": "hnsw-algorithm"
-      },
-      {
-        "name": "hnsw-profile-image",
-        "algorithm": "hnsw-algorithm-image"
+        "name": "hnsw-profile-unified",
+        "algorithm": "hnsw-unified",
+        "vectorizer": "cohere-vectorizer"
       }
     ],
     "algorithms": [
       {
-        "name": "hnsw-algorithm",
+        "name": "hnsw-unified",
         "kind": "hnsw",
         "hnswParameters": {
           "m": 4,
@@ -232,15 +270,16 @@ FULL_SCHEMA=$(cat <<'EOF'
           "efSearch": 500,
           "metric": "cosine"
         }
-      },
+      }
+    ],
+    "vectorizers": [
       {
-        "name": "hnsw-algorithm-image",
-        "kind": "hnsw",
-        "hnswParameters": {
-          "m": 4,
-          "efConstruction": 400,
-          "efSearch": 500,
-          "metric": "cosine"
+        "vectorizerName": "cohere-vectorizer",
+        "kind": "aml",
+        "amlParameters": {
+          "uri": "${RESOLVED_VECTORIZER_URI}",
+          "key": "${RESOLVED_VECTORIZER_KEY}",
+          "modelName": "Cohere-embed-v4"
         }
       }
     ]
@@ -262,18 +301,17 @@ FULL_SCHEMA=$(cat <<'EOF'
 EOF
 )
 
-# The complete set of fields that must be present in the index
+# The complete set of fields that must be present in the V2 index
 REQUIRED_FIELDS=(
   "chunkId"
   "fileId"
   "userId"
   "content"
-  "contentVector"
+  "embeddingVector"
   "chunkIndex"
   "tokenCount"
   "embeddingModel"
   "createdAt"
-  "imageVector"
   "isImage"
   "mimeType"
   "fileStatus"
@@ -285,8 +323,8 @@ REQUIRED_FIELDS=(
   "parentFolderId"
 )
 
-# Step 2: Check if index exists
-echo -e "\n${BLUE}Step 2: Checking whether index exists...${NC}"
+# Step 3: Check if index exists
+echo -e "\n${BLUE}Step 3: Checking whether index exists...${NC}"
 CURRENT_SCHEMA=$(curl -s -w "\n%{http_code}" \
   "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
   -H "api-key: ${SEARCH_KEY}")
@@ -299,7 +337,7 @@ if [ "$CURRENT_HTTP" = "404" ]; then
   # INDEX DOES NOT EXIST — create it
   # ----------------------------------------------------------------
   echo -e "${YELLOW}⚠ Index not found — creating from scratch...${NC}"
-  echo -e "\n${BLUE}Step 3: Creating index with full schema...${NC}"
+  echo -e "\n${BLUE}Step 4: Creating index with full V2 schema...${NC}"
 
   CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
     "${SEARCH_ENDPOINT}/indexes?api-version=${API_VERSION}" \
@@ -324,7 +362,7 @@ elif [ "$CURRENT_HTTP" = "200" ]; then
   # ----------------------------------------------------------------
   echo -e "${GREEN}✓ Index exists${NC}"
 
-  echo -e "\n${BLUE}Step 3: Checking for missing fields...${NC}"
+  echo -e "\n${BLUE}Step 4: Checking for missing fields...${NC}"
 
   MISSING_FIELDS=()
   for FIELD in "${REQUIRED_FIELDS[@]}"; do
@@ -333,14 +371,21 @@ elif [ "$CURRENT_HTTP" = "200" ]; then
     fi
   done
 
-  # Also check that semantic configuration is present
+  # Check that semantic configuration is present
   HAS_SEMANTIC=true
   if ! echo "$CURRENT_BODY" | grep -q '"semantic"'; then
     HAS_SEMANTIC=false
     echo -e "${YELLOW}⚠ Semantic configuration missing${NC}"
   fi
 
-  if [ ${#MISSING_FIELDS[@]} -eq 0 ] && [ "$HAS_SEMANTIC" = "true" ]; then
+  # Check that the vectorizer is configured
+  HAS_VECTORIZER=true
+  if ! echo "$CURRENT_BODY" | grep -q '"cohere-vectorizer"'; then
+    HAS_VECTORIZER=false
+    echo -e "${YELLOW}⚠ Vectorizer configuration missing${NC}"
+  fi
+
+  if [ ${#MISSING_FIELDS[@]} -eq 0 ] && [ "$HAS_SEMANTIC" = "true" ] && [ "$HAS_VECTORIZER" = "true" ]; then
     echo -e "${GREEN}✓ Index schema is up to date — no update needed${NC}"
     exit 0
   fi
@@ -352,7 +397,7 @@ elif [ "$CURRENT_HTTP" = "200" ]; then
     done
   fi
 
-  echo -e "\n${BLUE}Step 4: Updating index schema via PUT...${NC}"
+  echo -e "\n${BLUE}Step 5: Updating index schema via PUT...${NC}"
 
   UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
     "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
@@ -378,8 +423,8 @@ else
   exit 1
 fi
 
-# Step 5: Verify the result
-echo -e "\n${BLUE}Step 5: Verifying index schema...${NC}"
+# Step 6: Verify the result
+echo -e "\n${BLUE}Step 6: Verifying index schema...${NC}"
 VERIFY=$(curl -s \
   "${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=${API_VERSION}" \
   -H "api-key: ${SEARCH_KEY}")
@@ -399,6 +444,13 @@ if echo "$VERIFY" | grep -q '"semantic"'; then
   echo -e "${GREEN}✓ Semantic configuration present${NC}"
 else
   echo -e "${RED}✗ Semantic configuration missing${NC}"
+  VERIFY_FAILED=true
+fi
+
+if echo "$VERIFY" | grep -q '"cohere-vectorizer"'; then
+  echo -e "${GREEN}✓ Vectorizer configured: cohere-vectorizer (aml/Cohere-embed-v4)${NC}"
+else
+  echo -e "${RED}✗ Vectorizer missing: cohere-vectorizer not found in index response${NC}"
   VERIFY_FAILED=true
 fi
 

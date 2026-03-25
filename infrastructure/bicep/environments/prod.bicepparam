@@ -47,3 +47,9 @@ param encryptionKey = readEnvironmentVariable('ENCRYPTION_KEY')
 param microsoftClientId = readEnvironmentVariable('MICROSOFT_CLIENT_ID')
 param microsoftClientSecret = readEnvironmentVariable('MICROSOFT_CLIENT_SECRET')
 param microsoftTenantId = readEnvironmentVariable('MICROSOFT_TENANT_ID')
+
+// ── Cohere AIServices (Bicep-provisioned in prod) ────────────
+
+param cohereAiServicesName = 'cohere-myworkmate-prod'
+param cohereAiServicesLocation = 'westeurope'
+param cohereCapacity = 50

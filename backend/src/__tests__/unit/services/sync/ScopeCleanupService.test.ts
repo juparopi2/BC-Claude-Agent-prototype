@@ -31,6 +31,7 @@ vi.mock('@/domains/connections', () => ({
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
     $executeRaw: vi.fn(),
+    $transaction: vi.fn((args: unknown) => Array.isArray(args) ? Promise.all(args) : Promise.resolve()),
     files: {
       deleteMany: vi.fn(),
     },

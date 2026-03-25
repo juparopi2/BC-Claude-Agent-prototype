@@ -141,8 +141,7 @@ FULL_SCHEMA=$(cat <<EOF
       "name": "embeddingVector",
       "type": "Collection(Edm.Single)",
       "searchable": true,
-      "stored": true,
-      "hidden": false,
+      "retrievable": true,
       "dimensions": 1536,
       "vectorSearchProfile": "hnsw-profile-unified"
     },
@@ -274,7 +273,7 @@ FULL_SCHEMA=$(cat <<EOF
     ],
     "vectorizers": [
       {
-        "vectorizerName": "cohere-vectorizer",
+        "name": "cohere-vectorizer",
         "kind": "aml",
         "amlParameters": {
           "uri": "${RESOLVED_VECTORIZER_URI}",

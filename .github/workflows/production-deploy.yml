@@ -409,8 +409,8 @@ jobs:
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
-              COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vectorizer-endpoint \
-              COHERE_VECTORIZER_KEY=secretref:cohere-vectorizer-key \
+              COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vec-ep \
+              COHERE_VECTORIZER_KEY=secretref:cohere-vec-key \
               COOKIE_DOMAIN=secretref:cookie-domain
 
           # Get the new revision name and its dedicated FQDN for health checks

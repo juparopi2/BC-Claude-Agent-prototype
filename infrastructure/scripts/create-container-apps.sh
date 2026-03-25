@@ -220,8 +220,8 @@ az containerapp secret set \
     "graph-webhook-url=keyvaultref:${KV_REF}/Graph-WebhookBaseUrl,identityref:system" \
     "cohere-endpoint=keyvaultref:${KV_REF}/COHERE-ENDPOINT,identityref:system" \
     "cohere-api-key=keyvaultref:${KV_REF}/COHERE-API-KEY,identityref:system" \
-    "cohere-vectorizer-endpoint=keyvaultref:${KV_REF}/COHERE-VECTORIZER-ENDPOINT,identityref:system" \
-    "cohere-vectorizer-key=keyvaultref:${KV_REF}/COHERE-VECTORIZER-KEY,identityref:system" \
+    "cohere-vec-ep=keyvaultref:${KV_REF}/COHERE-VECTORIZER-ENDPOINT,identityref:system" \
+    "cohere-vec-key=keyvaultref:${KV_REF}/COHERE-VECTORIZER-KEY,identityref:system" \
     "cookie-domain=keyvaultref:${KV_REF}/Cookie-Domain,identityref:system" \
   --output none
 

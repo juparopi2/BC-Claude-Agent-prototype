@@ -124,8 +124,8 @@ jobs:
               graph-webhook-url=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Graph-WebhookBaseUrl,identityref:system \
               cohere-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-ENDPOINT,identityref:system \
               cohere-api-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-API-KEY,identityref:system \
-              cohere-vectorizer-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-ENDPOINT,identityref:system \
-              cohere-vectorizer-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-KEY,identityref:system
+              cohere-vec-ep=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-ENDPOINT,identityref:system \
+              cohere-vec-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-KEY,identityref:system
 
           # Step 4: Update to the actual backend image with env vars
           # Get frontend URL for CORS configuration
@@ -200,8 +200,8 @@ jobs:
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
-              COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vectorizer-endpoint \
-              COHERE_VECTORIZER_KEY=secretref:cohere-vectorizer-key \
+              COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vec-ep \
+              COHERE_VECTORIZER_KEY=secretref:cohere-vec-key \
               COOKIE_DOMAIN=secretref:cookie-domain
 
           # Update ingress configuration for the backend
@@ -243,8 +243,8 @@ jobs:
               graph-webhook-url=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/Graph-WebhookBaseUrl,identityref:system \
               cohere-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-ENDPOINT,identityref:system \
               cohere-api-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-API-KEY,identityref:system \
-              cohere-vectorizer-endpoint=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-ENDPOINT,identityref:system \
-              cohere-vectorizer-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-KEY,identityref:system
+              cohere-vec-ep=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-ENDPOINT,identityref:system \
+              cohere-vec-key=keyvaultref:https://${{ vars.KEY_VAULT_NAME }}.vault.azure.net/secrets/COHERE-VECTORIZER-KEY,identityref:system
           echo "✅ Secrets configured from Key Vault"
 
       - name: Update Container App (if exists)
@@ -321,8 +321,8 @@ jobs:
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
-              COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vectorizer-endpoint \
-              COHERE_VECTORIZER_KEY=secretref:cohere-vectorizer-key \
+              COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vec-ep \
+              COHERE_VECTORIZER_KEY=secretref:cohere-vec-key \
               COOKIE_DOMAIN=secretref:cookie-domain
 
       - name: Configure Ingress

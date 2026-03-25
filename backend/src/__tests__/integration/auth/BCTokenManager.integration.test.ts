@@ -40,11 +40,14 @@ describe('BCTokenManager Integration', () => {
     await executeQuery('DELETE FROM users WHERE id = @id', { id: testUserId });
 
     // Create test user with unique email
-    await executeQuery(
+    const insertResult = await executeQuery(
       `INSERT INTO users (id, email, full_name, created_at, updated_at)
        VALUES (@id, @email, 'Test BC Token User', GETDATE(), GETDATE())`,
       { id: testUserId, email: testEmail }
     );
+    if (!insertResult.rowsAffected[0]) {
+      throw new Error(`beforeEach: Failed to create test user ${testUserId}`);
+    }
 
     vi.clearAllMocks();
   });
@@ -76,7 +79,7 @@ describe('BCTokenManager Integration', () => {
     );
 
     const user = dbResult.recordset[0];
-    expect(user).toBeTruthy();
+    expect(user, `User ${testUserId} not found after storeBCToken`).toBeTruthy();
     expect(user!.bc_access_token_encrypted).toBeTruthy();
     expect(user!.bc_token_expires_at).toBeTruthy();
 
@@ -106,6 +109,7 @@ describe('BCTokenManager Integration', () => {
       'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
+    expect(initialResult.recordset[0], `User ${testUserId} not found after initial storeBCToken`).toBeTruthy();
     const initialEncrypted = initialResult.recordset[0]!.bc_access_token_encrypted;
 
     // ========== ACT: Store new token ==========
@@ -120,6 +124,7 @@ describe('BCTokenManager Integration', () => {
       'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
+    expect(updatedResult.recordset[0], `User ${testUserId} not found after updated storeBCToken`).toBeTruthy();
     const updatedEncrypted = updatedResult.recordset[0]!.bc_access_token_encrypted;
 
     // Encrypted value should be different (different plaintext + different IV)
@@ -139,6 +144,7 @@ describe('BCTokenManager Integration', () => {
       'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
+    expect(beforeClear.recordset[0], `User ${testUserId} not found after storeBCToken`).toBeTruthy();
     expect(beforeClear.recordset[0]!.bc_access_token_encrypted).toBeTruthy();
 
     // ========== ACT ==========
@@ -154,6 +160,7 @@ describe('BCTokenManager Integration', () => {
     );
 
     const user = afterClear.recordset[0];
+    expect(user, `User ${testUserId} not found after clearBCToken`).toBeTruthy();
     expect(user!.bc_access_token_encrypted).toBeNull();
     expect(user!.bc_token_expires_at).toBeNull();
   });
@@ -186,6 +193,7 @@ describe('BCTokenManager Integration', () => {
       'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
+    expect(firstResult.recordset[0], `User ${testUserId} not found after first storeBCToken`).toBeTruthy();
     const firstEncrypted = firstResult.recordset[0]!.bc_access_token_encrypted;
 
     // Store again (overwrites)
@@ -195,6 +203,7 @@ describe('BCTokenManager Integration', () => {
       'SELECT bc_access_token_encrypted FROM users WHERE id = @id',
       { id: testUserId }
     );
+    expect(secondResult.recordset[0], `User ${testUserId} not found after second storeBCToken`).toBeTruthy();
     const secondEncrypted = secondResult.recordset[0]!.bc_access_token_encrypted;
 
     // ========== ASSERT: Different ciphertext due to random IV ==========

@@ -232,6 +232,18 @@ describe('BCTokenManager', () => {
       );
     });
 
+    it('should throw when user not found (0 rows affected)', async () => {
+      const tokenData: TokenAcquisitionResult = {
+        accessToken: 'test-token',
+        expiresAt: new Date(Date.now() + 3600000),
+      };
+
+      mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [0] });
+
+      await expect(tokenManager.storeBCToken('NONEXISTENT-USER', tokenData))
+        .rejects.toThrow('User NONEXISTENT-USER not found');
+    });
+
     it('should handle database write errors', async () => {
       const tokenData: TokenAcquisitionResult = {
         accessToken: 'test-token',

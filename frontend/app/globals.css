@@ -78,6 +78,7 @@
 
   /* BC Agent Custom Variables */
   --primary: hsl(221.2 83.2% 53.3%);          /* Azul BC - color principal de Business Central */
+  --primary-glow: 59 130 246;                 /* RGB for glow shadow (matches primary blue) */
   --bc-green: hsl(142 76% 36%);               /* Verde éxito para confirmaciones */
   --bc-amber: hsl(45 93% 47%);                /* Amber para thinking/processing */
   --thinking-bg: hsl(45 100% 96%);            /* Fondo suave para secciones de thinking */
@@ -118,6 +119,7 @@
   --sidebar-ring: oklch(0.551 0.027 264.364);
 
   /* BC Agent Custom Variables - Dark Mode */
+  --primary-glow: 96 165 250;                 /* RGB for glow shadow (brighter for dark mode) */
   --bc-green: hsl(142 70% 45%);               /* Verde éxito más brillante en dark */
   --bc-amber: hsl(45 93% 55%);                /* Amber más brillante en dark */
   --thinking-bg: hsl(45 20% 15%);             /* Fondo oscuro para thinking */
@@ -130,6 +132,18 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Glow ping animation for suggestion card */
+@keyframes glow-ping {
+  0%, 100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.015);
   }
 }
 

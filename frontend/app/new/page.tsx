@@ -18,8 +18,7 @@
 
 import { useState } from 'react';
 import { MainLayout, Header, LeftPanel, RightPanel } from '@/components/layout';
-import { Button } from '@/components/ui/button';
-import { MessageSquare, HelpCircle, Loader2 } from 'lucide-react';
+import { MessageSquare, Sparkles, Loader2 } from 'lucide-react';
 import ChatInput from '@/components/chat/ChatInput';
 import { usePendingChat } from '@/src/domains/chat';
 
@@ -113,18 +112,30 @@ export default function Home() {
               Your AI assistant for seamless business operations
             </p>
 
-            {/* Suggestion button */}
-            <div className="flex justify-center mt-4">
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => handleSuggestion('What can you do for my business?')}
-                disabled={isSubmitting}
-              >
-                <HelpCircle className="size-4" />
-                What can you do for my business?
-              </Button>
-            </div>
+            {/* Suggestion card */}
+            <button
+              type="button"
+              onClick={() => handleSuggestion('What can you do for my business?')}
+              disabled={isSubmitting}
+              className="group relative mt-4 w-full max-w-xs rounded-xl border border-primary/40 bg-primary/5 px-6 py-4 text-left transition-all duration-300 hover:border-primary/70 hover:bg-primary/10 hover:shadow-[0_0_20px_rgba(var(--primary-glow),0.25)] hover:-translate-y-0.5 active:translate-y-0 disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+            >
+              {/* Glow pulse ring */}
+              <span className="pointer-events-none absolute inset-0 rounded-xl border border-primary/20 animate-[glow-ping_2.5s_ease-in-out_infinite]" />
+
+              <div className="flex items-center gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors group-hover:bg-primary/25">
+                  <Sparkles className="size-5" />
+                </span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold text-foreground">
+                    What can you do for my business?
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Discover how MyWorkMate can help
+                  </span>
+                </div>
+              </div>
+            </button>
 
             {/* Loading indicator */}
             {isSubmitting && (

@@ -54,7 +54,7 @@ export function AgentSelectorDropdown({ disabled, value, onChange }: AgentSelect
                 type="button"
                 disabled={isDisabled}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-md border px-3 h-8 text-xs font-medium',
+                  'inline-flex items-center gap-1.5 rounded-md border px-3 h-8 text-xs font-medium cursor-pointer',
                   'transition-colors duration-150',
                   'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -93,7 +93,7 @@ export function AgentSelectorDropdown({ disabled, value, onChange }: AgentSelect
                       type="button"
                       onClick={() => handleSelect(agent.id)}
                       className={cn(
-                        'flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-xs',
+                        'flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-xs cursor-pointer',
                         'transition-colors duration-100 text-left',
                         'hover:bg-accent hover:text-accent-foreground',
                         isSelected && 'bg-accent/60 font-medium',

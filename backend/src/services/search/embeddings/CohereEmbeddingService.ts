@@ -25,6 +25,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { createRedisClient } from '@/infrastructure/redis/redis';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import type { IEmbeddingService, EmbeddingInputType, EmbeddingResult } from './types';
+import { COHERE_DEPLOYMENT_NAME, COHERE_MODEL_NAME, COHERE_EMBEDDING_DIMENSIONS } from './models';
 
 const logger = createChildLogger({ service: 'CohereEmbeddingService' });
 
@@ -34,8 +35,7 @@ const MAX_BATCH_SIZE = 96;
 /** Cache TTL in seconds (1 hour) */
 const CACHE_TTL_SECONDS = 3600;
 
-/** Azure AIServices deployment name for Cohere Embed v4 */
-const AZURE_DEPLOYMENT_NAME = 'embed-v-4-0';
+// Use COHERE_DEPLOYMENT_NAME from models.ts
 
 /** Azure OpenAI-compatible API version */
 const AZURE_API_VERSION = '2024-06-01';
@@ -81,8 +81,8 @@ interface CachedEmbeddingResult {
 // ---------------------------------------------------------------------------
 
 export class CohereEmbeddingService implements IEmbeddingService {
-  readonly dimensions = 1536;
-  readonly modelName = 'Cohere-embed-v4';
+  readonly dimensions = COHERE_EMBEDDING_DIMENSIONS;
+  readonly modelName = COHERE_MODEL_NAME;
 
   private readonly endpoint: string;
   private readonly apiKey: string;
@@ -427,12 +427,12 @@ export class CohereEmbeddingService implements IEmbeddingService {
     const startTime = Date.now();
 
     const baseUrl = this.endpoint.endsWith('/') ? this.endpoint.slice(0, -1) : this.endpoint;
-    const url = `${baseUrl}/openai/deployments/${AZURE_DEPLOYMENT_NAME}/embeddings?api-version=${AZURE_API_VERSION}`;
+    const url = `${baseUrl}/openai/deployments/${COHERE_DEPLOYMENT_NAME}/embeddings?api-version=${AZURE_API_VERSION}`;
     const headers: Record<string, string> = {
       'api-key': this.apiKey,
       'Content-Type': 'application/json',
     };
-    const requestBody = { input: texts, model: AZURE_DEPLOYMENT_NAME };
+    const requestBody = { input: texts, model: COHERE_DEPLOYMENT_NAME };
 
     let response: Response;
     try {
@@ -521,7 +521,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
     const url = `${baseUrl}/models/images/embeddings?api-version=${AZURE_IMAGE_API_VERSION}`;
 
     const requestBody = {
-      model: AZURE_DEPLOYMENT_NAME,
+      model: COHERE_DEPLOYMENT_NAME,
       input: images.map((img) => ({ image: img })),
       input_type: mappedType,
     };

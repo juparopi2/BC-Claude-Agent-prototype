@@ -233,17 +233,17 @@ Two integration test files had hardcoded 1024-dimension vectors for image embedd
 
 ## 11. PRD-203 Cleanup (Post-Query-Time-Vectorization Validation)
 
-**When to execute**: After `USE_QUERY_TIME_VECTORIZATION=true` has been running in production with satisfactory benchmark results.
+**Status: Completed (2026-03-24)**. Query-time vectorization is now the standard. `USE_QUERY_TIME_VECTORIZATION` flag removed. Vectorizer corrected from `customWebApi` to `azureOpenAI`. All code paths use `kind: 'text'` queries.
 
 | Item | File | Action |
 |---|---|---|
-| `USE_QUERY_TIME_VECTORIZATION` flag | `backend/src/infrastructure/config/environment.ts` | Remove from Zod schema. All unified paths use query-time vectorization. |
-| `USE_QUERY_TIME_VECTORIZATION` flag | `backend/.env.example` | Remove entry. |
-| `USE_QUERY_TIME_VECTORIZATION` flag | Container App config (dev + prod) | Remove env var. |
-| Conditional vectorizer in schema | `backend/src/services/search/schema.ts` | Make vectorizer unconditional (remove `process.env.COHERE_ENDPOINT` check). |
-| App-side embedding path | `backend/src/services/search/semantic/SemanticSearchService.ts` | Remove the `!env.USE_QUERY_TIME_VECTORIZATION` branch in unified path. Always skip app-side embedding. |
-| Vector query branching | `backend/src/services/search/VectorSearchService.ts` | Remove `kind: 'vector'` path in unified block. Always use `kind: 'text'`. |
-| Benchmark script | `backend/scripts/operations/benchmark-search.ts` | Keep for reference or delete after confirming stable performance. |
+| [x] `USE_QUERY_TIME_VECTORIZATION` flag | `backend/src/infrastructure/config/environment.ts` | Remove from Zod schema. All unified paths use query-time vectorization. |
+| [x] `USE_QUERY_TIME_VECTORIZATION` flag | `backend/.env.example` | Remove entry. |
+| [x] `USE_QUERY_TIME_VECTORIZATION` flag | Container App config (dev + prod) | Remove env var. |
+| [x] Conditional vectorizer in schema | `backend/src/services/search/schema.ts` | Make vectorizer unconditional (remove `process.env.COHERE_ENDPOINT` check). |
+| [x] App-side embedding path | `backend/src/services/search/semantic/SemanticSearchService.ts` | Remove the `!env.USE_QUERY_TIME_VECTORIZATION` branch in unified path. Always skip app-side embedding. |
+| [x] Vector query branching | `backend/src/services/search/VectorSearchService.ts` | Remove `kind: 'vector'` path in unified block. Always use `kind: 'text'`. |
+| [x] Benchmark script | `backend/scripts/operations/benchmark-search.ts` | Keep for reference or delete after confirming stable performance. |
 
 ---
 
@@ -259,5 +259,5 @@ Two integration test files had hardcoded 1024-dimension vectors for image embedd
 6. ~~Run `npm run verify:types` + `npm run -w backend test:unit` + `npm run -w backend lint`~~ **Done**
 7. ~~Update infrastructure (section 9)~~ **Done**
 8. ~~Update documentation (section 10)~~ **Done**
-9. PRD-203 cleanup (section 11 — after query-time vectorization validated)
+9. ~~PRD-203 cleanup (section 11 — after query-time vectorization validated)~~ **Done**
 10. Deploy and verify

@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
- * SemanticSearchService — Cohere Unified Embedding Path Tests
+ * SemanticSearchService — Query-Time Vectorization Tests
  *
- * Verifies that SemanticSearchService correctly uses getCohereEmbeddingService()
- * for all search types (text, image mode, keyword).
+ * Verifies that SemanticSearchService correctly delegates embedding generation
+ * to Azure AI Search (query-time vectorization) rather than calling
+ * getCohereEmbeddingService() client-side.
  *
  * Key invariants under test:
- * - All non-keyword searches use Cohere embedQuery() (single 1536d call)
- * - Image mode uses isImage OData filter, same embedQuery() call
- * - Keyword mode skips embedding entirely
+ * - No non-keyword searches call embedQuery() — Azure vectorizes at query time
+ * - Image mode uses isImage OData filter without a client-side embedQuery() call
+ * - Keyword mode skips embedding entirely (unchanged)
  */
 
 // ---------------------------------------------------------------------------
@@ -84,43 +85,42 @@ describe('SemanticSearchService — Cohere Unified Embedding Path', () => {
   // Embedding choice
   // -------------------------------------------------------------------------
 
-  it('calls embedQuery() for text search', async () => {
+  it('does NOT call embedQuery() for text search (Azure handles query-time vectorization)', async () => {
     const service = SemanticSearchService.getInstance();
 
     await service.searchRelevantFiles({ userId, query });
 
-    expect(mockEmbedQuery).toHaveBeenCalledTimes(1);
-    expect(mockEmbedQuery).toHaveBeenCalledWith(query);
+    expect(mockEmbedQuery).not.toHaveBeenCalled();
+
+    const searchArgs = mockSemanticSearch.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(searchArgs).toHaveProperty('text', query);
+    expect(searchArgs).toHaveProperty('userId', userId);
   });
 
-  it('passes textEmbedding to vectorSearchService', async () => {
+  it('calls vectorSearchService.semanticSearch with the query text and userId', async () => {
     const service = SemanticSearchService.getInstance();
-    const expectedEmbedding = new Array(1536).fill(0.1);
-    mockEmbedQuery.mockResolvedValueOnce({
-      embedding: expectedEmbedding,
-      model: 'Cohere-embed-v4',
-      inputTokens: 5,
-    });
 
     await service.searchRelevantFiles({ userId, query });
 
     expect(mockSemanticSearch).toHaveBeenCalledTimes(1);
     const searchArgs = mockSemanticSearch.mock.calls[0]?.[0] as Record<string, unknown>;
 
-    expect(searchArgs).toHaveProperty('textEmbedding', expectedEmbedding);
+    expect(searchArgs).toHaveProperty('text', query);
+    expect(searchArgs).toHaveProperty('userId', userId);
+    expect(searchArgs).not.toHaveProperty('textEmbedding');
   });
 
   // -------------------------------------------------------------------------
   // Image mode
   // -------------------------------------------------------------------------
 
-  it('uses the same embedQuery() call in image mode and adds isImage OData filter', async () => {
+  it('does NOT call embedQuery() in image mode and still adds isImage OData filter', async () => {
     const service = SemanticSearchService.getInstance();
 
     await service.searchRelevantFiles({ userId, query, searchMode: 'image' });
 
-    // Still calls embedQuery() once — unified space handles image content too
-    expect(mockEmbedQuery).toHaveBeenCalledTimes(1);
+    // Azure handles query-time vectorization — no client-side embedding call
+    expect(mockEmbedQuery).not.toHaveBeenCalled();
 
     const searchArgs = mockSemanticSearch.mock.calls[0]?.[0] as Record<string, unknown>;
     const filter = searchArgs['additionalFilter'] as string | undefined;

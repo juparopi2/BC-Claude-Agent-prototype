@@ -1,7 +1,7 @@
 # PRD-203: Advanced Search Capabilities & Optimization
 
 **Phase**: 4 — Optimization
-**Status**: **Implemented** (code) — F1-F3 shipped, F4-F5 deferred
+**Status**: **Complete** (implemented + cleanup done 2026-03-24)
 **Prerequisites**: PRD-202 (Cohere Data Cutover)
 **Estimated Effort**: 2-3 days
 **Created**: 2026-03-24
@@ -106,6 +106,8 @@ vectorQueries: [
 
 **Prerequisite:** Benchmark query-time vectorization latency vs. pre-computed. Only enable if overhead < 100ms.
 
+**Removed (2026-03-24)**: `USE_QUERY_TIME_VECTORIZATION` flag eliminated. Query-time vectorization is now the standard behavior.
+
 ### 3.4 Interleaved Embeddings for Rich Documents
 
 Cohere Embed 4 supports interleaved text+image input. For documents with embedded charts, diagrams, or screenshots, generate a single embedding that captures both textual and visual content:
@@ -150,7 +152,7 @@ All HNSW parameters and the fetchTopK multiplier are now configurable via enviro
 |---|---|---|---|---|
 | Extractive answers & captions | Low (config change) | High (direct answers, fewer tokens) | **P1** | **Implemented** |
 | Response format control | Medium (tool + service change) | Medium (token savings) | **P2** | **Implemented** |
-| Query-time vectorization | Low (conditional flag) | Medium (simplification) | **P2** | **Implemented** (flag OFF) |
+| Query-time vectorization | Low (conditional flag) | Medium (simplification) | **P2** | **Complete** (flag removed — unconditional) |
 | Interleaved embeddings | Medium (pipeline change) | Low (niche use case) | **P3** | **Deferred** (see §3.4 rationale) |
 | Performance tuning | Low (configurable params) | Low-Medium (latency) | **P3** | **Implemented** (configurable, defaults unchanged) |
 
@@ -172,7 +174,7 @@ All HNSW parameters and the fetchTopK multiplier are now configurable via enviro
 | `backend/src/modules/agents/rag-knowledge/tools.ts` | Add `responseDetail` parameter, concise mode, map extractive answers to CitationResult |
 | `backend/src/modules/agents/rag-knowledge/validation.ts` | Add `responseDetail` to input/output types and defaults |
 | `backend/src/services/search/schema-v2.ts` | Add conditional Cohere vectorizer to vector search config |
-| `backend/src/infrastructure/config/environment.ts` | Add `USE_QUERY_TIME_VECTORIZATION` feature flag |
+| `backend/src/infrastructure/config/environment.ts` | ~~Add `USE_QUERY_TIME_VECTORIZATION` feature flag~~ — **Removed (2026-03-24)**: flag eliminated, query-time vectorization is unconditional |
 
 ### New Files (3)
 

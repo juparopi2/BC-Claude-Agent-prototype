@@ -159,10 +159,10 @@ describe('SemanticSearchService', () => {
       expect(result.results[0]?.fileId).toBe('file-2');
     });
 
-    it('should call CohereEmbeddingService to embed query', async () => {
+    it('should NOT call embedding service for search queries (Azure handles query-time vectorization)', async () => {
       await service.searchRelevantFiles({ userId, query });
 
-      expect(mockEmbedQuery).toHaveBeenCalledWith(query);
+      expect(mockEmbedQuery).not.toHaveBeenCalled();
     });
 
     it('should call VectorSearchService.semanticSearch with query embedding', async () => {
@@ -171,7 +171,6 @@ describe('SemanticSearchService', () => {
       expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
         expect.objectContaining({
           text: query,
-          textEmbedding: mockEmbedding,
           userId,
           minScore: SEMANTIC_THRESHOLD,
         }),
@@ -272,7 +271,7 @@ describe('SemanticSearchService', () => {
   });
 
   describe('unified search (text + images)', () => {
-    it('should call semanticSearch with textEmbedding from Cohere', async () => {
+    it('should call semanticSearch with text and userId from Cohere search', async () => {
       const semanticResults: SemanticSearchResult[] = [
         createSemanticResult({ chunkId: 'chunk-1', fileId: 'file-1', content: 'text content', score: 0.85 }),
       ];
@@ -285,7 +284,6 @@ describe('SemanticSearchService', () => {
       expect(mockVectorSearchService.semanticSearch).toHaveBeenCalledWith(
         expect.objectContaining({
           text: query,
-          textEmbedding: mockEmbedding,
           userId,
         }),
       );

@@ -457,7 +457,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
   });
 
   describe('semanticSearch', () => {
-    it('should search with text embedding using embeddingVector field', async () => {
+    it('should search using query-time vectorization with kind:"text" on embeddingVector field', async () => {
       const mockResults = createSemanticSearchResults([
         { chunkId: '1', score: 0.9 }
       ]);
@@ -465,19 +465,19 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       const query: SemanticSearchQuery = {
         text: 'test query',
-        textEmbedding: new Array(1536).fill(0.1),
         userId: 'user-123',
       };
 
       await service.semanticSearch(query);
 
-      // Verify vector search options use the unified embeddingVector field
+      // Verify vector search options use the unified embeddingVector field with kind:'text'
       const callArgs = mockSearchClient.search.mock.calls[0][1];
       expect(callArgs.vectorSearchOptions.queries).toHaveLength(1);
       expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['embeddingVector']);
+      expect(callArgs.vectorSearchOptions.queries[0].kind).toBe('text');
     });
 
-    it('should search with both text and image embeddings using single embeddingVector field', async () => {
+    it('should search with a single embeddingVector query covering both text and image results', async () => {
       const mockResults = createSemanticSearchResults([
         { chunkId: '1', score: 0.9 },
         { chunkId: '2', score: 0.85, isImage: true }
@@ -486,7 +486,6 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       const query: SemanticSearchQuery = {
         text: 'sunset over mountains',
-        textEmbedding: new Array(1536).fill(0.1),
         userId: 'user-123',
       };
 
@@ -495,6 +494,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
       const callArgs = mockSearchClient.search.mock.calls[0][1];
       // Unified index uses a single embeddingVector query
       expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['embeddingVector']);
+      expect(callArgs.vectorSearchOptions.queries[0].kind).toBe('text');
     });
 
     it('should normalize reranker score from 0-4 to 0-1', async () => {
@@ -643,7 +643,6 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       const query: SemanticSearchQuery = {
         text: 'find cats',
-        textEmbedding: new Array(1536).fill(0.1),
         imageEmbedding: new Array(1024).fill(0.2),
         userId: 'user-123',
       };
@@ -695,7 +694,6 @@ describe('VectorSearchService - Image Search Mode', () => {
 
     const query: SemanticSearchQuery = {
       text: 'red trucks',
-      textEmbedding: new Array(1536).fill(0.2),
       userId: 'user-123',
       searchMode: 'image',
     };
@@ -729,7 +727,6 @@ describe('VectorSearchService - Image Search Mode', () => {
 
     const query: SemanticSearchQuery = {
       text: 'red color',
-      textEmbedding: new Array(1536).fill(0.1),
       userId: 'user-123',
       searchMode: 'image',
     };
@@ -751,7 +748,6 @@ describe('VectorSearchService - Image Search Mode', () => {
 
     const query: SemanticSearchQuery = {
       text: 'sunset',
-      textEmbedding: new Array(1536).fill(0.2),
       userId: 'user-123',
       searchMode: 'image',
     };

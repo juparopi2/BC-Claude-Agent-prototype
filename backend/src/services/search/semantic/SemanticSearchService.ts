@@ -2,7 +2,6 @@ import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getFileService } from '@/services/files/FileService';
 import { createChildLogger } from '@/shared/utils/logger';
 import { env } from '@/infrastructure/config/environment';
-import { getCohereEmbeddingService } from '../embeddings/CohereEmbeddingService';
 import type {
   SemanticSearchOptions,
   SemanticSearchResult,
@@ -125,21 +124,9 @@ export class SemanticSearchService {
       semanticResults = fullResult.results;
       extractiveAnswers = fullResult.extractiveAnswers;
     } else {
-      // Unified Cohere path — single embedding for ALL search types (text and image).
-      // searchMode='image' is handled via OData filter (isImage eq true), not a different embedding.
-
-      // When query-time vectorization is enabled, skip application-side embedding.
-      // Azure AI Search generates the embedding via native vectorizer.
-      let textEmbeddingVector: number[] | undefined;
-      if (!env.USE_QUERY_TIME_VECTORIZATION) {
-        const cohereService = getCohereEmbeddingService();
-        const queryEmbedding = await cohereService.embedQuery(query);
-        textEmbeddingVector = queryEmbedding.embedding;
-      }
-
+      // Azure AI Search generates embeddings at query time via native Cohere vectorizer
       const fullResult = await vectorSearchService.semanticSearch({
-        text: effectiveSearchType === 'hybrid' || env.USE_QUERY_TIME_VECTORIZATION ? query : '',
-        textEmbedding: textEmbeddingVector,
+        text: query,
         userId,
         fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
         finalTopK: maxFiles * maxChunksPerFile * 2,

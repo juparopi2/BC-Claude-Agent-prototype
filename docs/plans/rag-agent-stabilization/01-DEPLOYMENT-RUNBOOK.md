@@ -384,7 +384,7 @@ git push origin production
 
 ## PRD-203: Advanced Search Optimization
 
-**Status:** ☑ Code Complete — pending deployment
+**Status:** ☑ Complete
 
 ### Code Changes Delivered (2026-03-24)
 
@@ -400,7 +400,6 @@ git push origin production
 
 | Variable | Value | Where | Required When |
 |---|---|---|---|
-| `USE_QUERY_TIME_VECTORIZATION` | `false` (default) | `.env` / Container App config | Optional — enable after benchmarking |
 | `HNSW_M` | `4` (default) | `.env` / Container App config | Optional — build-time param, requires index recreation |
 | `HNSW_EF_CONSTRUCTION` | `400` (default) | `.env` / Container App config | Optional — build-time param, requires index recreation |
 | `HNSW_EF_SEARCH` | `500` (default) | `.env` / Container App config | Optional — query-time param, takes effect immediately |
@@ -420,11 +419,9 @@ Update the v2 index schema to include the vectorizer configuration:
 
 ### Feature Flags
 
-| Flag | Default | Enable When |
-|---|---|---|
-| `USE_QUERY_TIME_VECTORIZATION` | `false` | After benchmark confirms overhead < 100ms |
+No feature flags — query-time vectorization is unconditional.
 
-F1 (extractive answers) and F2 (response format) have **no feature flags** — they are additive and backward-compatible.
+F1 (extractive answers), F2 (response format), and F3 (query-time vectorization) have **no feature flags** — all are active and unconditional.
 
 ### Commands
 
@@ -443,8 +440,7 @@ npx tsx scripts/operations/benchmark-search.ts --user-id <TEST-USER-UUID>
 - [ ] `responseDetail: 'concise'` returns 1 short passage per document
 - [ ] `responseDetail: 'detailed'` returns full passages (existing behavior)
 - [ ] Keyword search returns no extractive answers (semantic ranker OFF)
-- [ ] `USE_QUERY_TIME_VECTORIZATION=false` → no behavior change
-- [ ] After benchmark: `USE_QUERY_TIME_VECTORIZATION=true` → search works without app-side embedding
+- [ ] Search queries use query-time vectorization (kind: 'text' vector queries)
 
 ---
 
@@ -462,11 +458,11 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
 6. [x] **PRD-202**: Quality validation passed (top-5 overlap ≥ 80%)
 7. [x] **PRD-202**: V2 index active in dev (USE_UNIFIED_INDEX flag removed — V2 is unconditional)
 8. [x] **PRD-202**: `find_similar_images` verified with 1536d Cohere embeddings
-9. [ ] **PRD-203**: Advanced search optimizations deployed (extractive answers, response format, query-time vectorization)
-10. [ ] **PRD-203**: Extractive answers verified for factual queries
-11. [ ] **PRD-203**: `responseDetail: 'concise'` verified (fewer tokens)
-12. [ ] **PRD-203**: Benchmark script run: `npx tsx scripts/operations/benchmark-search.ts`
-13. [ ] **PRD-203**: (Optional) `USE_QUERY_TIME_VECTORIZATION=true` after benchmark passes
+9. [x] **PRD-203**: Advanced search optimizations deployed (extractive answers, response format, query-time vectorization)
+10. [x] **PRD-203**: Extractive answers verified for factual queries
+11. [x] **PRD-203**: `responseDetail: 'concise'` verified (fewer tokens)
+12. [x] **PRD-203**: Benchmark script run: `npx tsx scripts/operations/benchmark-search.ts`
+13. [x] **PRD-203**: Query-time vectorization is unconditional — `USE_QUERY_TIME_VECTORIZATION` flag removed
 14. [x] **Cleanup**: Legacy OpenAI/Vision embedding code paths removed; feature flag removed; migration scripts deleted
 15. [x] **Cleanup**: Old `file-chunks-index` decommissioned (after 30-day rollback window)
 
@@ -527,7 +523,7 @@ git push origin production
 # Advanced features are additive — disable specific features via config or code revert
 # AML vectorizer: remove from index schema via createOrUpdateIndex()
 # Extractive answers: disable in SemanticSearchService
-# USE_QUERY_TIME_VECTORIZATION: set to false (flag still active)
+# Query-time vectorization: USE_QUERY_TIME_VECTORIZATION flag removed — rollback requires code revert
 ```
 
 ---

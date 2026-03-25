@@ -2,6 +2,7 @@ import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/sear
 import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
 import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from './schema';
+import { COHERE_MODEL_NAME } from './embeddings/models';
 import {
   IndexStats,
   FileChunkWithEmbedding,
@@ -498,7 +499,7 @@ export class VectorSearchService {
       embeddingVector: embedding,
       chunkIndex: 0,
       tokenCount: 0,
-      embeddingModel: 'Cohere-embed-v4',
+      embeddingModel: COHERE_MODEL_NAME,
       createdAt: new Date(),
       isImage: true,
       mimeType: mimeType || null,
@@ -710,7 +711,6 @@ export class VectorSearchService {
 
     const {
       text,
-      textEmbedding,
       userId,
       fetchTopK = 30,
       finalTopK = 10,
@@ -765,25 +765,14 @@ export class VectorSearchService {
     if (useVectorSearch) {
       const vectorQueries: Array<Record<string, unknown>> = [];
 
-      // PRD-203: Query-time vectorization — Azure AI Search generates embedding via native vectorizer
-      if (env.USE_QUERY_TIME_VECTORIZATION) {
-        vectorQueries.push({
-          kind: 'text',
-          text,
-          fields: ['embeddingVector'],
-          kNearestNeighborsCount: fetchTopK,
-          weight: 1.0,
-        });
-      } else if (textEmbedding && textEmbedding.length > 0) {
-        // Single vector query on embeddingVector (unified Cohere 1536d space)
-        vectorQueries.push({
-          kind: 'vector',
-          vector: textEmbedding,
-          fields: ['embeddingVector'],
-          kNearestNeighborsCount: fetchTopK,
-          weight: 1.0,
-        });
-      }
+      // Query-time vectorization: Azure AI Search generates embeddings via native Cohere vectorizer
+      vectorQueries.push({
+        kind: 'text',
+        text,
+        fields: ['embeddingVector'],
+        kNearestNeighborsCount: fetchTopK,
+        weight: 1.0,
+      });
 
       if (vectorQueries.length > 0) {
         searchOptions.vectorSearchOptions = { queries: vectorQueries };
@@ -872,7 +861,6 @@ export class VectorSearchService {
         finalTopK,
         candidateCount: results.length,
         resultCount: finalResults.length,
-        hasTextEmbedding: !!textEmbedding,
         searchMode,
         useVectorSearch,
         useSemanticRanker,

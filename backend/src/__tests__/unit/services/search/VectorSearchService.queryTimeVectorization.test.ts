@@ -5,24 +5,15 @@ import { SearchIndexClient, SearchClient } from '@azure/search-documents';
 /**
  * VectorSearchService — Query-Time Vectorization Tests (PRD-203)
  *
- * Verifies that the USE_QUERY_TIME_VECTORIZATION feature flag correctly
- * switches the vector query kind between 'text' (Azure-native vectorization)
- * and 'vector' (client-supplied embedding array) in semanticSearch().
- *
- * Matrix tested:
- *   USE_QUERY_TIME_VECTORIZATION=true  → kind:'text'
- *   USE_QUERY_TIME_VECTORIZATION=false → kind:'vector'
- *   Default value of USE_QUERY_TIME_VECTORIZATION → false
- *
- * Companion to VectorSearchService.unified.test.ts (PRD-201).
+ * Verifies that semanticSearch() always uses kind:'text' vector queries,
+ * delegating embedding generation to the Azure AI Search native Cohere vectorizer.
  */
 
 // ---------------------------------------------------------------------------
-// Hoisted env mock — must toggle between tests without module reload
+// Hoisted env mock
 // ---------------------------------------------------------------------------
 
 const mockEnv = vi.hoisted(() => ({
-  USE_QUERY_TIME_VECTORIZATION: false as boolean,
   AZURE_SEARCH_ENDPOINT: 'https://test.search.windows.net',
   AZURE_SEARCH_KEY: 'test-key',
 }));
@@ -76,9 +67,6 @@ function createMockSearchClient() {
 describe('VectorSearchService — Query-Time Vectorization (PRD-203)', () => {
   let service: VectorSearchService;
   let mockIndexClient: ReturnType<typeof vi.fn>;
-  // Post-simplification there is only ONE search client (V1/V2 routing removed).
-  // All expectations previously targeting mockSearchClient now use mockSearchClient.
-  let mockClientV1: ReturnType<typeof createMockSearchClient>;
   let mockSearchClient: ReturnType<typeof createMockSearchClient>;
 
   beforeEach(async () => {
@@ -87,33 +75,27 @@ describe('VectorSearchService — Query-Time Vectorization (PRD-203)', () => {
     // Reset the singleton so each test gets a fresh state
     (VectorSearchService as unknown as { instance: undefined }).instance = undefined;
 
-    // Default: query-time vectorization OFF
-    mockEnv.USE_QUERY_TIME_VECTORIZATION = false;
-
     mockIndexClient = {
       getIndex: vi.fn().mockResolvedValue({ name: 'file-chunks-index' }),
       createIndex: vi.fn(),
       deleteIndex: vi.fn(),
     } as unknown as ReturnType<typeof vi.fn>;
 
-    mockClientV1 = createMockSearchClient();
-    mockSearchClient = mockClientV1; // alias — they are the same client now
+    mockSearchClient = createMockSearchClient();
 
     service = VectorSearchService.getInstance();
     await service.initializeClients(
       mockIndexClient as unknown as SearchIndexClient,
-      mockClientV1 as unknown as SearchClient<Record<string, unknown>>,
+      mockSearchClient as unknown as SearchClient<Record<string, unknown>>,
     );
   });
 
   // -------------------------------------------------------------------------
-  // Core behavior: kind:'text' when flag ON + unified
+  // Always uses kind:'text' — Azure native Cohere vectorizer
   // -------------------------------------------------------------------------
 
-  describe('when USE_QUERY_TIME_VECTORIZATION=true', () => {
+  describe('always uses query-time vectorization', () => {
     it('sends a vector query with kind:"text" and the query string', async () => {
-      mockEnv.USE_QUERY_TIME_VECTORIZATION = true;
-
       await service.semanticSearch({
         text: 'find invoices',
         userId: 'user-abc',
@@ -131,14 +113,9 @@ describe('VectorSearchService — Query-Time Vectorization (PRD-203)', () => {
       expect(vectorQueries?.[0]?.fields).toEqual(['embeddingVector']);
     });
 
-    it('does NOT include a "vector" embedding array in the query when flag is ON', async () => {
-      mockEnv.USE_QUERY_TIME_VECTORIZATION = true;
-
-      const textEmbedding = new Array(1536).fill(0.5);
-
+    it('does NOT include a client-supplied vector array in the query', async () => {
       await service.semanticSearch({
         text: 'quarterly report',
-        textEmbedding,
         userId: 'user-abc',
         useVectorSearch: true,
         useSemanticRanker: false,
@@ -149,13 +126,11 @@ describe('VectorSearchService — Query-Time Vectorization (PRD-203)', () => {
 
       // The query must NOT carry a client-supplied vector array
       expect(vectorQueries?.[0]?.vector).toBeUndefined();
-      // kind must be 'text', not 'vector'
+      // kind must always be 'text'
       expect(vectorQueries?.[0]?.kind).toBe('text');
     });
 
-    it('uses the (unified) search client when flag is ON', async () => {
-      mockEnv.USE_QUERY_TIME_VECTORIZATION = true;
-
+    it('uses the search client exactly once per call', async () => {
       await service.semanticSearch({
         text: 'purchase orders',
         userId: 'user-abc',
@@ -163,122 +138,66 @@ describe('VectorSearchService — Query-Time Vectorization (PRD-203)', () => {
         useSemanticRanker: false,
       });
 
-      // Post-simplification: single search client, called exactly once
       expect(mockSearchClient.search).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends kind:"text" for multiple different queries', async () => {
+      await service.semanticSearch({
+        text: 'budget analysis',
+        userId: 'user-abc',
+        useVectorSearch: true,
+        useSemanticRanker: false,
+      });
+
+      await service.semanticSearch({
+        text: 'vendor list',
+        userId: 'user-abc',
+        useVectorSearch: true,
+        useSemanticRanker: false,
+      });
+
+      expect(mockSearchClient.search).toHaveBeenCalledTimes(2);
+
+      for (const call of mockSearchClient.search.mock.calls) {
+        const callOptions = call[1] as Record<string, unknown>;
+        const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
+        expect(vectorQueries?.[0]?.kind).toBe('text');
+      }
+    });
+
+    it('never emits a kind:"vector" query', async () => {
+      await service.semanticSearch({
+        text: 'expense claims',
+        userId: 'user-abc',
+        useVectorSearch: true,
+        useSemanticRanker: false,
+      });
+
+      const callOptions = mockSearchClient.search.mock.calls[0]?.[1] as Record<string, unknown>;
+      const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
+
+      const anyVectorKind = vectorQueries?.some(q => q['kind'] === 'vector');
+      expect(anyVectorKind).toBeFalsy();
     });
   });
 
   // -------------------------------------------------------------------------
-  // Core behavior: kind:'vector' when flag OFF + unified
+  // useVectorSearch: false — no vector queries emitted
   // -------------------------------------------------------------------------
 
-  describe('when USE_QUERY_TIME_VECTORIZATION=false', () => {
-    it('sends a vector query with kind:"vector" and the embedding array', async () => {
-      mockEnv.USE_QUERY_TIME_VECTORIZATION = false;
-
-      const textEmbedding = new Array(1536).fill(0.2);
-
+  describe('when useVectorSearch is false', () => {
+    it('emits no vector queries when useVectorSearch is disabled', async () => {
       await service.semanticSearch({
         text: 'find invoices',
-        textEmbedding,
         userId: 'user-abc',
-        useVectorSearch: true,
-        useSemanticRanker: false,
-      });
-
-      expect(mockSearchClient.search).toHaveBeenCalledTimes(1);
-      const callOptions = mockSearchClient.search.mock.calls[0]?.[1] as Record<string, unknown>;
-      const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
-
-      expect(vectorQueries).toHaveLength(1);
-      expect(vectorQueries?.[0]?.kind).toBe('vector');
-      expect(vectorQueries?.[0]?.vector).toEqual(textEmbedding);
-      expect(vectorQueries?.[0]?.fields).toEqual(['embeddingVector']);
-    });
-
-    it('does NOT include a "text" string property in the query when flag is OFF', async () => {
-      mockEnv.USE_QUERY_TIME_VECTORIZATION = false;
-
-      const textEmbedding = new Array(1536).fill(0.3);
-
-      await service.semanticSearch({
-        text: 'budget analysis',
-        textEmbedding,
-        userId: 'user-abc',
-        useVectorSearch: true,
-        useSemanticRanker: false,
-      });
-
-      const callOptions = mockSearchClient.search.mock.calls[0]?.[1] as Record<string, unknown>;
-      const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
-
-      // Query kind must be 'vector', never 'text'
-      expect(vectorQueries?.[0]?.kind).toBe('vector');
-    });
-
-    it('produces no vector queries when no embedding is provided (no flag effect)', async () => {
-      mockEnv.USE_QUERY_TIME_VECTORIZATION = false;
-
-      await service.semanticSearch({
-        text: 'find invoices',
-        // textEmbedding deliberately omitted
-        userId: 'user-abc',
-        useVectorSearch: true,
+        useVectorSearch: false,
         useSemanticRanker: false,
       });
 
       const callOptions = mockSearchClient.search.mock.calls[0]?.[1] as Record<string, unknown>;
       const vectorSearchOptions = callOptions?.vectorSearchOptions as { queries?: unknown } | undefined;
 
-      // Without an embedding, the unified OFF path emits no vector queries
       expect(vectorSearchOptions).toBeUndefined();
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Default value: USE_QUERY_TIME_VECTORIZATION defaults to false
-  // -------------------------------------------------------------------------
-
-  describe('default value', () => {
-    it('defaults USE_QUERY_TIME_VECTORIZATION to false — uses kind:"vector" path', async () => {
-      // mockEnv.USE_QUERY_TIME_VECTORIZATION is false (set in beforeEach)
-
-      const textEmbedding = new Array(1536).fill(0.4);
-
-      await service.semanticSearch({
-        text: 'expense claims',
-        textEmbedding,
-        userId: 'user-abc',
-        useVectorSearch: true,
-        useSemanticRanker: false,
-      });
-
-      const callOptions = mockSearchClient.search.mock.calls[0]?.[1] as Record<string, unknown>;
-      const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
-
-      // Default OFF → kind must be 'vector', not 'text'
-      expect(vectorQueries?.[0]?.kind).toBe('vector');
-      expect(vectorQueries?.[0]?.vector).toEqual(textEmbedding);
-    });
-
-    it('does not emit a kind:"text" query unless the flag is explicitly enabled', async () => {
-      // mockEnv.USE_QUERY_TIME_VECTORIZATION is false (set in beforeEach, never changed)
-
-      const textEmbedding = new Array(1536).fill(0.1);
-
-      await service.semanticSearch({
-        text: 'vendor list',
-        textEmbedding,
-        userId: 'user-abc',
-        useVectorSearch: true,
-        useSemanticRanker: false,
-      });
-
-      const callOptions = mockSearchClient.search.mock.calls[0]?.[1] as Record<string, unknown>;
-      const vectorQueries = (callOptions?.vectorSearchOptions as { queries: Array<Record<string, unknown>> })?.queries;
-
-      const anyTextKind = vectorQueries?.some(q => q['kind'] === 'text');
-      expect(anyTextKind).toBe(false);
     });
   });
 });

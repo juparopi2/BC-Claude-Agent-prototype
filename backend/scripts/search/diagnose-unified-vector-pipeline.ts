@@ -18,6 +18,7 @@ import 'dotenv/config';
 import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/search-documents';
 import { getFlag, hasFlag } from '../_shared/args.js';
 import { INDEX_NAME } from '../_shared/azure.js';
+import { COHERE_DEPLOYMENT_NAME } from '../../src/services/search/embeddings/models';
 
 const GREEN = '\x1b[32m';
 const RED = '\x1b[31m';
@@ -79,10 +80,10 @@ async function verifyEndpoints(): Promise<void> {
 
   // Text endpoint
   try {
-    const res = await fetch(`${cohereEndpoint}/openai/deployments/embed-v-4-0/embeddings?api-version=2024-06-01`, {
+    const res = await fetch(`${cohereEndpoint}/openai/deployments/${COHERE_DEPLOYMENT_NAME}/embeddings?api-version=2024-06-01`, {
       method: 'POST',
       headers: { 'api-key': cohereKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: ['stabilization test'], model: 'embed-v-4-0' }),
+      body: JSON.stringify({ input: ['stabilization test'], model: COHERE_DEPLOYMENT_NAME }),
     });
     const data = await res.json() as any;
     const dims = data.data?.[0]?.embedding?.length;
@@ -98,7 +99,7 @@ async function verifyEndpoints(): Promise<void> {
     const res = await fetch(`${cohereImageEndpoint}/models/images/embeddings?api-version=2024-05-01-preview`, {
       method: 'POST',
       headers: { 'api-key': cohereKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'embed-v-4-0', input: [{ image: tinyPng }], input_type: 'document' }),
+      body: JSON.stringify({ model: COHERE_DEPLOYMENT_NAME, input: [{ image: tinyPng }], input_type: 'document' }),
     });
     const data = await res.json() as any;
     const dims = data.data?.[0]?.embedding?.length;
@@ -110,17 +111,17 @@ async function verifyEndpoints(): Promise<void> {
 
   // Cross-modal vector space
   try {
-    const textRes = await fetch(`${cohereEndpoint}/openai/deployments/embed-v-4-0/embeddings?api-version=2024-06-01`, {
+    const textRes = await fetch(`${cohereEndpoint}/openai/deployments/${COHERE_DEPLOYMENT_NAME}/embeddings?api-version=2024-06-01`, {
       method: 'POST',
       headers: { 'api-key': cohereKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: ['a red sports car driving fast on a highway'], model: 'embed-v-4-0' }),
+      body: JSON.stringify({ input: ['a red sports car driving fast on a highway'], model: COHERE_DEPLOYMENT_NAME }),
     });
     const textEmb = ((await textRes.json()) as any).data[0].embedding as number[];
 
     const imgRes = await fetch(`${cohereImageEndpoint}/models/images/embeddings?api-version=2024-05-01-preview`, {
       method: 'POST',
       headers: { 'api-key': cohereKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'embed-v-4-0', input: [{ image: tinyPng }], input_type: 'query' }),
+      body: JSON.stringify({ model: COHERE_DEPLOYMENT_NAME, input: [{ image: tinyPng }], input_type: 'query' }),
     });
     const imgEmb = ((await imgRes.json()) as any).data[0].embedding as number[];
 

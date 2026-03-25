@@ -1,26 +1,25 @@
 /**
- * Search Benchmark Script
+ * Search Validation Script
  *
- * Compares search latency and result quality between:
- *   - Application-side vectorization (Cohere API → vector → Azure AI Search)
- *   - Query-time vectorization (Azure AI Search native vectorizer)
+ * Validates that search queries return results with acceptable latency.
+ * Verifies the query-time vectorization pipeline is working correctly.
  *
  * Usage:
  *   npx tsx scripts/operations/benchmark-search.ts [--user-id <UUID>] [--threshold <ms>]
  *
  * Requires:
  *   - COHERE_ENDPOINT and COHERE_API_KEY configured
+ *   - Azure AI Search index with vectorizer configured
  *
  * Exit codes:
- *   0 — Query-time vectorization overhead < threshold (default: 100ms)
- *   1 — Overhead exceeds threshold or errors occurred
+ *   0 — All queries returned results within threshold (default: 500ms)
+ *   1 — Queries failed or exceeded threshold
  */
 
 import { VectorSearchService } from '../../src/services/search/VectorSearchService';
-import { getCohereEmbeddingService } from '../../src/services/search/embeddings/CohereEmbeddingService';
 import { createChildLogger } from '../../src/shared/utils/logger';
 
-const logger = createChildLogger({ service: 'BenchmarkSearch' });
+const logger = createChildLogger({ service: 'SearchValidation' });
 
 const TEST_QUERIES = [
   'What is the return policy for damaged items?',
@@ -33,70 +32,50 @@ const TEST_QUERIES = [
   'marketing budget allocation',
 ];
 
-interface BenchmarkResult {
+interface ValidationResult {
   query: string;
-  appSideLatencyMs: number;
-  queryTimeLatencyMs: number;
-  overheadMs: number;
-  appSideResultCount: number;
-  queryTimeResultCount: number;
-  resultOverlap: number;
+  latencyMs: number;
+  resultCount: number;
+  success: boolean;
+  error?: string;
 }
 
-async function benchmarkQuery(
+async function validateQuery(
   query: string,
   userId: string,
   vectorSearchService: VectorSearchService,
-): Promise<BenchmarkResult> {
-  const embeddingService = getCohereEmbeddingService();
-  if (!embeddingService) {
-    throw new Error('Cohere embedding service not available');
+): Promise<ValidationResult> {
+  const start = performance.now();
+  try {
+    // Query-time vectorization: Azure AI Search generates embeddings via native vectorizer
+    const result = await vectorSearchService.semanticSearch({
+      text: query,
+      userId,
+      fetchTopK: 30,
+      finalTopK: 10,
+      minScore: 0,
+      useVectorSearch: true,
+      useSemanticRanker: true,
+    });
+    const latency = performance.now() - start;
+
+    return {
+      query,
+      latencyMs: Math.round(latency),
+      resultCount: result.results.length,
+      success: true,
+    };
+  } catch (error) {
+    const latency = performance.now() - start;
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      query,
+      latencyMs: Math.round(latency),
+      resultCount: 0,
+      success: false,
+      error: msg,
+    };
   }
-
-  // Path 1: Application-side vectorization
-  const appStart = performance.now();
-  const embedding = await embeddingService.embedQuery(query);
-  const appResult = await vectorSearchService.semanticSearch({
-    text: query,
-    textEmbedding: embedding.embedding,
-    userId,
-    fetchTopK: 30,
-    finalTopK: 10,
-    minScore: 0,
-    useVectorSearch: true,
-    useSemanticRanker: true,
-  });
-  const appLatency = performance.now() - appStart;
-
-  // Path 2: Query-time vectorization (kind: 'text')
-  const qtStart = performance.now();
-  const qtResult = await vectorSearchService.semanticSearch({
-    text: query,
-    // No textEmbedding — Azure generates it
-    userId,
-    fetchTopK: 30,
-    finalTopK: 10,
-    minScore: 0,
-    useVectorSearch: true,
-    useSemanticRanker: true,
-  });
-  const qtLatency = performance.now() - qtStart;
-
-  // Calculate result overlap
-  const appFileIds = new Set(appResult.results.map(r => r.fileId));
-  const qtFileIds = new Set(qtResult.results.map(r => r.fileId));
-  const overlap = [...appFileIds].filter(id => qtFileIds.has(id)).length;
-  const maxPossible = Math.max(appFileIds.size, qtFileIds.size) || 1;
-
-  return {
-    query,
-    appSideLatencyMs: Math.round(appLatency),
-    queryTimeLatencyMs: Math.round(qtLatency),
-    overheadMs: Math.round(qtLatency - appLatency),
-    appSideResultCount: appResult.results.length,
-    queryTimeResultCount: qtResult.results.length,
-    resultOverlap: overlap / maxPossible,
-  };
 }
 
 async function main() {
@@ -104,47 +83,49 @@ async function main() {
   const userIdIdx = args.indexOf('--user-id');
   const thresholdIdx = args.indexOf('--threshold');
   const userId = userIdIdx >= 0 ? args[userIdIdx + 1] : 'BENCHMARK-USER';
-  const threshold = thresholdIdx >= 0 ? parseInt(args[thresholdIdx + 1], 10) : 100;
+  const threshold = thresholdIdx >= 0 ? parseInt(args[thresholdIdx + 1], 10) : 500;
 
-  console.log('=== Search Benchmark ===');
+  console.log('=== Search Validation ===');
   console.log(`User ID: ${userId}`);
-  console.log(`Overhead threshold: ${threshold}ms`);
+  console.log(`Latency threshold: ${threshold}ms`);
   console.log(`Queries: ${TEST_QUERIES.length}`);
   console.log('');
 
   const vectorSearchService = VectorSearchService.getInstance();
-  const results: BenchmarkResult[] = [];
+  const results: ValidationResult[] = [];
 
   for (const query of TEST_QUERIES) {
-    try {
-      const result = await benchmarkQuery(query, userId, vectorSearchService);
-      results.push(result);
-      console.log(`  "${query.slice(0, 40)}..." → app=${result.appSideLatencyMs}ms, qt=${result.queryTimeLatencyMs}ms, overhead=${result.overheadMs}ms, overlap=${(result.resultOverlap * 100).toFixed(0)}%`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error({ query, error: msg }, 'Benchmark query failed');
-      console.error(`  "${query.slice(0, 40)}..." → ERROR: ${msg}`);
-    }
+    const result = await validateQuery(query, userId, vectorSearchService);
+    results.push(result);
+    const status = result.success ? '✓' : '✗';
+    const detail = result.success
+      ? `${result.latencyMs}ms, ${result.resultCount} results`
+      : `ERROR: ${result.error}`;
+    console.log(`  ${status} "${query.slice(0, 45)}..." → ${detail}`);
   }
 
-  if (results.length === 0) {
-    console.error('\nNo successful benchmarks. Check configuration.');
-    process.exit(1);
-  }
-
-  // Summary
-  const avgOverhead = results.reduce((sum, r) => sum + r.overheadMs, 0) / results.length;
-  const maxOverhead = Math.max(...results.map(r => r.overheadMs));
-  const avgOverlap = results.reduce((sum, r) => sum + r.resultOverlap, 0) / results.length;
+  const successful = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+  const avgLatency = successful.length > 0
+    ? successful.reduce((sum, r) => sum + r.latencyMs, 0) / successful.length
+    : 0;
+  const maxLatency = successful.length > 0
+    ? Math.max(...successful.map(r => r.latencyMs))
+    : 0;
 
   console.log('\n=== Summary ===');
-  console.log(`Avg overhead: ${Math.round(avgOverhead)}ms`);
-  console.log(`Max overhead: ${maxOverhead}ms`);
-  console.log(`Avg result overlap: ${(avgOverlap * 100).toFixed(1)}%`);
+  console.log(`Successful: ${successful.length}/${results.length}`);
+  console.log(`Failed: ${failed.length}/${results.length}`);
+  if (successful.length > 0) {
+    console.log(`Avg latency: ${Math.round(avgLatency)}ms`);
+    console.log(`Max latency: ${maxLatency}ms`);
+  }
   console.log(`Threshold: ${threshold}ms`);
-  console.log(`Verdict: ${avgOverhead <= threshold ? 'PASS ✓' : 'FAIL ✗'}`);
 
-  process.exit(avgOverhead <= threshold ? 0 : 1);
+  const pass = failed.length === 0 && avgLatency <= threshold;
+  console.log(`Verdict: ${pass ? 'PASS ✓' : 'FAIL ✗'}`);
+
+  process.exit(pass ? 0 : 1);
 }
 
 main().catch(err => {

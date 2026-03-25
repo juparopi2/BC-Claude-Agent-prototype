@@ -130,8 +130,6 @@ export interface ImageSearchResult {
 export interface SemanticSearchQuery {
   /** Text query for semantic understanding */
   text: string;
-  /** Optional: pre-computed query embedding for vector search */
-  textEmbedding?: number[];
   /** Optional: pre-computed image query embedding for image search */
   imageEmbedding?: number[];
   /** User ID for multi-tenant isolation */

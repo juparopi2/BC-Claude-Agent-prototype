@@ -1,5 +1,6 @@
 import type { SearchIndex } from '@azure/search-documents';
 import { env } from '@/infrastructure/config/environment';
+import { COHERE_DEPLOYMENT_NAME, COHERE_EMBEDDING_DIMENSIONS } from './embeddings/models';
 
 export const INDEX_NAME = 'file-chunks-index-v2';
 
@@ -72,7 +73,7 @@ export const indexSchema: SearchIndex = {
       searchable: true,
       stored: true,
       hidden: false, // Retrievable in getDocument/search results (for verification scripts)
-      vectorSearchDimensions: 1536, // Cohere Embed 4 unified 1536d space (text + image)
+      vectorSearchDimensions: COHERE_EMBEDDING_DIMENSIONS,
       vectorSearchProfileName: VECTOR_PROFILE_NAME,
     },
     // ===== Chunk Metadata =====
@@ -193,8 +194,7 @@ export const indexSchema: SearchIndex = {
       {
         name: VECTOR_PROFILE_NAME,
         algorithmConfigurationName: VECTOR_ALGORITHM_NAME,
-        // Link to vectorizer for query-time vectorization (when configured)
-        ...(process.env.COHERE_ENDPOINT ? { vectorizerName: 'cohere-vectorizer' } : {}),
+        vectorizerName: 'cohere-vectorizer',
       },
     ],
     algorithms: [
@@ -209,22 +209,20 @@ export const indexSchema: SearchIndex = {
         }
       },
     ],
-    // Native query-time vectorizer via Cohere Embed 4 (Azure AI Foundry)
-    // Only included when Cohere endpoint is configured.
-    // Enables `kind: 'text'` vector queries (Azure generates embeddings at query time).
-    ...(process.env.COHERE_ENDPOINT ? {
-      vectorizers: [
-        {
-          vectorizerName: 'cohere-vectorizer',
-          kind: 'customWebApi' as const,
-          parameters: {
-            uri: `${process.env.COHERE_ENDPOINT}/v2/embed`,
-            httpHeaders: {},
-            httpMethod: 'POST',
-          },
+    // Query-time vectorizer: Azure AI Search generates embeddings via Cohere Embed v4
+    // at query time. Enables `kind: 'text'` vector queries (no app-side embedding needed).
+    vectorizers: [
+      {
+        vectorizerName: 'cohere-vectorizer',
+        kind: 'azureOpenAI' as const,
+        parameters: {
+          resourceUrl: env.COHERE_ENDPOINT,
+          deploymentId: COHERE_DEPLOYMENT_NAME,
+          modelName: COHERE_DEPLOYMENT_NAME,
+          apiKey: env.COHERE_API_KEY,
         },
-      ],
-    } : {}),
+      },
+    ],
   },
 
   // Semantic Search Configuration for Reranking

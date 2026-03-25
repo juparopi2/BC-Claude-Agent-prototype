@@ -100,12 +100,9 @@ describe('VectorSearchService — Unified Index', () => {
   // -------------------------------------------------------------------------
 
   describe('semanticSearch', () => {
-    it('sends a single vector query on embeddingVector', async () => {
-      const textEmbedding = new Array(1536).fill(0.2);
-
+    it('sends a single kind:"text" vector query on embeddingVector', async () => {
       await service.semanticSearch({
         text: 'find invoices',
-        textEmbedding,
         userId: 'user-abc',
         useVectorSearch: true,
         useSemanticRanker: false,
@@ -117,7 +114,8 @@ describe('VectorSearchService — Unified Index', () => {
 
       expect(vectorQueries).toHaveLength(1);
       expect(vectorQueries?.[0]?.fields).toEqual(['embeddingVector']);
-      expect(vectorQueries?.[0]?.vector).toEqual(textEmbedding);
+      expect(vectorQueries?.[0]?.kind).toBe('text');
+      expect(vectorQueries?.[0]?.text).toBe('find invoices');
     });
   });
 
@@ -195,7 +193,6 @@ describe('VectorSearchService — Unified Index', () => {
     it('routes all search operations through the injected client', async () => {
       await service.semanticSearch({
         text: 'test',
-        textEmbedding: new Array(1536).fill(0.1),
         userId: 'user-abc',
         useVectorSearch: true,
         useSemanticRanker: false,

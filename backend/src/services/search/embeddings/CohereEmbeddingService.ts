@@ -27,6 +27,12 @@ import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackin
 import type { IEmbeddingService, EmbeddingInputType, EmbeddingResult } from './types';
 import { COHERE_DEPLOYMENT_NAME, COHERE_MODEL_NAME, COHERE_EMBEDDING_DIMENSIONS } from './models';
 
+/** Optional context for usage tracking attribution */
+export interface EmbeddingTrackingContext {
+  userId?: string;
+  fileId?: string;
+}
+
 const logger = createChildLogger({ service: 'CohereEmbeddingService' });
 
 /** Cohere v2 Embed API batch limit */
@@ -106,7 +112,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
   // IEmbeddingService: embedText
   // -------------------------------------------------------------------------
 
-  async embedText(text: string, inputType: EmbeddingInputType): Promise<EmbeddingResult> {
+  async embedText(text: string, inputType: EmbeddingInputType, tracking?: EmbeddingTrackingContext): Promise<EmbeddingResult> {
     if (!text || text.trim().length === 0) {
       throw new Error('Text cannot be empty');
     }
@@ -134,7 +140,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
     logger.debug({ durationMs, inputType, textLength: text.length }, 'embedText completed');
 
     getUsageTrackingService()
-      .trackEmbedding('system', 'direct', inputTokens, 'text', { model: this.modelName })
+      .trackEmbedding(tracking?.userId ?? 'system', tracking?.fileId ?? 'direct', inputTokens, 'text', { model: this.modelName })
       .catch((err: unknown) => {
         logger.warn(
           { error: err instanceof Error ? { message: err.message, name: err.name } : { value: String(err) } },
@@ -149,7 +155,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
   // IEmbeddingService: embedImage
   // -------------------------------------------------------------------------
 
-  async embedImage(imageBase64: string, inputType: EmbeddingInputType): Promise<EmbeddingResult> {
+  async embedImage(imageBase64: string, inputType: EmbeddingInputType, tracking?: EmbeddingTrackingContext): Promise<EmbeddingResult> {
     if (!imageBase64 || imageBase64.trim().length === 0) {
       throw new Error('Image data cannot be empty');
     }
@@ -182,7 +188,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
     logger.debug({ durationMs, inputType }, 'embedImage completed');
 
     getUsageTrackingService()
-      .trackEmbedding('system', 'direct', inputTokens, 'image', { model: this.modelName })
+      .trackEmbedding(tracking?.userId ?? 'system', tracking?.fileId ?? 'direct', inputTokens, 'image', { model: this.modelName })
       .catch((err: unknown) => {
         logger.warn(
           { error: err instanceof Error ? { message: err.message, name: err.name } : { value: String(err) } },
@@ -253,7 +259,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
   // IEmbeddingService: embedTextBatch
   // -------------------------------------------------------------------------
 
-  async embedTextBatch(texts: string[], _inputType: EmbeddingInputType): Promise<EmbeddingResult[]> {
+  async embedTextBatch(texts: string[], _inputType: EmbeddingInputType, tracking?: EmbeddingTrackingContext): Promise<EmbeddingResult[]> {
     if (!texts || texts.length === 0) {
       return [];
     }
@@ -346,7 +352,7 @@ export class CohereEmbeddingService implements IEmbeddingService {
 
     // Fire-and-forget usage tracking for the full batch
     getUsageTrackingService()
-      .trackEmbedding('system', 'direct', totalInputTokens, 'text', {
+      .trackEmbedding(tracking?.userId ?? 'system', tracking?.fileId ?? 'direct', totalInputTokens, 'text', {
         model: this.modelName,
         batch_size: missingIndices.length,
         cached_count: texts.length - missingIndices.length,
@@ -365,8 +371,8 @@ export class CohereEmbeddingService implements IEmbeddingService {
   // IEmbeddingService: embedQuery
   // -------------------------------------------------------------------------
 
-  async embedQuery(text: string): Promise<EmbeddingResult> {
-    return this.embedText(text, 'search_query');
+  async embedQuery(text: string, tracking?: EmbeddingTrackingContext): Promise<EmbeddingResult> {
+    return this.embedText(text, 'search_query', tracking);
   }
 
   // -------------------------------------------------------------------------

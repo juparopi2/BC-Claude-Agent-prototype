@@ -164,6 +164,7 @@ describe('FileEmbedWorker', () => {
       expect(mockEmbedTextBatch).toHaveBeenCalledWith(
         ['First chunk text', 'Second chunk text', 'Third chunk text'],
         'search_document',
+        { userId: SAMPLE_JOB_DATA.userId, fileId: SAMPLE_JOB_DATA.fileId },
       );
 
       // Verify file metadata fetched

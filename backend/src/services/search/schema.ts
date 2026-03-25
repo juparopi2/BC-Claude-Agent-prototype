@@ -1,6 +1,6 @@
 import type { SearchIndex } from '@azure/search-documents';
 import { env } from '@/infrastructure/config/environment';
-import { COHERE_DEPLOYMENT_NAME, COHERE_EMBEDDING_DIMENSIONS } from './embeddings/models';
+import { COHERE_EMBEDDING_DIMENSIONS, COHERE_MODEL_NAME } from './embeddings/models';
 
 export const INDEX_NAME = 'file-chunks-index-v2';
 
@@ -210,18 +210,22 @@ export const indexSchema: SearchIndex = {
       },
     ],
     // Query-time vectorizer: Azure AI Search generates embeddings via Cohere Embed v4
-    // at query time. Enables `kind: 'text'` vector queries (no app-side embedding needed).
+    // at query time using the AML (Azure Machine Learning) vectorizer kind.
+    // Enables `kind: 'text'` vector queries (no app-side embedding needed).
+    //
+    // NOTE: The @azure/search-documents SDK v12.2 only types 'azureOpenAI' and 'customWebApi'.
+    // Cohere models deployed via Azure AI Foundry require 'aml' kind, which the SDK
+    // passes through correctly when cast. Applied via REST API in update-search-schema.ts.
     vectorizers: [
       {
         vectorizerName: 'cohere-vectorizer',
-        kind: 'azureOpenAI' as const,
-        parameters: {
-          resourceUrl: env.COHERE_ENDPOINT,
-          deploymentId: COHERE_DEPLOYMENT_NAME,
-          modelName: COHERE_DEPLOYMENT_NAME,
-          apiKey: env.COHERE_API_KEY,
+        kind: 'aml',
+        amlParameters: {
+          uri: env.COHERE_ENDPOINT,
+          key: env.COHERE_API_KEY,
+          modelName: COHERE_MODEL_NAME,
         },
-      },
+      } as unknown as import('@azure/search-documents').VectorSearchVectorizer,
     ],
   },
 

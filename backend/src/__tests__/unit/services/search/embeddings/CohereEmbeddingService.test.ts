@@ -273,7 +273,7 @@ describe('CohereEmbeddingService', () => {
 
       await service.embedQuery('user question');
 
-      expect(embedTextSpy).toHaveBeenCalledWith('user question', 'search_query');
+      expect(embedTextSpy).toHaveBeenCalledWith('user question', 'search_query', undefined);
       expect(fetchSpy).toHaveBeenCalledOnce();
     });
   });

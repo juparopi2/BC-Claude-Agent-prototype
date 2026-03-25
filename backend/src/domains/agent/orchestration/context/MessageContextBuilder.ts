@@ -563,7 +563,7 @@ export class MessageContextBuilder {
 
           const buffer = await uploadService.downloadFromBlob(record.blob_path);
           const base64Data = buffer.toString('base64');
-          const imageEmbedding = await cohereService.embedImage(base64Data, 'search_document');
+          const imageEmbedding = await cohereService.embedImage(base64Data, 'search_document', { userId });
           embeddings.push({
             attachmentId,
             name: record.name,

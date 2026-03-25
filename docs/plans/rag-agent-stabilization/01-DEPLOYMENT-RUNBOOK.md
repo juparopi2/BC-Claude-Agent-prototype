@@ -568,6 +568,47 @@ Before cleanup, rollback was a 30-second config change (`USE_UNIFIED_INDEX=false
 
 ---
 
+## Query-Time Vectorization — Index Update Procedure (2026-03-24)
+
+The search index vectorizer was corrected from `customWebApi` (broken) to `aml` (Azure Machine Learning) kind. This must be applied to EACH environment's index.
+
+### Technical Details
+
+- **Vectorizer kind**: `aml` (Azure AI Foundry model catalog)
+- **Model name**: `Cohere-embed-v4` (the model catalog name, NOT the deployment name `embed-v-4-0`)
+- **API version**: `2025-05-01-Preview` (required — `aml` kind with Cohere-embed-v4 is not available in stable API versions)
+- **SDK limitation**: `@azure/search-documents` v12.2 does not support `aml` vectorizer kind. The `update-search-schema.ts` script uses the REST API directly to bypass this.
+
+### Dev Environment (completed 2026-03-24)
+
+```bash
+cd backend
+npx tsx scripts/database/update-search-schema.ts
+# Output: "Vectorizer configuration changed: customWebApi → aml"
+# Output: "Schema updated successfully via REST API."
+```
+
+### Production Environment (REQUIRED before query-time vectorization works)
+
+After deploying the code to production, run the same schema update script against the production index:
+
+```bash
+# With production environment variables (AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_KEY, COHERE_ENDPOINT, COHERE_API_KEY):
+cd backend
+npx tsx scripts/database/update-search-schema.ts --dry-run  # Preview first
+npx tsx scripts/database/update-search-schema.ts            # Apply
+```
+
+The script:
+1. GETs the current index definition via REST API
+2. Patches the vectorizer from whatever exists to `aml` kind with Cohere-embed-v4
+3. PUTs the updated definition back
+4. Verifies the update was applied
+
+**If the vectorizer is not updated in production**, search queries will fail because the code now sends `kind: 'text'` vector queries that require a functioning vectorizer.
+
+---
+
 ## Errata — Azure Image Embedding Endpoint (2026-03-24)
 
 ### Discovery

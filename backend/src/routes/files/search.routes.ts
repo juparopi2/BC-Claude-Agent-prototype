@@ -49,7 +49,7 @@ router.get('/search/images', authenticateMicrosoft, async (req: Request, res: Re
 
     // Generate image query embedding (1536d Cohere Embed v4, unified vector space)
     const cohereService = new CohereEmbeddingService();
-    const embedding = await cohereService.embedQuery(q);
+    const embedding = await cohereService.embedQuery(q, { userId });
 
     // Search for similar images
     const vectorSearchService = VectorSearchService.getInstance();

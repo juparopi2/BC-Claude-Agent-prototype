@@ -116,7 +116,7 @@ export class FileEmbedWorker {
         '@/services/search/embeddings/CohereEmbeddingService'
       );
       const cohereService = getCohereEmbeddingService();
-      const embeddings = await cohereService.embedTextBatch(texts, 'search_document');
+      const embeddings = await cohereService.embedTextBatch(texts, 'search_document', { userId, fileId });
 
       if (embeddings.length !== chunks.length) {
         throw new Error(

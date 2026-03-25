@@ -889,17 +889,21 @@ export class VectorSearchService {
   ): Promise<void> {
     const usageTrackingService = getUsageTrackingService();
 
-    // QueryTokens is 0 because query embedding is tracked separately in EmbeddingService
-    // when the user's query is embedded before calling search
-    await usageTrackingService.trackVectorSearch(userId, 0, {
+    // Estimated query embedding tokens consumed by Azure AI Search's native Cohere vectorizer
+    // at query time. Average search query is ~50 tokens. The actual tokens are consumed
+    // by Azure (billed via the Cohere model deployment), not by the app.
+    const estimatedQueryTokens = searchType === 'keyword' ? 0 : 50;
+
+    await usageTrackingService.trackVectorSearch(userId, estimatedQueryTokens, {
       search_type: searchType,
       result_count: resultCount,
       top_k: topK,
+      vectorizer: 'azure-native',
     });
 
     logger.debug(
-      { userId, searchType, resultCount, topK },
-      'Vector search usage tracked'
+      { userId, searchType, resultCount, topK, estimatedQueryTokens },
+      'Search usage tracked'
     );
   }
 

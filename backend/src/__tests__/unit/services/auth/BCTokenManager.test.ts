@@ -177,7 +177,7 @@ describe('BCTokenManager', () => {
 
       mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
 
-      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Failed to store Business Central token');
+      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Failed to encrypt token');
 
       cryptoSpy.mockRestore();
     });
@@ -252,7 +252,7 @@ describe('BCTokenManager', () => {
 
       mockExecuteQuery.mockRejectedValue(new Error('Database connection failed'));
 
-      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Failed to store Business Central token');
+      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Database connection failed');
     });
 
     it('should store token expiration time', async () => {
@@ -295,7 +295,7 @@ describe('BCTokenManager', () => {
     it('should handle database errors on clear', async () => {
       mockExecuteQuery.mockRejectedValue(new Error('Database error'));
 
-      await expect(tokenManager.clearBCToken('user-123')).rejects.toThrow('Failed to clear Business Central token');
+      await expect(tokenManager.clearBCToken('user-123')).rejects.toThrow('Database error');
     });
   });
 });

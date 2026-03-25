@@ -70,9 +70,9 @@ export class BCTokenManager {
    * @param tokenData - BC token data to store (only accessToken and expiresAt are used)
    */
   async storeBCToken(userId: string, tokenData: TokenAcquisitionResult): Promise<void> {
-    try {
-      const accessTokenEncrypted = this.encryptToken(tokenData.accessToken);
+    const accessTokenEncrypted = this.encryptToken(tokenData.accessToken);
 
+    try {
       const result = await executeQuery(
         `
         UPDATE users
@@ -95,7 +95,7 @@ export class BCTokenManager {
       this.logger.info('Stored encrypted BC token for user', { userId, expiresAt: tokenData.expiresAt });
     } catch (error) {
       this.logger.error('Failed to store BC token', { error, userId });
-      throw error instanceof Error ? error : new Error('Failed to store Business Central token');
+      throw error;
     }
   }
 
@@ -124,7 +124,7 @@ export class BCTokenManager {
       this.logger.info('Cleared BC token for user', { userId });
     } catch (error) {
       this.logger.error('Failed to clear BC token', { error, userId });
-      throw new Error('Failed to clear Business Central token');
+      throw error;
     }
   }
 }

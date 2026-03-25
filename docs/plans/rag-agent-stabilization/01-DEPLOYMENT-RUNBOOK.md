@@ -87,7 +87,7 @@ During QA review, we discovered that the CI/CD pipelines, bootstrap scripts, and
 
 | File | Gap | Fix |
 |---|---|---|
-| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths | Added `cohere-endpoint` + `cohere-api-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY`, `USE_QUERY_TIME_VECTORIZATION` to both `set-env-vars` blocks |
+| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths | Added `cohere-endpoint` + `cohere-api-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY` to both `set-env-vars` blocks |
 | `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 3 env vars to `set-env-vars` block |
 | `infrastructure/scripts/create-container-apps.sh` | Only 28 KV secret refs, missing Cohere | Added 2 Cohere KV refs (now 30 total) |
 | `backend/src/infrastructure/keyvault/keyvault.ts` | `SECRET_NAMES` and `loadSecretsFromKeyVault()` missing Cohere | Added `COHERE_ENDPOINT` + `COHERE_API_KEY` entries |
@@ -406,7 +406,8 @@ git push origin production
 | `SEARCH_FETCH_MULTIPLIER` | `3` (default) | `.env` / Container App config | Optional — controls fetchTopK in semantic search |
 
 ### Resources
-- Cohere vectorizer linked to `file-chunks-index-v2` HNSW profile (conditionally added when `COHERE_ENDPOINT` is set)
+- Cohere vectorizer linked to `file-chunks-index-v2` HNSW profile (always present — `COHERE_ENDPOINT` is required)
+- **Preview API dependency**: `VectorSearchService` uses `serviceVersion: '2025-08-01-preview'` (the `aml` vectorizer kind requires a preview API for query-time vectorization). See "Query-Time Vectorization" section below for details.
 
 ### Migrations
 
@@ -576,8 +577,22 @@ The search index vectorizer was corrected from `customWebApi` (broken) to `aml` 
 
 - **Vectorizer kind**: `aml` (Azure AI Foundry model catalog)
 - **Model name**: `Cohere-embed-v4` (the model catalog name, NOT the deployment name `embed-v-4-0`)
-- **API version**: `2025-05-01-Preview` (required — `aml` kind with Cohere-embed-v4 is not available in stable API versions)
+- **Index update API version**: `2025-05-01-Preview` (required — `aml` kind with Cohere-embed-v4 is not available in stable API versions)
 - **SDK limitation**: `@azure/search-documents` v12.2 does not support `aml` vectorizer kind. The `update-search-schema.ts` script uses the REST API directly to bypass this.
+
+### Preview API Requirement for Queries (CRITICAL for Production)
+
+The `aml` vectorizer kind is a **preview-only feature** in Azure AI Search. The stable API version (`2025-09-01`, SDK default) rejects `kind: 'text'` vector queries against `aml` vectorizers with:
+
+> *"Vectorization of queries against fields using the 'aml' vectorizer kind is not supported in the current api version."*
+
+**Fix applied**: `VectorSearchService.ts` overrides the SDK default via `serviceVersion: '2025-08-01-preview'` on both `SearchClient` and `SearchIndexClient` constructors. This is required for ALL environments.
+
+**Production implications**:
+- The application depends on a **preview** Azure AI Search API. Preview APIs are subject to change, deprecation, or behavioral differences versus stable APIs.
+- Monitor [Azure AI Search API versions](https://learn.microsoft.com/en-us/azure/search/search-api-migration) for when `aml` vectorizer query support graduates to stable. When it does, remove the `serviceVersion` override to use the SDK default.
+- If Microsoft releases `@azure/search-documents@12.3.0` (stable, not beta) with `aml` support built-in, upgrade the SDK and remove the override.
+- **No additional infrastructure steps needed** — the preview API is available on the same Azure AI Search endpoint. No resource configuration changes required.
 
 ### Dev Environment (completed 2026-03-24)
 

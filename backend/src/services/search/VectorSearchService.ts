@@ -21,6 +21,18 @@ import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackin
 
 const logger = createChildLogger({ service: 'VectorSearchService' });
 
+/**
+ * Azure AI Search API version.
+ *
+ * The `aml` vectorizer kind (used by Cohere Embed v4 from the Foundry model catalog)
+ * requires a **preview** API version for query-time vectorization.
+ * The stable `2025-09-01` API (SDK default) does NOT support `kind: 'text'`
+ * queries against `aml` vectorizers.
+ *
+ * @see https://learn.microsoft.com/en-us/azure/search/vector-search-vectorizer-azure-machine-learning-ai-studio-catalog
+ */
+const SEARCH_API_VERSION = '2025-08-01-preview';
+
 export class VectorSearchService {
   private static instance?: VectorSearchService;
   private searchClient?: SearchClient<Record<string, unknown>>;
@@ -64,7 +76,8 @@ export class VectorSearchService {
         }
         this.indexClient = new SearchIndexClient(
             env.AZURE_SEARCH_ENDPOINT,
-            new AzureKeyCredential(env.AZURE_SEARCH_KEY)
+            new AzureKeyCredential(env.AZURE_SEARCH_KEY),
+            { serviceVersion: SEARCH_API_VERSION },
         );
     }
 
@@ -77,7 +90,8 @@ export class VectorSearchService {
         this.searchClient = new SearchClient(
             env.AZURE_SEARCH_ENDPOINT,
             INDEX_NAME,
-            new AzureKeyCredential(env.AZURE_SEARCH_KEY)
+            new AzureKeyCredential(env.AZURE_SEARCH_KEY),
+            { serviceVersion: SEARCH_API_VERSION },
         );
     }
   }

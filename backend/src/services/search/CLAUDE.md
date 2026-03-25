@@ -91,7 +91,9 @@ Name: `semantic-config`. Uses Azure AI Search Semantic Ranker to rerank results 
 
 ### Query-Time Vectorization
 
-Azure AI Search generates embeddings at query time via the native Cohere vectorizer configured in `schema.ts`. The application sends `kind: 'text'` vector queries with the raw query string — no app-side embedding generation needed for search queries. The vectorizer is configured as `azureOpenAI` kind pointing to the Cohere Embed v4 deployment on Azure AIServices.
+Azure AI Search generates embeddings at query time via the native Cohere vectorizer configured in `schema.ts`. The application sends `kind: 'text'` vector queries with the raw query string — no app-side embedding generation needed for search queries. The vectorizer is configured as `aml` kind (Azure Machine Learning / Foundry model catalog) pointing to the Cohere Embed v4 deployment.
+
+**API Version Requirement**: The `aml` vectorizer kind is a **preview feature**. Query-time vectorization against `aml` vectorizers requires a preview API version (`2025-08-01-preview`). The stable `2025-09-01` API rejects these queries with: *"Vectorization of queries against fields using the 'aml' vectorizer kind is not supported in the current api version."* `VectorSearchService` overrides the SDK default via `serviceVersion: '2025-08-01-preview'`.
 
 Note: `CohereEmbeddingService` is still used for **indexing** (generating embeddings for new file chunks and images). Only search query embedding is handled by Azure AI Search natively.
 

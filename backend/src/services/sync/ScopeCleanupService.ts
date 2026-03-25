@@ -127,7 +127,13 @@ export class ScopeCleanupService {
     }
 
     // 6. Delete all files for this scope (FK cascades handle chunks, embeddings, attachments)
+    //    NULL parent_folder_id first to break self-referential FK before bulk delete
     if (fileIds.length > 0) {
+      await prisma.$executeRaw`
+        UPDATE files SET parent_folder_id = NULL
+        WHERE connection_scope_id = ${scopeId}
+      `;
+
       await prisma.files.deleteMany({
         where: { connection_scope_id: scopeId },
       });

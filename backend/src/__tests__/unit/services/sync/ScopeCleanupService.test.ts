@@ -402,12 +402,13 @@ describe('ScopeCleanupService', () => {
   // ==========================================================================
 
   describe('removeScope() — citation unlinking', () => {
-    it('calls $executeRaw to NULL message_citations.file_id when files exist', async () => {
+    it('calls $executeRaw to NULL message_citations.file_id and parent_folder_id when files exist', async () => {
       mockRepo.findFilesByScopeId.mockResolvedValue([makeFile(FILE_ID_1), makeFile(FILE_ID_2)]);
 
       await service.removeScope(CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(prisma.$executeRaw).toHaveBeenCalledOnce();
+      // 2 calls: NULL citations + NULL parent_folder_id (break self-ref FK)
+      expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
     });
 
     it('does not call $executeRaw when scope has no files', async () => {
@@ -479,8 +480,9 @@ describe('ScopeCleanupService', () => {
       expect(callOrder).toEqual([
         'findScopeById',
         'findFilesByScopeId',
-        '$executeRaw',
+        '$executeRaw',          // NULL message_citations.file_id
         'deleteChunksForFile',
+        '$executeRaw',          // NULL parent_folder_id (break self-ref FK)
         'deleteMany',
         'deleteScopeById',
       ]);

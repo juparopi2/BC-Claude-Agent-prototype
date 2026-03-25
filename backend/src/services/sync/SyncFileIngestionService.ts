@@ -19,6 +19,12 @@ import { getMessageQueue } from '@/infrastructure/queue';
 
 const logger = createChildLogger({ service: 'SyncFileIngestionService' });
 
+/** Maximum files per transaction batch. Kept small for Azure SQL dev tier latency (25 files × 2 queries × ~600ms ≈ 30s). */
+export const INGESTION_BATCH_SIZE = 25;
+
+/** Transaction timeout in ms. Safety margin over worst-case batch duration. */
+export const INGESTION_TX_TIMEOUT = 60_000;
+
 /** Context required for file ingestion */
 export interface IngestionContext {
   connectionId: string;
@@ -60,26 +66,47 @@ export class SyncFileIngestionService {
     const result: IngestionResult = { created: 0, updated: 0, errors: 0 };
 
     // Phase A: Atomic DB writes
-    const createdFiles = await prisma.$transaction(async (tx) => {
-      const newFiles: CreatedFileInfo[] = [];
+    // Wrapped in try/catch to prevent MSSQL adapter's EREQINPROG error from
+    // becoming an unhandled rejection that crashes the server (see PRD-119).
+    let createdFiles: CreatedFileInfo[];
+    try {
+      createdFiles = await prisma.$transaction(async (tx) => {
+        const newFiles: CreatedFileInfo[] = [];
 
-      for (const item of items) {
-        try {
-          await this.upsertFile(tx, item, ctx, newFiles);
-        } catch (err) {
-          const errorInfo = err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-          logger.warn(
-            { error: errorInfo, externalId: item.id, fileName: item.name, connectionId: ctx.connectionId, scopeId: ctx.scopeId },
-            'Skipping file due to ingestion error'
-          );
-          result.errors++;
+        for (const item of items) {
+          try {
+            await this.upsertFile(tx, item, ctx, newFiles);
+          } catch (err) {
+            const errorInfo = err instanceof Error
+              ? { message: err.message, name: err.name }
+              : { value: String(err) };
+            logger.warn(
+              { error: errorInfo, externalId: item.id, fileName: item.name, connectionId: ctx.connectionId, scopeId: ctx.scopeId },
+              'Skipping file due to ingestion error'
+            );
+            result.errors++;
+          }
         }
-      }
 
-      return newFiles;
-    }, { timeout: 30000 });
+        return newFiles;
+      }, { timeout: INGESTION_TX_TIMEOUT });
+    } catch (txErr) {
+      const errorInfo = txErr instanceof Error
+        ? { message: txErr.message, name: txErr.name, stack: txErr.stack }
+        : { value: String(txErr) };
+      const msg = txErr instanceof Error ? txErr.message : String(txErr);
+      const isTransient = msg.includes('EREQINPROG') || msg.includes('request in progress') || msg.includes('expired transaction');
+
+      logger.error(
+        { error: errorInfo, connectionId: ctx.connectionId, scopeId: ctx.scopeId, batchSize: items.length, isTransient },
+        'Transaction failed during file ingestion batch'
+      );
+
+      // Re-throw so callers (InitialSyncService) can update scope status.
+      // The error is now caught and logged within the promise chain,
+      // so it will NOT become an unhandled rejection.
+      throw txErr;
+    }
 
     result.created = createdFiles.length;
     result.updated = items.length - createdFiles.length - result.errors;
@@ -97,6 +124,35 @@ export class SyncFileIngestionService {
     }
 
     return result;
+  }
+
+  /**
+   * Ingest all items by splitting into batches of INGESTION_BATCH_SIZE.
+   *
+   * Handles the outer batch loop, progress reporting, and result aggregation.
+   * Each batch is processed via ingestBatch() with its own transaction.
+   */
+  async ingestAll(
+    items: ExternalFileItem[],
+    ctx: IngestionContext,
+    onBatchComplete?: (processed: number, total: number) => void,
+  ): Promise<IngestionResult> {
+    const totalResult: IngestionResult = { created: 0, updated: 0, errors: 0 };
+    let processed = 0;
+
+    for (let i = 0; i < items.length; i += INGESTION_BATCH_SIZE) {
+      const batch = items.slice(i, i + INGESTION_BATCH_SIZE);
+      const batchResult = await this.ingestBatch(batch, ctx);
+
+      totalResult.created += batchResult.created;
+      totalResult.updated += batchResult.updated;
+      totalResult.errors += batchResult.errors;
+      processed += batch.length;
+
+      onBatchComplete?.(processed, items.length);
+    }
+
+    return totalResult;
   }
 
   /**

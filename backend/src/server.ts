@@ -1467,6 +1467,21 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+
+  // Known transient MSSQL adapter errors that should NOT crash the server.
+  // These occur when the mssql driver fails to rollback a timed-out transaction
+  // while a query is still in flight (EREQINPROG). BullMQ will retry the failed job.
+  const isTransientDbError =
+    message.includes('EREQINPROG') ||
+    message.includes('request in progress') ||
+    message.includes('expired transaction');
+
+  if (isTransientDbError) {
+    console.error('⚠️  Transient DB error (unhandled rejection, NOT crashing):', reason);
+    return;
+  }
+
   console.error('❌ Unhandled Rejection:', reason);
   gracefulShutdown('UNHANDLED_REJECTION');
 });

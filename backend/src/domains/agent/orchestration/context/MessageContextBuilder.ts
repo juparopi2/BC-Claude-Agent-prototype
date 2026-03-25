@@ -319,16 +319,33 @@ export class MessageContextBuilder {
       );
     }
 
-    // Step 2b: Resolve @mentioned individual files to content blocks (images, PDFs, text)
+    // Step 2b: Resolve @mentioned individual files to content blocks (images, PDFs, text, binary→container_upload)
     const mentionBlocks: (AnthropicAttachmentContentBlock | { type: 'text'; text: string })[] = [];
     if (contextResult.mentionScope?.mentionedFiles.length && userId) {
-      const resolved = await this.resolveMentionContentBlocks(
+      const mentionResult = await this.resolveMentionContentBlocks(
         userId,
+        sessionId,
         contextResult.mentionScope.mentionedFiles
       );
-      mentionBlocks.push(...resolved);
+      mentionBlocks.push(...mentionResult.blocks);
+
+      // Merge mention routing metadata with chat-attachment routing metadata
+      if (mentionResult.routingMetadata) {
+        if (!routingMetadata) {
+          routingMetadata = mentionResult.routingMetadata;
+        } else {
+          routingMetadata = {
+            hasContainerUploads: routingMetadata.hasContainerUploads || mentionResult.routingMetadata.hasContainerUploads,
+            nonNativeTypes: [...new Set([
+              ...routingMetadata.nonNativeTypes,
+              ...mentionResult.routingMetadata.nonNativeTypes,
+            ])],
+          };
+        }
+      }
+
       logger.debug(
-        { sessionId, mentionBlockCount: resolved.length },
+        { sessionId, mentionBlockCount: mentionResult.blocks.length, hasMentionContainerUploads: !!mentionResult.routingMetadata?.hasContainerUploads },
         'Resolved mention content blocks for message'
       );
     }
@@ -414,11 +431,15 @@ export class MessageContextBuilder {
    */
   private async resolveMentionContentBlocks(
     userId: string,
+    sessionId: string,
     mentionedFiles: Array<{ fileId: string; fileName: string; mimeType: string; isFolder: boolean }>
-  ): Promise<Array<AnthropicAttachmentContentBlock | { type: 'text'; text: string }>> {
+  ): Promise<{
+    blocks: Array<AnthropicAttachmentContentBlock | { type: 'text'; text: string }>;
+    routingMetadata?: AttachmentRoutingMetadata;
+  }> {
     const { getFileService } = await import('@/services/files/FileService');
     const { getFileUploadService } = await import('@/services/files/FileUploadService');
-    const { isImageMimeType } = await import('@bc-agent/shared');
+    const { isImageMimeType, getAttachmentRoutingCategory } = await import('@bc-agent/shared');
 
     const TEXT_MIME_TYPES = new Set([
       'text/plain',
@@ -434,8 +455,11 @@ export class MessageContextBuilder {
     const MAX_IMAGE_BYTES = 30 * 1024 * 1024;  // 30MB
     const MAX_PDF_BYTES = 32 * 1024 * 1024;    // 32MB
     const MAX_TEXT_BYTES = 10 * 1024 * 1024;   // 10MB
+    const MAX_BINARY_BYTES = 32 * 1024 * 1024; // 32MB Anthropic Files API limit
 
     const blocks: Array<AnthropicAttachmentContentBlock | { type: 'text'; text: string }> = [];
+    let hasContainerUploads = false;
+    const nonNativeTypes: string[] = [];
     const fileService = getFileService();
     const uploadService = getFileUploadService();
 
@@ -512,11 +536,55 @@ export class MessageContextBuilder {
             type: 'text',
             text: `[File: ${mention.fileName}]\n${content}`,
           });
+        } else if (getAttachmentRoutingCategory(file.mimeType) === 'container_upload') {
+          // Binary files (XLSX, DOCX, PPTX) → upload to Anthropic Files API for sandbox access
+          if (file.sizeBytes > MAX_BINARY_BYTES) {
+            logger.warn(
+              { fileId: mention.fileId, sizeBytes: file.sizeBytes, mimeType: file.mimeType },
+              'Mentioned binary file too large for container upload, falling back to semantic search'
+            );
+            continue;
+          }
+          try {
+            const { getChatAttachmentService } = await import('@/domains/chat-attachments');
+            const attachmentService = getChatAttachmentService();
+            const result = await attachmentService.createFromMentionedFile({
+              userId,
+              sessionId,
+              sourceFileId: mention.fileId,
+              fileName: mention.fileName,
+              mimeType: file.mimeType,
+              sizeBytes: file.sizeBytes,
+              blobPath: file.blobPath!,
+            });
+            blocks.push({
+              type: 'container_upload',
+              file_id: result.anthropicFileId,
+            } as AnthropicAttachmentContentBlock);
+            hasContainerUploads = true;
+            nonNativeTypes.push(file.mimeType);
+            logger.info(
+              {
+                fileId: mention.fileId,
+                anthropicFileId: result.anthropicFileId,
+                mimeType: file.mimeType,
+              },
+              'Created container upload for @mentioned binary file'
+            );
+          } catch (uploadError) {
+            const uploadErrorInfo = uploadError instanceof Error
+              ? { message: uploadError.message, name: uploadError.name }
+              : { value: String(uploadError) };
+            logger.warn(
+              { fileId: mention.fileId, mimeType: file.mimeType, error: uploadErrorInfo },
+              'Failed to create container upload for mentioned file, falling back to semantic search'
+            );
+          }
         } else {
-          // Binary files (docx, xlsx, etc.) — skip, already in semantic search context as chunked text
+          // Truly unsupported types — skip
           logger.debug(
             { fileId: mention.fileId, mimeType: file.mimeType },
-            'Mentioned binary file skipped (handled via semantic search)'
+            'Mentioned file type not supported for content blocks, skipping'
           );
         }
       } catch (error) {
@@ -530,7 +598,12 @@ export class MessageContextBuilder {
       }
     }
 
-    return blocks;
+    return {
+      blocks,
+      routingMetadata: hasContainerUploads
+        ? { hasContainerUploads: true, nonNativeTypes }
+        : undefined,
+    };
   }
 
   /**

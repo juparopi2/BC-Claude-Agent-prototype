@@ -59,7 +59,7 @@ npx tsx scripts/costs/cost-report.ts --verbose            # Per-user report
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
 | `diagnose-sync.ts` | Inspect scopes, file hierarchy, stuck syncs | `--userId`, `--scopeId`, `--verbose`, `--health` |
-| `verify-sync.ts` | Cross-system verification: DB → Blob → AI Search | `--userId`, `--scope`, `--section`, `--health` |
+| `verify-sync.ts` | Cross-system verification: DB → Blob → AI Search | `--userId`, `--scope`, `--section`, `--health`, `--deep`, `--errors` |
 | `fix-stuck-scopes.ts` | Reset scopes stuck in 'syncing' | `--userId`, `--dry-run`, `--fix`, `--reset-to-idle` |
 | `cleanup-connections.ts` | Full cleanup for e2e testing | `--userId`, `--provider`, `--dry-run`, `--confirm` |
 
@@ -68,6 +68,8 @@ npx tsx scripts/costs/cost-report.ts --verbose            # Per-user report
 ```bash
 npx tsx scripts/connectors/diagnose-sync.ts --userId <ID> --health   # Quick health
 npx tsx scripts/connectors/verify-sync.ts --userId <ID>              # Full pipeline
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --deep       # Deep integrity (false positives, vectors, errors)
+npx tsx scripts/connectors/verify-sync.ts --userId <ID> --deep --errors  # Problems only
 npx tsx scripts/connectors/fix-stuck-scopes.ts --userId <ID> --fix   # Remediation
 npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider all --confirm  # Nuclear
 ```

@@ -220,9 +220,10 @@ az containerapp secret set \
     "graph-webhook-url=keyvaultref:${KV_REF}/Graph-WebhookBaseUrl,identityref:system" \
     "cohere-endpoint=keyvaultref:${KV_REF}/COHERE-ENDPOINT,identityref:system" \
     "cohere-api-key=keyvaultref:${KV_REF}/COHERE-API-KEY,identityref:system" \
+    "cookie-domain=keyvaultref:${KV_REF}/Cookie-Domain,identityref:system" \
   --output none
 
-echo -e "${GREEN}✓ Backend secrets configured (30 KV references)${NC}"
+echo -e "${GREEN}✓ Backend secrets configured (31 KV references)${NC}"
 echo ""
 
 # ── Grant ACR pull to both apps ───────────────────────────────────────────────

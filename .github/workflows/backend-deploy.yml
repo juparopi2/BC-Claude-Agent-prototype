@@ -199,7 +199,8 @@ jobs:
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
               USE_UNIFIED_INDEX=false \
-              USE_QUERY_TIME_VECTORIZATION=false
+              USE_QUERY_TIME_VECTORIZATION=false \
+              COOKIE_DOMAIN=secretref:cookie-domain
 
           # Update ingress configuration for the backend
           az containerapp ingress update \
@@ -317,7 +318,8 @@ jobs:
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
               USE_UNIFIED_INDEX=false \
-              USE_QUERY_TIME_VECTORIZATION=false
+              USE_QUERY_TIME_VECTORIZATION=false \
+              COOKIE_DOMAIN=secretref:cookie-domain
 
       - name: Configure Ingress
         run: |

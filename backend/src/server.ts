@@ -213,8 +213,8 @@ async function initializeApp(): Promise<void> {
         httpOnly: true,
         maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
         sameSite: 'lax',
-        // Share cookie across subdomains (myworkmate.ai, api.myworkmate.ai, www.myworkmate.ai)
-        ...(isProd && { domain: '.myworkmate.ai' }),
+        // Share cookie across subdomains when COOKIE_DOMAIN is set (via Key Vault per environment)
+        ...(env.COOKIE_DOMAIN && { domain: env.COOKIE_DOMAIN }),
       },
     });
     console.log('✅ Session middleware configured with RedisStore');

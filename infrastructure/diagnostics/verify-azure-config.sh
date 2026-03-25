@@ -70,6 +70,7 @@ case "$ENVIRONMENT" in
     KEY_VAULT_NAME="kv-bcagent-dev"
     RG_SEC="rg-BCAgentPrototype-sec-dev"
     NODE_ENV_EXPECTED="development"
+    COOKIE_DOMAIN_EXPECTED="none"
     ;;
   prod)
     RESOURCE_GROUP="rg-myworkmate-app-prod"
@@ -77,6 +78,7 @@ case "$ENVIRONMENT" in
     KEY_VAULT_NAME="kv-myworkmate-prod"
     RG_SEC="rg-myworkmate-sec-prod"
     NODE_ENV_EXPECTED="production"
+    COOKIE_DOMAIN_EXPECTED=".myworkmate.ai"
     ;;
   *)
     echo -e "${RED}Unknown environment: '$ENVIRONMENT'. Use 'dev' or 'prod'.${NC}"
@@ -184,6 +186,7 @@ declare -A EXPECTED_VARS=(
   # Auth / session
   ["SESSION_SECRET"]="secretRef"
   ["ENCRYPTION_KEY"]="secretRef"
+  ["COOKIE_DOMAIN"]="secretRef"
 
   # Microsoft OAuth
   ["MICROSOFT_CLIENT_ID"]="secretRef"

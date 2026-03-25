@@ -67,6 +67,7 @@ const envSchema = z.object({
   // Session management
   SESSION_SECRET: z.string().optional(),
   SESSION_MAX_AGE: z.string().default('86400000').transform(Number).pipe(z.number()),
+  COOKIE_DOMAIN: z.string().optional().transform(v => v === 'none' || !v ? undefined : v),
 
   // Frontend URL
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),

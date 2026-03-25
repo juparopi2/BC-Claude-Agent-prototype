@@ -91,6 +91,8 @@ process.env.MICROSOFT_CLIENT_SECRET = 'mock-client-secret';
 process.env.MICROSOFT_TENANT_ID = 'common';
 process.env.MICROSOFT_REDIRECT_URI = 'http://localhost:3002/api/auth/callback';
 process.env.BC_API_URL = 'https://api.businesscentral.dynamics.com/v2.0';
+process.env.COHERE_ENDPOINT = 'https://test-cohere.eastus.models.ai.azure.com';
+process.env.COHERE_API_KEY = 'mock-cohere-api-key';
 
 // Export mockLogger for test files that need to assert on logger calls
 export { mockLogger };

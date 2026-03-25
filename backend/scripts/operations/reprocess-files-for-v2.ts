@@ -29,6 +29,7 @@
  */
 
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import { FlowProducer, type FlowJob } from 'bullmq';
 import { createPrisma } from '../_shared/prisma.js';
 import { getFlag, hasFlag, getNumericFlag } from '../_shared/args.js';
@@ -134,9 +135,11 @@ function buildFileFlow(params: {
   fileName: string;
 }): FlowJob {
   const { fileId, userId, mimeType, blobPath, fileName } = params;
-  // Each re-process run uses a unique batchId so job deduplication doesn't
-  // block multiple re-process passes on the same file.
-  const batchId = `reprocess-v2-${Date.now()}`;
+  // batchId must be a valid UUID — FilePipelineCompleteWorker uses it in
+  // a raw SQL query against upload_batches.id (UniqueIdentifier column).
+  // Using a random UUID that won't match any real batch is safe — the
+  // UPDATE simply affects 0 rows.
+  const batchId = randomUUID().toUpperCase();
 
   return {
     name:      `pipeline-complete--${fileId}`,

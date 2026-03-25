@@ -88,8 +88,8 @@ During QA review, we discovered that the CI/CD pipelines, bootstrap scripts, and
 | File | Gap | Fix |
 |---|---|---|
 | `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths; referenced removed `USE_QUERY_TIME_VECTORIZATION` flag | Added `cohere-endpoint` + `cohere-api-key` + `cohere-vectorizer-endpoint` + `cohere-vectorizer-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY`, `COHERE_VECTORIZER_ENDPOINT`, `COHERE_VECTORIZER_KEY` to both `set-env-vars` blocks; removed `USE_QUERY_TIME_VECTORIZATION` |
-| `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 3 env vars to `set-env-vars` block |
-| `infrastructure/scripts/create-container-apps.sh` | Only 28 KV secret refs, missing Cohere | Added 2 Cohere KV refs (now 30 total) |
+| `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 4 env vars (`COHERE_ENDPOINT`, `COHERE_API_KEY`, `COHERE_VECTORIZER_ENDPOINT`, `COHERE_VECTORIZER_KEY`) to `set-env-vars` block |
+| `infrastructure/scripts/create-container-apps.sh` | Only 28 KV secret refs, missing Cohere | Added Cohere + vectorizer KV refs (now 33 total) |
 | `backend/src/infrastructure/keyvault/keyvault.ts` | `SECRET_NAMES` and `loadSecretsFromKeyVault()` missing Cohere | Added `COHERE_ENDPOINT` + `COHERE_API_KEY` entries |
 | `backend/.env.example` | Missing PRD-203 tuning variables | Added `USE_QUERY_TIME_VECTORIZATION`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `HNSW_EF_SEARCH`, `SEARCH_FETCH_MULTIPLIER` |
 | `infrastructure/bicep/modules/keyvault-secrets.bicep` | Missing Cohere vectorizer secrets | Added `COHERE-VECTORIZER-ENDPOINT` + `COHERE-VECTORIZER-KEY` conditional secrets |
@@ -656,18 +656,28 @@ az ml serverless-endpoint create \
   --file cohere-serverless.yaml
 
 # 5. Get credentials
+# IMPORTANT: 2>/dev/null is required — `az ml` preview commands emit warnings to
+# stdout that contaminate captured variables. Without it, Key Vault stores
+# "WARNING: Command group 'ml serverless-endpoint' is in preview..." as the secret value.
 SCORING_URI=$(az ml serverless-endpoint show --name cohere-embed-bcagent-dev \
   --resource-group rg-BCAgentPrototype-app-dev \
-  --workspace-name project-bcagent-dev --query scoring_uri -o tsv)
+  --workspace-name project-bcagent-dev --query scoring_uri -o tsv 2>/dev/null)
 SERVERLESS_KEY=$(az ml serverless-endpoint get-credentials --name cohere-embed-bcagent-dev \
   --resource-group rg-BCAgentPrototype-app-dev \
-  --workspace-name project-bcagent-dev --query primary_key -o tsv)
+  --workspace-name project-bcagent-dev --query primary_key -o tsv 2>/dev/null)
 
 # 6. Store in Key Vault
 az keyvault secret set --vault-name kv-bcagent-dev \
   --name COHERE-VECTORIZER-ENDPOINT --value "$SCORING_URI"
 az keyvault secret set --vault-name kv-bcagent-dev \
   --name COHERE-VECTORIZER-KEY --value "$SERVERLESS_KEY"
+
+# 7. Verify stored values are correct (not CLI warning text)
+echo "Endpoint: $SCORING_URI"  # Must start with https:// and end with .models.ai.azure.com
+echo "Key length: ${#SERVERLESS_KEY}"  # Must be 32 chars, not hundreds
+az keyvault secret show --vault-name kv-bcagent-dev \
+  --name COHERE-VECTORIZER-KEY --query "value" -o tsv 2>/dev/null \
+  | head -c 40  # Sanity check: should be an alphanumeric key, not "WARNING: ..."
 
 # Dev endpoint: https://cohere-embed-bcagent-dev.eastus2.models.ai.azure.com
 ```
@@ -702,17 +712,22 @@ az ml serverless-endpoint create \
   --file cohere-serverless.yaml
 
 # 5. Get credentials and store in Key Vault
+# IMPORTANT: 2>/dev/null required — see dev section for explanation
 SCORING_URI=$(az ml serverless-endpoint show --name cohere-embed-myworkmate-prod \
   --resource-group rg-myworkmate-app-prod \
-  --workspace-name project-myworkmate-prod --query scoring_uri -o tsv)
+  --workspace-name project-myworkmate-prod --query scoring_uri -o tsv 2>/dev/null)
 SERVERLESS_KEY=$(az ml serverless-endpoint get-credentials --name cohere-embed-myworkmate-prod \
   --resource-group rg-myworkmate-app-prod \
-  --workspace-name project-myworkmate-prod --query primary_key -o tsv)
+  --workspace-name project-myworkmate-prod --query primary_key -o tsv 2>/dev/null)
 
 az keyvault secret set --vault-name kv-myworkmate-prod \
   --name COHERE-VECTORIZER-ENDPOINT --value "$SCORING_URI"
 az keyvault secret set --vault-name kv-myworkmate-prod \
   --name COHERE-VECTORIZER-KEY --value "$SERVERLESS_KEY"
+
+# Verify stored values (must be URL and 32-char key, NOT CLI warning text)
+echo "Endpoint: $SCORING_URI"
+echo "Key length: ${#SERVERLESS_KEY}"
 ```
 
 #### New Environment Variables

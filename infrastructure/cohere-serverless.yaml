@@ -1,0 +1,2 @@
+name: cohere-embed-bcagent-dev
+model_id: azureml://registries/azureml-cohere/models/embed-v-4-0

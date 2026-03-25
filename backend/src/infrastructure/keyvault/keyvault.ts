@@ -51,6 +51,8 @@ export const SECRET_NAMES = {
   // Cohere Embed 4 (PRD-201)
   COHERE_ENDPOINT: 'COHERE-ENDPOINT',
   COHERE_API_KEY: 'COHERE-API-KEY',
+  COHERE_VECTORIZER_ENDPOINT: 'COHERE-VECTORIZER-ENDPOINT',
+  COHERE_VECTORIZER_KEY: 'COHERE-VECTORIZER-KEY',
 } as const;
 
 /**
@@ -218,6 +220,12 @@ export async function loadSecretsFromKeyVault(): Promise<void> {
 
     const cohereApiKey = await getSecret(SECRET_NAMES.COHERE_API_KEY, 'COHERE_API_KEY');
     if (cohereApiKey) process.env.COHERE_API_KEY = cohereApiKey;
+
+    const cohereVectorizerEndpoint = await getSecret(SECRET_NAMES.COHERE_VECTORIZER_ENDPOINT, 'COHERE_VECTORIZER_ENDPOINT');
+    if (cohereVectorizerEndpoint) process.env.COHERE_VECTORIZER_ENDPOINT = cohereVectorizerEndpoint;
+
+    const cohereVectorizerKey = await getSecret(SECRET_NAMES.COHERE_VECTORIZER_KEY, 'COHERE_VECTORIZER_KEY');
+    if (cohereVectorizerKey) process.env.COHERE_VECTORIZER_KEY = cohereVectorizerKey;
 
     console.log('✅ Secrets loaded successfully from Key Vault');
   } catch (error) {

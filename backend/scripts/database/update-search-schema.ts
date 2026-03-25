@@ -141,13 +141,17 @@ async function main(): Promise<void> {
 
   // 2. Patch vectorizers and profile vectorizer linkage
   const vectorSearch = restIndex.vectorSearch as Record<string, unknown>;
+  // Use COHERE_VECTORIZER_ENDPOINT for the vectorizer (serverless API endpoint)
+  // Falls back to COHERE_ENDPOINT (AIServices endpoint) if not set
+  const vectorizerUri = process.env.COHERE_VECTORIZER_ENDPOINT ?? process.env.COHERE_ENDPOINT;
+  const vectorizerKey = process.env.COHERE_VECTORIZER_KEY ?? process.env.COHERE_API_KEY;
   vectorSearch.vectorizers = [
     {
       name: 'cohere-vectorizer',
       kind: 'aml',
       amlParameters: {
-        uri: process.env.COHERE_ENDPOINT,
-        key: process.env.COHERE_API_KEY,
+        uri: vectorizerUri,
+        key: vectorizerKey,
         modelName: 'Cohere-embed-v4',
       },
     },

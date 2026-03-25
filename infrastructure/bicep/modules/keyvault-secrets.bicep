@@ -146,6 +146,13 @@ param cohereEndpoint string
 @secure()
 param cohereApiKey string
 
+@description('Endpoint URL of the Cohere vectorizer service.')
+param cohereVectorizerEndpoint string = ''
+
+@description('Primary access key for the Cohere vectorizer service.')
+@secure()
+param cohereVectorizerKey string = ''
+
 // ============================================================
 // COMPUTED VALUES
 // ============================================================
@@ -430,6 +437,22 @@ resource secretCohereApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   name: 'COHERE-API-KEY'
   properties: {
     value: cohereApiKey
+  }
+}
+
+resource secretCohereVectorizerEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereVectorizerEndpoint)) {
+  parent: keyVault
+  name: 'COHERE-VECTORIZER-ENDPOINT'
+  properties: {
+    value: cohereVectorizerEndpoint
+  }
+}
+
+resource secretCohereVectorizerKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereVectorizerKey)) {
+  parent: keyVault
+  name: 'COHERE-VECTORIZER-KEY'
+  properties: {
+    value: cohereVectorizerKey
   }
 }
 

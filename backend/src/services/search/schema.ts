@@ -221,8 +221,8 @@ export const indexSchema: SearchIndex = {
         vectorizerName: 'cohere-vectorizer',
         kind: 'aml',
         amlParameters: {
-          uri: env.COHERE_ENDPOINT,
-          key: env.COHERE_API_KEY,
+          uri: env.COHERE_VECTORIZER_ENDPOINT ?? env.COHERE_ENDPOINT,
+          key: env.COHERE_VECTORIZER_KEY ?? env.COHERE_API_KEY,
           modelName: COHERE_MODEL_NAME,
         },
       } as unknown as import('@azure/search-documents').VectorSearchVectorizer,

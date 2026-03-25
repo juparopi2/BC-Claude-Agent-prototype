@@ -2,7 +2,7 @@
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
 **Created**: 2026-03-24
-**Last Updated**: 2026-03-24 (infrastructure gaps fixed, GDPR region analysis added; USE_UNIFIED_INDEX feature flag removed — V2 is now the only code path)
+**Last Updated**: 2026-03-25 (infrastructure gaps fixed, GDPR region analysis added; USE_UNIFIED_INDEX feature flag removed — V2 is now the only code path; serverless API deployment documented for AML vectorizer; preview API version requirement clarified)
 
 ## Purpose
 
@@ -87,11 +87,12 @@ During QA review, we discovered that the CI/CD pipelines, bootstrap scripts, and
 
 | File | Gap | Fix |
 |---|---|---|
-| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths | Added `cohere-endpoint` + `cohere-api-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY` to both `set-env-vars` blocks |
+| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths; referenced removed `USE_QUERY_TIME_VECTORIZATION` flag | Added `cohere-endpoint` + `cohere-api-key` + `cohere-vectorizer-endpoint` + `cohere-vectorizer-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY`, `COHERE_VECTORIZER_ENDPOINT`, `COHERE_VECTORIZER_KEY` to both `set-env-vars` blocks; removed `USE_QUERY_TIME_VECTORIZATION` |
 | `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 3 env vars to `set-env-vars` block |
 | `infrastructure/scripts/create-container-apps.sh` | Only 28 KV secret refs, missing Cohere | Added 2 Cohere KV refs (now 30 total) |
 | `backend/src/infrastructure/keyvault/keyvault.ts` | `SECRET_NAMES` and `loadSecretsFromKeyVault()` missing Cohere | Added `COHERE_ENDPOINT` + `COHERE_API_KEY` entries |
 | `backend/.env.example` | Missing PRD-203 tuning variables | Added `USE_QUERY_TIME_VECTORIZATION`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `HNSW_EF_SEARCH`, `SEARCH_FETCH_MULTIPLIER` |
+| `infrastructure/bicep/modules/keyvault-secrets.bicep` | Missing Cohere vectorizer secrets | Added `COHERE-VECTORIZER-ENDPOINT` + `COHERE-VECTORIZER-KEY` conditional secrets |
 
 **Lesson**: When adding new Key Vault secrets via Bicep, always update ALL secret consumers: `keyvault-secrets.bicep`, `keyvault.ts`, `create-container-apps.sh`, `backend-deploy.yml`, `production-deploy.yml`, and `.env.example`.
 
@@ -485,6 +486,12 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
    az keyvault secret set --vault-name kv-myworkmate-prod \
      --name COHERE-API-KEY --value "$KEY"
    ```
+4a. [ ] AI Hub created in westeurope: `hub-myworkmate-prod`
+4b. [ ] AI Project created: `project-myworkmate-prod`
+4c. [ ] Cohere marketplace subscription accepted (one-time per subscription)
+4d. [ ] Serverless endpoint deployed: `cohere-embed-myworkmate-prod`
+4e. [ ] `COHERE_VECTORIZER_ENDPOINT` + `COHERE_VECTORIZER_KEY` in Key Vault (prod) (see Serverless API Deployment section above)
+4f. [ ] Search index vectorizer updated: `npx tsx scripts/database/update-search-schema.ts`
 5. [ ] Bicep deployment (if updating infrastructure):
    ```bash
    bash infrastructure/scripts/deploy.sh
@@ -593,6 +600,127 @@ The `aml` vectorizer kind is a **preview-only feature** in Azure AI Search. The 
 - Monitor [Azure AI Search API versions](https://learn.microsoft.com/en-us/azure/search/search-api-migration) for when `aml` vectorizer query support graduates to stable. When it does, remove the `serviceVersion` override to use the SDK default.
 - If Microsoft releases `@azure/search-documents@12.3.0` (stable, not beta) with `aml` support built-in, upgrade the SDK and remove the override.
 - **No additional infrastructure steps needed** — the preview API is available on the same Azure AI Search endpoint. No resource configuration changes required.
+
+### Serverless API Deployment (Required for AML Vectorizer)
+
+#### Why a Serverless Endpoint Is Required
+
+The `aml` vectorizer in Azure AI Search must call a `*.models.ai.azure.com` endpoint. The AIServices deployment endpoint (`*.cognitiveservices.azure.com`) returns 404 for this purpose because it does not expose `/v1/embed` at the path the vectorizer expects. A **serverless API deployment** through Azure AI Foundry is required to satisfy the vectorizer's endpoint requirement.
+
+#### Architecture: Two Endpoints Coexist
+
+| Variable | Endpoint Domain | Used By | Purpose |
+|---|---|---|---|
+| `COHERE_ENDPOINT` | `*.cognitiveservices.azure.com` (AIServices) | `CohereEmbeddingService` | Indexing — text embeddings via `/v2/embed`, image embeddings via Azure Foundry Models image API |
+| `COHERE_VECTORIZER_ENDPOINT` | `*.models.ai.azure.com` (Serverless) | Azure AI Search AML vectorizer | Query-time vectorization — called by the search index at query time, not by application code |
+
+Both endpoints ultimately use the same Cohere Embed v4 model but are accessed through different Azure service surfaces. The application code never calls `COHERE_VECTORIZER_ENDPOINT` directly — the search index vectorizer calls it on behalf of the query.
+
+#### Dev Setup (completed 2026-03-25)
+
+> **Windows Git Bash caveat**: Commands that capture Azure resource IDs (ARM paths like `/subscriptions/...`) must be prefixed with `MSYS_NO_PATHCONV=1`. Without it, Git Bash converts the path to `C:/Program Files/Git/subscriptions/...`, causing subsequent commands to fail.
+
+```bash
+# Prerequisites: az ml extension installed
+az extension add -n ml
+
+# 1. Create AI Hub
+az ml workspace create --name hub-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --location eastus2 --kind hub
+
+# 2. Create AI Project
+MSYS_NO_PATHCONV=1 HUB_ID=$(az ml workspace show --name hub-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev --query id -o tsv)
+MSYS_NO_PATHCONV=1 az ml workspace create --name project-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --location eastus2 --kind project --hub-id "$HUB_ID"
+
+# 3. Accept Cohere marketplace terms (one-time per subscription)
+# Create cohere-marketplace-sub.yaml:
+#   name: cohere-embed-sub
+#   model_id: azureml://registries/azureml-cohere/models/embed-v-4-0
+az ml marketplace-subscription create \
+  --workspace-name project-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --file cohere-marketplace-sub.yaml
+
+# 4. Deploy serverless endpoint
+# Create cohere-serverless.yaml:
+#   name: cohere-embed-bcagent-dev
+#   model_id: azureml://registries/azureml-cohere/models/embed-v-4-0
+az ml serverless-endpoint create \
+  --name cohere-embed-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --workspace-name project-bcagent-dev \
+  --file cohere-serverless.yaml
+
+# 5. Get credentials
+SCORING_URI=$(az ml serverless-endpoint show --name cohere-embed-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --workspace-name project-bcagent-dev --query scoring_uri -o tsv)
+SERVERLESS_KEY=$(az ml serverless-endpoint get-credentials --name cohere-embed-bcagent-dev \
+  --resource-group rg-BCAgentPrototype-app-dev \
+  --workspace-name project-bcagent-dev --query primary_key -o tsv)
+
+# 6. Store in Key Vault
+az keyvault secret set --vault-name kv-bcagent-dev \
+  --name COHERE-VECTORIZER-ENDPOINT --value "$SCORING_URI"
+az keyvault secret set --vault-name kv-bcagent-dev \
+  --name COHERE-VECTORIZER-KEY --value "$SERVERLESS_KEY"
+
+# Dev endpoint: https://cohere-embed-bcagent-dev.eastus2.models.ai.azure.com
+```
+
+#### Production Setup (westeurope — GDPR)
+
+```bash
+# 1. Create AI Hub in EU
+az ml workspace create --name hub-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --location westeurope --kind hub
+
+# 2. Create AI Project
+MSYS_NO_PATHCONV=1 HUB_ID=$(az ml workspace show --name hub-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod --query id -o tsv)
+MSYS_NO_PATHCONV=1 az ml workspace create --name project-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --location westeurope --kind project --hub-id "$HUB_ID"
+
+# 3. Marketplace subscription (one-time per subscription)
+az ml marketplace-subscription create \
+  --workspace-name project-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --file cohere-marketplace-sub.yaml
+
+# 4. Deploy serverless endpoint
+# Update cohere-serverless.yaml name to: cohere-embed-myworkmate-prod
+az ml serverless-endpoint create \
+  --name cohere-embed-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --workspace-name project-myworkmate-prod \
+  --file cohere-serverless.yaml
+
+# 5. Get credentials and store in Key Vault
+SCORING_URI=$(az ml serverless-endpoint show --name cohere-embed-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --workspace-name project-myworkmate-prod --query scoring_uri -o tsv)
+SERVERLESS_KEY=$(az ml serverless-endpoint get-credentials --name cohere-embed-myworkmate-prod \
+  --resource-group rg-myworkmate-app-prod \
+  --workspace-name project-myworkmate-prod --query primary_key -o tsv)
+
+az keyvault secret set --vault-name kv-myworkmate-prod \
+  --name COHERE-VECTORIZER-ENDPOINT --value "$SCORING_URI"
+az keyvault secret set --vault-name kv-myworkmate-prod \
+  --name COHERE-VECTORIZER-KEY --value "$SERVERLESS_KEY"
+```
+
+#### New Environment Variables
+
+| Variable | Value | Where | Required When |
+|---|---|---|---|
+| `COHERE_VECTORIZER_ENDPOINT` | Serverless scoring URI (`*.models.ai.azure.com`) | Key Vault + `.env` | Required for search queries (query-time vectorization) |
+| `COHERE_VECTORIZER_KEY` | Serverless API key | Key Vault + `.env` | Required for search queries |
 
 ### Dev Environment (completed 2026-03-24)
 

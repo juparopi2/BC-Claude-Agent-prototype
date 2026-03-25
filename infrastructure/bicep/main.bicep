@@ -121,6 +121,13 @@ param cohereEndpoint string
 @secure()
 param cohereApiKey string
 
+@description('Endpoint URL of the Cohere vectorizer service.')
+param cohereVectorizerEndpoint string = ''
+
+@description('Primary access key for the Cohere vectorizer service.')
+@secure()
+param cohereVectorizerKey string = ''
+
 // ============================================================
 // COMPUTED NAMING VARIABLES
 // ============================================================
@@ -317,6 +324,10 @@ module keyvaultSecrets 'modules/keyvault-secrets.bicep' = {
     // ── Cohere embedding service ───────────────────────────
     cohereEndpoint: cohereEndpoint
     cohereApiKey: cohereApiKey
+
+    // ── Cohere vectorizer service ──────────────────────────
+    cohereVectorizerEndpoint: cohereVectorizerEndpoint
+    cohereVectorizerKey: cohereVectorizerKey
   }
   dependsOn: [
     security

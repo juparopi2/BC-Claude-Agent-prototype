@@ -870,8 +870,10 @@ async function verifySchemaSection(
   // Import expected schema
   let expectedSchema;
   try {
-    const schemaModule = await import('../src/services/search/schema');
-    expectedSchema = schemaModule.indexSchema;
+    {
+      const schemaModule = await import('../../src/services/search/schema');
+      expectedSchema = schemaModule.indexSchema;
+    }
   } catch (error) {
     const errorInfo = error instanceof Error
       ? { message: error.message, name: error.name }

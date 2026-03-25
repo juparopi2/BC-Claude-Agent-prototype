@@ -16,7 +16,6 @@ vi.mock('@/modules/agents/business-central/tools', () => ({
 
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
   searchKnowledgeTool: { name: 'search_knowledge', description: 'Search knowledge', schema: {} },
-  visualImageSearchTool: { name: 'visualImageSearch', description: 'Visual image search', schema: {} },
   findSimilarImagesTool: { name: 'findSimilarImages', description: 'Find similar images', schema: {} },
 }));
 

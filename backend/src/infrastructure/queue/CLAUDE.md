@@ -18,7 +18,7 @@ queue/
 ├── workers/                 # Job processors
 │   ├── FileProcessingWorker.ts    # Text extraction (bottleneck worker)
 │   ├── FileChunkingWorker.ts      # Text chunking for RAG
-│   ├── EmbeddingGenerationWorker.ts # Vector embedding via OpenAI
+│   ├── EmbeddingGenerationWorker.ts # Vector embedding via Cohere Embed v4
 │   ├── FileBulkUploadWorker.ts    # DB record creation for bulk uploads
 │   ├── FileDeletionWorker.ts      # Cascade delete (sequential)
 │   ├── FileCleanupWorker.ts       # Scheduled cleanup
@@ -92,7 +92,7 @@ async checkLimit(sessionId: string): Promise<boolean> {
        │
        ▼
 4. EMBEDDING_GENERATION (5 concurrent)
-   └─ Generates vectors via OpenAI API
+   └─ Generates vectors via Cohere Embed v4
        │
        ▼
 5. file:readiness_changed → ready (via WebSocket)
@@ -105,7 +105,7 @@ async checkLimit(sessionId: string): Promise<boolean> {
 | FILE_BULK_UPLOAD | 20 | DB pool (30 connections) |
 | FILE_PROCESSING | 8 | CPU-bound text extraction |
 | FILE_CHUNKING | 5 | Memory for large documents |
-| EMBEDDING_GENERATION | 5 | OpenAI TPM rate limits |
+| EMBEDDING_GENERATION | 5 | Cohere API rate limits |
 | FILE_DELETION | 1 | Prevents SQL deadlocks |
 | USAGE_AGGREGATION | 1 | Sequential aggregation |
 
@@ -139,7 +139,7 @@ Workers emit events via `FileEventEmitterService`:
 - **Redis**: Connection via `RedisConnectionManager`
 - **Database Pool**: Via `getPool()` for worker DB operations
 - **Azure Blob Storage**: File content access
-- **OpenAI API**: Embedding generation
+- **Cohere Embed v4 API**: Embedding generation
 - **Azure AI Search**: Vector indexing
 
 ### Consumed By
@@ -180,7 +180,7 @@ const backoff = DEFAULT_BACKOFF.FILE_PROCESSING; // { type: 'exponential', delay
 1. **Rate limit on jobs, not throughput**: The rate limit counts jobs, not bytes/tokens
 2. **No dead letter queue**: Failed jobs stay in BullMQ failed state
 3. **Sequential deletion**: FILE_DELETION runs at concurrency=1 to avoid deadlocks
-4. **OpenAI TPM bottleneck**: Embedding worker limited by API rate limits
+4. **Cohere API bottleneck**: Embedding worker limited by Cohere Embed v4 rate limits
 
 ## Troubleshooting
 
@@ -209,8 +209,23 @@ const registry = getWorkerRegistry();
 await registry.startAll();
 ```
 
+## Scheduled Jobs (MaintenanceWorker)
+
+The `FILE_MAINTENANCE` queue (`concurrency=1`) routes jobs to service singletons via `MaintenanceWorker`:
+
+| Job Name | Cron | Service |
+|---|---|---|
+| `stuck-file-recovery` | Every 15 min | `StuckFileRecoveryService` |
+| `orphan-cleanup` | Daily 03:00 UTC | `OrphanCleanupService` |
+| `batch-timeout` | Every hour | `BatchTimeoutService` |
+| `sync-health-check` | Every 15 min | `SyncHealthCheckService` (PRD-300) |
+| `sync-reconciliation` | Daily 04:00 UTC | `SyncReconciliationService` (PRD-300) |
+
+All jobs use dynamic `import()` inside switch cases (lazy loading). Registration happens in `ScheduledJobManager.initializeMaintenanceJobs()`.
+
 ## Related Documentation
 
 - Main CLAUDE.md: Section 3.1 (Message Processing)
 - File processing pipeline: `domains/files/CLAUDE.md`
+- Sync health: `../../services/sync/health/CLAUDE.md` — PRD-300 health check + reconciliation
 - WebSocket events: `@bc-agent/shared` FILE_WS_EVENTS

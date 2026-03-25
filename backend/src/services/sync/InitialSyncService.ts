@@ -31,14 +31,13 @@ import { getSocketIO, isSocketServiceInitialized } from '@/services/websocket/So
 import {
   buildFolderMap,
   ensureScopeRootFolder,
-  resolveParentFolderId,
   sortFoldersByDepth,
   upsertFolder,
 } from '@/services/sync/FolderHierarchyResolver';
+import { getSyncFileIngestionService } from '@/services/sync/SyncFileIngestionService';
+import type { IngestionContext } from '@/services/sync/SyncFileIngestionService';
 
 const logger = createChildLogger({ service: 'InitialSyncService' });
-
-const BATCH_SIZE = 50;
 
 // ============================================================================
 // InitialSyncService
@@ -288,123 +287,34 @@ export class InitialSyncService {
       }
 
       const totalFiles = filteredFileChanges.length;
-      let processedFiles = 0;
-      let newFilesEnqueued = 0;
 
-      const messageQueue = getMessageQueue();
+      // Step 5: Delegate batch ingestion to SyncFileIngestionService (PRD-117).
+      // Handles batching (INGESTION_BATCH_SIZE), transactions, queue dispatch, and error resilience.
+      const ingestionCtx: IngestionContext = {
+        connectionId,
+        scopeId,
+        userId,
+        effectiveDriveId,
+        provider: connection.provider,
+        isShared: !!scope.remote_drive_id,
+        folderMap: externalToInternalId,
+      };
 
-      // Step 5: Process in batches of BATCH_SIZE
-      for (let i = 0; i < filteredFileChanges.length; i += BATCH_SIZE) {
-        const batch = filteredFileChanges.slice(i, i + BATCH_SIZE);
-
-        // Phase A: Atomic DB writes inside a transaction.
-        // Individual file errors are caught per-item so one failure does not abort the batch.
-        const createdFiles = await prisma.$transaction(async (tx) => {
-          const results: Array<{ fileId: string; mimeType: string; fileName: string }> = [];
-
-          for (const change of batch) {
-            const item = change.item;
-
-            try {
-              const existing = await tx.files.findFirst({
-                where: { connection_id: connectionId, external_id: item.id },
-                select: { id: true, pipeline_status: true },
-              });
-
-              if (existing) {
-                const parentFolderId = resolveParentFolderId(item.parentId, externalToInternalId);
-
-                // Update metadata only — do NOT touch pipeline_status to avoid re-processing
-                await tx.files.update({
-                  where: { id: existing.id },
-                  data: {
-                    name: item.name,
-                    mime_type: item.mimeType ?? 'application/octet-stream',
-                    size_bytes: BigInt(item.sizeBytes ?? 0),
-                    external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                    file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                    content_hash_external: item.eTag ?? null,
-                    parent_folder_id: parentFolderId,
-                    connection_scope_id: scopeId,
-                    last_synced_at: new Date(),
-                  },
-                });
-              } else {
-                const parentFolderId = resolveParentFolderId(item.parentId, externalToInternalId);
-                const fileId = randomUUID().toUpperCase();
-
-                await tx.files.create({
-                  data: {
-                    id: fileId,
-                    user_id: userId,
-                    name: item.name,
-                    mime_type: item.mimeType ?? 'application/octet-stream',
-                    size_bytes: BigInt(item.sizeBytes ?? 0),
-                    blob_path: null,
-                    is_folder: false,
-                    source_type: connection.provider === 'sharepoint'
-                      ? FILE_SOURCE_TYPE.SHAREPOINT
-                      : FILE_SOURCE_TYPE.ONEDRIVE,
-                    external_id: item.id,
-                    external_drive_id: effectiveDriveId,
-                    connection_id: connectionId,
-                    connection_scope_id: scopeId,
-                    external_url: item.webUrl || null,
-                    external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                    file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
-                    content_hash_external: item.eTag ?? null,
-                    parent_folder_id: parentFolderId,
-                    pipeline_status: 'queued',
-                    processing_retry_count: 0,
-                    embedding_retry_count: 0,
-                    is_favorite: false,
-                    is_shared: !!scope.remote_drive_id,
-                  },
-                });
-
-                results.push({
-                  fileId,
-                  mimeType: item.mimeType ?? 'application/octet-stream',
-                  fileName: item.name,
-                });
-              }
-            } catch (fileErr) {
-              const errorInfo = fileErr instanceof Error
-                ? { message: fileErr.message, name: fileErr.name }
-                : { value: String(fileErr) };
-              logger.warn(
-                { error: errorInfo, fileId: item.id, fileName: item.name, connectionId, scopeId },
-                'Skipping file due to ingestion error'
-              );
-            }
-          }
-
-          return results;
-        }, { timeout: 30000 });
-
-        // Phase B: Queue dispatch after commit — only newly created files are enqueued.
-        for (const file of createdFiles) {
-          await messageQueue.addFileProcessingFlow({
-            fileId: file.fileId,
-            batchId: scopeId,
-            userId,
-            mimeType: file.mimeType,
-            fileName: file.fileName,
+      const ingestionResult = await getSyncFileIngestionService().ingestAll(
+        filteredFileChanges.map(c => c.item),
+        ingestionCtx,
+        (processedFiles, total) => {
+          this.emitProgress(userId, {
+            connectionId,
+            scopeId,
+            processedFiles,
+            totalFiles: total,
+            percentage: total > 0 ? Math.round((processedFiles / total) * 100) : 100,
           });
-        }
-        newFilesEnqueued += createdFiles.length;
+        },
+      );
 
-        processedFiles += batch.length;
-
-        // Emit progress WebSocket event per batch
-        this.emitProgress(userId, {
-          connectionId,
-          scopeId,
-          processedFiles,
-          totalFiles,
-          percentage: totalFiles > 0 ? Math.round((processedFiles / totalFiles) * 100) : 100,
-        });
-      }
+      const newFilesEnqueued = ingestionResult.created;
 
       // Step 6: Save deltaLink as last_sync_cursor
       await repo.updateScope(scopeId, {
@@ -419,7 +329,7 @@ export class InitialSyncService {
         processingStatus: newFilesEnqueued > 0 ? 'processing' : 'completed',
       });
 
-      logger.info({ connectionId, scopeId, totalFiles, processedFiles }, 'Initial sync completed');
+      logger.info({ connectionId, scopeId, totalFiles, newFilesEnqueued }, 'Initial sync completed');
 
       // Step 7: Emit sync:completed
       this.emitCompleted(userId, { connectionId, scopeId, totalFiles, processingTotal: newFilesEnqueued });

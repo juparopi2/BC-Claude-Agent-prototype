@@ -12,7 +12,7 @@ import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { sendError } from '@/shared/utils/error-response';
 import { ErrorCode } from '@/shared/constants/errors';
 import { createChildLogger } from '@/shared/utils/logger';
-import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
+import { CohereEmbeddingService } from '@/services/search/embeddings/CohereEmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
 import { getUserId } from './helpers';
 import { imageSearchSchema } from './schemas/file.schemas';
@@ -24,7 +24,7 @@ const router = Router();
  * GET /api/files/search/images
  * Search images by semantic text query
  *
- * Uses Azure Vision VectorizeText API to convert text query into image embedding space,
+ * Uses Cohere Embed v4 to generate a query embedding in the unified 1536d vector space for image similarity search,
  * then searches for semantically similar images in Azure AI Search.
  *
  * Query params:
@@ -47,9 +47,9 @@ router.get('/search/images', authenticateMicrosoft, async (req: Request, res: Re
 
     logger.info({ userId, queryLength: q.length, top, minScore }, 'Searching images');
 
-    // Generate image query embedding (1024d, same space as image embeddings)
-    const embeddingService = EmbeddingService.getInstance();
-    const embedding = await embeddingService.generateImageQueryEmbedding(q, userId, 'image-search');
+    // Generate image query embedding (1536d Cohere Embed v4, unified vector space)
+    const cohereService = new CohereEmbeddingService();
+    const embedding = await cohereService.embedQuery(q, { userId });
 
     // Search for similar images
     const vectorSearchService = VectorSearchService.getInstance();

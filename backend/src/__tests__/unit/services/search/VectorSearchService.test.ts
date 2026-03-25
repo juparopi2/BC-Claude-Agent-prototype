@@ -2,16 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { VectorSearchService } from '../../../../services/search/VectorSearchService';
 import { SearchIndexClient, SearchClient } from '@azure/search-documents';
 import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from '../../../../services/search/schema';
-import { SearchQuery, HybridSearchQuery, SemanticSearchQuery, VECTOR_WEIGHTS } from '../../../../services/search/types';
+import { SemanticSearchQuery } from '../../../../services/search/types';
 
-// Mock Azure SDK
-vi.mock('@azure/search-documents', () => {
-  return {
-    SearchIndexClient: vi.fn(),
-    SearchClient: vi.fn(),
-    AzureKeyCredential: vi.fn(),
-  };
-});
+// Mock Azure SDK — we inject mocks via initializeClients()
+vi.mock('@azure/search-documents', () => ({
+  SearchIndexClient: vi.fn(),
+  SearchClient: vi.fn(),
+  AzureKeyCredential: vi.fn(),
+}));
 
 describe('VectorSearchService - Index Management', () => {
   let service: VectorSearchService;
@@ -138,7 +136,7 @@ describe('VectorSearchService - Index Management', () => {
       expect(callArgs).toHaveLength(1);
       expect(callArgs[0]).toEqual(expect.objectContaining({
         chunkId: mockChunk.chunkId,
-        contentVector: mockChunk.embedding, // Mapped
+        embeddingVector: mockChunk.embedding, // Mapped
         embeddingModel: mockChunk.embeddingModel
       }));
     });
@@ -176,61 +174,43 @@ describe('VectorSearchService - Index Management', () => {
   });
 
   describe('Image Indexing', () => {
-    it('should index image without contentVector', async () => {
+    it('should index image using embeddingVector field', async () => {
       const mockResult = { results: [{ key: 'img_FILE-123', succeeded: true, statusCode: 201 }] };
       mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
 
+      const embedding = new Array(1536).fill(0.1);
       await service.indexImageEmbedding({
         fileId: 'file-123',
         userId: 'user-123',
-        embedding: new Array(1024).fill(0.1),
+        embedding,
         fileName: 'photo.jpg',
         caption: 'A warehouse photo',
       });
 
       const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
       expect(callArgs).toHaveLength(1);
-      expect(callArgs[0].imageVector).toHaveLength(1024);
+      expect(callArgs[0].embeddingVector).toEqual(embedding);
       expect(callArgs[0].content).toBe('A warehouse photo [Image: photo.jpg]');
       expect(callArgs[0].isImage).toBe(true);
+      expect(callArgs[0].imageVector).toBeUndefined();
       expect(callArgs[0].contentVector).toBeUndefined();
     });
 
-    it('should index image with contentVector when provided', async () => {
+    it('should index image without caption using filename as content', async () => {
       const mockResult = { results: [{ key: 'img_FILE-123', succeeded: true, statusCode: 201 }] };
       mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
 
-      const contentVector = new Array(1536).fill(0.2);
       await service.indexImageEmbedding({
         fileId: 'file-123',
         userId: 'user-123',
-        embedding: new Array(1024).fill(0.1),
+        embedding: new Array(1536).fill(0.1),
         fileName: 'photo.jpg',
-        caption: 'A warehouse photo',
-        contentVector,
       });
 
       const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
       expect(callArgs).toHaveLength(1);
-      expect(callArgs[0].imageVector).toHaveLength(1024);
-      expect(callArgs[0].contentVector).toEqual(contentVector);
       expect(callArgs[0].isImage).toBe(true);
-    });
-
-    it('should not include contentVector when it is an empty array', async () => {
-      const mockResult = { results: [{ key: 'img_FILE-123', succeeded: true, statusCode: 201 }] };
-      mockSearchClient.uploadDocuments.mockResolvedValue(mockResult);
-
-      await service.indexImageEmbedding({
-        fileId: 'file-123',
-        userId: 'user-123',
-        embedding: new Array(1024).fill(0.1),
-        fileName: 'photo.jpg',
-        contentVector: [],
-      });
-
-      const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
-      expect(callArgs[0].contentVector).toBeUndefined();
+      expect(callArgs[0].embeddingVector).toBeDefined();
     });
   });
 
@@ -272,7 +252,7 @@ describe('VectorSearchService - Index Management', () => {
                     queries: expect.arrayContaining([
                         expect.objectContaining({
                             vector: query.embedding,
-                            fields: ['contentVector'],
+                            fields: ['embeddingVector'],
                             kind: 'vector',
                         })
                     ])
@@ -477,7 +457,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
   });
 
   describe('semanticSearch', () => {
-    it('should search with text embedding only', async () => {
+    it('should search using query-time vectorization with kind:"text" on embeddingVector field', async () => {
       const mockResults = createSemanticSearchResults([
         { chunkId: '1', score: 0.9 }
       ]);
@@ -485,38 +465,19 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       const query: SemanticSearchQuery = {
         text: 'test query',
-        textEmbedding: new Array(1536).fill(0.1),
         userId: 'user-123',
       };
 
       await service.semanticSearch(query);
 
-      // Verify vector search options include only contentVector
+      // Verify vector search options use the unified embeddingVector field with kind:'text'
       const callArgs = mockSearchClient.search.mock.calls[0][1];
       expect(callArgs.vectorSearchOptions.queries).toHaveLength(1);
-      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['contentVector']);
+      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['embeddingVector']);
+      expect(callArgs.vectorSearchOptions.queries[0].kind).toBe('text');
     });
 
-    it('should search with image embedding only', async () => {
-      const mockResults = createSemanticSearchResults([
-        { chunkId: '1', score: 0.8, isImage: true }
-      ]);
-      mockSearchClient.search.mockResolvedValue(mockResults);
-
-      const query: SemanticSearchQuery = {
-        text: 'find sunset images',
-        imageEmbedding: new Array(1024).fill(0.2),
-        userId: 'user-123',
-      };
-
-      await service.semanticSearch(query);
-
-      const callArgs = mockSearchClient.search.mock.calls[0][1];
-      expect(callArgs.vectorSearchOptions.queries).toHaveLength(1);
-      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['imageVector']);
-    });
-
-    it('should search with both text and image embeddings', async () => {
+    it('should search with a single embeddingVector query covering both text and image results', async () => {
       const mockResults = createSemanticSearchResults([
         { chunkId: '1', score: 0.9 },
         { chunkId: '2', score: 0.85, isImage: true }
@@ -525,17 +486,15 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       const query: SemanticSearchQuery = {
         text: 'sunset over mountains',
-        textEmbedding: new Array(1536).fill(0.1),
-        imageEmbedding: new Array(1024).fill(0.2),
         userId: 'user-123',
       };
 
       await service.semanticSearch(query);
 
       const callArgs = mockSearchClient.search.mock.calls[0][1];
-      expect(callArgs.vectorSearchOptions.queries).toHaveLength(2);
-      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['contentVector']);
-      expect(callArgs.vectorSearchOptions.queries[1].fields).toEqual(['imageVector']);
+      // Unified index uses a single embeddingVector query
+      expect(callArgs.vectorSearchOptions.queries[0].fields).toEqual(['embeddingVector']);
+      expect(callArgs.vectorSearchOptions.queries[0].kind).toBe('text');
     });
 
     it('should normalize reranker score from 0-4 to 0-1', async () => {
@@ -549,7 +508,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results[0].score).toBe(0.8); // 3.2 / 4 = 0.8
       expect(results[0].rerankerScore).toBe(3.2);
@@ -567,7 +526,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results[0].score).toBe(0.75);
       expect(results[0].rerankerScore).toBeUndefined();
@@ -587,7 +546,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         minScore: 0.5,
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results).toHaveLength(2);
       expect(results.map(r => r.chunkId)).toEqual(['3', '2']); // Sorted by score desc
@@ -609,7 +568,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         finalTopK: 3,
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results).toHaveLength(3);
     });
@@ -627,7 +586,7 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results.map(r => r.score)).toEqual([0.9, 0.7, 0.5]);
       expect(results.map(r => r.chunkId)).toEqual(['2', '3', '1']);
@@ -684,12 +643,11 @@ describe('VectorSearchService - Semantic Search (D26)', () => {
 
       const query: SemanticSearchQuery = {
         text: 'find cats',
-        textEmbedding: new Array(1536).fill(0.1),
         imageEmbedding: new Array(1024).fill(0.2),
         userId: 'user-123',
       };
 
-      const results = await service.semanticSearch(query);
+      const { results } = await service.semanticSearch(query);
 
       expect(results[0].isImage).toBe(false);
       expect(results[1].isImage).toBe(true);
@@ -736,7 +694,6 @@ describe('VectorSearchService - Image Search Mode', () => {
 
     const query: SemanticSearchQuery = {
       text: 'red trucks',
-      imageEmbedding: new Array(1024).fill(0.2),
       userId: 'user-123',
       searchMode: 'image',
     };
@@ -764,14 +721,12 @@ describe('VectorSearchService - Image Search Mode', () => {
     expect(callArgs.semanticSearchOptions).toBeDefined();
   });
 
-  it('should apply IMAGE_MODE weights when searchMode is image', async () => {
+  it('should use embeddingVector field when searchMode is image', async () => {
     const mockResults = createSemanticSearchResults([{ chunkId: '1', score: 0.8, isImage: true }]);
     mockSearchClient.search.mockResolvedValue(mockResults);
 
     const query: SemanticSearchQuery = {
       text: 'red color',
-      textEmbedding: new Array(1536).fill(0.1),
-      imageEmbedding: new Array(1024).fill(0.2),
       userId: 'user-123',
       searchMode: 'image',
     };
@@ -780,39 +735,9 @@ describe('VectorSearchService - Image Search Mode', () => {
 
     const callArgs = mockSearchClient.search.mock.calls[0][1];
     const vectorQueries = callArgs.vectorSearchOptions.queries;
-    expect(vectorQueries).toHaveLength(2);
-
-    // contentVector query should have IMAGE_MODE_CONTENT weight
-    const contentQuery = vectorQueries.find((q: any) => q.fields[0] === 'contentVector');
-    expect(contentQuery.weight).toBe(VECTOR_WEIGHTS.IMAGE_MODE_CONTENT);
-
-    // imageVector query should have IMAGE_MODE_IMAGE weight
-    const imageQuery = vectorQueries.find((q: any) => q.fields[0] === 'imageVector');
-    expect(imageQuery.weight).toBe(VECTOR_WEIGHTS.IMAGE_MODE_IMAGE);
-  });
-
-  it('should apply TEXT_MODE weights when searchMode is text', async () => {
-    const mockResults = createSemanticSearchResults([]);
-    mockSearchClient.search.mockResolvedValue(mockResults);
-
-    const query: SemanticSearchQuery = {
-      text: 'test query',
-      textEmbedding: new Array(1536).fill(0.1),
-      imageEmbedding: new Array(1024).fill(0.2),
-      userId: 'user-123',
-      searchMode: 'text',
-    };
-
-    await service.semanticSearch(query);
-
-    const callArgs = mockSearchClient.search.mock.calls[0][1];
-    const vectorQueries = callArgs.vectorSearchOptions.queries;
-
-    const contentQuery = vectorQueries.find((q: any) => q.fields[0] === 'contentVector');
-    expect(contentQuery.weight).toBe(VECTOR_WEIGHTS.TEXT_MODE_CONTENT);
-
-    const imageQuery = vectorQueries.find((q: any) => q.fields[0] === 'imageVector');
-    expect(imageQuery.weight).toBe(VECTOR_WEIGHTS.TEXT_MODE_IMAGE);
+    // Unified index uses a single embeddingVector query
+    const embeddingQuery = vectorQueries.find((q: any) => q.fields[0] === 'embeddingVector');
+    expect(embeddingQuery).toBeDefined();
   });
 
   it('should use vectorScore (not rerankerScore) when searchMode is image', async () => {
@@ -823,12 +748,11 @@ describe('VectorSearchService - Image Search Mode', () => {
 
     const query: SemanticSearchQuery = {
       text: 'sunset',
-      imageEmbedding: new Array(1024).fill(0.2),
       userId: 'user-123',
       searchMode: 'image',
     };
 
-    const results = await service.semanticSearch(query);
+    const { results } = await service.semanticSearch(query);
 
     // Image mode: should use vectorScore (0.7), NOT rerankerScore/4 (0.8)
     expect(results[0].score).toBe(0.7);
@@ -847,7 +771,7 @@ describe('VectorSearchService - Image Search Mode', () => {
       searchMode: 'text',
     };
 
-    const results = await service.semanticSearch(query);
+    const { results } = await service.semanticSearch(query);
 
     // Text mode: should use rerankerScore/4 = 0.8
     expect(results[0].score).toBe(0.8);
@@ -865,7 +789,7 @@ describe('VectorSearchService - Image Search Mode', () => {
       // searchMode not specified
     };
 
-    const results = await service.semanticSearch(query);
+    const { results } = await service.semanticSearch(query);
 
     // Default (text mode): should use rerankerScore
     expect(results[0].score).toBe(0.5); // 2.0 / 4

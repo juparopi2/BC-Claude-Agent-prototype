@@ -308,7 +308,7 @@ export class PipelineTestHelper {
       }
     }
 
-    // 5. Delete usage_events and token_usage (FK to users, no cascade)
+    // 5. Delete usage_events, token_usage, and sessions (FK to users, no cascade)
     if (this.createdUserIds.length > 0) {
       for (const userId of this.createdUserIds) {
         await executeQuery(
@@ -317,6 +317,10 @@ export class PipelineTestHelper {
         );
         await executeQuery(
           `DELETE FROM token_usage WHERE user_id = @userId`,
+          { userId }
+        );
+        await executeQuery(
+          `DELETE FROM sessions WHERE user_id = @userId`,
           { userId }
         );
       }

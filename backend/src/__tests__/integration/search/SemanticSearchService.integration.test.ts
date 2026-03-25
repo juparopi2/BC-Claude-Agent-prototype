@@ -7,7 +7,7 @@ import { env } from '@/infrastructure/config/environment';
  * Integration tests for SemanticSearchService unified search (text + images)
  *
  * These tests verify the end-to-end unified search functionality that combines
- * text chunk search (1536d embeddings) with image search (1024d embeddings).
+ * text chunk search (1536d embeddings) with image search (V2: 1536d Cohere, V1: 1024d Vision).
  *
  * Prerequisites:
  * - Azure Search credentials (AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_KEY)
@@ -26,6 +26,9 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
 
     const TEST_USER_ID = 'integration-semantic-test-user';
     const OTHER_USER_ID = 'integration-semantic-other-user';
+
+    // All image embeddings use Cohere Embed v4 — 1536d unified space
+    const imageDims = 1536;
 
     // Test data
     const textFileId = 'integration-text-file';
@@ -52,11 +55,11 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
             createdAt: new Date(),
         });
 
-        // Image embedding (1024d)
+        // Image embedding (dimension matches active index)
         await vectorSearchService.indexImageEmbedding({
             fileId: imageFileId,
             userId: TEST_USER_ID,
-            embedding: new Array(1024).fill(0.2),
+            embedding: new Array(imageDims).fill(0.2),
             fileName: 'warehouse-photo.jpg',
         });
 
@@ -64,7 +67,7 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
         await vectorSearchService.indexImageEmbedding({
             fileId: otherUserFileId,
             userId: OTHER_USER_ID,
-            embedding: new Array(1024).fill(0.2),
+            embedding: new Array(imageDims).fill(0.2),
             fileName: 'other-user-photo.jpg',
         });
 
@@ -222,6 +225,9 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Multi
     let semanticSearchService: SemanticSearchService;
     let vectorSearchService: VectorSearchService;
 
+    // All image embeddings use Cohere Embed v4 — 1536d unified space
+    const imageDims = 1536;
+
     const USER_A = 'security-test-user-a';
     const USER_B = 'security-test-user-b';
     const USER_A_FILE = 'security-user-a-file';
@@ -235,7 +241,7 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Multi
 
         // Create identical content for both users with same embedding
         const sharedEmbedding = new Array(1536).fill(0.5);
-        const sharedImageEmbedding = new Array(1024).fill(0.5);
+        const sharedImageEmbedding = new Array(imageDims).fill(0.5);
 
         // User A's data
         await vectorSearchService.indexChunk({

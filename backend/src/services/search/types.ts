@@ -87,8 +87,6 @@ export interface ImageIndexParams {
   caption?: string;
   /** File MIME type for AI Search field population */
   mimeType?: string;
-  /** Text embedding (1536d) of the caption for contentVector search path */
-  contentVector?: number[];
   /** File size in bytes for filtering */
   sizeBytes?: number;
   /** ISO 8601 timestamp of original file modification date */
@@ -132,8 +130,6 @@ export interface ImageSearchResult {
 export interface SemanticSearchQuery {
   /** Text query for semantic understanding */
   text: string;
-  /** Optional: pre-computed query embedding for vector search */
-  textEmbedding?: number[];
   /** Optional: pre-computed image query embedding for image search */
   imageEmbedding?: number[];
   /** User ID for multi-tenant isolation */
@@ -146,8 +142,19 @@ export interface SemanticSearchQuery {
   minScore?: number;
   /** Additional OData filter to append (e.g., mimeType filtering) */
   additionalFilter?: string;
-  /** Search mode: 'text' (default) uses Semantic Ranker, 'image' prioritizes visual similarity */
+  /** Search mode: 'text' (default) uses Semantic Ranker, 'image' prioritizes visual similarity — legacy, use new fields */
   searchMode?: SearchMode;
+  // PRD-200: New fields for power search — all optional, backward-compat via searchMode fallback
+  /** Azure AI Search queryType: 'simple' (BM25 only) or 'semantic' (with reranker). Derived from searchMode if not set. */
+  queryType?: 'simple' | 'semantic';
+  /** When false, skip all vector queries (keyword-only mode). Default: true. */
+  useVectorSearch?: boolean;
+  /** When false, disable Semantic Ranker. Default: derived from searchMode. */
+  useSemanticRanker?: boolean;
+  /** Override per-field vector weights for RRF scoring */
+  vectorWeights?: { contentVector: number; imageVector: number };
+  /** Azure AI Search orderBy clause (e.g., 'fileModifiedAt desc') */
+  orderBy?: string;
 }
 
 /**
@@ -170,4 +177,36 @@ export interface SemanticSearchResult {
   chunkIndex: number;
   /** Whether this is an image result */
   isImage: boolean;
+  /** Extractive caption text from Semantic Ranker (PRD-203) */
+  captionText?: string;
+  /** Highlighted caption with <em> tags from Semantic Ranker (PRD-203) */
+  captionHighlights?: string;
+}
+
+// ===== PRD-203: Extractive Search Types =====
+
+/**
+ * Extractive answer from Azure AI Search Semantic Ranker (PRD-203).
+ * Available at the top-level search results (not per-document).
+ */
+export interface ExtractiveSearchAnswer {
+  /** Extracted answer text */
+  text: string;
+  /** Highlighted answer text with <em> tags */
+  highlights?: string;
+  /** Relevance score */
+  score: number;
+  /** Index document key (chunkId) */
+  key: string;
+}
+
+/**
+ * Full result from semanticSearch() including extractive features (PRD-203).
+ * Wraps the per-document results with top-level extractive answers.
+ */
+export interface SemanticSearchFullResult {
+  /** Per-document search results */
+  results: SemanticSearchResult[];
+  /** Top-level extractive answers from Semantic Ranker */
+  extractiveAnswers: ExtractiveSearchAnswer[];
 }

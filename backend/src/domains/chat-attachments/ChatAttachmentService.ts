@@ -71,6 +71,15 @@ export interface AttachmentForCleanup {
  */
 export interface IChatAttachmentService {
   uploadAttachment(options: UploadAttachmentOptions): Promise<ParsedChatAttachment>;
+  createFromMentionedFile(options: {
+    userId: string;
+    sessionId: string;
+    sourceFileId: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    blobPath: string;
+  }): Promise<{ attachmentId: string; anthropicFileId: string }>;
   getAttachment(userId: string, attachmentId: string): Promise<ParsedChatAttachment | null>;
   getAttachmentsByIds(userId: string, attachmentIds: string[]): Promise<ParsedChatAttachment[]>;
   getAttachmentsBySession(userId: string, sessionId: string): Promise<ParsedChatAttachment[]>;
@@ -199,6 +208,120 @@ export class ChatAttachmentService {
     this.uploadToAnthropicFilesApi(attachmentId, buffer, fileName, mimeType);
 
     return parseChatAttachment(result.recordset[0]);
+  }
+
+  // ========================================
+  // Mention-to-Container Upload
+  // ========================================
+
+  /**
+   * Create a chat attachment record from an @mentioned knowledge-base file.
+   *
+   * When a user @mentions a binary file (XLSX, DOCX, PPTX) that needs
+   * sandbox processing, this method bridges the gap by uploading the file
+   * to Anthropic's Files API and creating a chat_attachments record.
+   *
+   * Unlike uploadAttachment(), this method:
+   * - Does NOT re-upload to Azure Blob (file already exists in KB storage)
+   * - Performs a BLOCKING Anthropic upload (not fire-and-forget)
+   * - Uses a sentinel blob_path (`mention-ref:{sourceFileId}`) to prevent
+   *   the cleanup job from deleting the original KB blob
+   * - Includes idempotency: same file in same session reuses existing record
+   *
+   * @param options - Mention file options
+   * @returns Attachment ID and Anthropic file ID
+   * @throws Error if download or Anthropic upload fails
+   */
+  async createFromMentionedFile(options: {
+    userId: string;
+    sessionId: string;
+    sourceFileId: string;
+    fileName: string;
+    mimeType: string;
+    sizeBytes: number;
+    blobPath: string;
+  }): Promise<{ attachmentId: string; anthropicFileId: string }> {
+    const { userId, sessionId, sourceFileId, fileName, mimeType, sizeBytes, blobPath } = options;
+
+    const sentinelBlobPath = `mention-ref:${sourceFileId}`;
+
+    // Idempotency: check if we already created a record for this file in this session
+    const existingQuery = `
+      SELECT id, anthropic_file_id
+      FROM chat_attachments
+      WHERE user_id = @user_id
+        AND session_id = @session_id
+        AND blob_path = @blob_path
+        AND is_deleted = 0
+        AND expires_at > GETUTCDATE()
+        AND anthropic_file_id IS NOT NULL
+    `;
+
+    const existing = await executeQuery<{ id: string; anthropic_file_id: string }>(
+      existingQuery,
+      { user_id: userId, session_id: sessionId, blob_path: sentinelBlobPath }
+    );
+
+    if (existing.recordset[0]) {
+      this.logger.info(
+        { sourceFileId, attachmentId: existing.recordset[0].id, sessionId },
+        'Reusing existing mention-created attachment (idempotent)'
+      );
+      return {
+        attachmentId: existing.recordset[0].id,
+        anthropicFileId: existing.recordset[0].anthropic_file_id,
+      };
+    }
+
+    // Download from knowledge-base blob storage
+    const fileUploadService = getFileUploadService();
+    const buffer = await fileUploadService.downloadFromBlob(blobPath);
+
+    // Blocking upload to Anthropic Files API
+    const anthropicFilesService = getAnthropicFilesService();
+    const anthropicFileId = await anthropicFilesService.uploadFile(buffer, fileName, mimeType);
+
+    // Create chat_attachments record with sentinel blob_path
+    const attachmentId = randomUUID().toUpperCase();
+    const ttlHours = CHAT_ATTACHMENT_CONFIG.DEFAULT_TTL_HOURS;
+
+    const insertQuery = `
+      INSERT INTO chat_attachments (
+        id, user_id, session_id, name, mime_type, size_bytes,
+        blob_path, anthropic_file_id, expires_at, created_at
+      )
+      VALUES (
+        @id, @user_id, @session_id, @name, @mime_type, @size_bytes,
+        @blob_path, @anthropic_file_id, DATEADD(HOUR, @ttl_hours, GETUTCDATE()), GETUTCDATE()
+      )
+    `;
+
+    await executeQuery(insertQuery, {
+      id: attachmentId,
+      user_id: userId,
+      session_id: sessionId,
+      name: fileName,
+      mime_type: mimeType,
+      size_bytes: sizeBytes,
+      blob_path: sentinelBlobPath,
+      anthropic_file_id: anthropicFileId,
+      ttl_hours: ttlHours,
+    });
+
+    this.logger.info(
+      {
+        attachmentId,
+        anthropicFileId,
+        sourceFileId,
+        sessionId,
+        fileName,
+        mimeType,
+        sizeBytes,
+      },
+      'Created mention-based container upload for @mentioned binary file'
+    );
+
+    return { attachmentId, anthropicFileId };
   }
 
   // ========================================

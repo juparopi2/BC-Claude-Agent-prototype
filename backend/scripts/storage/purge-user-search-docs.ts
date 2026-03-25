@@ -12,6 +12,7 @@
 import 'dotenv/config';
 import { SearchClient, AzureKeyCredential } from '@azure/search-documents';
 import { hasFlag, getPositionalArg } from '../_shared/args.js';
+import { INDEX_NAME } from '../_shared/azure.js';
 
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
@@ -28,6 +29,9 @@ ${BOLD}purge-user-search-docs.ts${RESET} — Delete orphan AI Search documents f
 ${BOLD}Usage:${RESET}
   npx tsx scripts/storage/purge-user-search-docs.ts <userId>            ${DIM}(dry-run)${RESET}
   npx tsx scripts/storage/purge-user-search-docs.ts <userId> --confirm  ${DIM}(execute)${RESET}
+
+${BOLD}Index:${RESET}
+  Uses the active search index (INDEX_NAME from _shared/azure)
 `);
   process.exit(0);
 }
@@ -40,9 +44,10 @@ if (!userId) {
 
 const confirm = hasFlag('--confirm');
 
+const indexNames: string[] = [INDEX_NAME];
+
 const endpoint = process.env.AZURE_SEARCH_ENDPOINT;
 const key = process.env.AZURE_SEARCH_KEY;
-const indexName = process.env.AZURE_SEARCH_INDEX_NAME || 'file-chunks-index';
 
 if (!endpoint || !key) {
   console.error(`${RED}✗${RESET} AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_KEY must be set`);
@@ -54,9 +59,7 @@ interface SearchDoc {
   fileId?: string;
 }
 
-const client = new SearchClient<SearchDoc>(endpoint, indexName, new AzureKeyCredential(key));
-
-async function collectDocumentIds(): Promise<string[]> {
+async function collectDocumentIds(client: SearchClient<SearchDoc>, indexName: string): Promise<string[]> {
   const allIds: string[] = [];
   const pageSize = 500;
   let skip = 0;
@@ -91,7 +94,7 @@ async function collectDocumentIds(): Promise<string[]> {
   return allIds;
 }
 
-async function deleteDocuments(ids: string[]): Promise<{ succeeded: number; failed: number }> {
+async function deleteDocuments(client: SearchClient<SearchDoc>, ids: string[]): Promise<{ succeeded: number; failed: number }> {
   const batchSize = 1000;
   let succeeded = 0;
   let failed = 0;
@@ -115,26 +118,55 @@ async function deleteDocuments(ids: string[]): Promise<{ succeeded: number; fail
 }
 
 async function main() {
-  const ids = await collectDocumentIds();
+  let globalSucceeded = 0;
+  let globalFailed = 0;
+  let totalFound = 0;
 
-  if (ids.length === 0) {
+  for (const indexName of indexNames) {
+    const client = new SearchClient<SearchDoc>(endpoint!, indexName, new AzureKeyCredential(key!));
+
+    if (indexNames.length > 1) {
+      console.log(`\n${BOLD}Index: ${indexName}${RESET}`);
+    }
+
+    const ids = await collectDocumentIds(client, indexName);
+    totalFound += ids.length;
+
+    if (ids.length === 0) {
+      console.log(`${GREEN}✓${RESET} No documents found in "${indexName}" for this user.`);
+      continue;
+    }
+
+    console.log(`\n${BOLD}Found ${ids.length} document(s) in "${indexName}"${RESET}`);
+
+    if (!confirm) {
+      console.log(`${YELLOW}⚠${RESET} DRY RUN — no changes made. Add ${BOLD}--confirm${RESET} to execute.`);
+      continue;
+    }
+
+    console.log(`\nDeleting ${ids.length} documents from "${indexName}"...`);
+    const { succeeded, failed } = await deleteDocuments(client, ids);
+    globalSucceeded += succeeded;
+    globalFailed += failed;
+
+    console.log(`${BOLD}Result:${RESET} ${GREEN}${succeeded} deleted${RESET}, ${failed > 0 ? RED : DIM}${failed} failed${RESET}`);
+  }
+
+  if (totalFound === 0) {
     console.log(`\n${GREEN}✓${RESET} No documents found for this user. Already clean.`);
     process.exit(0);
   }
-
-  console.log(`\n${BOLD}Found ${ids.length} document(s) to delete${RESET}`);
 
   if (!confirm) {
     console.log(`\n${YELLOW}⚠${RESET} DRY RUN — no changes made. Add ${BOLD}--confirm${RESET} to execute.`);
     process.exit(0);
   }
 
-  console.log(`\nDeleting ${ids.length} documents...`);
-  const { succeeded, failed } = await deleteDocuments(ids);
+  if (indexNames.length > 1) {
+    console.log(`\n${BOLD}Total:${RESET} ${GREEN}${globalSucceeded} deleted${RESET}, ${globalFailed > 0 ? RED : DIM}${globalFailed} failed${RESET}`);
+  }
 
-  console.log(`\n${BOLD}Result:${RESET} ${GREEN}${succeeded} deleted${RESET}, ${failed > 0 ? RED : DIM}${failed} failed${RESET}`);
-
-  if (failed > 0) {
+  if (globalFailed > 0) {
     process.exit(1);
   }
 }

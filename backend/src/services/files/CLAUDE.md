@@ -105,7 +105,7 @@ On error: status → `'failed'`, emit error event, rethrow (triggers BullMQ retr
 | `DocxProcessor` | mammoth.js | `.docx` | Text (HTML → plain text) |
 | `ExcelProcessor` | xlsx library | `.xlsx` | Markdown tables per sheet + sheet count |
 | `TextProcessor` | UTF-8 decode | `text/plain`, `text/csv`, `text/markdown`, `text/javascript`, `text/html`, `text/css`, `application/json` | Raw text |
-| `ImageProcessor` | Azure Computer Vision | `image/jpeg`, `image/png`, `image/gif`, `image/webp` | Caption text + 1024d image embedding + caption confidence |
+| `ImageProcessor` | Azure Computer Vision (captions) + Cohere Embed v4 (embeddings) | `image/jpeg`, `image/png`, `image/gif`, `image/webp` | Caption text + 1536d image embedding (Cohere Embed v4) + caption confidence |
 
 All processors implement the `DocumentProcessor` interface:
 ```typescript

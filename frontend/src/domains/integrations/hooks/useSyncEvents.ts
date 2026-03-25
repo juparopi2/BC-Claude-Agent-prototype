@@ -218,6 +218,14 @@ export function useSyncEvents(): void {
         // Refresh connections list after a full disconnect
         useIntegrationListStore.getState().fetchConnections();
         break;
+
+      case SYNC_WS_EVENTS.SYNC_HEALTH_REPORT:
+        // PRD-300: Health report received — future UI will surface this
+        break;
+
+      case SYNC_WS_EVENTS.SYNC_RECOVERY_COMPLETED:
+        // PRD-300: Recovery completed — future UI will surface this
+        break;
     }
   }, [getProviderName]);
 

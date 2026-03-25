@@ -400,6 +400,8 @@ export type {
   SubscriptionErrorPayload,
   ConnectionExpiredPayload,
   ConnectionDisconnectedPayload,
+  SyncHealthReportPayload,
+  SyncRecoveryCompletedPayload,
 } from './onedrive.types';
 
 // Sync Processing Event types (PRD-117)
@@ -460,6 +462,7 @@ export type {
   CitationPassage,
   CitedDocument,
   CitationResult,
+  ExtractiveAnswer,
 } from '../schemas/citation-result.schemas';
 
 // DLQ types (PRD-04)

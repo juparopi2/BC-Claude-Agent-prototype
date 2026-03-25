@@ -21,6 +21,8 @@ export const SYNC_WS_EVENTS = {
   CONNECTION_DISCONNECTED: 'connection:disconnected',
   PROCESSING_PROGRESS: 'processing:progress',
   PROCESSING_COMPLETED: 'processing:completed',
+  SYNC_HEALTH_REPORT: 'sync:health_report',
+  SYNC_RECOVERY_COMPLETED: 'sync:recovery_completed',
 } as const;
 
 export type SyncWsEventType = (typeof SYNC_WS_EVENTS)[keyof typeof SYNC_WS_EVENTS];

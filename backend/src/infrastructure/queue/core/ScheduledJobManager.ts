@@ -59,7 +59,7 @@ export class ScheduledJobManager {
       // Hourly aggregation (every hour at :05)
       await queue.add(
         JOB_NAMES.USAGE_AGGREGATION.HOURLY,
-        { type: 'hourly' as const },
+        { type: JOB_NAMES.USAGE_AGGREGATION.HOURLY },
         {
           repeat: { pattern: CRON_PATTERNS.HOURLY_AT_05 },
           jobId: JOB_NAMES.USAGE_AGGREGATION.HOURLY,
@@ -69,7 +69,7 @@ export class ScheduledJobManager {
       // Daily aggregation (every day at 00:15 UTC)
       await queue.add(
         JOB_NAMES.USAGE_AGGREGATION.DAILY,
-        { type: 'daily' as const },
+        { type: JOB_NAMES.USAGE_AGGREGATION.DAILY },
         {
           repeat: { pattern: CRON_PATTERNS.DAILY_AT_0015 },
           jobId: JOB_NAMES.USAGE_AGGREGATION.DAILY,
@@ -79,7 +79,7 @@ export class ScheduledJobManager {
       // Monthly invoice generation (1st of month at 00:30 UTC)
       await queue.add(
         JOB_NAMES.USAGE_AGGREGATION.MONTHLY_INVOICES,
-        { type: 'monthly-invoices' as const },
+        { type: JOB_NAMES.USAGE_AGGREGATION.MONTHLY_INVOICES },
         {
           repeat: { pattern: CRON_PATTERNS.MONTHLY_1ST_AT_0030 },
           jobId: JOB_NAMES.USAGE_AGGREGATION.MONTHLY_INVOICES,
@@ -89,7 +89,7 @@ export class ScheduledJobManager {
       // Quota reset check (every day at 00:10 UTC)
       await queue.add(
         JOB_NAMES.USAGE_AGGREGATION.QUOTA_RESET,
-        { type: 'quota-reset' as const },
+        { type: JOB_NAMES.USAGE_AGGREGATION.QUOTA_RESET },
         {
           repeat: { pattern: CRON_PATTERNS.DAILY_AT_0010 },
           jobId: JOB_NAMES.USAGE_AGGREGATION.QUOTA_RESET,
@@ -133,7 +133,7 @@ export class ScheduledJobManager {
       // Stuck file recovery (every 15 minutes)
       await queue.add(
         JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY,
-        { type: 'stuck-file-recovery' },
+        { type: JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY },
         {
           repeat: { pattern: CRON_PATTERNS.EVERY_15_MIN },
           jobId: JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY,
@@ -143,7 +143,7 @@ export class ScheduledJobManager {
       // Orphan cleanup (daily at 03:00 UTC)
       await queue.add(
         JOB_NAMES.FILE_MAINTENANCE.ORPHAN_CLEANUP,
-        { type: 'orphan-cleanup' },
+        { type: JOB_NAMES.FILE_MAINTENANCE.ORPHAN_CLEANUP },
         {
           repeat: { pattern: CRON_PATTERNS.DAILY_AT_0300 },
           jobId: JOB_NAMES.FILE_MAINTENANCE.ORPHAN_CLEANUP,
@@ -153,18 +153,40 @@ export class ScheduledJobManager {
       // Batch timeout (every hour)
       await queue.add(
         JOB_NAMES.FILE_MAINTENANCE.BATCH_TIMEOUT,
-        { type: 'batch-timeout' },
+        { type: JOB_NAMES.FILE_MAINTENANCE.BATCH_TIMEOUT },
         {
           repeat: { pattern: CRON_PATTERNS.HOURLY },
           jobId: JOB_NAMES.FILE_MAINTENANCE.BATCH_TIMEOUT,
         }
       );
 
-      this.log.info('Scheduled maintenance jobs initialized (PRD-05)', {
+      // Sync health check (every 15 minutes) — PRD-300
+      await queue.add(
+        JOB_NAMES.FILE_MAINTENANCE.SYNC_HEALTH_CHECK,
+        { type: JOB_NAMES.FILE_MAINTENANCE.SYNC_HEALTH_CHECK },
+        {
+          repeat: { pattern: CRON_PATTERNS.EVERY_15_MIN },
+          jobId: JOB_NAMES.FILE_MAINTENANCE.SYNC_HEALTH_CHECK,
+        }
+      );
+
+      // Sync reconciliation (daily at 04:00 UTC) — PRD-300
+      await queue.add(
+        JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
+        { type: JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION },
+        {
+          repeat: { pattern: CRON_PATTERNS.DAILY_AT_0400 },
+          jobId: JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
+        }
+      );
+
+      this.log.info('Scheduled maintenance jobs initialized (PRD-05, PRD-300)', {
         jobs: [
           JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY,
           JOB_NAMES.FILE_MAINTENANCE.ORPHAN_CLEANUP,
           JOB_NAMES.FILE_MAINTENANCE.BATCH_TIMEOUT,
+          JOB_NAMES.FILE_MAINTENANCE.SYNC_HEALTH_CHECK,
+          JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
         ],
       });
     } catch (error) {
@@ -194,7 +216,7 @@ export class ScheduledJobManager {
       // Subscription renewal (every 12 hours)
       await queue.add(
         JOB_NAMES.SUBSCRIPTION_MGMT.RENEW,
-        { type: 'renew-subscriptions' as const },
+        { type: JOB_NAMES.SUBSCRIPTION_MGMT.RENEW },
         {
           repeat: { pattern: CRON_PATTERNS.EVERY_12_HOURS },
           jobId: JOB_NAMES.SUBSCRIPTION_MGMT.RENEW,
@@ -204,7 +226,7 @@ export class ScheduledJobManager {
       // Polling fallback (every 30 minutes)
       await queue.add(
         JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
-        { type: 'poll-delta' as const },
+        { type: JOB_NAMES.SUBSCRIPTION_MGMT.POLL },
         {
           repeat: { pattern: CRON_PATTERNS.EVERY_30_MIN },
           jobId: JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
@@ -214,7 +236,7 @@ export class ScheduledJobManager {
       // Immediate poll on startup — catch missed changes without waiting 30 min
       await queue.add(
         JOB_NAMES.SUBSCRIPTION_MGMT.POLL,
-        { type: 'poll-delta' as const },
+        { type: JOB_NAMES.SUBSCRIPTION_MGMT.POLL },
         {
           jobId: `poll-delta-startup-${Date.now()}`,
           delay: 10_000,

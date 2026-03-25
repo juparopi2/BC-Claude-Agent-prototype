@@ -80,6 +80,12 @@ vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   })),
 }));
 
+// Mock environment — these tests do not depend on any specific env values
+vi.mock('@/infrastructure/config/environment', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/infrastructure/config/environment')>();
+  return actual;
+});
+
 describe('FileChunkingService', () => {
   let service: FileChunkingService;
 
@@ -223,16 +229,10 @@ describe('FileChunkingService', () => {
       mimeType: 'image/jpeg',
     };
 
-    it('should index image embedding with contentVector when caption exists', async () => {
+    it('should index image embedding with caption when caption exists', async () => {
       const mockEmbeddingRecord = {
-        embedding: new Array(1024).fill(0.1),
+        embedding: new Array(1536).fill(0.1),
         caption: 'An invoice from Acme Corp',
-      };
-
-      const mockCaptionEmbedding = {
-        embedding: new Array(1536).fill(0.2),
-        model: 'text-embedding-3-small',
-        tokenCount: 5,
       };
 
       const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
@@ -253,15 +253,6 @@ describe('FileChunkingService', () => {
         getImageEmbeddingRepository: () => ({
           getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
         }),
-      }));
-
-      // Mock EmbeddingService for caption text embedding
-      vi.doMock('@/services/embeddings/EmbeddingService', () => ({
-        EmbeddingService: {
-          getInstance: () => ({
-            generateTextEmbedding: vi.fn().mockResolvedValue(mockCaptionEmbedding),
-          }),
-        },
       }));
 
       // Mock VectorSearchService
@@ -288,87 +279,20 @@ describe('FileChunkingService', () => {
       expect(result.chunkCount).toBe(0);
       expect(result.totalTokens).toBe(0);
 
-      // Verify indexImageEmbedding was called with contentVector
+      // Verify indexImageEmbedding was called with the embedding from the repository and the caption
       expect(mockIndexImageEmbedding).toHaveBeenCalledWith(
         expect.objectContaining({
           fileId: 'test-image-id',
           userId: 'test-user-id',
+          embedding: mockEmbeddingRecord.embedding,
           caption: 'An invoice from Acme Corp',
-          contentVector: mockCaptionEmbedding.embedding,
         })
       );
     });
 
-    it('should proceed without contentVector when caption text embedding fails', async () => {
+    it('should index image embedding without caption when caption is null', async () => {
       const mockEmbeddingRecord = {
-        embedding: new Array(1024).fill(0.1),
-        caption: 'A photo of something',
-      };
-
-      const mockIndexImageEmbedding = vi.fn().mockResolvedValue('img_TEST-IMAGE-ID');
-
-      // Mock FileRepository.getFileWithScopeMetadata
-      mockGetFileWithScopeMetadata.mockResolvedValueOnce({
-        name: 'photo.jpg',
-        mime_type: 'image/jpeg',
-        file_modified_at: null,
-        size_bytes: null,
-        source_type: 'local',
-        parent_folder_id: null,
-        scope_site_id: null,
-      });
-
-      // Mock ImageEmbeddingRepository
-      vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
-        getImageEmbeddingRepository: () => ({
-          getByFileId: vi.fn().mockResolvedValue(mockEmbeddingRecord),
-        }),
-      }));
-
-      // Mock EmbeddingService to fail
-      vi.doMock('@/services/embeddings/EmbeddingService', () => ({
-        EmbeddingService: {
-          getInstance: () => ({
-            generateTextEmbedding: vi.fn().mockRejectedValue(new Error('Embedding API down')),
-          }),
-        },
-      }));
-
-      // Mock VectorSearchService
-      vi.doMock('@services/search/VectorSearchService', () => ({
-        VectorSearchService: {
-          getInstance: () => ({
-            indexImageEmbedding: mockIndexImageEmbedding,
-          }),
-        },
-      }));
-
-      // Mock FileEventEmitter
-      vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
-        getFileEventEmitter: () => ({
-          emitReadinessChanged: vi.fn(),
-        }),
-      }));
-      vi.doMock('@bc-agent/shared', () => ({
-        FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
-      }));
-
-      const result = await service.processFileChunks(mockImageJobData);
-
-      expect(result.chunkCount).toBe(0);
-
-      // Should still call indexImageEmbedding but without contentVector
-      expect(mockIndexImageEmbedding).toHaveBeenCalledWith(
-        expect.objectContaining({
-          fileId: 'test-image-id',
-          contentVector: undefined,
-        })
-      );
-    });
-
-    it('should skip contentVector generation when no caption exists', async () => {
-      const mockEmbeddingRecord = {
-        embedding: new Array(1024).fill(0.1),
+        embedding: new Array(1536).fill(0.1),
         caption: null,
       };
 
@@ -415,13 +339,54 @@ describe('FileChunkingService', () => {
 
       expect(result.chunkCount).toBe(0);
 
-      // Should call indexImageEmbedding without contentVector
+      // Should call indexImageEmbedding with the embedding and undefined caption
       expect(mockIndexImageEmbedding).toHaveBeenCalledWith(
         expect.objectContaining({
           fileId: 'test-image-id',
-          contentVector: undefined,
+          embedding: mockEmbeddingRecord.embedding,
+          caption: undefined,
         })
       );
+    });
+
+    it('should skip indexing and still emit readiness when no embedding record found', async () => {
+      const mockIndexImageEmbedding = vi.fn();
+
+      // Mock FileRepository.getFileWithScopeMetadata (not called if no embedding record)
+      mockGetFileWithScopeMetadata.mockResolvedValueOnce(null);
+
+      // Mock ImageEmbeddingRepository — returns null (no embedding persisted)
+      vi.doMock('@/repositories/ImageEmbeddingRepository', () => ({
+        getImageEmbeddingRepository: () => ({
+          getByFileId: vi.fn().mockResolvedValue(null),
+        }),
+      }));
+
+      // Mock VectorSearchService
+      vi.doMock('@services/search/VectorSearchService', () => ({
+        VectorSearchService: {
+          getInstance: () => ({
+            indexImageEmbedding: mockIndexImageEmbedding,
+          }),
+        },
+      }));
+
+      // Mock FileEventEmitter
+      vi.doMock('@/domains/files/emission/FileEventEmitter', () => ({
+        getFileEventEmitter: () => ({
+          emitReadinessChanged: vi.fn(),
+        }),
+      }));
+      vi.doMock('@bc-agent/shared', () => ({
+        FILE_READINESS_STATE: { PROCESSING: 'processing', READY: 'ready' },
+      }));
+
+      const result = await service.processFileChunks(mockImageJobData);
+
+      expect(result.chunkCount).toBe(0);
+
+      // Should NOT call indexImageEmbedding when no embedding record
+      expect(mockIndexImageEmbedding).not.toHaveBeenCalled();
     });
   });
 });

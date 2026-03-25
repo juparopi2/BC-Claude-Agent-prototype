@@ -127,10 +127,18 @@ export class ScopeCleanupService {
     }
 
     // 6. Delete all files for this scope (FK cascades handle chunks, embeddings, attachments)
+    //    NULL parent_folder_id first to break self-referential FK before bulk delete.
+    //    Batch transaction avoids MSSQL adapter EREQINPROG (two implicit transactions on same connection).
     if (fileIds.length > 0) {
-      await prisma.files.deleteMany({
-        where: { connection_scope_id: scopeId },
-      });
+      await prisma.$transaction([
+        prisma.$executeRaw`
+          UPDATE files SET parent_folder_id = NULL
+          WHERE connection_scope_id = ${scopeId}
+        `,
+        prisma.files.deleteMany({
+          where: { connection_scope_id: scopeId },
+        }),
+      ]);
 
       logger.debug({ scopeId, filesDeleted: fileIds.length }, 'Files deleted');
     }

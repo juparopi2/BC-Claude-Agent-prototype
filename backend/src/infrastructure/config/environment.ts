@@ -67,6 +67,7 @@ const envSchema = z.object({
   // Session management
   SESSION_SECRET: z.string().optional(),
   SESSION_MAX_AGE: z.string().default('86400000').transform(Number).pipe(z.number()),
+  COOKIE_DOMAIN: z.string().optional().transform(v => v === 'none' || !v ? undefined : v),
 
   // Frontend URL
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
@@ -109,6 +110,21 @@ const envSchema = z.object({
   // Azure Computer Vision (Image Embeddings)
   AZURE_VISION_ENDPOINT: z.string().url().optional(),
   AZURE_VISION_KEY: z.string().optional(),
+
+  // Cohere Embed 4 (Unified Embedding Model — PRD-201)
+  COHERE_ENDPOINT: z.string().url(),
+  COHERE_API_KEY: z.string(),
+  COHERE_IMAGE_ENDPOINT: z.string().url().optional(),
+  COHERE_VECTORIZER_ENDPOINT: z.string().url().optional(),
+  COHERE_VECTORIZER_KEY: z.string().optional(),
+  // PRD-203 F5: Configurable HNSW parameters for search performance tuning
+  // NOTE: m and efConstruction only take effect on NEW index creation (build-time params).
+  // efSearch is a query-time parameter and takes effect immediately on existing indexes.
+  HNSW_M: z.string().default('4').transform(Number).pipe(z.number().min(1).max(100)),
+  HNSW_EF_CONSTRUCTION: z.string().default('400').transform(Number).pipe(z.number().min(100).max(1000)),
+  HNSW_EF_SEARCH: z.string().default('500').transform(Number).pipe(z.number().min(100).max(1000)),
+  // Multiplier for fetchTopK = maxFiles * maxChunksPerFile * SEARCH_FETCH_MULTIPLIER
+  SEARCH_FETCH_MULTIPLIER: z.string().default('3').transform(Number).pipe(z.number().min(1).max(5)),
 
   // Azure Audio Services (Speech-to-Text)
   AZURE_AUDIO_ENDPOINT: z.string().url().optional(),

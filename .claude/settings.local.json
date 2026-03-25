@@ -218,5 +218,8 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "playwright"
-  ]
+  ],
+  "remote": {
+    "defaultEnvironmentId": "env_018nDdoFZpPaFP9HU5c1q38n"
+  }
 }

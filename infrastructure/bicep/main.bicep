@@ -63,6 +63,15 @@ param aiSearchSku string = 'basic'
 @description('Document Intelligence pricing tier.')
 param docIntelligenceSku string = 'S0'
 
+@description('Name for Cohere AIServices (leave empty to skip Bicep provisioning)')
+param cohereAiServicesName string = ''
+
+@description('Location for Cohere AIServices')
+param cohereAiServicesLocation string = 'westeurope'
+
+@description('Cohere deployment capacity')
+param cohereCapacity int = 1
+
 // ============================================================
 // PARAMETERS — Monitoring
 // ============================================================
@@ -113,6 +122,20 @@ param microsoftClientSecret string
 
 @secure()
 param microsoftTenantId string
+
+@description('Endpoint URL of the Cohere embedding service. Leave empty when cohereAiServicesName is set (endpoint is auto-derived from the cognitive module).')
+param cohereEndpoint string = ''
+
+@description('Primary access key for the Cohere embedding service. Leave empty when cohereAiServicesName is set (key is auto-derived from the cognitive module).')
+@secure()
+param cohereApiKey string = ''
+
+@description('Endpoint URL of the Cohere vectorizer service.')
+param cohereVectorizerEndpoint string = ''
+
+@description('Primary access key for the Cohere vectorizer service.')
+@secure()
+param cohereVectorizerKey string = ''
 
 // ============================================================
 // COMPUTED NAMING VARIABLES
@@ -236,6 +259,9 @@ module cognitive 'modules/cognitive.bicep' = {
     docIntelligenceLocation: docIntelligenceLocation
     speechName: speechName
     location: location
+    cohereAiServicesName: cohereAiServicesName
+    cohereAiServicesLocation: cohereAiServicesLocation
+    cohereCapacity: cohereCapacity
   }
 }
 
@@ -306,6 +332,14 @@ module keyvaultSecrets 'modules/keyvault-secrets.bicep' = {
     microsoftClientId: microsoftClientId
     microsoftClientSecret: microsoftClientSecret
     microsoftTenantId: microsoftTenantId
+
+    // ── Cohere embedding service ───────────────────────────
+    cohereEndpoint: !empty(cohereAiServicesName) ? cognitive.outputs.cohereEndpoint : cohereEndpoint
+    cohereApiKey: !empty(cohereAiServicesName) ? cognitive.outputs.cohereKey : cohereApiKey
+
+    // ── Cohere vectorizer service ──────────────────────────
+    cohereVectorizerEndpoint: cohereVectorizerEndpoint
+    cohereVectorizerKey: cohereVectorizerKey
   }
   dependsOn: [
     security

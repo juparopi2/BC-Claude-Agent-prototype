@@ -5,9 +5,8 @@
 
 set -euo pipefail
 
-# Configuration
-RESOURCE_GROUP="rg-BCAgentPrototype-app-dev"
-APP_NAME="app-bcagent-backend-dev"
+# Environment (can be overridden by --env flag or ENVIRONMENT env var)
+ENVIRONMENT="${ENVIRONMENT:-dev}"
 
 # Color codes
 RED='\033[0;31m'
@@ -35,6 +34,7 @@ Fetch and filter Azure Container App logs for MyWorkMate backend.
 
 OPTIONS:
   -h, --help                Show this help message
+  -E, --env ENV             Target environment: dev or prod (default: dev, or \$ENVIRONMENT)
   -t, --tail NUMBER         Number of log lines to fetch (default: 100)
   -s, --since DURATION      Time range (e.g., "2h", "30m", "1d")
   -u, --user-id UUID        Filter by userId (case-insensitive)
@@ -103,6 +103,10 @@ while [[ $# -gt 0 ]]; do
       LEVEL_FILTER="error"
       shift
       ;;
+    -E|--env)
+      ENVIRONMENT="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
       show_help
@@ -110,6 +114,22 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Resolve environment-specific configuration
+case "$ENVIRONMENT" in
+  dev)
+    RESOURCE_GROUP="rg-BCAgentPrototype-app-dev"
+    APP_NAME="app-bcagent-backend-dev"
+    ;;
+  prod)
+    RESOURCE_GROUP="rg-myworkmate-app-prod"
+    APP_NAME="app-myworkmate-backend-prod"
+    ;;
+  *)
+    echo "Error: Unknown environment '$ENVIRONMENT'. Valid values: dev, prod"
+    exit 1
+    ;;
+esac
 
 # Check Azure CLI authentication
 if ! az account show &>/dev/null; then
@@ -124,6 +144,7 @@ if [ -n "$SINCE" ]; then
   CMD="$CMD --since $SINCE"
 fi
 
+echo -e "${CYAN}Environment: $ENVIRONMENT${NC}"
 echo -e "${CYAN}Fetching logs from Container App: $APP_NAME${NC}"
 echo -e "${CYAN}Filters: tail=$TAIL_LINES${NC}"
 [ -n "$SINCE" ] && echo -e "${CYAN}  since=$SINCE${NC}"

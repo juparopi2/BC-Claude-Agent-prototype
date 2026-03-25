@@ -47,13 +47,24 @@ ${BOLD}Flags:${RESET}
   --section sql|blob|search|pipeline
                             Run only one section (default: all).
   --health                  Compact summary (~20 lines). Overrides --section.
+  --deep                    Enhanced cross-system checks (integrity, vectors, error patterns).
+  --errors                  Focus output on problems — skip healthy items.
   --help, -h                Show this help message.
 
 ${BOLD}Sections:${RESET}
   sql       Connection overview, scope status, file counts, orphan detection.
+            With --deep: token health, scope coverage gaps, deletion consistency.
   blob      Blob path presence check for synced files (lightweight mode).
   search    AI Search chunk count per ready file in DB.
+            With --deep: false positive detection, stale search data, vector sampling.
   pipeline  Visual funnel, stuck file detection, failure details.
+            With --deep: error pattern analysis, retry count analysis.
+
+${BOLD}Recommended workflow:${RESET}
+  1. Quick:  npx tsx scripts/connectors/verify-sync.ts --userId <ID> --health
+  2. Full:   npx tsx scripts/connectors/verify-sync.ts --userId <ID>
+  3. Deep:   npx tsx scripts/connectors/verify-sync.ts --userId <ID> --deep
+  4. Errors: npx tsx scripts/connectors/verify-sync.ts --userId <ID> --deep --errors
 `);
 }
 
@@ -81,10 +92,17 @@ function subheader(title: string): void {
   console.log(`  ${DIM}${'─'.repeat(50)}${RESET}`);
 }
 
-function ok(msg: string): void { console.log(`  ${GREEN}✓${RESET} ${msg}`); }
+function ok(msg: string): void { if (!errorsOnly) console.log(`  ${GREEN}✓${RESET} ${msg}`); }
 function warn(msg: string): void { console.log(`  ${YELLOW}⚠${RESET} ${msg}`); }
 function fail(msg: string): void { console.log(`  ${RED}✗${RESET} ${msg}`); }
 function info(msg: string): void { console.log(`  ${BLUE}ℹ${RESET} ${msg}`); }
+
+// ============================================================================
+// Deep mode & error focus flags (module-level for all section functions)
+// ============================================================================
+
+const deepMode = hasFlag('--deep');
+const errorsOnly = hasFlag('--errors');
 
 // ============================================================================
 // Relative time helper
@@ -195,7 +213,7 @@ async function runHealthCheck(prisma: ReturnType<typeof createPrisma>, userId: s
     where: {
       user_id: userId,
       source_type: { in: ['onedrive', 'sharepoint'] },
-      deleted_at: null,
+      deletion_status: null,
       is_folder: false,
     },
     select: { pipeline_status: true },
@@ -273,6 +291,25 @@ async function verifySQLSection(
     console.log();
   }
 
+  // Connection token health (deep mode)
+  if (deepMode) {
+    subheader('Connection Token Health');
+    for (const conn of connections) {
+      if (conn.token_expires_at) {
+        const ttl = new Date(conn.token_expires_at).getTime() - Date.now();
+        if (ttl < 0) {
+          fail(`${conn.display_name ?? conn.provider}: Token EXPIRED (${relativeTime(conn.token_expires_at)})`);
+        } else if (ttl < 24 * 60 * 60 * 1000) {
+          warn(`${conn.display_name ?? conn.provider}: Token expires soon (${relativeTime(conn.token_expires_at)})`);
+        } else {
+          ok(`${conn.display_name ?? conn.provider}: Token valid (expires ${relativeTime(conn.token_expires_at)})`);
+        }
+      } else {
+        warn(`${conn.display_name ?? conn.provider}: No token expiry recorded`);
+      }
+    }
+  }
+
   // Scope summary
   const connectionIds = connections.map((c) => c.id);
   const scopeWhere: Record<string, unknown> = scopeFilter
@@ -324,7 +361,7 @@ async function verifySQLSection(
 
     // File counts per scope
     const fileCount = await prisma.files.count({
-      where: { connection_scope_id: scope.id, deleted_at: null },
+      where: { connection_scope_id: scope.id, deletion_status: null },
     });
     const mismatch = fileCount !== scope.item_count && scope.item_count > 0;
     console.log(
@@ -334,7 +371,7 @@ async function verifySQLSection(
 
     // Pipeline status distribution
     const files = await prisma.files.findMany({
-      where: { connection_scope_id: scope.id, deleted_at: null, is_folder: false },
+      where: { connection_scope_id: scope.id, deletion_status: null, is_folder: false },
       select: { pipeline_status: true },
     });
     if (files.length > 0) {
@@ -344,6 +381,12 @@ async function verifySQLSection(
         distribution[ps] = (distribution[ps] || 0) + 1;
       }
       console.log(`    Pipeline:  ${Object.entries(distribution).map(([s, n]) => `${s}=${n}`).join(', ')}`);
+    }
+
+    // Scope coverage analysis (deep mode) — detect false negatives
+    if (deepMode && scope.item_count > 0 && fileCount < scope.item_count) {
+      const missing = scope.item_count - fileCount;
+      warn(`    Coverage gap: ${missing} item(s) declared in scope but absent from DB (potential false negatives)`);
     }
     console.log();
   }
@@ -355,13 +398,30 @@ async function verifySQLSection(
       user_id: userId,
       source_type: { in: ['onedrive', 'sharepoint'] },
       connection_scope_id: null,
-      deleted_at: null,
+      deletion_status: null,
     },
   });
   if (orphanFiles > 0) {
     warn(`${orphanFiles} external file(s) without a scope assignment (connection_scope_id IS NULL)`);
   } else {
     ok('No orphan files detected');
+  }
+
+  // Deletion state consistency check (deep mode)
+  if (deepMode) {
+    subheader('Deletion Consistency');
+    const inconsistentDeletions = await prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*) as count FROM files
+      WHERE user_id = ${userId}
+        AND ((deleted_at IS NOT NULL AND deletion_status IS NULL)
+          OR (deleted_at IS NULL AND deletion_status IS NOT NULL))
+    `;
+    const inconsistentCount = Number(inconsistentDeletions[0]?.count ?? 0);
+    if (inconsistentCount > 0) {
+      fail(`${inconsistentCount} file(s) with inconsistent deletion state (deleted_at vs deletion_status mismatch)`);
+    } else {
+      ok('All files have consistent deletion state');
+    }
   }
 }
 
@@ -380,7 +440,7 @@ async function verifyBlobSection(
     where: {
       user_id: userId,
       source_type: { in: ['onedrive', 'sharepoint'] },
-      deleted_at: null,
+      deletion_status: null,
       is_folder: false,
       ...(scopeFilter ? { connection_scope_id: scopeFilter } : {}),
     },
@@ -444,7 +504,7 @@ async function verifySearchSection(
     where: {
       user_id: userId,
       source_type: { in: ['onedrive', 'sharepoint'] },
-      deleted_at: null,
+      deletion_status: null,
       is_folder: false,
       pipeline_status: 'ready',
       ...(scopeFilter ? { connection_scope_id: scopeFilter } : {}),
@@ -503,7 +563,7 @@ async function verifySearchSection(
       for (const sid of scopeIds) {
         const scopeReadyCount = readyFiles.filter((f) => f.connection_scope_id === sid).length;
         const totalInScope = await prisma.files.count({
-          where: { connection_scope_id: sid, deleted_at: null, is_folder: false },
+          where: { connection_scope_id: sid, deletion_status: null, is_folder: false },
         });
         const pct = totalInScope > 0 ? Math.round((scopeReadyCount / totalInScope) * 100) : 0;
         const color = pct === 100 ? GREEN : pct >= 80 ? YELLOW : RED;
@@ -574,6 +634,140 @@ async function verifySearchSection(
       const errorMsg = error instanceof Error ? error.message : String(error);
       fail(`Failed to query AI Search: ${errorMsg}`);
     }
+
+    // ── Deep mode: Cross-system integrity checks ──────────────────────
+    if (deepMode) {
+      // 1. False positive detection: ready files with 0 search documents
+      subheader('False Positive Detection');
+      info('Cross-checking ready files against AI Search documents...');
+
+      try {
+        // Fetch all unique fileIds from search index for this user (paginated)
+        const searchFileIds = new Set<string>();
+        const PAGE_SIZE = 500;
+        let skip = 0;
+
+        while (true) {
+          const pageResults = await searchClient.search('*', {
+            filter: `userId eq '${userId}'`,
+            select: ['fileId'] as string[],
+            top: PAGE_SIZE,
+            skip,
+          } as Record<string, unknown>);
+
+          let batchCount = 0;
+          for await (const result of pageResults.results) {
+            if (result.document) {
+              searchFileIds.add((result.document as Record<string, string>).fileId?.toUpperCase());
+              batchCount++;
+            }
+          }
+          if (batchCount < PAGE_SIZE) break;
+          skip += PAGE_SIZE;
+        }
+
+        info(`Found ${searchFileIds.size} unique file(s) in AI Search index`);
+
+        // False positives: ready in DB but no docs in Search
+        const falsePositives = readyFiles.filter(
+          (f) => !searchFileIds.has(f.id.toUpperCase())
+        );
+
+        if (falsePositives.length > 0) {
+          fail(`${falsePositives.length} file(s) marked 'ready' but have 0 documents in AI Search ${BOLD}(FALSE POSITIVES)${RESET}`);
+          for (const fp of falsePositives.slice(0, 10)) {
+            console.log(`    ${RED}✗${RESET} "${fp.name}" — ${DIM}${fp.id}${RESET}`);
+          }
+          if (falsePositives.length > 10) {
+            console.log(`    ${DIM}... and ${falsePositives.length - 10} more${RESET}`);
+          }
+          info('These files need re-processing. Reset their pipeline_status to "queued".');
+        } else {
+          ok(`All ${readyFiles.length} ready files have corresponding documents in AI Search`);
+        }
+
+        // 2. Stale search data: non-ready files that still have search docs
+        const allNonReadyFiles = await prisma.files.findMany({
+          where: {
+            user_id: userId,
+            source_type: { in: ['onedrive', 'sharepoint'] },
+            deletion_status: null,
+            is_folder: false,
+            pipeline_status: { not: 'ready' },
+            ...(scopeFilter ? { connection_scope_id: scopeFilter } : {}),
+          },
+          select: { id: true, name: true, pipeline_status: true },
+        });
+
+        const staleSearchFiles = allNonReadyFiles.filter(
+          (f) => searchFileIds.has(f.id.toUpperCase())
+        );
+
+        if (staleSearchFiles.length > 0) {
+          warn(`${staleSearchFiles.length} file(s) NOT ready but still have documents in AI Search ${BOLD}(STALE DATA)${RESET}`);
+          for (const sf of staleSearchFiles.slice(0, 5)) {
+            console.log(`    ${YELLOW}⚠${RESET} "${sf.name}" [${sf.pipeline_status}] — ${DIM}${sf.id}${RESET}`);
+          }
+          if (staleSearchFiles.length > 5) {
+            console.log(`    ${DIM}... and ${staleSearchFiles.length - 5} more${RESET}`);
+          }
+        } else {
+          ok('No stale search documents detected');
+        }
+
+        // 3. Vector presence sampling
+        subheader('Vector Presence Sampling');
+        const sampleSize = Math.min(readyFiles.length, 20);
+        if (sampleSize === 0) {
+          warn('No ready files to sample for vector presence');
+        } else {
+          info(`Sampling ${sampleSize} file(s) for vector completeness...`);
+          let withVector = 0;
+          let withoutVector = 0;
+          const missingVectorFiles: string[] = [];
+
+          for (const file of readyFiles.slice(0, sampleSize)) {
+            const chunk = await prisma.file_chunks.findFirst({
+              where: { file_id: file.id },
+              select: { search_document_id: true },
+            });
+
+            if (!chunk?.search_document_id) continue;
+
+            try {
+              const fullDoc = await searchClient.getDocument(chunk.search_document_id) as Record<string, unknown>;
+              const hasVector = Boolean(
+                (Array.isArray(fullDoc.contentVector) && fullDoc.contentVector.length > 0) ||
+                (Array.isArray(fullDoc.embeddingVector) && fullDoc.embeddingVector.length > 0)
+              );
+              if (hasVector) withVector++;
+              else {
+                withoutVector++;
+                if (missingVectorFiles.length < 5) missingVectorFiles.push(file.name);
+              }
+            } catch {
+              withoutVector++;
+              if (missingVectorFiles.length < 5) missingVectorFiles.push(file.name);
+            }
+          }
+
+          const total = withVector + withoutVector;
+          if (total === 0) {
+            warn('No documents could be sampled (no chunks with search_document_id)');
+          } else if (withoutVector > 0) {
+            fail(`${withoutVector}/${total} sampled documents MISSING vectors`);
+            for (const name of missingVectorFiles) {
+              console.log(`    ${RED}✗${RESET} ${name}`);
+            }
+          } else {
+            ok(`All ${total} sampled documents have vectors`);
+          }
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        warn(`Deep integrity checks failed: ${errorMsg}`);
+      }
+    }
   } else {
     info('AI Search not configured — skipping metadata field check');
   }
@@ -594,7 +788,7 @@ async function verifyPipelineSection(
     where: {
       user_id: userId,
       source_type: { in: ['onedrive', 'sharepoint'] },
-      deleted_at: null,
+      deletion_status: null,
       is_folder: false,
       ...(scopeFilter ? { connection_scope_id: scopeFilter } : {}),
     },
@@ -685,6 +879,80 @@ async function verifyPipelineSection(
   }
   if (stuckFiles.length === 0 && failedFiles.length === 0) {
     ok('Pipeline is healthy — no stuck or failed files');
+  }
+
+  // ── Deep mode: Error pattern analysis + retry analysis ──────────
+  if (deepMode) {
+    // Error pattern analysis
+    if (failedFiles.length > 0) {
+      subheader('Error Pattern Analysis');
+      const errorPatterns: Record<string, number> = {};
+      for (const f of failedFiles) {
+        const errorMsg = f.last_processing_error ?? '(no error message)';
+        // Normalize: strip UUIDs and URLs for grouping
+        const normalized = errorMsg
+          .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
+          .replace(/https?:\/\/\S+/g, '<URL>')
+          .substring(0, 120);
+        errorPatterns[normalized] = (errorPatterns[normalized] || 0) + 1;
+      }
+
+      const sorted = Object.entries(errorPatterns).sort(([, a], [, b]) => b - a);
+      for (const [pattern, count] of sorted.slice(0, 5)) {
+        console.log(`    ${RED}${String(count).padStart(4)}×${RESET} ${pattern}`);
+      }
+      if (sorted.length > 5) {
+        info(`... and ${sorted.length - 5} more distinct error patterns`);
+      }
+
+      // Files without any error message
+      const noErrorMsg = failedFiles.filter((f) => !f.last_processing_error);
+      if (noErrorMsg.length > 0) {
+        warn(`${noErrorMsg.length} failed file(s) have NO error message recorded — check processing logs`);
+      }
+    }
+
+    // Retry count analysis
+    const filesWithRetries = await prisma.files.findMany({
+      where: {
+        user_id: userId,
+        source_type: { in: ['onedrive', 'sharepoint'] },
+        deletion_status: null,
+        is_folder: false,
+        pipeline_retry_count: { gt: 0 },
+        ...(scopeFilter ? { connection_scope_id: scopeFilter } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        pipeline_status: true,
+        pipeline_retry_count: true,
+      },
+      orderBy: { pipeline_retry_count: 'desc' },
+      take: 10,
+    });
+
+    if (filesWithRetries.length > 0) {
+      subheader(`Retry Analysis (top ${filesWithRetries.length})`);
+      for (const f of filesWithRetries) {
+        const statusColor = f.pipeline_status === 'failed' ? RED : f.pipeline_status === 'ready' ? GREEN : YELLOW;
+        console.log(`    ${String(f.pipeline_retry_count).padStart(2)} retries — ${statusColor}[${f.pipeline_status}]${RESET} "${f.name}"`);
+      }
+
+      const highRetry = filesWithRetries.filter((f) => f.pipeline_retry_count >= 3);
+      if (highRetry.length > 0) {
+        warn(`${highRetry.length} file(s) with 3+ retries — investigate root cause`);
+      }
+    }
+
+    // Cross-script recommendations
+    subheader('Further Investigation');
+    info(`Storage details: npx tsx scripts/storage/verify-storage.ts --userId ${userId} --check-embeddings`);
+    info(`Vector pipeline: npx tsx scripts/search/diagnose-unified-vector-pipeline.ts --userId ${userId}`);
+    info(`Queue health:    npx tsx scripts/redis/queue-status.ts --verbose`);
+    if (failedFiles.length > 0 || stuckFiles.length > 0) {
+      info(`Fix stuck:       npx tsx scripts/connectors/fix-stuck-scopes.ts --userId ${userId} --dry-run`);
+    }
   }
 }
 

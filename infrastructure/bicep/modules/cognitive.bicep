@@ -43,6 +43,24 @@ param speechLocation string = 'eastus2'
 @description('Speech / AI Services pricing tier.')
 param speechSku string = 'S0'
 
+@description('Audio transcription model deployment name.')
+param audioTranscriptionModel string = 'gpt-4o-mini-transcribe'
+
+@description('Audio transcription model capacity (tokens per minute, in thousands).')
+param audioTranscriptionCapacity int = 60
+
+@description('Name for the Cohere Embed v4 AIServices account (leave empty to skip creation)')
+param cohereAiServicesName string = ''
+
+@description('Location for Cohere AIServices (westeurope for GDPR in prod)')
+param cohereAiServicesLocation string = 'westeurope'
+
+@description('Cohere Embed v4 model deployment name')
+param cohereDeploymentName string = 'embed-v-4-0'
+
+@description('Cohere deployment capacity (GlobalStandard SKU)')
+param cohereCapacity int = 1
+
 // ============================================================
 // RESOURCES
 // ============================================================
@@ -131,6 +149,50 @@ resource speech 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   }
 }
 
+resource audioTranscriptionDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  name: audioTranscriptionModel
+  parent: speech
+  sku: {
+    name: 'GlobalStandard'
+    capacity: audioTranscriptionCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: audioTranscriptionModel
+      version: '2025-03-20'
+    }
+  }
+}
+
+resource cohereAiServices 'Microsoft.CognitiveServices/accounts@2023-05-01' = if (!empty(cohereAiServicesName)) {
+  name: cohereAiServicesName
+  location: cohereAiServicesLocation
+  kind: 'AIServices'
+  sku: { name: 'S0' }
+  properties: {
+    customSubDomainName: cohereAiServicesName
+    publicNetworkAccess: 'Enabled'
+  }
+  tags: { project: 'MyWorkMate', module: 'cognitive' }
+}
+
+resource cohereEmbedDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = if (!empty(cohereAiServicesName)) {
+  name: cohereDeploymentName
+  parent: cohereAiServices
+  sku: {
+    name: 'GlobalStandard'
+    capacity: cohereCapacity
+  }
+  properties: {
+    model: {
+      format: 'Cohere'
+      name: 'embed-v-4-0'
+      version: '1'
+    }
+  }
+}
+
 // ============================================================
 // OUTPUTS
 // ============================================================
@@ -161,3 +223,9 @@ output speechEndpoint string = speech.properties.endpoint
 
 @description('Primary access key for the Azure AI Speech / Audio account.')
 output speechKey string = speech.listKeys().key1
+
+@description('Endpoint URL of the Cohere AIServices account.')
+output cohereEndpoint string = !empty(cohereAiServicesName) ? cohereAiServices.properties.endpoint : ''
+
+@description('Primary access key for the Cohere AIServices account.')
+output cohereKey string = !empty(cohereAiServicesName) ? cohereAiServices.listKeys().key1 : ''

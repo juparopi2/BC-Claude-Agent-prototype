@@ -80,6 +80,8 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
     describe('Image Search', () => {
         // UPPERCASE per CLAUDE.md Section 12 - service normalizes all IDs
         const testImageFileId = 'INTEGRATION-TEST-IMAGE-FILE';
+        // All image embeddings use Cohere Embed v4 — 1536d unified space
+        const imageDims = 1536;
 
         afterAll(async () => {
             // Cleanup image documents (documentId format: img_FILEID)
@@ -91,8 +93,8 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
         });
 
         it('should index image embedding and search via searchImages', async () => {
-            // 1. Index image embedding (1024 dimensions for Azure Vision)
-            const imageEmbedding = new Array(1024).fill(0.15);
+            // 1. Index image embedding (dimension matches active index: V2=1536d Cohere, V1=1024d Vision)
+            const imageEmbedding = new Array(imageDims).fill(0.15);
 
             await service.indexImageEmbedding({
                 fileId: testImageFileId,
@@ -128,7 +130,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
             await service.indexImageEmbedding({
                 fileId: otherFileId,
                 userId: otherUserId,
-                embedding: new Array(1024).fill(0.25),
+                embedding: new Array(imageDims).fill(0.25),
                 fileName: 'other-user-photo.jpg',
             });
 
@@ -136,7 +138,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
 
             // Search as testUserId (original user)
             const results = await service.searchImages({
-                embedding: new Array(1024).fill(0.25),
+                embedding: new Array(imageDims).fill(0.25),
                 userId: testUserId, // NOT otherUserId
                 top: 100,
                 minScore: 0.0,
@@ -159,7 +161,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
             await service.indexImageEmbedding({
                 fileId: highMatchFileId,
                 userId: testUserId,
-                embedding: new Array(1024).fill(0.5),
+                embedding: new Array(imageDims).fill(0.5),
                 fileName: 'high-match.jpg',
             });
 
@@ -167,7 +169,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
             await service.indexImageEmbedding({
                 fileId: lowMatchFileId,
                 userId: testUserId,
-                embedding: new Array(1024).fill(-0.5),
+                embedding: new Array(imageDims).fill(-0.5),
                 fileName: 'low-match.jpg',
             });
 
@@ -175,7 +177,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
 
             // Search with high minScore threshold
             const results = await service.searchImages({
-                embedding: new Array(1024).fill(0.5), // Similar to highMatchFileId
+                embedding: new Array(imageDims).fill(0.5), // Similar to highMatchFileId
                 userId: testUserId,
                 top: 10,
                 minScore: 0.8,
@@ -200,7 +202,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
             await service.indexImageEmbedding({
                 fileId: deleteTestFileId,
                 userId: testUserId,
-                embedding: new Array(1024).fill(0.3),
+                embedding: new Array(imageDims).fill(0.3),
                 fileName: 'to-delete.jpg',
             });
 
@@ -208,7 +210,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
 
             // Verify indexed
             let results = await service.searchImages({
-                embedding: new Array(1024).fill(0.3),
+                embedding: new Array(imageDims).fill(0.3),
                 userId: testUserId,
                 top: 5,
             });
@@ -220,7 +222,7 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
 
             // Verify deleted
             results = await service.searchImages({
-                embedding: new Array(1024).fill(0.3),
+                embedding: new Array(imageDims).fill(0.3),
                 userId: testUserId,
                 top: 5,
             });

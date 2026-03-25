@@ -139,6 +139,20 @@ param speechKey string
 @description('Public base URL for Graph webhook notifications (e.g. Container App FQDN). Set after first Container App deployment.')
 param graphWebhookBaseUrl string = ''
 
+@description('Endpoint URL of the Cohere embedding service.')
+param cohereEndpoint string
+
+@description('Primary access key for the Cohere embedding service.')
+@secure()
+param cohereApiKey string
+
+@description('Endpoint URL of the Cohere vectorizer service.')
+param cohereVectorizerEndpoint string = ''
+
+@description('Primary access key for the Cohere vectorizer service.')
+@secure()
+param cohereVectorizerKey string = ''
+
 // ============================================================
 // COMPUTED VALUES
 // ============================================================
@@ -409,3 +423,45 @@ resource secretGraphWebhookBaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01
     value: graphWebhookBaseUrl
   }
 }
+
+resource secretCohereEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'COHERE-ENDPOINT'
+  properties: {
+    value: cohereEndpoint
+  }
+}
+
+resource secretCohereApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'COHERE-API-KEY'
+  properties: {
+    value: cohereApiKey
+  }
+}
+
+resource secretCohereVectorizerEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereVectorizerEndpoint)) {
+  parent: keyVault
+  name: 'COHERE-VECTORIZER-ENDPOINT'
+  properties: {
+    value: cohereVectorizerEndpoint
+  }
+}
+
+resource secretCohereVectorizerKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereVectorizerKey)) {
+  parent: keyVault
+  name: 'COHERE-VECTORIZER-KEY'
+  properties: {
+    value: cohereVectorizerKey
+  }
+}
+
+// ============================================================
+// OUTPUTS
+// ============================================================
+
+@description('Name of the Cohere endpoint secret.')
+output cohereEndpointSecretName string = secretCohereEndpoint.name
+
+@description('Name of the Cohere API key secret.')
+output cohereApiKeySecretName string = secretCohereApiKey.name

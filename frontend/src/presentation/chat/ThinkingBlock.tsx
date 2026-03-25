@@ -92,7 +92,7 @@ export function ThinkingBlock({
 
       {/* Collapsible content area */}
       <Collapsible open={isOpen} onOpenChange={setIsOpen} className="flex-1">
-        <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
           {isOpen ? (
             <ChevronDown className="size-4" />
           ) : (

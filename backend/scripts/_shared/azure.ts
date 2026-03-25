@@ -13,7 +13,7 @@ import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/sear
 
 // Default names (overridable via env vars)
 export const CONTAINER_NAME = process.env.STORAGE_CONTAINER_NAME || 'user-files';
-export const INDEX_NAME = process.env.AZURE_SEARCH_INDEX_NAME || 'file-chunks-index';
+export const INDEX_NAME = 'file-chunks-index-v2';
 
 /**
  * Create Blob Storage container client. Returns null if connection string is not set.
@@ -30,15 +30,16 @@ export function createBlobContainerClient(): ContainerClient | null {
 
 /**
  * Create AI Search client for document operations. Returns null if credentials not set.
+ * @param indexName Optional index name override. Defaults to INDEX_NAME.
  */
-export function createSearchClient<T extends object>(): SearchClient<T> | null {
+export function createSearchClient<T extends object>(indexName?: string): SearchClient<T> | null {
   const endpoint = process.env.AZURE_SEARCH_ENDPOINT;
   const key = process.env.AZURE_SEARCH_KEY;
   if (!endpoint || !key) {
     console.warn('Warning: AI Search credentials not set, skipping search operations');
     return null;
   }
-  return new SearchClient<T>(endpoint, INDEX_NAME, new AzureKeyCredential(key));
+  return new SearchClient<T>(endpoint, indexName ?? INDEX_NAME, new AzureKeyCredential(key));
 }
 
 /**

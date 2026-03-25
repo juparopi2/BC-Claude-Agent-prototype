@@ -1,0 +1,2 @@
+name: cohere-embed-sub
+model_id: azureml://registries/azureml-cohere/models/embed-v-4-0

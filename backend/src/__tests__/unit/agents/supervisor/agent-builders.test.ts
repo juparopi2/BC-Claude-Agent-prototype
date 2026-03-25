@@ -76,10 +76,9 @@ vi.mock('@/modules/agents/research/tools', () => ({
   codeExecutionTool: { name: 'code_execution', description: 'Code execution', type: 'code_execution_20250825' },
 }));
 
-// Mock RAG tools to include the new visual search tools
+// Mock RAG tools (PRD-200: 2 tools — visual_image_search merged into search_knowledge)
 vi.mock('@/modules/agents/rag-knowledge/tools', () => ({
   searchKnowledgeTool: { name: 'search_knowledge', description: 'Search knowledge', schema: {} },
-  visualImageSearchTool: { name: 'visualImageSearch', description: 'Visual image search', schema: {} },
   findSimilarImagesTool: { name: 'findSimilarImages', description: 'Find similar images', schema: {} },
 }));
 

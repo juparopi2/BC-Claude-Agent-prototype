@@ -60,6 +60,7 @@ import folderDuplicateDetectionRoutes from '@/routes/uploads/folder-duplicate-de
 import batchUploadRoutes from '@/routes/uploads/batch.routes';
 import dlqRoutes from '@/routes/uploads/dlq.routes';
 import dashboardRoutes from '@/routes/uploads/dashboard.routes';
+import syncHealthRoutes from './routes/sync-health.routes';
 import { registerAgents } from '@/modules/agents/core/registry/registerAgents';
 import { initializeSupervisorGraph, resumeSupervisor } from '@/modules/agents/supervisor';
 import { processUserAgentSelection } from '@/modules/agents/handoffs';
@@ -213,8 +214,8 @@ async function initializeApp(): Promise<void> {
         httpOnly: true,
         maxAge: parseInt(process.env.SESSION_MAX_AGE || '86400000'), // 24 hours default
         sameSite: 'lax',
-        // Share cookie across subdomains (myworkmate.ai, api.myworkmate.ai, www.myworkmate.ai)
-        ...(isProd && { domain: '.myworkmate.ai' }),
+        // Share cookie across subdomains when COOKIE_DOMAIN is set (via Key Vault per environment)
+        ...(env.COOKIE_DOMAIN && { domain: env.COOKIE_DOMAIN }),
       },
     });
     console.log('✅ Session middleware configured with RedisStore');
@@ -854,6 +855,8 @@ function configureRoutes(): void {
     app.use('/api/audio', audioRoutes);
     // Connections endpoints (PRD-100)
     app.use('/api/connections', connectionsRoutes);
+    // Sync health and recovery endpoints (PRD-300)
+    app.use('/api/sync', syncHealthRoutes);
     // OneDrive OAuth flow (PRD-101)
     app.use('/api', onedriveAuthRoutes);
     // SharePoint OAuth flow (PRD-111)
@@ -1467,6 +1470,21 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 process.on('unhandledRejection', (reason: unknown) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+
+  // Known transient MSSQL adapter errors that should NOT crash the server.
+  // These occur when the mssql driver fails to rollback a timed-out transaction
+  // while a query is still in flight (EREQINPROG). BullMQ will retry the failed job.
+  const isTransientDbError =
+    message.includes('EREQINPROG') ||
+    message.includes('request in progress') ||
+    message.includes('expired transaction');
+
+  if (isTransientDbError) {
+    console.error('⚠️  Transient DB error (unhandled rejection, NOT crashing):', reason);
+    return;
+  }
+
   console.error('❌ Unhandled Rejection:', reason);
   gracefulShutdown('UNHANDLED_REJECTION');
 });

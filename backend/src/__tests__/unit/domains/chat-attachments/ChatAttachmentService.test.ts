@@ -773,4 +773,121 @@ describe('ChatAttachmentService', () => {
       expect(secondCallArgs[0]).toContain('anthropic_file_id');
     });
   });
+
+  // ========== SUITE: createFromMentionedFile ==========
+  describe('createFromMentionedFile()', () => {
+    const mentionOptions = {
+      userId: testUserId,
+      sessionId: testSessionId,
+      sourceFileId: 'KB-FILE-001',
+      fileName: 'Sales.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      sizeBytes: 50000,
+      blobPath: 'users/USER-TEST-123/files/1234567890-Sales.xlsx',
+    };
+
+    it('should download from blob and upload to Anthropic Files API (blocking)', async () => {
+      // Idempotency check returns empty
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
+      // INSERT succeeds
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
+
+      mockDownloadFromBlob.mockResolvedValueOnce(Buffer.from('xlsx content'));
+      mockAnthropicUploadFile.mockResolvedValueOnce('file_mention_abc123');
+
+      const result = await service.createFromMentionedFile(mentionOptions);
+
+      expect(result.anthropicFileId).toBe('file_mention_abc123');
+      expect(result.attachmentId).toBeDefined();
+
+      // Verify blob download used KB path
+      expect(mockDownloadFromBlob).toHaveBeenCalledWith(mentionOptions.blobPath);
+
+      // Verify blocking Anthropic upload
+      expect(mockAnthropicUploadFile).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        mentionOptions.fileName,
+        mentionOptions.mimeType
+      );
+    });
+
+    it('should use sentinel blob_path (not KB blob path) in DB record', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
+      mockDownloadFromBlob.mockResolvedValueOnce(Buffer.from('content'));
+      mockAnthropicUploadFile.mockResolvedValueOnce('file_xyz');
+
+      await service.createFromMentionedFile(mentionOptions);
+
+      // INSERT query should use sentinel blob_path
+      const insertCall = mockExecuteQuery.mock.calls[1];
+      expect(insertCall[1]).toEqual(
+        expect.objectContaining({
+          blob_path: `mention-ref:${mentionOptions.sourceFileId}`,
+          anthropic_file_id: 'file_xyz',
+        })
+      );
+    });
+
+    it('should return existing record on idempotent call (same file, same session)', async () => {
+      const existingRecord = {
+        id: 'EXISTING-ATT-001',
+        anthropic_file_id: 'file_existing_999',
+      };
+
+      // Idempotency check returns existing record
+      mockExecuteQuery.mockResolvedValueOnce({
+        recordset: [existingRecord],
+        rowsAffected: [1],
+      });
+
+      const result = await service.createFromMentionedFile(mentionOptions);
+
+      expect(result.attachmentId).toBe('EXISTING-ATT-001');
+      expect(result.anthropicFileId).toBe('file_existing_999');
+
+      // Should NOT download or upload
+      expect(mockDownloadFromBlob).not.toHaveBeenCalled();
+      expect(mockAnthropicUploadFile).not.toHaveBeenCalled();
+
+      // Only one DB call (the idempotency check)
+      expect(mockExecuteQuery).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw if Anthropic upload fails', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
+      mockDownloadFromBlob.mockResolvedValueOnce(Buffer.from('content'));
+      mockAnthropicUploadFile.mockRejectedValueOnce(new Error('Anthropic API error'));
+
+      await expect(
+        service.createFromMentionedFile(mentionOptions)
+      ).rejects.toThrow('Anthropic API error');
+    });
+
+    it('should throw if blob download fails', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
+      mockDownloadFromBlob.mockRejectedValueOnce(new Error('Blob not found'));
+
+      await expect(
+        service.createFromMentionedFile(mentionOptions)
+      ).rejects.toThrow('Blob not found');
+
+      // Should NOT attempt Anthropic upload
+      expect(mockAnthropicUploadFile).not.toHaveBeenCalled();
+    });
+
+    it('should pre-populate anthropic_file_id in INSERT (not fire-and-forget)', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
+      mockDownloadFromBlob.mockResolvedValueOnce(Buffer.from('content'));
+      mockAnthropicUploadFile.mockResolvedValueOnce('file_prepopulated');
+
+      await service.createFromMentionedFile(mentionOptions);
+
+      // The INSERT query should contain anthropic_file_id directly
+      const insertCall = mockExecuteQuery.mock.calls[1];
+      expect(insertCall[0]).toContain('anthropic_file_id');
+      expect(insertCall[1].anthropic_file_id).toBe('file_prepopulated');
+    });
+  });
 });

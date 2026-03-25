@@ -350,12 +350,14 @@ export {
   CitationPassageSchema,
   CitedDocumentSchema,
   CitationResultSchema,
+  ExtractiveAnswerSchema,
 } from './citation-result.schemas';
 
 export type {
   CitationPassage,
   CitedDocument,
   CitationResult,
+  ExtractiveAnswer,
 } from './citation-result.schemas';
 
 // ============================================

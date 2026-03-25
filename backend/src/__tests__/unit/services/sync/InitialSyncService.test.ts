@@ -4,13 +4,13 @@
  * Tests the fire-and-forget initial sync orchestration:
  * - Full delta query enumeration with pagination
  * - Scope-aware delta routing (root vs folder)
- * - File deduplication via findFirst + create/update pattern
- * - Conditional enqueue (only new files are enqueued)
+ * - File ingestion delegated to SyncFileIngestionService.ingestAll()
+ * - Conditional enqueue (only new files are enqueued — via ingestionResult.created)
  * - deltaLink persistence as last_sync_cursor
  * - Scope status transitions (syncing → idle / error)
  * - Skipping folders and deleted items
- * - Individual file failure resilience
- * - File-level sync with dedup
+ * - Individual file failure resilience (via ingestionResult.errors)
+ * - File-level sync with dedup (still uses prisma directly)
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -28,7 +28,8 @@ vi.mock('@/shared/utils/logger', () => ({
   })),
 }));
 
-// Mock Prisma — only the tables used by InitialSyncService
+// Mock Prisma — only the tables used by InitialSyncService directly
+// (folder upsert, scope root folder creation, and file-level sync still hit prisma)
 const mockConnectionsFindUnique = vi.hoisted(() => vi.fn());
 const mockFilesFindFirst = vi.hoisted(() => vi.fn());
 const mockFilesFindMany = vi.hoisted(() => vi.fn());
@@ -47,11 +48,21 @@ vi.mock('@/infrastructure/database/prisma', () => ({
       create: mockFilesCreate,
       update: mockFilesUpdate,
     },
-    // PRD-117 / PRD-104: InitialSyncService wraps per-batch DB writes in a transaction.
-    // The mock executes the callback immediately with the prisma mock itself as `tx`,
-    // so mockFilesFindFirst / mockFilesCreate etc. are still intercepted inside the callback.
+    // InitialSyncService no longer calls $transaction for file batch ingestion —
+    // that has moved to SyncFileIngestionService. Keep the mock defined in case
+    // helper code in the test setup or future code paths needs it.
     $transaction: mockTransaction,
   },
+}));
+
+// Mock SyncFileIngestionService — file batch ingestion is now fully delegated here
+const mockIngestAll = vi.hoisted(() => vi.fn());
+
+vi.mock('@/services/sync/SyncFileIngestionService', () => ({
+  getSyncFileIngestionService: vi.fn(() => ({
+    ingestAll: mockIngestAll,
+    ingestBatch: vi.fn(),
+  })),
 }));
 
 // Mock OneDrive service
@@ -250,35 +261,27 @@ describe('InitialSyncService', () => {
     mockFindExclusionScopesByConnection.mockReset();
     mockAddFileProcessingFlow.mockReset();
     mockTransaction.mockReset();
+    mockIngestAll.mockReset();
 
     // Default: no exclusion scopes
     mockFindExclusionScopesByConnection.mockResolvedValue([]);
 
-    // PRD-104: $transaction executes callback immediately using prisma mock as `tx`.
-    // This allows mockFilesFindFirst/mockFilesCreate to be intercepted inside the transaction.
-    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const txProxy = {
-        files: {
-          findFirst: mockFilesFindFirst,
-          create: mockFilesCreate,
-          update: mockFilesUpdate,
-        },
-      };
-      return fn(txProxy);
-    });
+    // SyncFileIngestionService.ingestAll() default: no files created
+    mockIngestAll.mockResolvedValue({ created: 0, updated: 0, errors: 0 });
 
     __resetInitialSyncService();
     service = new InitialSyncService();
 
-    // Default: connection found with a drive ID
+    // Default: connection found with a drive ID and provider
     mockConnectionsFindUnique.mockResolvedValue({
       microsoft_drive_id: DRIVE_ID,
+      provider: 'onedrive',
     });
 
     // Default: scope is root type
     mockFindScopeById.mockResolvedValue(defaultScopeRow());
 
-    // Default: no existing file (new file path)
+    // Default: no existing file (new file path) — used by file-level sync and folder upsert
     mockFilesFindFirst.mockResolvedValue(null);
 
     // Default: no existing folders for the connection
@@ -326,43 +329,36 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      // 1 file passes filter (doc.pdf); report.xlsx is unsupported MIME type
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // findFirst called: 1 for folder upsert + 1 for file dedup = 2
-      // (report.xlsx has unsupported MIME type, filtered out by isFileSyncSupported)
-      expect(mockFilesFindFirst).toHaveBeenCalledTimes(2);
+      // Verify ingestAll was called with doc.pdf only (xlsx filtered by isFileSyncSupported)
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-1', name: 'doc.pdf' })],
+        expect.objectContaining({
+          connectionId: CONNECTION_ID,
+          scopeId: SCOPE_ID,
+          userId: USER_ID,
+          effectiveDriveId: DRIVE_ID,
+          provider: 'onedrive',
+          folderMap: expect.any(Map),
+        }),
+        expect.any(Function),
+      );
 
-      // 1 folder upsert + 1 file = 2 creates total
-      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
-
-      // Verify folder record (created first via folder upsert loop)
+      // Folder upsert still goes through prisma directly (not ingestAll)
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
       const folderCall = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
       expect(folderCall.data).toMatchObject({
         name: 'Docs',
         is_folder: true,
         mime_type: 'inode/directory',
       });
-
-      // Verify file record
-      const fileCall = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
-      expect(fileCall.data).toMatchObject({
-        name: 'doc.pdf',
-        user_id: USER_ID,
-        mime_type: 'application/pdf',
-        is_folder: false,
-        external_id: 'file-1',
-        external_drive_id: DRIVE_ID,
-        connection_id: CONNECTION_ID,
-        connection_scope_id: SCOPE_ID,
-        pipeline_status: 'queued',
-        source_type: expect.any(String),
-      });
-
-      // ID must be UPPERCASE UUID
-      expect(fileCall.data.id as string).toMatch(/^[A-F0-9-]+$/);
     });
 
-    it('enqueues new files for processing via messageQueue.addFileProcessingFlow', async () => {
+    it('enqueues new files for processing via SyncFileIngestionService.ingestAll()', async () => {
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [makeFileChange('file-1', 'doc.pdf')],
         deltaLink: DELTA_LINK,
@@ -370,18 +366,17 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      // SyncFileIngestionService reports 1 new file created (and enqueued internally)
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
-
-      const flowCall = mockAddFileProcessingFlow.mock.calls[0]![0] as Record<string, unknown>;
-      expect(flowCall).toMatchObject({
-        userId: USER_ID,
-        batchId: SCOPE_ID,
-        mimeType: 'application/pdf',
-        fileName: 'doc.pdf',
-        fileId: expect.stringMatching(/^[A-F0-9-]+$/),
-      });
+      expect(mockIngestAll).toHaveBeenCalledTimes(1);
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-1', name: 'doc.pdf' })],
+        expect.objectContaining({ connectionId: CONNECTION_ID, scopeId: SCOPE_ID }),
+        expect.any(Function),
+      );
     });
 
     it('saves deltaLink as last_sync_cursor on completion', async () => {
@@ -391,6 +386,7 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
@@ -412,6 +408,7 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+      mockIngestAll.mockResolvedValueOnce({ created: 2, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
@@ -457,12 +454,16 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      expect(call.data.name).toBe('keep.pdf');
+      // ingestAll should only receive the kept file (deleted-1 is filtered out)
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-1', name: 'keep.pdf' })],
+        expect.any(Object),
+        expect.any(Function),
+      );
     });
 
     it('skips folders from file processing (folders are upserted separately)', async () => {
@@ -476,11 +477,20 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // 2 folders upserted + 1 file = 3 total creates
-      expect(mockFilesCreate).toHaveBeenCalledTimes(3);
+      // ingestAll should only receive the file, not the folders
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-1', name: 'readme.txt' })],
+        expect.any(Object),
+        expect.any(Function),
+      );
+
+      // 2 folders upserted via prisma directly
+      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
+
       // itemCount only counts files, not folders
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
@@ -498,8 +508,12 @@ describe('InitialSyncService', () => {
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).not.toHaveBeenCalled();
-      expect(mockAddFileProcessingFlow).not.toHaveBeenCalled();
+      // ingestAll called with empty array
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [],
+        expect.any(Object),
+        expect.any(Function),
+      );
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({ syncStatus: 'synced', itemCount: 0 })
@@ -529,13 +543,23 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 2, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(mockExecuteDeltaQuery).toHaveBeenCalledTimes(2);
       expect(mockExecuteDeltaQuery).toHaveBeenNthCalledWith(1, CONNECTION_ID);
       expect(mockExecuteDeltaQuery).toHaveBeenNthCalledWith(2, CONNECTION_ID, nextPageLink);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
+      // All 2 files from both pages passed to ingestAll as one combined call
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'file-1' }),
+          expect.objectContaining({ id: 'file-2' }),
+        ]),
+        expect.any(Object),
+        expect.any(Function),
+      );
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
@@ -560,6 +584,8 @@ describe('InitialSyncService', () => {
           hasMore: false,
           nextPageLink: null,
         });
+
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
@@ -593,10 +619,20 @@ describe('InitialSyncService', () => {
           nextPageLink: null,
         });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 3, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(mockExecuteDeltaQuery).toHaveBeenCalledTimes(3);
-      expect(mockFilesCreate).toHaveBeenCalledTimes(3);
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'file-1' }),
+          expect.objectContaining({ id: 'file-2' }),
+          expect.objectContaining({ id: 'file-3' }),
+        ]),
+        expect.any(Object),
+        expect.any(Function),
+      );
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({ syncStatus: 'synced', itemCount: 3 })
@@ -621,6 +657,8 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(mockExecuteFolderDeltaQuery).toHaveBeenCalledWith(
@@ -628,8 +666,8 @@ describe('InitialSyncService', () => {
         FOLDER_RESOURCE_ID
       );
       expect(mockExecuteDeltaQuery).not.toHaveBeenCalled();
-      // PRD-112: 1 scope root folder + 1 file = 2 creates
-      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
+      // PRD-112: 1 scope root folder created via prisma directly
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
     });
 
     it('uses executeDeltaQuery when scope_type is "root"', async () => {
@@ -641,6 +679,8 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
@@ -690,6 +730,7 @@ describe('InitialSyncService', () => {
       expect(mockExecuteDeltaQuery).not.toHaveBeenCalled();
       expect(mockExecuteFolderDeltaQuery).not.toHaveBeenCalled();
       expect(mockGetItemMetadata).toHaveBeenCalledWith(CONNECTION_ID, 'ext-file-id');
+      // File-level sync still uses prisma.files.create directly
       expect(mockFilesCreate).toHaveBeenCalledTimes(1);
     });
   });
@@ -834,32 +875,32 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // 1 scope root folder + 1 file = 2 creates
-      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
-
-      // The file create should have parent_folder_id pointing to the scope root
-      const fileCreate = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
-      expect(fileCreate.data.name).toBe('child-doc.pdf');
-      // parent_folder_id should be the UUID generated for the scope root
-      expect(fileCreate.data.parent_folder_id).toBeTruthy();
-      expect(fileCreate.data.parent_folder_id).not.toBeNull();
+      // 1 scope root folder created via prisma directly
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      // ingestAll was called with the child file
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-1', name: 'child-doc.pdf' })],
+        expect.objectContaining({ folderMap: expect.any(Map) }),
+        expect.any(Function),
+      );
     });
   });
 
   // ==========================================================================
   // syncScope — deduplication (PRD-104)
   // ==========================================================================
+  //
+  // Deduplication logic (findFirst + create vs update) has moved to SyncFileIngestionService.
+  // These tests verify that InitialSyncService passes the correct items to ingestAll()
+  // and uses ingestionResult.created to drive downstream decisions (scope counters, etc.).
+  // The detailed dedup behaviour is tested in SyncFileIngestionService.test.ts.
 
   describe('syncScope() — deduplication', () => {
-    it('updates metadata (not creates) when file already exists', async () => {
-      // Simulate existing file
-      mockFilesFindFirst.mockResolvedValue({
-        id: 'EXISTING-FILE-ID',
-        pipeline_status: 'ready',
-      });
-
+    it('passes items to SyncFileIngestionService and uses created count for enqueue tracking', async () => {
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [makeFileChange('file-1', 'existing-doc.pdf')],
         deltaLink: DELTA_LINK,
@@ -867,59 +908,44 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
-      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
-
-      // findFirst was called to check existence
-      expect(mockFilesFindFirst).toHaveBeenCalledWith({
-        where: { connection_id: CONNECTION_ID, external_id: 'file-1' },
-        select: { id: true, pipeline_status: true },
-      });
-
-      // Should update, NOT create
-      expect(mockFilesUpdate).toHaveBeenCalledTimes(1);
-      expect(mockFilesCreate).not.toHaveBeenCalled();
-
-      // Update should NOT include pipeline_status
-      const updateCall = mockFilesUpdate.mock.calls[0]![0] as {
-        where: Record<string, unknown>;
-        data: Record<string, unknown>;
-      };
-      expect(updateCall.where).toEqual({ id: 'EXISTING-FILE-ID' });
-      expect(updateCall.data).toMatchObject({
-        name: 'existing-doc.pdf',
-        connection_scope_id: SCOPE_ID,
-      });
-      expect(updateCall.data).not.toHaveProperty('pipeline_status');
-    });
-
-    it('does NOT enqueue existing files', async () => {
-      mockFilesFindFirst.mockResolvedValue({
-        id: 'EXISTING-FILE-ID',
-        pipeline_status: 'ready',
-      });
-
-      mockExecuteDeltaQuery.mockResolvedValueOnce({
-        changes: [makeFileChange('file-1', 'existing-doc.pdf')],
-        deltaLink: DELTA_LINK,
-        hasMore: false,
-        nextPageLink: null,
-      });
+      // SyncFileIngestionService reports existing file updated (not created → created=0)
+      mockIngestAll.mockResolvedValueOnce({ created: 0, updated: 1, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockAddFileProcessingFlow).not.toHaveBeenCalled();
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-1' })],
+        expect.any(Object),
+        expect.any(Function),
+      );
 
-      // Sync still completes successfully
+      // No new files enqueued → processingTotal = 0
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'synced' })
+        expect.objectContaining({ syncStatus: 'synced', processingTotal: 0 })
       );
     });
 
-    it('creates and enqueues new files', async () => {
-      // No existing file
-      mockFilesFindFirst.mockResolvedValue(null);
+    it('does NOT enqueue existing files (ingestionResult.created = 0)', async () => {
+      mockExecuteDeltaQuery.mockResolvedValueOnce({
+        changes: [makeFileChange('file-1', 'existing-doc.pdf')],
+        deltaLink: DELTA_LINK,
+        hasMore: false,
+        nextPageLink: null,
+      });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 0, updated: 1, errors: 0 });
+
+      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
+
+      // Sync still completes successfully with processingTotal=0
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({ syncStatus: 'synced', processingTotal: 0 })
+      );
+    });
+
+    it('creates and enqueues new files (ingestionResult.created = 1)', async () => {
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [makeFileChange('file-new', 'brand-new.pdf')],
         deltaLink: DELTA_LINK,
@@ -927,18 +953,23 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-new' })],
+        expect.any(Object),
+        expect.any(Function),
+      );
+
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({ processingTotal: 1, processingStatus: 'processing' })
+      );
     });
 
     it('handles mixed new and existing files in same batch', async () => {
-      // First file: new (not found), second file: existing
-      mockFilesFindFirst
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: 'EXISTING-ID', pipeline_status: 'ready' });
-
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [
           makeFileChange('file-new', 'new.pdf'),
@@ -949,14 +980,25 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      // 1 new, 1 updated
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 1, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // One create (new), one update (existing)
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-      expect(mockFilesUpdate).toHaveBeenCalledTimes(1);
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'file-new' }),
+          expect.objectContaining({ id: 'file-existing' }),
+        ]),
+        expect.any(Object),
+        expect.any(Function),
+      );
 
-      // Only the new file should be enqueued
-      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
+      // Only the new file counts toward processingTotal
+      expect(mockUpdateScope).toHaveBeenCalledWith(
+        SCOPE_ID,
+        expect.objectContaining({ processingTotal: 1, processingStatus: 'processing' })
+      );
     });
   });
 
@@ -978,7 +1020,7 @@ describe('InitialSyncService', () => {
         })
       );
 
-      expect(mockFilesCreate).not.toHaveBeenCalled();
+      expect(mockIngestAll).not.toHaveBeenCalled();
     });
 
     it('updates scope to error when connection is not found', async () => {
@@ -1007,20 +1049,16 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
-      // Make the second file creation fail
-      mockFilesCreate
-        .mockResolvedValueOnce({})
-        .mockRejectedValueOnce(new Error('DB constraint violation'))
-        .mockResolvedValueOnce({});
+      // SyncFileIngestionService handles per-file errors internally; 2 created, 1 error
+      mockIngestAll.mockResolvedValueOnce({ created: 2, updated: 0, errors: 1 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
+      // Sync still completes — error resilience is inside SyncFileIngestionService
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({ syncStatus: 'synced' })
       );
-
-      expect(mockFilesCreate).toHaveBeenCalledTimes(3);
 
       const scopeUpdateCalls = mockUpdateScope.mock.calls as Array<[string, Record<string, unknown>]>;
       const finalUpdate = scopeUpdateCalls[scopeUpdateCalls.length - 1]!;
@@ -1038,70 +1076,55 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
-      mockFilesCreate
-        .mockResolvedValueOnce({})
-        .mockRejectedValueOnce(new Error('Constraint error'));
+      // 1 created, 1 error — SyncFileIngestionService dispatches queue internally
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 1 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
-        expect.objectContaining({ syncStatus: 'synced' })
+        expect.objectContaining({ syncStatus: 'synced', processingTotal: 1 })
       );
-
-      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
     });
   });
 
   // ==========================================================================
   // ID format verification
   // ==========================================================================
+  //
+  // File UUID generation is now inside SyncFileIngestionService, so these tests
+  // move to SyncFileIngestionService.test.ts. Kept here as simplified smoke tests
+  // verifying InitialSyncService correctly passes items through to ingestAll.
 
   describe('Generated file IDs', () => {
-    it('generates UPPERCASE UUIDs for file IDs', async () => {
+    it('passes file items to SyncFileIngestionService for ID generation', async () => {
       mockExecuteDeltaQuery.mockResolvedValueOnce({
         changes: [makeFileChange('file-1', 'doc.pdf')],
         deltaLink: DELTA_LINK,
         hasMore: false,
         nextPageLink: null,
       });
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-
-      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      const fileId = call.data.id as string;
-
-      expect(fileId).toMatch(/^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/);
-    });
-
-    it('uses the same fileId in both prisma.files.create and addFileProcessingFlow', async () => {
-      mockExecuteDeltaQuery.mockResolvedValueOnce({
-        changes: [makeFileChange('file-1', 'doc.pdf')],
-        deltaLink: DELTA_LINK,
-        hasMore: false,
-        nextPageLink: null,
-      });
-
-      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
-
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
-
-      const createCall = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      const flowCall = mockAddFileProcessingFlow.mock.calls[0]![0] as Record<string, unknown>;
-
-      expect(flowCall.fileId).toBe(createCall.data.id);
+      expect(mockIngestAll).toHaveBeenCalledTimes(1);
+      const [items] = mockIngestAll.mock.calls[0]! as [unknown[], ...unknown[]];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ id: 'file-1', name: 'doc.pdf' });
     });
   });
 
   // ==========================================================================
   // File record field correctness
   // ==========================================================================
+  //
+  // Detailed field mapping (external_id, external_url, mime_type, size_bytes, etc.)
+  // is now tested in SyncFileIngestionService.test.ts. The InitialSyncService
+  // simply passes ExternalFileItem objects to ingestAll().
 
   describe('File record field mapping', () => {
-    it('maps all ExternalFileItem fields correctly to the files table', async () => {
+    it('passes all ExternalFileItem fields to SyncFileIngestionService.ingestAll()', async () => {
       const item = {
         id: 'ext-file-42',
         name: 'annual-report.pdf',
@@ -1121,33 +1144,22 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-
-      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      expect(call.data).toMatchObject({
-        user_id: USER_ID,
-        name: 'annual-report.pdf',
-        mime_type: 'application/pdf',
-        is_folder: false,
-        external_id: 'ext-file-42',
-        external_drive_id: DRIVE_ID,
-        connection_id: CONNECTION_ID,
-        connection_scope_id: SCOPE_ID,
-        external_url: 'https://onedrive.live.com/view/annual-report.pdf',
-        external_modified_at: new Date('2024-06-15T10:30:00Z'),
-        content_hash_external: '"abc123etag"',
-        pipeline_status: 'queued',
-        processing_retry_count: 0,
-        embedding_retry_count: 0,
-        is_favorite: false,
-        blob_path: null,
-      });
-
-      expect(typeof call.data.size_bytes).toBe('bigint');
-      expect(call.data.size_bytes).toBe(BigInt(204800));
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({
+          id: 'ext-file-42',
+          name: 'annual-report.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 204800,
+          webUrl: 'https://onedrive.live.com/view/annual-report.pdf',
+          eTag: '"abc123etag"',
+        })],
+        expect.any(Object),
+        expect.any(Function),
+      );
     });
 
     it('files with null mimeType are filtered out by isFileSyncSupported (PRD-106)', async () => {
@@ -1176,44 +1188,16 @@ describe('InitialSyncService', () => {
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // File with null mimeType is not sync-supported and gets filtered out
-      expect(mockFilesCreate).not.toHaveBeenCalled();
+      // File with null mimeType is filtered before ingestAll is called (or called with empty array)
+      const ingestAllCalls = mockIngestAll.mock.calls;
+      if (ingestAllCalls.length > 0) {
+        const [items] = ingestAllCalls[0]! as [unknown[], ...unknown[]];
+        expect(items).toHaveLength(0);
+      }
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({ syncStatus: 'synced', itemCount: 0 })
       );
-    });
-
-    it('sets external_url to null when webUrl is empty string', async () => {
-      mockExecuteDeltaQuery.mockResolvedValueOnce({
-        changes: [
-          {
-            item: {
-              id: 'file-no-url',
-              name: 'no-url-file.pdf',
-              isFolder: false,
-              mimeType: 'application/pdf',
-              sizeBytes: 100,
-              lastModifiedAt: '2024-01-01T00:00:00Z',
-              webUrl: '',
-              eTag: null,
-              parentId: null,
-              parentPath: null,
-            },
-            changeType: 'created' as const,
-          },
-        ],
-        deltaLink: DELTA_LINK,
-        hasMore: false,
-        nextPageLink: null,
-      });
-
-      await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
-
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
-
-      const call = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
-      expect(call.data.external_url).toBeNull();
     });
   });
 
@@ -1304,7 +1288,7 @@ describe('InitialSyncService', () => {
   const SP_DRIVE_ID = 'SP-DRIVE-ABC123';
 
   describe('PRD-110 — shared scope behavior', () => {
-    it('shared scope uses remote_drive_id as external_drive_id for created files', async () => {
+    it('shared scope uses remote_drive_id as effectiveDriveId in ingestion context', async () => {
       mockFindScopeById.mockResolvedValue({
         ...defaultScopeRow({
           scope_type: 'folder',
@@ -1321,20 +1305,29 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // PRD-112: 1 scope root folder + 1 file = 2 creates
-      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
-
-      // The file create (second call) should use REMOTE_DRIVE_ID as external_drive_id
-      const fileCreate = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
-      expect(fileCreate.data).toMatchObject({
-        name: 'shared-doc.pdf',
+      // PRD-112: 1 scope root folder created via prisma directly (uses REMOTE_DRIVE_ID)
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      const rootFolderCreate = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(rootFolderCreate.data).toMatchObject({
         external_drive_id: REMOTE_DRIVE_ID,
-        connection_id: CONNECTION_ID,
-        connection_scope_id: SCOPE_ID,
-        user_id: USER_ID,
       });
+
+      // ingestAll receives the effective drive ID in context
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-shared-1', name: 'shared-doc.pdf' })],
+        expect.objectContaining({
+          effectiveDriveId: REMOTE_DRIVE_ID,
+          connectionId: CONNECTION_ID,
+          scopeId: SCOPE_ID,
+          userId: USER_ID,
+          isShared: true,
+        }),
+        expect.any(Function),
+      );
     });
 
     it('shared scope passes remote_drive_id as microsoftDriveId to ensureScopeRootFolder', async () => {
@@ -1383,13 +1376,15 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       // Track dynamic imports by verifying no SubscriptionManager is imported
       // The service uses dynamic import for subscription creation inside the
       // `if (!scope.remote_drive_id)` guard — we verify the sync completes normally.
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // Sync should still complete with files created
-      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      // Sync should still complete
+      expect(mockIngestAll).toHaveBeenCalledTimes(1);
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
         expect.objectContaining({ syncStatus: 'synced' })
@@ -1432,7 +1427,7 @@ describe('InitialSyncService', () => {
       );
       expect(mockGetItemMetadata).not.toHaveBeenCalled();
 
-      // File should be created with remote_drive_id as external_drive_id
+      // File-level sync still uses prisma directly — verify the create call
       expect(mockFilesCreate).toHaveBeenCalledTimes(1);
       const createCall = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
       expect(createCall.data).toMatchObject({
@@ -1460,18 +1455,24 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      // PRD-112: 1 scope root folder + 1 file = 2 creates
-      expect(mockFilesCreate).toHaveBeenCalledTimes(2);
-
-      // File should use the connection's DRIVE_ID (from mockConnectionsFindUnique default)
-      const fileCreate = mockFilesCreate.mock.calls[1]![0] as { data: Record<string, unknown> };
-      expect(fileCreate.data).toMatchObject({
-        name: 'local-doc.pdf',
+      // PRD-112: 1 scope root folder created via prisma directly using connection's DRIVE_ID
+      expect(mockFilesCreate).toHaveBeenCalledTimes(1);
+      const rootFolderCreate = mockFilesCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+      expect(rootFolderCreate.data).toMatchObject({
         external_drive_id: DRIVE_ID,
         connection_id: CONNECTION_ID,
       });
+
+      // ingestAll receives DRIVE_ID (not a remote drive) as effectiveDriveId
+      expect(mockIngestAll).toHaveBeenCalledWith(
+        [expect.objectContaining({ id: 'file-local-1', name: 'local-doc.pdf' })],
+        expect.objectContaining({ effectiveDriveId: DRIVE_ID, isShared: false }),
+        expect.any(Function),
+      );
     });
   });
 
@@ -1501,6 +1502,8 @@ describe('InitialSyncService', () => {
         hasMore: false,
         nextPageLink: null,
       });
+
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
@@ -1571,6 +1574,8 @@ describe('InitialSyncService', () => {
           nextPageLink: null,
         });
 
+      mockIngestAll.mockResolvedValueOnce({ created: 2, updated: 0, errors: 0 });
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
       // Should call SharePoint service twice (initial + pagination), never OneDrive
@@ -1604,8 +1609,8 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
-      // All files are new
-      mockFilesFindFirst.mockResolvedValue(null);
+      // All 3 files are new
+      mockIngestAll.mockResolvedValueOnce({ created: 3, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
@@ -1629,6 +1634,8 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
+      // Default mockIngestAll returns { created: 0 }
+
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
@@ -1651,15 +1658,10 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
-      // First file: new; second file: already exists (not re-enqueued)
-      mockFilesFindFirst
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: 'EXISTING-ID', pipeline_status: 'ready' });
+      // SyncFileIngestionService: 1 new, 1 updated (updated doesn't count for queue)
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 1, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
-
-      // Only 1 new file was enqueued
-      expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
 
       expect(mockUpdateScope).toHaveBeenCalledWith(
         SCOPE_ID,
@@ -1678,7 +1680,7 @@ describe('InitialSyncService', () => {
         nextPageLink: null,
       });
 
-      mockFilesFindFirst.mockResolvedValue(null);
+      mockIngestAll.mockResolvedValueOnce({ created: 1, updated: 0, errors: 0 });
 
       await runSync(service, CONNECTION_ID, SCOPE_ID, USER_ID);
 

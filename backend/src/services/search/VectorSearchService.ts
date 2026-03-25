@@ -2,6 +2,7 @@ import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/sear
 import { env } from '@/infrastructure/config/environment';
 import { createChildLogger } from '@/shared/utils/logger';
 import { indexSchema, INDEX_NAME, SEMANTIC_CONFIG_NAME } from './schema';
+import { COHERE_MODEL_NAME } from './embeddings/models';
 import {
   IndexStats,
   FileChunkWithEmbedding,
@@ -13,11 +14,24 @@ import {
   ImageSearchResult,
   SemanticSearchQuery,
   SemanticSearchResult,
-  VECTOR_WEIGHTS,
+  SemanticSearchFullResult,
+  ExtractiveSearchAnswer,
 } from './types';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 
 const logger = createChildLogger({ service: 'VectorSearchService' });
+
+/**
+ * Azure AI Search API version.
+ *
+ * The `aml` vectorizer kind (used by Cohere Embed v4 from the Foundry model catalog)
+ * requires a **preview** API version for query-time vectorization.
+ * The stable `2025-09-01` API (SDK default) does NOT support `kind: 'text'`
+ * queries against `aml` vectorizers.
+ *
+ * @see https://learn.microsoft.com/en-us/azure/search/vector-search-vectorizer-azure-machine-learning-ai-studio-catalog
+ */
+const SEARCH_API_VERSION = '2025-08-01-preview';
 
 export class VectorSearchService {
   private static instance?: VectorSearchService;
@@ -52,7 +66,7 @@ export class VectorSearchService {
    */
   async initializeClients(
     indexClientOverride?: SearchIndexClient,
-    searchClientOverride?: SearchClient<Record<string, unknown>>
+    searchClientOverride?: SearchClient<Record<string, unknown>>,
   ): Promise<void> {
     if (indexClientOverride) {
       this.indexClient = indexClientOverride;
@@ -62,7 +76,8 @@ export class VectorSearchService {
         }
         this.indexClient = new SearchIndexClient(
             env.AZURE_SEARCH_ENDPOINT,
-            new AzureKeyCredential(env.AZURE_SEARCH_KEY)
+            new AzureKeyCredential(env.AZURE_SEARCH_KEY),
+            { serviceVersion: SEARCH_API_VERSION },
         );
     }
 
@@ -75,7 +90,8 @@ export class VectorSearchService {
         this.searchClient = new SearchClient(
             env.AZURE_SEARCH_ENDPOINT,
             INDEX_NAME,
-            new AzureKeyCredential(env.AZURE_SEARCH_KEY)
+            new AzureKeyCredential(env.AZURE_SEARCH_KEY),
+            { serviceVersion: SEARCH_API_VERSION },
         );
     }
   }
@@ -167,6 +183,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     // Normalize IDs to UPPERCASE for consistency
     const documents = chunks.map(chunk => ({
@@ -174,7 +191,7 @@ export class VectorSearchService {
       fileId: chunk.fileId.toUpperCase(),
       userId: chunk.userId.toUpperCase(),
       content: chunk.content,
-      contentVector: chunk.embedding,
+      embeddingVector: chunk.embedding,
       chunkIndex: chunk.chunkIndex,
       tokenCount: chunk.tokenCount,
       embeddingModel: chunk.embeddingModel,
@@ -190,21 +207,6 @@ export class VectorSearchService {
       parentFolderId: chunk.parentFolderId ?? null,
     }));
 
-    // Per-document mimeType trace for diagnosing per-chunk field gaps
-    for (let i = 0; i < documents.length; i++) {
-      const doc = documents[i]!;
-      logger.debug({
-        docIndex: i,
-        chunkId: doc.chunkId,
-        fileId: doc.fileId,
-        mimeType: doc.mimeType,
-        mimeTypeType: typeof doc.mimeType,
-        isImage: doc.isImage,
-        fileStatus: doc.fileStatus,
-        hasContentVector: !!doc.contentVector,
-      }, '[TRACE] indexChunksBatch - per-document field values');
-    }
-
     // Diagnostic: log field values for first document to trace field coverage gaps
     if (documents.length > 0) {
       const sample = documents[0]!;
@@ -216,15 +218,15 @@ export class VectorSearchService {
           mimeTypeType: typeof sample.mimeType,
           isImage: sample.isImage,
           fileStatus: sample.fileStatus,
-          hasContentVector: !!sample.contentVector,
-          contentVectorLength: sample.contentVector?.length ?? 0,
+          hasEmbeddingVector: !!sample.embeddingVector,
+          vectorLength: sample.embeddingVector?.length ?? 0,
           totalDocuments: documents.length,
         },
         'Indexing text chunks batch - field diagnostic'
       );
     }
 
-    const result = await this.searchClient.uploadDocuments(documents);
+    const result = await client.uploadDocuments(documents);
 
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -248,6 +250,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     const { embedding, userId, top = 10, filter } = query;
 
@@ -267,15 +270,15 @@ export class VectorSearchService {
           {
             kind: 'vector',
             vector: embedding,
-            fields: ['contentVector'],
+            fields: ['embeddingVector'],
             kNearestNeighborsCount: top
           }
         ]
       }
     };
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
-    
+    const searchResults = await client.search('*', searchOptions);
+
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
       const doc = result.document as { chunkId: string; fileId: string; content: string; chunkIndex: number };
@@ -304,6 +307,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     const { text, embedding, userId, top = 10 } = query;
 
@@ -320,14 +324,14 @@ export class VectorSearchService {
           {
             kind: 'vector',
             vector: embedding,
-            fields: ['contentVector'],
+            fields: ['embeddingVector'],
             kNearestNeighborsCount: top
           }
         ]
       }
     };
 
-    const searchResults = await this.searchClient.search(text, searchOptions);
+    const searchResults = await client.search(text, searchOptions);
 
     const results: SearchResult[] = [];
     for await (const result of searchResults.results) {
@@ -357,9 +361,10 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
-    
+    const client = this.searchClient;
+
     // Deletion by key is efficient and specific
-    const result = await this.searchClient.deleteDocuments('chunkId', [chunkId]);
+    const result = await client.deleteDocuments('chunkId', [chunkId]);
     
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -372,9 +377,6 @@ export class VectorSearchService {
   async deleteChunksForFile(fileId: string, userId: string): Promise<void> {
     if (!this.searchClient) {
       await this.initializeClients();
-    }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
     }
 
     // 1. Find chunks first
@@ -409,9 +411,6 @@ export class VectorSearchService {
     if (!this.searchClient) {
       await this.initializeClients();
     }
-    if (!this.searchClient) {
-      throw new Error('Failed to initialize search client');
-    }
 
     // D24: Normalize userId for Azure AI Search compatibility
     const normalizedUserId = this.normalizeUserId(userId);
@@ -433,9 +432,10 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Search client not initialized');
     }
+    const client = this.searchClient;
 
     // Helper to perform search-then-delete
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
 
     const chunkIds: string[] = [];
     for await (const result of searchResults.results) {
@@ -463,7 +463,7 @@ export class VectorSearchService {
     // For this implementation scope, simple call is sufficient, SDK often handles batching logic or throws if too large,
     // requiring manual batching. Given strict TDD scope, simple is good.
 
-    const result = await this.searchClient.deleteDocuments('chunkId', chunkIds);
+    const result = await client.deleteDocuments('chunkId', chunkIds);
 
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -479,7 +479,7 @@ export class VectorSearchService {
   /**
    * Index an image embedding for visual search
    *
-   * Creates a document with imageVector field populated.
+   * Creates a document with embeddingVector field populated.
    * Uses chunkId prefix 'img_' to distinguish from text chunks.
    *
    * @param params - Image indexing parameters
@@ -492,8 +492,9 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
-    const { fileId, userId, embedding, fileName, caption, mimeType, contentVector, sizeBytes, fileModifiedAt, siteId, sourceType, parentFolderId } = params;
+    const { fileId, userId, embedding, fileName, caption, mimeType, sizeBytes, fileModifiedAt, siteId, sourceType, parentFolderId } = params;
     const normalizedFileId = fileId.toUpperCase();
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
@@ -509,10 +510,10 @@ export class VectorSearchService {
       fileId: normalizedFileId,
       userId: normalizedUserId,
       content,
-      imageVector: embedding,
+      embeddingVector: embedding,
       chunkIndex: 0,
       tokenCount: 0,
-      embeddingModel: 'azure-vision-vectorize-image',
+      embeddingModel: COHERE_MODEL_NAME,
       createdAt: new Date(),
       isImage: true,
       mimeType: mimeType || null,
@@ -536,14 +537,9 @@ export class VectorSearchService {
       mimeTypeOrNullResult: mimeType || null,
       isImage: document.isImage,
       fileStatus: document.fileStatus,
-      hasImageVector: !!document.imageVector,
+      hasEmbeddingVector: !!document.embeddingVector,
       contentLength: typeof document.content === 'string' ? (document.content as string).length : 0,
     }, '[TRACE] indexImageEmbedding - mimeType before SDK upload');
-
-    // Add text embedding of caption for contentVector search path (if available)
-    if (contentVector && contentVector.length > 0) {
-      document.contentVector = contentVector;
-    }
 
     // Diagnostic: log all field values to trace field coverage gaps
     logger.info(
@@ -555,9 +551,7 @@ export class VectorSearchService {
         mimeTypeType: typeof document.mimeType,
         isImage: document.isImage,
         fileStatus: document.fileStatus,
-        hasImageVector: !!document.imageVector,
-        hasContentVector: !!document.contentVector,
-        contentVectorLength: (document.contentVector as number[] | undefined)?.length ?? 0,
+        hasEmbeddingVector: !!document.embeddingVector,
         contentPreview: typeof document.content === 'string' ? document.content.substring(0, 80) : '(none)',
         documentFieldCount: Object.keys(document).length,
         documentFields: Object.keys(document),
@@ -565,7 +559,7 @@ export class VectorSearchService {
       'Indexing image embedding - field diagnostic'
     );
 
-    const result = await this.searchClient.uploadDocuments([document]);
+    const result = await client.uploadDocuments([document]);
 
     const failed = result.results.filter(r => !r.succeeded);
     if (failed.length > 0) {
@@ -574,7 +568,7 @@ export class VectorSearchService {
     }
 
     logger.info(
-      { documentId, fileId, userId, dimensions: embedding.length, hasCaption: !!caption, hasContentVector: !!contentVector },
+      { documentId, fileId, userId, dimensions: embedding.length, hasCaption: !!caption },
       'Image embedding indexed successfully'
     );
     return documentId;
@@ -583,7 +577,7 @@ export class VectorSearchService {
   /**
    * Search for images by embedding vector
    *
-   * Uses imageVector field for vector search.
+   * Uses embeddingVector field for vector search.
    * Filters to isImage=true to only return images.
    *
    * @param query - Image search query
@@ -617,7 +611,7 @@ export class VectorSearchService {
           {
             kind: 'vector',
             vector: embedding,
-            fields: ['imageVector'],
+            fields: ['embeddingVector'],
             kNearestNeighborsCount: top,
           },
         ],
@@ -720,24 +714,33 @@ export class VectorSearchService {
    * @param query - Semantic search query parameters
    * @returns Reranked search results
    */
-  async semanticSearch(query: SemanticSearchQuery): Promise<SemanticSearchResult[]> {
+  async semanticSearch(query: SemanticSearchQuery): Promise<SemanticSearchFullResult> {
     if (!this.searchClient) {
       await this.initializeClients();
     }
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     const {
       text,
-      textEmbedding,
-      imageEmbedding,
       userId,
       fetchTopK = 30,
       finalTopK = 10,
       minScore = 0,
       searchMode = 'text',
+      // PRD-200: New power search fields — derive from legacy searchMode when not provided
+      queryType: explicitQueryType,
+      useVectorSearch: explicitUseVectorSearch,
+      useSemanticRanker: explicitUseSemanticRanker,
+      orderBy,
     } = query;
+
+    // Backward compat: derive from legacy searchMode if new fields not set
+    const useSemanticRanker = explicitUseSemanticRanker ?? (searchMode !== 'image');
+    const useVectorSearch = explicitUseVectorSearch ?? true;
+    const effectiveQueryType = explicitQueryType ?? (useSemanticRanker ? 'semantic' : 'simple');
 
     // Security: Always enforce userId filter (D24: normalize userId)
     // Also exclude files marked for deletion (fileStatus ne 'deleting')
@@ -749,56 +752,66 @@ export class VectorSearchService {
       searchFilter += ` and ${query.additionalFilter}`;
     }
 
-    // Build search options — conditionally enable Semantic Ranker
-    // Image mode: disable Semantic Ranker since it only reads the content (caption) field,
-    // which defeats the purpose of visual similarity search via imageVector
+    // Build search options
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top: fetchTopK,
       select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage'],
     };
 
-    if (searchMode !== 'image') {
+    // Conditionally enable Semantic Ranker (PRD-200: controlled by useSemanticRanker + queryType)
+    // PRD-203: Always request extractive answers and captions when semantic ranker is ON
+    if (useSemanticRanker && effectiveQueryType === 'semantic') {
       searchOptions.queryType = 'semantic';
       searchOptions.semanticSearchOptions = {
         configurationName: SEMANTIC_CONFIG_NAME,
+        answers: { answerType: 'extractive', count: 3, threshold: 0.5 },
+        captions: { captionType: 'extractive', highlight: true },
       };
     }
 
-    // Add vector search queries if embeddings provided — with mode-dependent weights
-    const vectorQueries: Array<Record<string, unknown>> = [];
+    // PRD-200: orderBy passthrough for date-based sorting
+    if (orderBy) {
+      searchOptions.orderBy = [orderBy];
+    }
 
-    if (textEmbedding && textEmbedding.length > 0) {
+    // Add vector search queries if enabled and embeddings provided (PRD-200: controlled by useVectorSearch)
+    if (useVectorSearch) {
+      const vectorQueries: Array<Record<string, unknown>> = [];
+
+      // Query-time vectorization: Azure AI Search generates embeddings via native Cohere vectorizer
       vectorQueries.push({
-        kind: 'vector',
-        vector: textEmbedding,
-        fields: ['contentVector'],
+        kind: 'text',
+        text,
+        fields: ['embeddingVector'],
         kNearestNeighborsCount: fetchTopK,
-        weight: searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_CONTENT : VECTOR_WEIGHTS.TEXT_MODE_CONTENT,
+        weight: 1.0,
       });
+
+      if (vectorQueries.length > 0) {
+        searchOptions.vectorSearchOptions = { queries: vectorQueries };
+      }
     }
 
-    if (imageEmbedding && imageEmbedding.length > 0) {
-      vectorQueries.push({
-        kind: 'vector',
-        vector: imageEmbedding,
-        fields: ['imageVector'],
-        kNearestNeighborsCount: fetchTopK,
-        weight: searchMode === 'image' ? VECTOR_WEIGHTS.IMAGE_MODE_IMAGE : VECTOR_WEIGHTS.TEXT_MODE_IMAGE,
-      });
-    }
+    // Determine search text:
+    // - Image mode (legacy): pass '*' to skip keyword matching → pure vector similarity scores (0-1)
+    // - Keyword mode (no vectors, no reranker): pass user query for BM25 text matching
+    // - Hybrid/semantic: pass user query for keyword+vector scoring
+    const searchText = (searchMode === 'image' && explicitUseVectorSearch === undefined)
+      ? '*'
+      : text;
+    const searchResults = await client.search(searchText, searchOptions);
 
-    if (vectorQueries.length > 0) {
-      searchOptions.vectorSearchOptions = { queries: vectorQueries };
-    }
-
-    // Execute search:
-    // - Image mode: pass '*' to skip keyword search and get pure vector similarity scores (0-1).
-    //   Without this, Azure uses RRF to fuse keyword + vector results, producing scores ~0.016
-    //   that are incompatible with the cosine-based minScore threshold (~0.47).
-    // - Text mode: pass user query for keyword+vector hybrid, scored by Semantic Ranker (0-4→0-1).
-    const searchText = searchMode === 'image' ? '*' : text;
-    const searchResults = await this.searchClient.search(searchText, searchOptions);
+    // PRD-203: Capture top-level extractive answers from Semantic Ranker
+    const rawAnswers = (searchResults as unknown as {
+      answers?: Array<{ score: number; key: string; text: string; highlights?: string }>;
+    }).answers;
+    const extractiveAnswers: ExtractiveSearchAnswer[] = (rawAnswers ?? []).map(a => ({
+      text: a.text,
+      highlights: a.highlights,
+      score: a.score,
+      key: a.key,
+    }));
 
     // Process results
     const results: SemanticSearchResult[] = [];
@@ -815,12 +828,17 @@ export class VectorSearchService {
       // Semantic Ranker score is in rerankerScore property (0-4 scale)
       const rerankerScore = (result as unknown as { rerankerScore?: number }).rerankerScore;
 
-      // Calculate combined score:
-      // - Image mode: always use vectorScore (Semantic Ranker is disabled, pure visual similarity)
-      // - Text mode: prefer rerankerScore if available (normalized to 0-1), else vectorScore
-      const score = (searchMode === 'image')
-        ? vectorScore
-        : (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore);
+      // PRD-203: Extract per-result captions from Semantic Ranker
+      const captions = (result as unknown as {
+        captions?: Array<{ text?: string; highlights?: string }>;
+      }).captions;
+
+      // Calculate combined score (PRD-200: use useSemanticRanker flag instead of searchMode)
+      // - When Semantic Ranker is ON: prefer rerankerScore/4 (normalized to 0-1), else vectorScore
+      // - When Semantic Ranker is OFF: always use vectorScore (pure vector or BM25)
+      const score = useSemanticRanker
+        ? (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore)
+        : vectorScore;
 
       // Filter by minimum score
       if (score < minScore) continue;
@@ -834,6 +852,8 @@ export class VectorSearchService {
         score,
         chunkIndex: doc.chunkIndex,
         isImage: doc.isImage ?? false,
+        captionText: captions?.[0]?.text,
+        captionHighlights: captions?.[0]?.highlights,
       });
     }
 
@@ -842,7 +862,9 @@ export class VectorSearchService {
     const finalResults = results.slice(0, finalTopK);
 
     // Track usage for billing (fire-and-forget)
-    this.trackSearchUsage(userId, 'semantic', finalResults.length, fetchTopK).catch((err) => {
+    const trackingType: 'vector' | 'hybrid' | 'semantic' | 'keyword' =
+      (!useVectorSearch && !useSemanticRanker) ? 'keyword' : 'semantic';
+    this.trackSearchUsage(userId, trackingType, finalResults.length, fetchTopK).catch((err) => {
       logger.warn({ err, userId, resultCount: finalResults.length }, 'Failed to track semantic search usage');
     });
 
@@ -853,14 +875,16 @@ export class VectorSearchService {
         finalTopK,
         candidateCount: results.length,
         resultCount: finalResults.length,
-        hasTextEmbedding: !!textEmbedding,
-        hasImageEmbedding: !!imageEmbedding,
         searchMode,
+        useVectorSearch,
+        useSemanticRanker,
+        effectiveQueryType,
+        hasOrderBy: !!orderBy,
       },
-      'Semantic search completed (D26)'
+      'Semantic search completed (D26/PRD-200/PRD-203)'
     );
 
-    return finalResults;
+    return { results: finalResults, extractiveAnswers };
   }
 
   /**
@@ -873,23 +897,27 @@ export class VectorSearchService {
    */
   private async trackSearchUsage(
     userId: string,
-    searchType: 'vector' | 'hybrid' | 'semantic',
+    searchType: 'vector' | 'hybrid' | 'semantic' | 'keyword',
     resultCount: number,
     topK: number
   ): Promise<void> {
     const usageTrackingService = getUsageTrackingService();
 
-    // QueryTokens is 0 because query embedding is tracked separately in EmbeddingService
-    // when the user's query is embedded before calling search
-    await usageTrackingService.trackVectorSearch(userId, 0, {
+    // Estimated query embedding tokens consumed by Azure AI Search's native Cohere vectorizer
+    // at query time. Average search query is ~50 tokens. The actual tokens are consumed
+    // by Azure (billed via the Cohere model deployment), not by the app.
+    const estimatedQueryTokens = searchType === 'keyword' ? 0 : 50;
+
+    await usageTrackingService.trackVectorSearch(userId, estimatedQueryTokens, {
       search_type: searchType,
       result_count: resultCount,
       top_k: topK,
+      vectorizer: 'azure-native',
     });
 
     logger.debug(
-      { userId, searchType, resultCount, topK },
-      'Vector search usage tracked'
+      { userId, searchType, resultCount, topK, estimatedQueryTokens },
+      'Search usage tracked'
     );
   }
 
@@ -915,6 +943,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     const normalizedUserId = this.normalizeUserId(userId);
     const normalizedFileId = fileId.toUpperCase();
@@ -931,7 +960,7 @@ export class VectorSearchService {
       'Marking file as deleting in AI Search'
     );
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
 
     const chunkIds: string[] = [];
     for await (const result of searchResults.results) {
@@ -958,7 +987,7 @@ export class VectorSearchService {
 
     for (let i = 0; i < mergeDocuments.length; i += batchSize) {
       const batch = mergeDocuments.slice(i, i + batchSize);
-      const result = await this.searchClient.mergeDocuments(batch);
+      const result = await client.mergeDocuments(batch);
 
       const succeeded = result.results.filter(r => r.succeeded).length;
       updatedCount += succeeded;
@@ -998,6 +1027,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     // Normalize userId to uppercase for Azure AI Search compatibility (D24)
     const normalizedUserId = userId.toUpperCase();
@@ -1010,7 +1040,7 @@ export class VectorSearchService {
     };
 
     const fileIds = new Set<string>();
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
 
     for await (const result of searchResults.results) {
       const doc = result.document as { fileId?: string };
@@ -1044,6 +1074,7 @@ export class VectorSearchService {
     if (!this.searchClient) {
       throw new Error('Failed to initialize search client');
     }
+    const client = this.searchClient;
 
     // Normalize userId to uppercase for Azure AI Search compatibility (D24)
     // Also query both cases of fileId to handle legacy data
@@ -1059,7 +1090,7 @@ export class VectorSearchService {
       includeTotalCount: true,
     };
 
-    const searchResults = await this.searchClient.search('*', searchOptions);
+    const searchResults = await client.search('*', searchOptions);
     const count = searchResults.count ?? 0;
 
     logger.debug(

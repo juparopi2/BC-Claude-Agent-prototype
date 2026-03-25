@@ -64,8 +64,19 @@ async function main(): Promise<void> {
   const schemaFields = indexSchema.fields;
   const missingFields = schemaFields.filter(f => !existingFieldNames.has(f.name));
 
-  if (missingFields.length === 0) {
-    console.log('Schema is up-to-date — no missing fields.\n');
+  // 3b. Check vectorizer configuration
+  const currentVectorizers = (currentIndex.vectorSearch as Record<string, unknown>)?.vectorizers as Array<Record<string, unknown>> | undefined;
+  const schemaVectorizers = (indexSchema.vectorSearch as Record<string, unknown>)?.vectorizers as Array<Record<string, unknown>> | undefined;
+  const needsVectorizerUpdate = JSON.stringify(currentVectorizers ?? []) !== JSON.stringify(schemaVectorizers ?? []);
+
+  if (needsVectorizerUpdate) {
+    console.log('Vectorizer configuration changed:');
+    console.log(`  Current: ${currentVectorizers?.map(v => `${v.vectorizerName} (${v.kind})`).join(', ') || 'none'}`);
+    console.log(`  Target:  ${schemaVectorizers?.map(v => `${v.vectorizerName} (${v.kind})`).join(', ') || 'none'}\n`);
+  }
+
+  if (missingFields.length === 0 && !needsVectorizerUpdate) {
+    console.log('Schema is up-to-date — no missing fields, vectorizer unchanged.\n');
 
     // Show existing fields for reference
     console.log('Existing fields:');
@@ -82,7 +93,9 @@ async function main(): Promise<void> {
   }
 
   // 4. Report what will change
-  console.log(`Found ${missingFields.length} missing field(s):\n`);
+  if (missingFields.length > 0) {
+    console.log(`Found ${missingFields.length} missing field(s):\n`);
+  }
   for (const f of missingFields) {
     const meta = [
       f.type,
@@ -100,9 +113,84 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log('Applying schema update...');
-  await indexClient.createOrUpdateIndex(indexSchema);
-  console.log('Schema updated successfully.\n');
+  const changes = [
+    missingFields.length > 0 ? `${missingFields.length} field(s)` : '',
+    needsVectorizerUpdate ? 'vectorizer config' : '',
+  ].filter(Boolean).join(' + ');
+  console.log(`Applying schema update (${changes})...`);
+
+  // Use REST API directly because the @azure/search-documents SDK v12.2 does not
+  // support 'aml' vectorizer kind (only 'azureOpenAI' and 'customWebApi').
+  // Strategy: GET the current index definition in REST format, patch the vectorizers,
+  // and PUT it back. This avoids SDK↔REST property name translation issues.
+  const searchEndpoint = process.env.AZURE_SEARCH_ENDPOINT!;
+  const searchKey = process.env.AZURE_SEARCH_KEY!;
+  // AML vectorizer with Cohere-embed-v4 requires preview API version
+  const apiVersion = '2025-05-01-Preview';
+  const url = `${searchEndpoint}/indexes/${INDEX_NAME}?api-version=${apiVersion}&allowIndexDowntime=true`;
+
+  // 1. GET current index in REST API native format
+  const getRes = await fetch(url, {
+    method: 'GET',
+    headers: { 'api-key': searchKey, 'Accept': 'application/json' },
+  });
+  if (!getRes.ok) {
+    throw new Error(`Failed to GET index: ${getRes.status} ${await getRes.text()}`);
+  }
+  const restIndex = await getRes.json() as Record<string, unknown>;
+
+  // 2. Patch vectorizers and profile vectorizer linkage
+  const vectorSearch = restIndex.vectorSearch as Record<string, unknown>;
+  // Use COHERE_VECTORIZER_ENDPOINT for the vectorizer (serverless API endpoint)
+  // Falls back to COHERE_ENDPOINT (AIServices endpoint) if not set
+  const vectorizerUri = process.env.COHERE_VECTORIZER_ENDPOINT ?? process.env.COHERE_ENDPOINT;
+  const vectorizerKey = process.env.COHERE_VECTORIZER_KEY ?? process.env.COHERE_API_KEY;
+  vectorSearch.vectorizers = [
+    {
+      name: 'cohere-vectorizer',
+      kind: 'aml',
+      amlParameters: {
+        uri: vectorizerUri,
+        key: vectorizerKey,
+        modelName: 'Cohere-embed-v4',
+      },
+    },
+  ];
+  // Ensure the profile links to the vectorizer
+  const profiles = vectorSearch.profiles as Array<Record<string, unknown>>;
+  if (profiles?.[0]) {
+    profiles[0].vectorizer = 'cohere-vectorizer';
+  }
+
+  // 3. Add missing fields (if any)
+  if (missingFields.length > 0) {
+    const restFields = restIndex.fields as Array<Record<string, unknown>>;
+    for (const f of missingFields) {
+      restFields.push(f as unknown as Record<string, unknown>);
+    }
+  }
+
+  // 4. PUT the patched index back
+  // Remove @odata properties that can't be sent back
+  delete restIndex['@odata.context'];
+  delete restIndex['@odata.etag'];
+
+  const putRes = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'api-key': searchKey,
+      'Prefer': 'return=representation',
+    },
+    body: JSON.stringify(restIndex),
+  });
+
+  if (!putRes.ok) {
+    const body = await putRes.text();
+    throw new Error(`REST API error ${putRes.status}: ${body}`);
+  }
+
+  console.log('Schema updated successfully via REST API.\n');
 
   // 6. Verify
   const updated = await indexClient.getIndex(INDEX_NAME);

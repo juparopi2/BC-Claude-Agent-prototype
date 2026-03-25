@@ -189,6 +189,8 @@ jobs:
           fetch "AZURE-SEARCH-KEY"                  "AZURE_SEARCH_KEY"
           fetch "AZURE-VISION-ENDPOINT"             "AZURE_VISION_ENDPOINT"
           fetch "AZURE-VISION-KEY"                  "AZURE_VISION_KEY"
+          fetch "COHERE-ENDPOINT"                   "COHERE_ENDPOINT"
+          fetch "COHERE-API-KEY"                    "COHERE_API_KEY"
 
           # Security
           fetch "ENCRYPTION-KEY"                    "ENCRYPTION_KEY"

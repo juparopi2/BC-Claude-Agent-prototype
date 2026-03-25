@@ -281,7 +281,7 @@ export function ToolCard({
       </Avatar>
 
       <Collapsible open={effectiveIsOpen} onOpenChange={handleOpenChange} className="flex-1 min-w-0">
-        <CollapsibleTrigger className="flex items-center gap-2 w-full text-left">
+        <CollapsibleTrigger className="flex items-center gap-2 w-full text-left cursor-pointer">
           {effectiveIsOpen ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
           <span className="font-medium text-sm truncate">{displayName}</span>
 

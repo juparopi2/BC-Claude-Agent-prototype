@@ -42,6 +42,25 @@ export const CitationPassageSchema = z.object({
   startOffset: z.number().int().nonnegative().optional(),
   /** End character offset in source (if available) */
   endOffset: z.number().int().nonnegative().optional(),
+  /** Highlighted caption from Azure AI Search Semantic Ranker with <em> tags (PRD-203) */
+  highlightedCaption: z.string().optional(),
+});
+
+/**
+ * Schema for an extractive answer from Azure AI Search Semantic Ranker (PRD-203).
+ * Extractive answers are direct answers to questions extracted from documents.
+ */
+export const ExtractiveAnswerSchema = z.object({
+  /** Extracted answer text */
+  text: z.string(),
+  /** Relevance score (0-1) */
+  score: z.number().min(0).max(1),
+  /** Highlighted answer text with <em> tags */
+  highlights: z.string().optional(),
+  /** Chunk ID in the search index that contains the answer */
+  sourceChunkId: z.string(),
+  /** File ID that contains the answer (resolved from chunk) */
+  sourceFileId: z.string().optional(),
 });
 
 /**
@@ -81,6 +100,8 @@ export const CitationResultSchema = z.object({
   query: z.string(),
   /** File type category filter used (only present for filtered searches) */
   fileTypeCategory: z.enum(['images', 'documents', 'spreadsheets', 'code', 'presentations']).optional(),
+  /** Extractive answers from Azure AI Search Semantic Ranker (PRD-203) */
+  extractiveAnswers: z.array(ExtractiveAnswerSchema).optional(),
 });
 
 // ============================================
@@ -95,3 +116,6 @@ export type CitedDocument = z.infer<typeof CitedDocumentSchema>;
 
 /** Type for the complete citation result */
 export type CitationResult = z.infer<typeof CitationResultSchema>;
+
+/** Type for an extractive answer from Semantic Ranker (PRD-203) */
+export type ExtractiveAnswer = z.infer<typeof ExtractiveAnswerSchema>;

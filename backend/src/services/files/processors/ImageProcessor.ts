@@ -5,14 +5,14 @@
  * Unlike text documents, images don't have extractable text.
  * Instead, this processor:
  * 1. Extracts image metadata (dimensions, format)
- * 2. Generates image embeddings via Azure Computer Vision
+ * 2. Generates image embeddings via Cohere Embed 4
  * 3. Returns metadata for database storage
  *
  * @module services/files/processors/ImageProcessor
  */
 
 import { createChildLogger } from '@/shared/utils/logger';
-import { EmbeddingService } from '@services/embeddings/EmbeddingService';
+import { ImageCaptionService } from './ImageCaptionService';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import type { DocumentProcessor, ExtractionResult, ExtractionMetadata } from './types';
 import { env } from '@/infrastructure/config/environment';
@@ -93,7 +93,7 @@ export interface ImageMetadata extends ExtractionMetadata {
  *
  * Processes image files by:
  * 1. Detecting format from magic bytes
- * 2. Generating image embedding via Azure Computer Vision API
+ * 2. Generating image embedding via Cohere Embed 4 and caption via Azure Computer Vision
  * 3. Returning metadata (no text content for images)
  */
 export class ImageProcessor implements DocumentProcessor {
@@ -166,30 +166,31 @@ export class ImageProcessor implements DocumentProcessor {
         };
       }
 
-      // Step 4: Generate image embedding AND caption in parallel (D26 feature)
-      logger.info({ fileName }, 'Generating image embedding and caption via Azure Computer Vision');
+      // Step 4: Generate image embedding AND caption
+      // Embedding: Cohere Embed 4 (1536d unified vector space)
+      // Caption: Azure Computer Vision (feeds BM25/keyword search)
+      logger.info({ fileName }, 'Generating image embedding and caption');
 
       // Store embedding and caption for return in result
       let generatedEmbedding: number[] | undefined;
       let generatedCaption: string | undefined;
       let captionConfidence: number | undefined;
 
-      const embeddingService = EmbeddingService.getInstance();
+      const { getCohereEmbeddingService } = await import(
+        '@/services/search/embeddings/CohereEmbeddingService'
+      );
+      const cohereService = getCohereEmbeddingService();
+      const captionService = ImageCaptionService.getInstance();
 
-      // Generate embedding and caption in parallel for better performance
-      // Use skipTracking: true because tracking will be done in FileProcessingService
-      // with correct userId and fileId (UUIDs) after persistence
+      // Always generate caption via Azure Vision for BM25/keyword search relevance
       const placeholderUserId = crypto.randomUUID().toUpperCase();
       const placeholderFileId = crypto.randomUUID().toUpperCase();
 
-      const [embeddingResult, captionResult] = await Promise.allSettled([
-        embeddingService.generateImageEmbedding(
-          processBuffer,
-          placeholderUserId,
-          placeholderFileId,
-          { skipTracking: true } // Tracking done in FileProcessingService with real IDs
-        ),
-        embeddingService.generateImageCaption(
+      const base64Data = processBuffer.toString('base64');
+
+      const [cohereEmbeddingResult, captionResult] = await Promise.allSettled([
+        cohereService.embedImage(base64Data, 'search_document'),
+        captionService.generateCaption(
           processBuffer,
           placeholderUserId,
           placeholderFileId,
@@ -197,34 +198,34 @@ export class ImageProcessor implements DocumentProcessor {
         ),
       ]);
 
-      // Process embedding result
-      if (embeddingResult.status === 'fulfilled') {
-        generatedEmbedding = embeddingResult.value.embedding;
+      // Process Cohere embedding result
+      if (cohereEmbeddingResult.status === 'fulfilled') {
+        generatedEmbedding = cohereEmbeddingResult.value.embedding;
         metadata.embeddingGenerated = true;
-        metadata.embeddingDimensions = embeddingResult.value.embedding.length;
-        metadata.visionModelVersion = embeddingResult.value.model;
+        metadata.embeddingDimensions = cohereEmbeddingResult.value.embedding.length;
+        metadata.visionModelVersion = cohereEmbeddingResult.value.model;
 
         logger.info(
           {
             fileName,
-            embeddingDimensions: embeddingResult.value.embedding.length,
-            modelVersion: embeddingResult.value.model,
+            embeddingDimensions: cohereEmbeddingResult.value.embedding.length,
+            modelVersion: cohereEmbeddingResult.value.model,
           },
-          'Image embedding generated successfully'
+          'Cohere image embedding generated successfully'
         );
       } else {
         logger.warn(
           {
             fileName,
-            error: embeddingResult.reason instanceof Error
-              ? embeddingResult.reason.message
-              : String(embeddingResult.reason),
+            error: cohereEmbeddingResult.reason instanceof Error
+              ? cohereEmbeddingResult.reason.message
+              : String(cohereEmbeddingResult.reason),
           },
-          'Failed to generate image embedding - continuing without it'
+          'Failed to generate Cohere image embedding - continuing without it'
         );
       }
 
-      // Process caption result (D26 feature)
+      // Process caption result
       if (captionResult.status === 'fulfilled') {
         generatedCaption = captionResult.value.caption;
         captionConfidence = captionResult.value.confidence;

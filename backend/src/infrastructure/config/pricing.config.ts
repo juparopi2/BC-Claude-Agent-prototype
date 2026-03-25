@@ -193,18 +193,20 @@ export const UNIT_COSTS = {
    */
   excel_sheet_processing: 0.001,
 
-  // ===== Embedding Costs =====
+  // ===== Embedding Costs (Cohere Embed v4) =====
   /**
-   * Azure OpenAI text-embedding-3-small
-   * $0.02 per 1M tokens = $0.00000002 per token
+   * Cohere Embed v4 — text embedding
+   * $0.12 per 1M tokens = $0.00000012 per token
+   * Deployed on Azure AIServices via OpenAI-compatible API
    */
-  text_embedding_token: 0.02 / 1_000_000,
+  text_embedding_token: 0.12 / 1_000_000,
 
   /**
-   * Azure Computer Vision - image embedding
-   * $0.10 per 1,000 images = $0.0001 per image
+   * Cohere Embed v4 — image embedding
+   * Images processed via Azure Foundry Models API
+   * Estimated ~500 token equivalent per image at $0.12/1M tokens
    */
-  image_embedding: 0.0001,
+  image_embedding: (0.12 / 1_000_000) * 500,
 
   // ===== Vector Search Costs =====
   /**

@@ -48,6 +48,11 @@ export const SECRET_NAMES = {
   AZURE_AUDIO_KEY: 'AZURE-AUDIO-KEY',
   // Graph Webhooks (PRD-108)
   GRAPH_WEBHOOK_BASE_URL: 'Graph-WebhookBaseUrl',
+  // Cohere Embed 4 (PRD-201)
+  COHERE_ENDPOINT: 'COHERE-ENDPOINT',
+  COHERE_API_KEY: 'COHERE-API-KEY',
+  COHERE_VECTORIZER_ENDPOINT: 'COHERE-VECTORIZER-ENDPOINT',
+  COHERE_VECTORIZER_KEY: 'COHERE-VECTORIZER-KEY',
 } as const;
 
 /**
@@ -208,6 +213,19 @@ export async function loadSecretsFromKeyVault(): Promise<void> {
     // Load Graph Webhook URL (PRD-108)
     const graphWebhookBaseUrl = await getSecret(SECRET_NAMES.GRAPH_WEBHOOK_BASE_URL, 'GRAPH_WEBHOOK_BASE_URL');
     if (graphWebhookBaseUrl) process.env.GRAPH_WEBHOOK_BASE_URL = graphWebhookBaseUrl;
+
+    // Load Cohere embedding secrets (PRD-201)
+    const cohereEndpoint = await getSecret(SECRET_NAMES.COHERE_ENDPOINT, 'COHERE_ENDPOINT');
+    if (cohereEndpoint) process.env.COHERE_ENDPOINT = cohereEndpoint;
+
+    const cohereApiKey = await getSecret(SECRET_NAMES.COHERE_API_KEY, 'COHERE_API_KEY');
+    if (cohereApiKey) process.env.COHERE_API_KEY = cohereApiKey;
+
+    const cohereVectorizerEndpoint = await getSecret(SECRET_NAMES.COHERE_VECTORIZER_ENDPOINT, 'COHERE_VECTORIZER_ENDPOINT');
+    if (cohereVectorizerEndpoint) process.env.COHERE_VECTORIZER_ENDPOINT = cohereVectorizerEndpoint;
+
+    const cohereVectorizerKey = await getSecret(SECRET_NAMES.COHERE_VECTORIZER_KEY, 'COHERE_VECTORIZER_KEY');
+    if (cohereVectorizerKey) process.env.COHERE_VECTORIZER_KEY = cohereVectorizerKey;
 
     console.log('✅ Secrets loaded successfully from Key Vault');
   } catch (error) {

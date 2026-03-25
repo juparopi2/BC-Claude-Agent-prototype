@@ -93,7 +93,7 @@ const mockSoftDeleteService = {
 };
 
 const mockEmbeddingService = {
-  generateImageQueryEmbedding: vi.fn(),
+  embedQuery: vi.fn(),
 };
 
 const mockVectorSearchService = {
@@ -118,10 +118,8 @@ vi.mock('@/shared/utils/hash', () => ({
   computeSha256: vi.fn(() => 'ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234ABCD1234'),
 }));
 
-vi.mock('@/services/embeddings/EmbeddingService', () => ({
-  EmbeddingService: {
-    getInstance: vi.fn(() => mockEmbeddingService),
-  },
+vi.mock('@/services/search/embeddings/CohereEmbeddingService', () => ({
+  CohereEmbeddingService: vi.fn(() => mockEmbeddingService),
 }));
 
 vi.mock('@/services/search/VectorSearchService', () => ({
@@ -486,7 +484,7 @@ describe('Files Routes', () => {
       const mockResults = [
         { fileId: VALID_FILE_UUID, score: 0.85, metadata: {} },
       ];
-      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue({
+      mockEmbeddingService.embedQuery.mockResolvedValue({
         embedding: new Array(1024).fill(0.1),
       });
       mockVectorSearchService.searchImages.mockResolvedValue(mockResults);
@@ -515,7 +513,7 @@ describe('Files Routes', () => {
 
     it('should apply custom top and minScore', async () => {
       // Arrange
-      mockEmbeddingService.generateImageQueryEmbedding.mockResolvedValue({
+      mockEmbeddingService.embedQuery.mockResolvedValue({
         embedding: new Array(1024).fill(0.1),
       });
       mockVectorSearchService.searchImages.mockResolvedValue([]);

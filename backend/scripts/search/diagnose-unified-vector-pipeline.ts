@@ -3,12 +3,11 @@
  *
  * End-to-end diagnostic for the unified Cohere Embed v4 vector search pipeline.
  * Validates the full chain: configuration → endpoint connectivity (text + image) →
- * cross-modal vector space consistency (1536d) → V1/V2 index health → per-user
- * content migration completeness.
+ * cross-modal vector space consistency (1536d) → index health → per-user
+ * content completeness.
  *
  * Strategy: Single Cohere Embed v4 model embeds both text and images into a
- * shared 1536d vector space, replacing the legacy dual-model approach
- * (OpenAI text-embedding-3-small + Azure Computer Vision).
+ * shared 1536d vector space.
  *
  * Usage:
  *   npx tsx scripts/search/diagnose-unified-vector-pipeline.ts                # Full diagnostic
@@ -18,7 +17,7 @@
 import 'dotenv/config';
 import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/search-documents';
 import { getFlag, hasFlag } from '../_shared/args.js';
-import { INDEX_NAME, INDEX_NAME_V2, getActiveIndexName } from '../_shared/azure.js';
+import { INDEX_NAME } from '../_shared/azure.js';
 
 const GREEN = '\x1b[32m';
 const RED = '\x1b[31m';
@@ -55,9 +54,6 @@ function check(name: string, status: 'pass' | 'warn' | 'fail', detail: string): 
 async function verifyConfig(): Promise<void> {
   console.log(`\n${BOLD}━━━ Configuration ━━━${RESET}`);
 
-  check('USE_UNIFIED_INDEX', process.env.USE_UNIFIED_INDEX === 'true' ? 'pass' : 'fail',
-    process.env.USE_UNIFIED_INDEX === 'true' ? 'true (V2 pipeline active)' : `${process.env.USE_UNIFIED_INDEX ?? 'not set'} — V2 pipeline NOT active`);
-
   check('COHERE_ENDPOINT', cohereEndpoint ? 'pass' : 'fail',
     cohereEndpoint ?? 'NOT SET');
 
@@ -69,8 +65,7 @@ async function verifyConfig(): Promise<void> {
       ? `explicit: ${process.env.COHERE_IMAGE_ENDPOINT}`
       : `auto-derived: ${cohereImageEndpoint}`);
 
-  check('Active index', getActiveIndexName() === INDEX_NAME_V2 ? 'pass' : 'warn',
-    getActiveIndexName());
+  check('Active index', 'pass', INDEX_NAME);
 }
 
 async function verifyEndpoints(): Promise<void> {
@@ -151,21 +146,17 @@ async function verifyIndexes(): Promise<void> {
 
   const indexClient = new SearchIndexClient(searchEndpoint, new AzureKeyCredential(searchKey));
 
-  for (const name of [INDEX_NAME, INDEX_NAME_V2]) {
-    try {
-      const idx = await indexClient.getIndex(name);
-      const vectorFields = idx.fields.filter((f: any) => f.type?.includes('Single'));
-      const sc = new SearchClient(searchEndpoint, name, new AzureKeyCredential(searchKey));
-      const r = await sc.search('*', { top: 0, includeTotalCount: true });
-      const isV2 = name === INDEX_NAME_V2;
-      const label = isV2 ? 'V2 index' : 'V1 index';
+  try {
+    const idx = await indexClient.getIndex(INDEX_NAME);
+    const vectorFields = idx.fields.filter((f: any) => f.type?.includes('Single'));
+    const sc = new SearchClient(searchEndpoint, INDEX_NAME, new AzureKeyCredential(searchKey));
+    const r = await sc.search('*', { top: 0, includeTotalCount: true });
 
-      check(label, 'pass',
-        `${name} | ${idx.fields.length} fields | vectors: ${vectorFields.map((f: any) => f.name + '(' + f.vectorSearchDimensions + 'd)').join(', ')} | ${r.count} docs`);
-    } catch (e: any) {
-      check(name === INDEX_NAME_V2 ? 'V2 index' : 'V1 index', name === INDEX_NAME_V2 ? 'fail' : 'warn',
-        `${name}: ${e.message?.slice(0, 80)}`);
-    }
+    check('Search index', 'pass',
+      `${INDEX_NAME} | ${idx.fields.length} fields | vectors: ${vectorFields.map((f: any) => f.name + '(' + f.vectorSearchDimensions + 'd)').join(', ')} | ${r.count} docs`);
+  } catch (e: any) {
+    check('Search index', 'fail',
+      `${INDEX_NAME}: ${e.message?.slice(0, 80)}`);
   }
 }
 
@@ -175,14 +166,14 @@ async function verifyUserContent(): Promise<void> {
 
   console.log(`\n${BOLD}━━━ User Content (${userId.slice(0, 8)}...) ━━━${RESET}`);
 
-  const v2 = new SearchClient(searchEndpoint, INDEX_NAME_V2, new AzureKeyCredential(searchKey));
+  const v2 = new SearchClient(searchEndpoint, INDEX_NAME, new AzureKeyCredential(searchKey));
 
   // Counts
   const textDocs = await v2.search('*', { top: 0, includeTotalCount: true, filter: `userId eq '${userId}' and isImage eq false` });
   const imgDocs = await v2.search('*', { top: 0, includeTotalCount: true, filter: `userId eq '${userId}' and isImage eq true` });
   const total = (textDocs.count || 0) + (imgDocs.count || 0);
 
-  check('User docs in V2', total > 0 ? 'pass' : 'warn',
+  check('User docs in index', total > 0 ? 'pass' : 'warn',
     `${total} total (${textDocs.count} text chunks, ${imgDocs.count} images)`);
 
   // Model distribution
@@ -243,10 +234,10 @@ async function printSummary(): Promise<void> {
   console.log(`  ${GREEN}✓ ${passes} passed${RESET}  ${warns > 0 ? `${YELLOW}⚠ ${warns} warnings${RESET}  ` : ''}${fails > 0 ? `${RED}✗ ${fails} failed${RESET}` : ''}`);
 
   if (fails === 0) {
-    console.log(`\n  ${GREEN}${BOLD}V2 Stabilization: HEALTHY${RESET}`);
+    console.log(`\n  ${GREEN}${BOLD}Vector Pipeline: HEALTHY${RESET}`);
     console.log(`  ${DIM}Unified vector space operational — text and images in same 1536d Cohere Embed v4 space${RESET}`);
   } else {
-    console.log(`\n  ${RED}${BOLD}V2 Stabilization: ISSUES DETECTED${RESET}`);
+    console.log(`\n  ${RED}${BOLD}Vector Pipeline: ISSUES DETECTED${RESET}`);
     console.log(`  ${DIM}Review failed checks above${RESET}`);
   }
 
@@ -254,7 +245,7 @@ async function printSummary(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(`${BOLD}${CYAN}RAG Agent Stabilization — V2 Pipeline Diagnostic${RESET}`);
+  console.log(`${BOLD}${CYAN}Vector Pipeline Diagnostic${RESET}`);
   console.log(`${DIM}Verifying unified Cohere Embed v4 vector space${RESET}`);
 
   await verifyConfig();

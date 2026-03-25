@@ -87,8 +87,6 @@ export interface ImageIndexParams {
   caption?: string;
   /** File MIME type for AI Search field population */
   mimeType?: string;
-  /** Text embedding (1536d) of the caption for contentVector search path */
-  contentVector?: number[];
   /** File size in bytes for filtering */
   sizeBytes?: number;
   /** ISO 8601 timestamp of original file modification date */

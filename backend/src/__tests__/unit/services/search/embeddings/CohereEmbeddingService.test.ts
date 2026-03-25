@@ -6,7 +6,6 @@ vi.mock('@/infrastructure/config/environment', () => ({
   env: {
     COHERE_ENDPOINT: 'https://test-cohere.eastus.models.ai.azure.com',
     COHERE_API_KEY: 'test-api-key',
-    USE_UNIFIED_INDEX: true,
   },
 }));
 
@@ -48,14 +47,22 @@ import { createRedisClient } from '@/infrastructure/redis/redis';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Produce a valid Cohere /v2/embed response for N texts. */
+/**
+ * Produce a valid Azure OpenAI-compatible embedding response for N texts.
+ * The service inlines the Azure response transformation (callCohereApi line 476),
+ * so mocks must use the Azure format: { data: [{ embedding, index }], usage }.
+ */
 function makeCohereResponse(count: number, tokenCount = 5) {
   return {
-    id: 'test-response-id',
-    embeddings: {
-      float: Array.from({ length: count }, () => new Array(1536).fill(0.1)),
+    data: Array.from({ length: count }, (_, i) => ({
+      embedding: new Array(1536).fill(0.1),
+      index: i,
+    })),
+    model: 'embed-v-4-0',
+    usage: {
+      prompt_tokens: tokenCount,
+      total_tokens: tokenCount,
     },
-    meta: { billed_units: { input_tokens: tokenCount } },
   };
 }
 
@@ -127,7 +134,7 @@ describe('CohereEmbeddingService', () => {
   // -------------------------------------------------------------------------
 
   describe('embedText', () => {
-    it('sends correct request body with search_document input type', async () => {
+    it('sends correct request body to Azure OpenAI-compatible text embedding endpoint', async () => {
       const fetchSpy = vi
         .spyOn(global, 'fetch')
         .mockResolvedValueOnce(makeOkResponse(makeCohereResponse(1)));
@@ -141,15 +148,18 @@ describe('CohereEmbeddingService', () => {
 
       expect(fetchSpy).toHaveBeenCalledOnce();
       const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-      expect(url).toContain('/v2/embed');
+      // Azure OpenAI-compatible text endpoint (not the legacy /v2/embed Cohere endpoint)
+      expect(url).toContain('/openai/deployments/');
+      expect(url).toContain('/embeddings');
       expect(init.method).toBe('POST');
 
+      // Azure text endpoint uses { input: [...], model } — no input_type or texts fields
       const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
-      expect(parsed.input_type).toBe('search_document');
-      expect(parsed.texts).toEqual(['hello world']);
+      expect(parsed.input).toEqual(['hello world']);
+      expect(parsed.model).toBe('embed-v-4-0');
     });
 
-    it('sends correct request body with search_query input type', async () => {
+    it('sends correct request body for search_query input type (same body structure)', async () => {
       const fetchSpy = vi
         .spyOn(global, 'fetch')
         .mockResolvedValueOnce(makeOkResponse(makeCohereResponse(1)));
@@ -159,7 +169,8 @@ describe('CohereEmbeddingService', () => {
 
       const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
       const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
-      expect(parsed.input_type).toBe('search_query');
+      // Azure text endpoint always uses { input: [...] } — inputType is not part of the request body
+      expect(parsed.input).toEqual(['my query']);
     });
 
     it('returns cached result when cache hits', async () => {
@@ -211,8 +222,9 @@ describe('CohereEmbeddingService', () => {
 
       const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
       const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
-      const images = parsed.images as string[];
-      expect(images[0]).toBe(`data:image/jpeg;base64,${rawBase64}`);
+      // Azure image endpoint uses { input: [{ image: '...' }] }
+      const inputItems = parsed.input as Array<{ image: string }>;
+      expect(inputItems[0]?.image).toBe(`data:image/jpeg;base64,${rawBase64}`);
     });
 
     it('preserves existing data URI prefix', async () => {
@@ -226,10 +238,10 @@ describe('CohereEmbeddingService', () => {
 
       const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
       const parsed = JSON.parse(init.body as string) as Record<string, unknown>;
-      const images = parsed.images as string[];
+      const inputItems = parsed.input as Array<{ image: string }>;
       // Must not double-prefix.
-      expect(images[0]).toBe(withPrefix);
-      expect(images[0]).not.toContain('data:image/jpeg;base64,data:image/png');
+      expect(inputItems[0]?.image).toBe(withPrefix);
+      expect(inputItems[0]?.image).not.toContain('data:image/jpeg;base64,data:image/png');
     });
 
     it('returns correct result shape', async () => {

@@ -140,11 +140,11 @@ param speechKey string
 param graphWebhookBaseUrl string = ''
 
 @description('Endpoint URL of the Cohere embedding service.')
-param cohereEndpoint string = ''
+param cohereEndpoint string
 
 @description('Primary access key for the Cohere embedding service.')
 @secure()
-param cohereApiKey string = ''
+param cohereApiKey string
 
 // ============================================================
 // COMPUTED VALUES
@@ -417,7 +417,7 @@ resource secretGraphWebhookBaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01
   }
 }
 
-resource secretCohereEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereEndpoint)) {
+resource secretCohereEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'COHERE-ENDPOINT'
   properties: {
@@ -425,7 +425,7 @@ resource secretCohereEndpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = i
   }
 }
 
-resource secretCohereApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(cohereApiKey)) {
+resource secretCohereApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'COHERE-API-KEY'
   properties: {
@@ -437,8 +437,8 @@ resource secretCohereApiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if 
 // OUTPUTS
 // ============================================================
 
-@description('Name of the Cohere endpoint secret (empty string when not deployed).')
-output cohereEndpointSecretName string = !empty(cohereEndpoint) ? secretCohereEndpoint.name : ''
+@description('Name of the Cohere endpoint secret.')
+output cohereEndpointSecretName string = secretCohereEndpoint.name
 
-@description('Name of the Cohere API key secret (empty string when not deployed).')
-output cohereApiKeySecretName string = !empty(cohereApiKey) ? secretCohereApiKey.name : ''
+@description('Name of the Cohere API key secret.')
+output cohereApiKeySecretName string = secretCohereApiKey.name

@@ -24,7 +24,6 @@ import type { ExtractiveSearchAnswer, SemanticSearchFullResult } from '@/service
 // ---------------------------------------------------------------------------
 
 const mockEnv = vi.hoisted(() => ({
-  USE_UNIFIED_INDEX: true as boolean,
   USE_QUERY_TIME_VECTORIZATION: false as boolean,
   AZURE_SEARCH_ENDPOINT: 'https://test.search.windows.net',
   AZURE_SEARCH_KEY: 'test-key',
@@ -150,7 +149,6 @@ describe('VectorSearchService — Extractive Answers & Captions (PRD-203)', () =
     // Reset singleton so each test gets a fresh instance
     (VectorSearchService as unknown as { instance: undefined }).instance = undefined;
 
-    mockEnv.USE_UNIFIED_INDEX = true;
     mockEnv.USE_QUERY_TIME_VECTORIZATION = false;
 
     mockIndexClient = createMockIndexClient();

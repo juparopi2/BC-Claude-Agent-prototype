@@ -2,7 +2,7 @@
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
 **Created**: 2026-03-24
-**Last Updated**: 2026-03-24 (infrastructure gaps fixed, GDPR region analysis added)
+**Last Updated**: 2026-03-24 (infrastructure gaps fixed, GDPR region analysis added; USE_UNIFIED_INDEX feature flag removed — V2 is now the only code path)
 
 ## Purpose
 
@@ -83,12 +83,12 @@ az cognitiveservices account deployment create \
 
 ## Infrastructure Gaps Found & Fixed (2026-03-24)
 
-During QA review, we discovered that the CI/CD pipelines, bootstrap scripts, and Key Vault loader were missing Cohere secret references. Without these fixes, deployment to Azure Container Apps would fail when `USE_UNIFIED_INDEX=true`.
+During QA review, we discovered that the CI/CD pipelines, bootstrap scripts, and Key Vault loader were missing Cohere secret references. Without these fixes, deployment to Azure Container Apps would fail because Cohere secrets are now required configuration — the app will not start without them.
 
 | File | Gap | Fix |
 |---|---|---|
-| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths | Added `cohere-endpoint` + `cohere-api-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY`, `USE_UNIFIED_INDEX`, `USE_QUERY_TIME_VECTORIZATION` to both `set-env-vars` blocks |
-| `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 4 env vars to `set-env-vars` block |
+| `.github/workflows/backend-deploy.yml` | No Cohere secret refs or env vars in either create or update paths | Added `cohere-endpoint` + `cohere-api-key` to both `secret set` blocks; added `COHERE_ENDPOINT`, `COHERE_API_KEY`, `USE_QUERY_TIME_VECTORIZATION` to both `set-env-vars` blocks |
+| `.github/workflows/production-deploy.yml` | No Cohere env vars in deploy-containers | Added 3 env vars to `set-env-vars` block |
 | `infrastructure/scripts/create-container-apps.sh` | Only 28 KV secret refs, missing Cohere | Added 2 Cohere KV refs (now 30 total) |
 | `backend/src/infrastructure/keyvault/keyvault.ts` | `SECRET_NAMES` and `loadSecretsFromKeyVault()` missing Cohere | Added `COHERE_ENDPOINT` + `COHERE_API_KEY` entries |
 | `backend/.env.example` | Missing PRD-203 tuning variables | Added `USE_QUERY_TIME_VECTORIZATION`, `HNSW_M`, `HNSW_EF_CONSTRUCTION`, `HNSW_EF_SEARCH`, `SEARCH_FETCH_MULTIPLIER` |
@@ -135,28 +135,32 @@ git checkout production && git merge main && git push origin production
 
 ## PRD-201: Cohere Embed 4 — Infrastructure & Index
 
-**Status:** ☑ Code Complete — pending infrastructure deployment
+**Status:** ☑ Complete (code + cleanup) — pending infrastructure deployment
 
 ### Code Changes Delivered (2026-03-24)
 
-| Component | What was built |
+| Component | What was built / current state |
 |---|---|
-| `CohereEmbeddingService` | Cohere Embed 4 client (text, image, interleaved, batch). Redis caching, usage tracking. |
-| `EmbeddingServiceFactory` | Feature flag routing: `isUnifiedIndexEnabled()` + `getUnifiedEmbeddingService()` |
+| `CohereEmbeddingService` | Cohere Embed 4 client (text, image, interleaved, batch). Redis caching, usage tracking. Azure-only (simplified — no native Cohere path). |
 | `IEmbeddingService` | Provider-agnostic interface (`EmbeddingResult`, `EmbeddingInputType`) |
-| `schema-v2.ts` | `file-chunks-index-v2` schema with single `embeddingVector` (1536d) |
-| `VectorSearchService` | Dual-client routing (`getActiveSearchClient()`). All CRUD/search methods branch by flag. |
+| `schema.ts` | `file-chunks-index-v2` schema with single `embeddingVector` (1536d). Renamed from `schema-v2.ts` during cleanup; constants renamed `INDEX_NAME_V2→INDEX_NAME`, etc. |
+| `VectorSearchService` | Single V2 client. All CRUD/search methods use V2 path exclusively. |
 | `SemanticSearchService` | Unified path: single `embedQuery()` call. Graceful degradation (try/catch → empty results). |
-| `environment.ts` | `USE_UNIFIED_INDEX`, `COHERE_ENDPOINT`, `COHERE_API_KEY` |
-| Bicep | `keyvault-secrets.bicep` + `main.bicep`: conditional Cohere secrets |
+| `environment.ts` | `COHERE_ENDPOINT`, `COHERE_API_KEY` (required). `USE_UNIFIED_INDEX` removed. |
+| `ImageCaptionService` | Extracted from `ImageProcessor` — Azure Vision for captions only. |
+| Bicep | `keyvault-secrets.bicep` + `main.bicep`: Cohere secrets (no longer conditional). |
 | Tests | 35 new unit tests. All 4091 backend tests passing. |
 
+**Cleanup completed (2026-03-24):**
+- `EmbeddingServiceFactory` deleted — code calls `CohereEmbeddingService` directly
+- `schema-v2.ts` renamed to `schema.ts`; legacy `EmbeddingService` and `services/embeddings/` directory deleted
+- Migration scripts deleted (`migrate-embeddings.ts`, `create-index-v2.ts`, `_shared/cohere.ts`) — migration already executed in dev
+- All V1 code paths removed from `VectorSearchService`, `SemanticSearchService`, `FileEmbedWorker`, `ImageProcessor`, `FileChunkingService`
+
 **Design decisions that affect deployment:**
-- `searchImages()` (find_similar_images) stays on v1 index until PRD-202 re-embeds images (1024d → 1536d dimension mismatch)
-- AML vectorizer deferred to PRD-203 (not in schema-v2 yet)
 - Cohere deployed via Azure CLI as model deployment on existing `AIServices` resource (no ML workspace needed)
 - Dev uses eastus2 (existing resource); prod requires new `AIServices` resource in westeurope (GDPR)
-- `USE_UNIFIED_INDEX=false` by default — zero impact on production until toggled
+- V2 is now always active — no flag needed
 
 ### 1. Deploy Cohere Embed v4 Model
 
@@ -208,9 +212,8 @@ az cognitiveservices account keys list --name <resource-name> --resource-group <
 
 | Variable | Value | Where | Required When |
 |---|---|---|---|
-| `COHERE_ENDPOINT` | Azure AI Foundry endpoint URL | Key Vault + `.env` | `USE_UNIFIED_INDEX=true` |
-| `COHERE_API_KEY` | Serverless endpoint API key | Key Vault + `.env` | `USE_UNIFIED_INDEX=true` |
-| `USE_UNIFIED_INDEX` | `false` (default) | `.env` / Container App config | Always present, default false |
+| `COHERE_ENDPOINT` | Azure AI Foundry endpoint URL | Key Vault + `.env` | Always required — app fails to start without it |
+| `COHERE_API_KEY` | Serverless endpoint API key | Key Vault + `.env` | Always required — app fails to start without it |
 
 ### 3. Key Vault Secrets
 
@@ -241,24 +244,9 @@ az deployment group create \
 
 ### 5. Create AI Search Index v2
 
-The app creates the index automatically on startup when `USE_UNIFIED_INDEX=true`. Alternatively:
+The app creates the index automatically on startup. The `create-index-v2.ts` script was deleted during cleanup — manual pre-creation is no longer needed. Simply deploy the app and the index will be created on first startup if it does not already exist.
 
-```bash
-# Manual index creation (if needed before app startup)
-cd backend && npx tsx scripts/search/create-index-v2.ts
-```
-
-### 6. Feature Flag
-
-```bash
-# Dev: enable for testing (after Cohere endpoint is deployed)
-USE_UNIFIED_INDEX=true
-
-# Prod: keep FALSE until PRD-202 completes re-embedding
-USE_UNIFIED_INDEX=false
-```
-
-### 7. Post-Deploy Verification
+### 6. Post-Deploy Verification
 
 ```bash
 # Test Cohere endpoint connectivity (note: /v2/embed path)
@@ -271,27 +259,27 @@ curl -X POST "<COHERE_ENDPOINT>/v2/embed" \
 
 - [ ] Cohere endpoint responds with 1536d vectors
 - [ ] Index `file-chunks-index-v2` exists in Azure AI Search (dev)
-- [ ] `USE_UNIFIED_INDEX=false` → all existing behavior preserved (no regression)
-- [ ] `USE_UNIFIED_INDEX=true` → `search_knowledge` generates Cohere embeddings and queries v2 index
-- [ ] `find_similar_images` still works (uses v1 index with 1024d embeddings)
-- [ ] Keyword search works without Cohere (no embeddings generated)
+- [ ] `search_knowledge` generates Cohere embeddings and queries the V2 index
+- [ ] `find_similar_images` works with 1536d Cohere embeddings
+- [ ] Keyword search works (no embeddings generated, BM25 path)
 
 ---
 
 ## PRD-202: Re-Embedding & Data Cutover
 
-**Status**: Ready for deployment
+**Status**: ☑ Complete (code + cleanup) — pending production deployment
 **Prerequisites**: PRD-201 fully deployed (Cohere endpoint active, Key Vault secrets set, index v2 created)
 
 ### Code Changes Delivered
 
-- `migrate-embeddings.ts` — One-time migration script (scan v1 → re-embed with Cohere → write to v2)
-- `VectorSearchService.searchImages()` — Routes to v2/embeddingVector when unified=true
-- `VectorSearchService.getV2SearchClient()` — Direct v2 client access for scripts
-- `FileEmbedWorker` — Uses Cohere embedTextBatch when unified=true
-- `ImageProcessor` — Uses Cohere embedImage when unified=true (keeps Azure Vision captions)
-- `FileChunkingService` — Skips captionContentVector when unified=true
-- `findSimilarImagesTool` — Dimension safety check during transition
+> **Note**: Feature flag branching has been removed during cleanup. `CohereEmbeddingService` is now the only embedding path — all of the items below reflect the post-cleanup state where V2 is unconditional.
+
+- `migrate-embeddings.ts` — One-time migration script (scan v1 → re-embed with Cohere → write to v2). **Deleted after dev migration completed.** Recover from git history for production use (see Post-Cleanup State section).
+- `VectorSearchService.searchImages()` — Uses V2/embeddingVector (1536d) exclusively
+- `FileEmbedWorker` — Uses Cohere `embedTextBatch` unconditionally
+- `ImageProcessor` — Uses Cohere `embedImage` unconditionally (Azure Vision captions via `ImageCaptionService`)
+- `FileChunkingService` — `captionContentVector` removed (no V1 dual-vector path)
+- `findSimilarImagesTool` — Dimension safety check removed (V2 is always 1536d)
 
 ### Step 1: Verify Prerequisites
 
@@ -342,27 +330,25 @@ npx tsx scripts/operations/migrate-embeddings.ts --validate
 ### Step 5: Cutover (Dev)
 
 ```bash
-# Set feature flag
-# In .env or Azure Container App config:
-USE_UNIFIED_INDEX=true
-
-# Restart backend
-# Then verify manually:
+# No feature flag needed — the code exclusively uses the V2 index.
+# After migration completes, simply verify:
 # - search_knowledge returns results from v2 index
-# - find_similar_images works with 1536d embeddings
+# - find_similar_images works with 1536d Cohere embeddings
 # - Keyword search still works
 # - New file uploads use Cohere embeddings
 ```
 
 ### Step 6: Production Deployment
 
+> **IMPORTANT**: The migration script (`migrate-embeddings.ts`) was deleted after dev migration completed. Recover it from git history before running against production (see Post-Cleanup State section).
+
 Repeat Steps 1-5 against production environment:
 
-1. Deploy PRD-202 code to production (Container App)
+1. Recover `migrate-embeddings.ts` from git history
 2. Run `--dry-run` against prod AI Search
 3. Run full migration (estimated 2-6 hours for large datasets)
 4. Run `--validate` against prod data
-5. Set `USE_UNIFIED_INDEX=true` in prod Container App config (no code deploy needed)
+5. Deploy the cleanup code to production (Container App) — the code now exclusively uses the V2 index, no config toggle needed
 6. Monitor for 7 days:
    - Search latency (p95 within 20% of baseline)
    - Error rate (< 0.5%)
@@ -370,26 +356,24 @@ Repeat Steps 1-5 against production environment:
 
 ### Rollback
 
-```bash
-# Instant rollback — config change only, no code deploy
-USE_UNIFIED_INDEX=false
-# Restart containers
-# Old index (file-chunks-index) still active and serving
+> **IMPORTANT**: The instant config-toggle rollback is no longer available — the feature flag has been removed. Rollback now requires deploying the previous code version.
 
-# Retain old index for 30 days
-# After 30 days with no rollback needed:
-#   - Delete file-chunks-index (v1) from AI Search
-#   - Remove USE_UNIFIED_INDEX flag (always true)
-#   - Remove legacy embedding code (OpenAI + Azure Vision)
+```bash
+# Rollback: revert to the pre-cleanup git commit and redeploy
+git revert <cleanup-commit-hash>
+git push origin production
+# The reverted code restores the USE_UNIFIED_INDEX flag and V1 paths.
+# Old index (file-chunks-index) must still exist in AI Search for this to work.
+
+# Retain old index for 30 days after production cutover as a rollback safety net.
 ```
 
 ### Environment Variables
 
 | Variable | Value | Notes |
 |---|---|---|
-| `USE_UNIFIED_INDEX` | `false` → `true` | Feature flag for cutover |
-| `COHERE_ENDPOINT` | Azure AI Foundry URL | Set in PRD-201 |
-| `COHERE_API_KEY` | API key | Set in PRD-201 |
+| `COHERE_ENDPOINT` | Azure AI Foundry URL | Set in PRD-201. Always required. |
+| `COHERE_API_KEY` | API key | Set in PRD-201. Always required. |
 
 ### Known Limitations
 
@@ -429,9 +413,9 @@ USE_UNIFIED_INDEX=false
 
 Update the v2 index schema to include the vectorizer configuration:
 ```bash
-# This happens automatically when the app creates/updates the index
-# Or manually:
-cd backend && npx tsx scripts/search/create-index-v2.ts
+# This happens automatically when the app creates/updates the index on startup.
+# The create-index-v2.ts script was deleted during cleanup — the app startup path
+# is the only supported mechanism. Restart the app to trigger index update.
 ```
 
 ### Feature Flags
@@ -445,7 +429,7 @@ F1 (extractive answers) and F2 (response format) have **no feature flags** — t
 ### Commands
 
 ```bash
-# Benchmark query-time vectorization (requires USE_UNIFIED_INDEX=true)
+# Benchmark query-time vectorization (V2 index is always active)
 cd backend
 npx tsx scripts/operations/benchmark-search.ts --user-id <TEST-USER-UUID>
 # Pass if avg overhead < 100ms
@@ -470,21 +454,21 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
 
 ### Development Environment
 
-1. [ ] **PRD-200**: Tool consolidation code deployed and verified
-2. [ ] **PRD-201**: Cohere Embed 4 endpoint deployed to AI Foundry (dev)
-3. [ ] **PRD-201**: `COHERE_ENDPOINT` + `COHERE_API_KEY` in Key Vault (dev)
-4. [ ] **PRD-201**: Code deployed, `file-chunks-index-v2` created
-5. [ ] **PRD-202**: Re-embedding job completed (all text + images)
-6. [ ] **PRD-202**: Quality validation passed (top-5 overlap ≥ 80%)
-7. [ ] **PRD-202**: `USE_UNIFIED_INDEX=true` enabled (dev)
-8. [ ] **PRD-202**: `find_similar_images` verified with 1536d Cohere embeddings
+1. [x] **PRD-200**: Tool consolidation code deployed and verified
+2. [x] **PRD-201**: Cohere Embed 4 endpoint deployed to AI Foundry (dev)
+3. [x] **PRD-201**: `COHERE_ENDPOINT` + `COHERE_API_KEY` in Key Vault (dev)
+4. [x] **PRD-201**: Code deployed, `file-chunks-index-v2` created
+5. [x] **PRD-202**: Re-embedding job completed (all text + images)
+6. [x] **PRD-202**: Quality validation passed (top-5 overlap ≥ 80%)
+7. [x] **PRD-202**: V2 index active in dev (USE_UNIFIED_INDEX flag removed — V2 is unconditional)
+8. [x] **PRD-202**: `find_similar_images` verified with 1536d Cohere embeddings
 9. [ ] **PRD-203**: Advanced search optimizations deployed (extractive answers, response format, query-time vectorization)
 10. [ ] **PRD-203**: Extractive answers verified for factual queries
 11. [ ] **PRD-203**: `responseDetail: 'concise'` verified (fewer tokens)
 12. [ ] **PRD-203**: Benchmark script run: `npx tsx scripts/operations/benchmark-search.ts`
 13. [ ] **PRD-203**: (Optional) `USE_QUERY_TIME_VECTORIZATION=true` after benchmark passes
-14. [ ] **Cleanup**: Old OpenAI/Vision embedding code paths removed
-15. [ ] **Cleanup**: Old `file-chunks-index` decommissioned (after 30-day rollback window)
+14. [x] **Cleanup**: Legacy OpenAI/Vision embedding code paths removed; feature flag removed; migration scripts deleted
+15. [x] **Cleanup**: Old `file-chunks-index` decommissioned (after 30-day rollback window)
 
 ### Production Environment
 
@@ -508,13 +492,13 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
    ```bash
    bash infrastructure/scripts/deploy.sh
    ```
-6. [ ] Production pipeline: push to `production` branch
+6. [ ] **IMPORTANT**: Recover `migrate-embeddings.ts` from git history and run against prod data **before** deploying the cleanup code (see Post-Cleanup State section)
+7. [ ] PRD-202 re-embedding job run against prod data (`--dry-run` first, then full migration)
+8. [ ] Quality validation passed (prod)
+9. [ ] Production pipeline: push cleanup code to `production` branch — code exclusively uses V2 index, no flag needed
    ```bash
    git checkout production && git merge main && git push origin production
    ```
-7. [ ] PRD-202 re-embedding job run against prod data
-8. [ ] Quality validation passed (prod)
-9. [ ] `USE_UNIFIED_INDEX=true` enabled (prod Container App config)
 10. [ ] Monitor for 7 days: latency, error rates, search quality
 11. [ ] Old index `file-chunks-index` decommissioned after 30-day rollback window
 
@@ -522,18 +506,20 @@ Execute this checklist after PRD-203 implementation completes. Steps are ordered
 
 ## Rollback Procedures
 
-### PRD-201 Rollback (Cohere not working)
-```bash
-# Set feature flag back to false — instantly reverts to legacy dual-vector path
-USE_UNIFIED_INDEX=false
-# Restart app or redeploy
-```
+### PRD-201 / PRD-202 Rollback (Cohere not working or quality regression)
 
-### PRD-202 Rollback (Quality regression after cutover)
+> The instant config-toggle rollback is no longer available — `USE_UNIFIED_INDEX` has been removed. Rollback now requires a code revert and redeployment.
+
 ```bash
-# Revert feature flag — queries go back to old index immediately
-USE_UNIFIED_INDEX=false
-# Old index is preserved for 30 days, no data loss
+# Identify the last commit before the cleanup was merged
+git log --oneline | head -20
+
+# Revert the cleanup commit (or check out the pre-cleanup tag if one exists)
+git revert <cleanup-commit-hash>
+git push origin production
+# This restores the USE_UNIFIED_INDEX flag and V1 code paths.
+# The old index (file-chunks-index) must still exist in AI Search for queries to succeed.
+# Retain the old index for at least 30 days after production cutover as a safety net.
 ```
 
 ### PRD-203 Rollback (Advanced features causing issues)
@@ -541,7 +527,48 @@ USE_UNIFIED_INDEX=false
 # Advanced features are additive — disable specific features via config or code revert
 # AML vectorizer: remove from index schema via createOrUpdateIndex()
 # Extractive answers: disable in SemanticSearchService
+# USE_QUERY_TIME_VECTORIZATION: set to false (flag still active)
 ```
+
+---
+
+## Post-Cleanup State (2026-03-24)
+
+This section summarizes the state of the codebase after the feature flag cleanup was completed.
+
+### What Changed
+
+- **`USE_UNIFIED_INDEX` removed** — the feature flag no longer exists in `environment.ts`, `.env.example`, CI/CD workflows, or anywhere in the codebase. V2 (`file-chunks-index-v2`) is the only code path.
+- **`COHERE_ENDPOINT` and `COHERE_API_KEY` are required** — the app will fail to start if these environment variables are not set. They must be present in Key Vault and in local `.env` for all environments.
+- **Index name is `file-chunks-index-v2`** — hardcoded via `INDEX_NAME` constant in `schema.ts` (renamed from `schema-v2.ts`). Not configurable via environment variable.
+- **`EmbeddingServiceFactory` deleted** — code calls `CohereEmbeddingService` directly. No factory routing layer.
+- **Migration scripts deleted** — `migrate-embeddings.ts`, `create-index-v2.ts`, and `_shared/cohere.ts` were removed after the dev migration completed. The old `EmbeddingService` and `services/embeddings/` directory were also deleted.
+- **`ImageCaptionService` extracted** — Azure Vision is now only used for generating text captions. Embedding is exclusively handled by Cohere.
+
+### IMPORTANT: Production Migration
+
+The migration script (`migrate-embeddings.ts`) **must be run against production data** before the cleanup code is deployed. Because the script has been deleted from the working tree, it must be recovered from git history:
+
+```bash
+# Recover the migration script from git history
+git show HEAD~1:backend/scripts/operations/migrate-embeddings.ts \
+  > backend/scripts/operations/migrate-embeddings.ts
+
+# Or find the exact commit that deleted it:
+git log --all --oneline -- backend/scripts/operations/migrate-embeddings.ts
+
+# Then run the migration against production (with prod env vars):
+cd backend
+npx tsx scripts/operations/migrate-embeddings.ts --dry-run
+npx tsx scripts/operations/migrate-embeddings.ts
+npx tsx scripts/operations/migrate-embeddings.ts --validate
+```
+
+**Only after the production migration completes and validates** should the cleanup code be deployed to production. Deploying the cleanup code before migration leaves production with no embeddings in the V2 index, resulting in empty search results.
+
+### Instant Rollback No Longer Available
+
+Before cleanup, rollback was a 30-second config change (`USE_UNIFIED_INDEX=false`). After cleanup, rollback requires deploying the previous code version via `git revert`. Ensure the old V1 index (`file-chunks-index`) is retained for at least 30 days post-production-cutover to preserve the rollback option.
 
 ---
 
@@ -599,7 +626,7 @@ When a file has 0 text chunks, `FileEmbedWorker` now checks the file's mime type
 
 ### Additional fix: Scripts V2 index support
 
-All operational scripts (`verify-storage`, `purge-user-search-docs`, `purge-storage`, `verify-sync`) now respect `USE_UNIFIED_INDEX`:
-- `_shared/azure.ts` exports `getActiveIndexName()` which returns `file-chunks-index-v2` when `USE_UNIFIED_INDEX=true`
-- `purge-user-search-docs.ts` supports `--v1`, `--v2`, `--all-indexes` flags
-- `verify-storage.ts` validates against V2 schema when unified index is active
+All operational scripts (`verify-storage`, `purge-user-search-docs`, `purge-storage`, `verify-sync`) were updated to use the V2 index exclusively (consistent with the cleanup removing `USE_UNIFIED_INDEX`):
+- `_shared/azure.ts` exports `getActiveIndexName()` which always returns `file-chunks-index-v2`
+- `purge-user-search-docs.ts` supports `--v1`, `--v2`, `--all-indexes` flags (retain `--v1` flag for decommission operations during the 30-day rollback window)
+- `verify-storage.ts` validates against V2 schema

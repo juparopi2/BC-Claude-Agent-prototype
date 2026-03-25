@@ -198,7 +198,6 @@ jobs:
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
-              USE_UNIFIED_INDEX=false \
               USE_QUERY_TIME_VECTORIZATION=false \
               COOKIE_DOMAIN=secretref:cookie-domain
 
@@ -317,7 +316,6 @@ jobs:
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
-              USE_UNIFIED_INDEX=false \
               USE_QUERY_TIME_VECTORIZATION=false \
               COOKIE_DOMAIN=secretref:cookie-domain
 

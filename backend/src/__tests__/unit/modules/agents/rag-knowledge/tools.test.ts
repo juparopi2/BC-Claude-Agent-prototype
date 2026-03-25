@@ -39,13 +39,10 @@ vi.mock('@/services/files/FileService', () => ({
   }),
 }));
 
-// Force v1 index path — these tests mock only the v1 SearchClient
+// Mock environment — these tests do not depend on any specific env values
 vi.mock('@/infrastructure/config/environment', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/infrastructure/config/environment')>();
-  return {
-    ...actual,
-    env: { ...actual.env, USE_UNIFIED_INDEX: false },
-  };
+  return actual;
 });
 
 import { searchKnowledgeTool, findSimilarImagesTool } from '@/modules/agents/rag-knowledge/tools';
@@ -590,10 +587,10 @@ describe('findSimilarImagesTool', () => {
       id: 'emb-1',
       fileId: FILE_1,
       userId: 'USER-1',
-      embedding: new Array(1024).fill(0.1),
-      dimensions: 1024,
-      model: 'azure-vision',
-      modelVersion: '2023-04-15',
+      embedding: new Array(1536).fill(0.1),
+      dimensions: 1536,
+      model: 'Cohere-embed-v4',
+      modelVersion: '2024-04-01',
     });
 
     mockSearchImages.mockResolvedValue([
@@ -642,10 +639,10 @@ describe('findSimilarImagesTool', () => {
       id: 'emb-1',
       fileId: FILE_1,
       userId: 'USER-1',
-      embedding: new Array(1024).fill(0.1),
-      dimensions: 1024,
-      model: 'azure-vision',
-      modelVersion: '2023-04-15',
+      embedding: new Array(1536).fill(0.1),
+      dimensions: 1536,
+      model: 'Cohere-embed-v4',
+      modelVersion: '2024-04-01',
     });
 
     // Return more results than maxResults
@@ -670,10 +667,10 @@ describe('findSimilarImagesTool', () => {
       id: 'emb-1',
       fileId: FILE_1,
       userId: 'USER-1',
-      embedding: new Array(1024).fill(0.1),
-      dimensions: 1024,
-      model: 'azure-vision',
-      modelVersion: '2023-04-15',
+      embedding: new Array(1536).fill(0.1),
+      dimensions: 1536,
+      model: 'Cohere-embed-v4',
+      modelVersion: '2024-04-01',
     });
 
     // Only the source image itself is returned

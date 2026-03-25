@@ -2,7 +2,7 @@
  * Unified Embedding Service Interface (PRD-201)
  *
  * Abstracts over different embedding providers (legacy OpenAI + Vision vs. Cohere Embed 4).
- * Used by SemanticSearchService and file processing pipeline when USE_UNIFIED_INDEX=true.
+ * Used by SemanticSearchService and file processing pipeline for Cohere Embed v4 embeddings.
  *
  * @module services/search/embeddings/types
  */

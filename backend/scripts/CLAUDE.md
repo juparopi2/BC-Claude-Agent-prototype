@@ -154,11 +154,29 @@ verify-storage.ts  →  fix-storage.ts  →  purge-storage.ts
 | Module | Exports |
 |--------|---------|
 | `prisma.ts` | `createPrisma()` — standalone Prisma client factory |
-| `azure.ts` | `createBlobContainerClient()`, `createSearchClient()`, `createSearchIndexClient()` |
+| `azure.ts` | `createBlobContainerClient()`, `createSearchClient()`, `createSearchIndexClient()`, `INDEX_NAME` |
 | `args.ts` | `hasFlag()`, `getFlag()`, `getNumericFlag()`, `getPositionalArg()` |
 | `pricing.ts` | `MODEL_PRICING`, `getPricing()`, `calculateCost()` |
 
 Scripts use `../_shared/` relative imports (no `@/` aliases — run outside main app tsconfig).
+
+---
+
+## search/ — Search Index Management
+
+| Script | Purpose | Key Flags |
+|--------|---------|-----------|
+| `diagnose-unified-vector-pipeline.ts` | End-to-end diagnostic: DB → chunks → embeddings → search index | `--userId`, `--verbose` |
+
+---
+
+## operations/ — One-Time & Maintenance Operations
+
+| Script | Purpose | Key Flags |
+|--------|---------|-----------|
+| `benchmark-search.ts` | Compare search latency and result quality across configurations | `--user-id <UUID>` |
+
+---
 
 ## Conventions
 

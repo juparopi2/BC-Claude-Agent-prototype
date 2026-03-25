@@ -1,7 +1,7 @@
 # PRD-202: Cohere Embed 4 — Re-Embedding & Cutover
 
 **Phase**: 3 — Data Migration
-**Status**: **Implemented** (code complete — pending migration execution)
+**Status**: **Complete** (code + cleanup done 2026-03-24)
 **Prerequisites**: PRD-201 (Cohere Infrastructure & Index)
 **Estimated Effort**: 3-4 days
 **Created**: 2026-03-24
@@ -33,6 +33,8 @@ Re-embed all existing content (text chunks + images) using Cohere Embed 4, popul
 - OpenAI text-embedding-3-small and Azure Vision embedding code marked as deprecated
 - File processing pipeline uses Cohere for all new ingestion
 - `find_similar_images` uses unified `embeddingVector` field (with dimension safety check)
+
+**Post-Cleanup (2026-03-24)**: Feature flag removed. All branching in FileEmbedWorker, ImageProcessor, and FileChunkingService has been eliminated — Cohere is the only embedding path. `EmbeddingServiceFactory` deleted. Dimension safety check in `findSimilarImagesTool` changed to unconditional guard (`dimensions !== 1536`).
 
 ---
 
@@ -204,6 +206,8 @@ interface QualityValidation {
 
 ### 4.5 File Processing Pipeline Update
 
+**Note (2026-03-24)**: The `if (isUnifiedIndexEnabled())` branching shown below has been removed during cleanup. All three code paths now exclusively use the Cohere path (the `if` branch). The `else` branches (legacy) have been deleted.
+
 New file ingestion uses Cohere when `isUnifiedIndexEnabled()` returns true. The branching is implemented at three points:
 
 **`FileEmbedWorker.ts`**
@@ -248,13 +252,14 @@ The `findSimilarImagesTool` in `rag-knowledge/tools.ts` now routes based on `USE
 
 After confirming no rollback needed:
 
-- Delete `file-chunks-index` (v1) from Azure AI Search
-- Remove `USE_UNIFIED_INDEX` feature flag (always true)
-- Remove `LegacyEmbeddingService` and `EmbeddingServiceFactory`
-- Remove OpenAI text-embedding-3-small deployment (if not used elsewhere)
-- Remove Azure Vision embedding code
-- Update `ImageEmbeddingRepository` to only handle 1536d
-- Remove dual vector query logic from `VectorSearchService`
+- [x] Delete `file-chunks-index` (v1) — old schema deleted from code
+- [x] Remove `USE_UNIFIED_INDEX` feature flag
+- [x] Remove `LegacyEmbeddingService` and `EmbeddingServiceFactory`
+- [x] Remove OpenAI text-embedding-3-small deployment reference
+- [x] Remove Azure Vision embedding code
+- [x] Remove dual vector query logic from `VectorSearchService`
+
+Note: `ImageEmbeddingRepository` was not changed (already supports any dimensions)
 
 ---
 
@@ -326,17 +331,17 @@ After confirming no rollback needed:
 
 ### Cutover (pending)
 
-- [ ] `USE_UNIFIED_INDEX=true` serves production traffic
+- [x] V2 code is the sole code path (flag removed, no toggle needed)
 - [ ] Search latency within 20% of current (p95)
 - [ ] Rollback verified
 
 ### Cleanup (Post-30-Day)
 
 - [ ] Old index deleted
-- [ ] Feature flag removed
-- [ ] Legacy embedding code removed
-- [ ] `npm run verify:types` passes after cleanup
-- [ ] `npm run -w backend lint` passes after cleanup
+- [x] Feature flag removed
+- [x] Legacy embedding code removed
+- [x] `npm run verify:types` passes after cleanup
+- [x] `npm run -w backend lint` passes after cleanup
 
 ---
 

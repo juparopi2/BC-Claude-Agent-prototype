@@ -51,7 +51,7 @@ The CI/CD pipeline (`production-deploy.yml`) only performs per-deploy operations
 | ACR registry auth | `setup-container-app-identity.sh` | No | `az containerapp registry set --identity system` |
 | AcrPull RBAC role | `setup-container-app-identity.sh` | No | Grants pull permission on ACR |
 | Key Vault access policy | `create-container-apps.sh` | No | `get, list` on secrets |
-| KV secret references (28) | `create-container-apps.sh` | No | Only update when adding/removing secrets |
+| KV secret references (30) | `create-container-apps.sh` | No | Only update when adding/removing secrets |
 | Docker image update | — | **Yes** | `az containerapp update --image` (core of deploy) |
 | DB migrations | — | **Yes** | `prisma migrate deploy` |
 | Health checks | — | **Yes** | Validates new revision before traffic shift |
@@ -84,7 +84,7 @@ az containerapp show --name $APP_NAME --resource-group $RG \
 | `identity` | `SystemAssigned` | `SystemAssigned` |
 | `targetPort` | `3001` | `3000` |
 | `external` | `true` | `true` |
-| Secrets | 28 KV references | 0 (none needed) |
+| Secrets | 30 KV references | 0 (none needed) |
 | AcrPull role | Assigned on ACR | Assigned on ACR |
 | Key Vault | `get, list` | `get, list` |
 

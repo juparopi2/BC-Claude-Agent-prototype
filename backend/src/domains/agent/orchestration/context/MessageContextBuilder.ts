@@ -546,10 +546,10 @@ export class MessageContextBuilder {
     try {
       const { getChatAttachmentService } = await import('@/domains/chat-attachments');
       const { isImageMimeType } = await import('@bc-agent/shared');
-      const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
+      const { getCohereEmbeddingService } = await import('@/services/search/embeddings/CohereEmbeddingService');
       const { getFileUploadService } = await import('@/services/files/FileUploadService');
 
-      const embeddingService = EmbeddingService.getInstance();
+      const cohereService = getCohereEmbeddingService();
       const attachmentService = getChatAttachmentService();
       const uploadService = getFileUploadService();
 
@@ -562,12 +562,8 @@ export class MessageContextBuilder {
           if (!record || !isImageMimeType(record.mime_type)) continue;
 
           const buffer = await uploadService.downloadFromBlob(record.blob_path);
-          const imageEmbedding = await embeddingService.generateImageEmbedding(
-            buffer,
-            userId,
-            attachmentId,
-            { skipTracking: true }
-          );
+          const base64Data = buffer.toString('base64');
+          const imageEmbedding = await cohereService.embedImage(base64Data, 'search_document');
           embeddings.push({
             attachmentId,
             name: record.name,

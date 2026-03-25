@@ -67,8 +67,8 @@ vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({ trackFileUpload: vi.fn() })),
 }));
 
-vi.mock('@/services/embeddings/EmbeddingService', () => ({
-  EmbeddingService: { getInstance: vi.fn(() => ({ generateImageQueryEmbedding: vi.fn() })) },
+vi.mock('@/services/search/embeddings/CohereEmbeddingService', () => ({
+  CohereEmbeddingService: vi.fn(() => ({ embedQuery: vi.fn() })),
 }));
 
 vi.mock('@/services/search/VectorSearchService', () => ({

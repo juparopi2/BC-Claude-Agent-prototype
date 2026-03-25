@@ -13,11 +13,10 @@ vi.mock('@/shared/utils/logger', () => ({
   createChildLogger: vi.fn(() => mockLogger),
 }));
 
-// Mock environment (default: Azure Vision NOT configured, unified index disabled)
+// Mock environment (default: Azure Vision NOT configured)
 const mockEnv = vi.hoisted(() => ({
   AZURE_VISION_ENDPOINT: '',
   AZURE_VISION_KEY: '',
-  USE_UNIFIED_INDEX: false as boolean,
 }));
 
 vi.mock('@/infrastructure/config/environment', () => ({
@@ -35,25 +34,24 @@ vi.mock('@/services/files/utils/ImageCompressor', () => ({
   })),
 }));
 
-// Mock EmbeddingService (legacy Azure Vision path)
-const mockGenerateImageEmbedding = vi.hoisted(() => vi.fn());
-const mockGenerateImageCaption = vi.hoisted(() => vi.fn());
+// Mock ImageCaptionService — caption generation via Azure Vision
+// ImageProcessor uses ImageCaptionService.getInstance().generateCaption()
+const mockGenerateCaption = vi.hoisted(() => vi.fn());
 
-vi.mock('@services/embeddings/EmbeddingService', () => ({
-  EmbeddingService: {
+vi.mock('@/services/files/processors/ImageCaptionService', () => ({
+  ImageCaptionService: {
     getInstance: vi.fn(() => ({
-      generateImageEmbedding: mockGenerateImageEmbedding,
-      generateImageCaption: mockGenerateImageCaption,
+      generateCaption: mockGenerateCaption,
     })),
   },
 }));
 
-// PRD-202: Mock EmbeddingServiceFactory for Cohere path
+// Mock CohereEmbeddingService for image embedding
+// ImageProcessor uses getCohereEmbeddingService().embedImage() (dynamic import)
 const mockCohereEmbedImage = vi.hoisted(() => vi.fn());
 
-vi.mock('@/services/search/embeddings/EmbeddingServiceFactory', () => ({
-  isUnifiedIndexEnabled: () => mockEnv.USE_UNIFIED_INDEX,
-  getUnifiedEmbeddingService: vi.fn(() => ({
+vi.mock('@/services/search/embeddings/CohereEmbeddingService', () => ({
+  getCohereEmbeddingService: vi.fn(() => ({
     embedImage: mockCohereEmbedImage,
   })),
 }));
@@ -79,10 +77,9 @@ describe('ImageProcessor', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Reset environment to defaults (Vision NOT configured, unified index disabled)
+    // Reset environment to defaults (Vision NOT configured)
     mockEnv.AZURE_VISION_ENDPOINT = '';
     mockEnv.AZURE_VISION_KEY = '';
-    mockEnv.USE_UNIFIED_INDEX = false;
     processor = new ImageProcessor();
   });
 
@@ -198,16 +195,21 @@ describe('ImageProcessor', () => {
       );
     });
 
-    it('should NOT call EmbeddingService when Vision not configured', async () => {
+    it('should NOT call CohereEmbeddingService when Vision not configured', async () => {
       const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
       await processor.extractText(buffer, 'photo.jpg');
-      expect(mockGenerateImageEmbedding).not.toHaveBeenCalled();
-      expect(mockGenerateImageCaption).not.toHaveBeenCalled();
+      expect(mockCohereEmbedImage).not.toHaveBeenCalled();
+      expect(mockGenerateCaption).not.toHaveBeenCalled();
     });
   });
 
   // ===========================================================================
-  // Suite 3: Azure Vision configured
+  // Suite 3: Azure Vision configured — Cohere Embed 4 embedding + Azure Vision caption
+  //
+  // ImageProcessor now always uses:
+  //   - CohereEmbeddingService.embedImage() for vector embeddings (1536d)
+  //   - ImageCaptionService.generateCaption() for text captions (BM25/keyword search)
+  // The legacy EmbeddingService.generateImageEmbedding() path has been removed.
   // ===========================================================================
 
   describe('With Azure Vision configured', () => {
@@ -221,15 +223,13 @@ describe('ImageProcessor', () => {
       mockEnv.AZURE_VISION_KEY = '';
     });
 
-    it('should call generateImageEmbedding when Vision is configured', async () => {
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+    it('should call CohereEmbeddingService.embedImage when Vision is configured', async () => {
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.1),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'A test image',
         confidence: 0.95,
         modelVersion: 'cv-model-2023',
@@ -238,8 +238,30 @@ describe('ImageProcessor', () => {
       const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
       await processor.extractText(buffer, 'photo.jpg');
 
-      expect(mockGenerateImageEmbedding).toHaveBeenCalledOnce();
-      expect(mockGenerateImageEmbedding).toHaveBeenCalledWith(
+      expect(mockCohereEmbedImage).toHaveBeenCalledOnce();
+      // Must pass base64 string + input type
+      const [base64Arg, inputTypeArg] = mockCohereEmbedImage.mock.calls[0] as [string, string];
+      expect(typeof base64Arg).toBe('string');
+      expect(inputTypeArg).toBe('search_document');
+    });
+
+    it('should call ImageCaptionService.generateCaption when Vision is configured', async () => {
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.1),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
+      });
+      mockGenerateCaption.mockResolvedValue({
+        caption: 'A test image',
+        confidence: 0.95,
+        modelVersion: 'cv-model-2023',
+      });
+
+      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+      await processor.extractText(buffer, 'photo.jpg');
+
+      expect(mockGenerateCaption).toHaveBeenCalledOnce();
+      expect(mockGenerateCaption).toHaveBeenCalledWith(
         buffer,
         expect.any(String), // placeholderUserId (random UUID)
         expect.any(String), // placeholderFileId (random UUID)
@@ -247,41 +269,13 @@ describe('ImageProcessor', () => {
       );
     });
 
-    it('should call generateImageCaption when Vision is configured', async () => {
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
-      });
-      mockGenerateImageCaption.mockResolvedValue({
-        caption: 'A test image',
-        confidence: 0.95,
-        modelVersion: 'cv-model-2023',
-      });
-
-      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
-      await processor.extractText(buffer, 'photo.jpg');
-
-      expect(mockGenerateImageCaption).toHaveBeenCalledOnce();
-      expect(mockGenerateImageCaption).toHaveBeenCalledWith(
-        buffer,
-        expect.any(String),
-        expect.any(String),
-        { skipTracking: true }
-      );
-    });
-
     it('should include caption in text when caption is generated', async () => {
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.1),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'A beautiful sunset over the ocean',
         confidence: 0.92,
         modelVersion: 'cv-model-2023',
@@ -295,14 +289,12 @@ describe('ImageProcessor', () => {
     });
 
     it('should set embeddingGenerated to true when embedding succeeds', async () => {
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.1),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'Test caption',
         confidence: 0.9,
         modelVersion: 'cv-model-2023',
@@ -314,37 +306,34 @@ describe('ImageProcessor', () => {
       expect((result.metadata as ImageMetadata).embeddingGenerated).toBe(true);
     });
 
-    it('should set embeddingDimensions from embedding length', async () => {
-      const embedding = new Array(1024).fill(0.1);
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding,
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+    it('should set embeddingDimensions from embedding length (1536 for Cohere)', () => {
+      // Cohere Embed v4 always produces 1536-dimensional embeddings
+      const cohereEmbedding = new Array(1536).fill(0.1);
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: cohereEmbedding,
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'Test caption',
         confidence: 0.9,
         modelVersion: 'cv-model-2023',
       });
 
       const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
-      const result = await processor.extractText(buffer, 'photo.jpg');
-
-      expect((result.metadata as ImageMetadata).embeddingDimensions).toBe(1024);
+      return processor.extractText(buffer, 'photo.jpg').then((result) => {
+        expect((result.metadata as ImageMetadata).embeddingDimensions).toBe(1536);
+      });
     });
 
     it('should populate imageEmbedding in the result', async () => {
-      const embedding = new Array(1024).fill(0.5);
-      mockGenerateImageEmbedding.mockResolvedValue({
+      const embedding = new Array(1536).fill(0.5);
+      mockCohereEmbedImage.mockResolvedValue({
         embedding,
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'Test caption',
         confidence: 0.9,
         modelVersion: 'cv-model-2023',
@@ -357,14 +346,12 @@ describe('ImageProcessor', () => {
     });
 
     it('should populate imageCaption and imageCaptionConfidence in the result', async () => {
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.1),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'A cat sitting on a mat',
         confidence: 0.88,
         modelVersion: 'cv-model-2023',
@@ -377,9 +364,9 @@ describe('ImageProcessor', () => {
       expect(result.imageCaptionConfidence).toBe(0.88);
     });
 
-    it('should handle embedding failure gracefully (still returns result)', async () => {
-      mockGenerateImageEmbedding.mockRejectedValue(new Error('Vision API unavailable'));
-      mockGenerateImageCaption.mockResolvedValue({
+    it('should handle Cohere embedding failure gracefully (still returns result)', async () => {
+      mockCohereEmbedImage.mockRejectedValue(new Error('Cohere API unavailable'));
+      mockGenerateCaption.mockResolvedValue({
         caption: 'A test image',
         confidence: 0.9,
         modelVersion: 'cv-model-2023',
@@ -394,21 +381,19 @@ describe('ImageProcessor', () => {
       expect(mockLogger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
           fileName: 'photo.jpg',
-          error: 'Vision API unavailable',
+          error: 'Cohere API unavailable',
         }),
-        'Failed to generate image embedding - continuing without it'
+        'Failed to generate Cohere image embedding - continuing without it'
       );
     });
 
     it('should handle caption failure gracefully (still returns result)', async () => {
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
+      mockCohereEmbedImage.mockResolvedValue({
+        embedding: new Array(1536).fill(0.1),
+        model: 'Cohere-embed-v4',
+        inputTokens: 1,
       });
-      mockGenerateImageCaption.mockRejectedValue(new Error('Caption API timeout'));
+      mockGenerateCaption.mockRejectedValue(new Error('Caption API timeout'));
 
       const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
       // Should NOT throw — caption failure is handled with Promise.allSettled
@@ -427,8 +412,8 @@ describe('ImageProcessor', () => {
 
     it('should fall back to format/size text when caption is absent', async () => {
       // Both embedding and caption fail
-      mockGenerateImageEmbedding.mockRejectedValue(new Error('Embedding failed'));
-      mockGenerateImageCaption.mockRejectedValue(new Error('Caption failed'));
+      mockCohereEmbedImage.mockRejectedValue(new Error('Embedding failed'));
+      mockGenerateCaption.mockRejectedValue(new Error('Caption failed'));
 
       const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
       const result = await processor.extractText(buffer, 'photo.jpg');
@@ -440,30 +425,28 @@ describe('ImageProcessor', () => {
   });
 
   // ===========================================================================
-  // Suite 3b: PRD-202 — Cohere Embed 4 path (USE_UNIFIED_INDEX=true)
+  // Suite 3b: Cohere Embed 4 path (image embedding via CohereEmbeddingService)
   // ===========================================================================
 
-  describe('PRD-202: Cohere Embed 4 path (USE_UNIFIED_INDEX=true)', () => {
+  describe('Cohere Embed 4 path (image embedding)', () => {
     beforeEach(() => {
-      // Enable both Azure Vision (required for caption) and unified index (Cohere embedding)
+      // Enable Azure Vision (required for caption) alongside Cohere embedding
       mockEnv.AZURE_VISION_ENDPOINT = 'https://test.cognitiveservices.azure.com';
       mockEnv.AZURE_VISION_KEY = 'test-key';
-      mockEnv.USE_UNIFIED_INDEX = true;
     });
 
     afterEach(() => {
       mockEnv.AZURE_VISION_ENDPOINT = '';
       mockEnv.AZURE_VISION_KEY = '';
-      mockEnv.USE_UNIFIED_INDEX = false;
     });
 
-    it('uses Cohere embedImage when unified index enabled', async () => {
+    it('uses Cohere embedImage when Azure Vision is configured', async () => {
       mockCohereEmbedImage.mockResolvedValue({
         embedding: new Array(1536).fill(0.4),
         model: 'Cohere-embed-v4',
         inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'A flowchart diagram',
         confidence: 0.88,
         modelVersion: 'cv-model-2023',
@@ -474,8 +457,6 @@ describe('ImageProcessor', () => {
 
       // Cohere embedImage must have been called
       expect(mockCohereEmbedImage).toHaveBeenCalledOnce();
-      // Legacy Azure Vision embedding must NOT have been called
-      expect(mockGenerateImageEmbedding).not.toHaveBeenCalled();
     });
 
     it('still generates Azure Vision caption when using Cohere embeddings', async () => {
@@ -484,7 +465,7 @@ describe('ImageProcessor', () => {
         model: 'Cohere-embed-v4',
         inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'A pie chart showing revenue breakdown',
         confidence: 0.91,
         modelVersion: 'cv-model-2023',
@@ -493,34 +474,10 @@ describe('ImageProcessor', () => {
       const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
       const result = await processor.extractText(buffer, 'pie-chart.jpg');
 
-      // Caption generation always goes through Azure Vision (for BM25/keyword search)
-      expect(mockGenerateImageCaption).toHaveBeenCalledOnce();
+      // Caption generation goes through ImageCaptionService (for BM25/keyword search)
+      expect(mockGenerateCaption).toHaveBeenCalledOnce();
       expect(result.imageCaption).toBe('A pie chart showing revenue breakdown');
       expect(result.text).toContain('A pie chart showing revenue breakdown');
-    });
-
-    it('uses legacy Azure Vision embedding when unified disabled (regression)', async () => {
-      mockEnv.USE_UNIFIED_INDEX = false;
-
-      mockGenerateImageEmbedding.mockResolvedValue({
-        embedding: new Array(1024).fill(0.1),
-        model: 'cv-model-2023',
-        imageSize: 6,
-        userId: 'USER-1',
-        createdAt: new Date(),
-      });
-      mockGenerateImageCaption.mockResolvedValue({
-        caption: 'Legacy caption',
-        confidence: 0.85,
-        modelVersion: 'cv-model-2023',
-      });
-
-      const buffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
-      await processor.extractText(buffer, 'legacy.jpg');
-
-      // When unified is disabled, Azure Vision embedding must be used
-      expect(mockGenerateImageEmbedding).toHaveBeenCalledOnce();
-      expect(mockCohereEmbedImage).not.toHaveBeenCalled();
     });
 
     it('passes base64 data to Cohere embedImage', async () => {
@@ -529,7 +486,7 @@ describe('ImageProcessor', () => {
         model: 'Cohere-embed-v4',
         inputTokens: 1,
       });
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'Test image',
         confidence: 0.9,
         modelVersion: 'cv-model-2023',
@@ -551,7 +508,7 @@ describe('ImageProcessor', () => {
 
     it('handles Cohere embedding failure gracefully', async () => {
       mockCohereEmbedImage.mockRejectedValue(new Error('Cohere API timeout'));
-      mockGenerateImageCaption.mockResolvedValue({
+      mockGenerateCaption.mockResolvedValue({
         caption: 'Still captioned',
         confidence: 0.8,
         modelVersion: 'cv-model-2023',

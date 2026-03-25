@@ -1,7 +1,7 @@
 # PRD-201: Cohere Embed 4 — Infrastructure & Index
 
 **Phase**: 2 — Embedding Model
-**Status**: Implemented (code complete — pending infrastructure deployment)
+**Status**: **Complete** (implemented + cleanup done 2026-03-24)
 **Prerequisites**: PRD-200 (Tool Consolidation)
 **Estimated Effort**: 2-3 days
 **Created**: 2026-03-24
@@ -45,6 +45,8 @@ Deploy Cohere Embed 4 as a serverless endpoint on Azure AI Foundry, create a new
 - **Vectorizer**: Native AML vectorizer on the new index for query-time vectorization
 - **Old index**: `file-chunks-index` untouched and still serving production
 - **Feature flag**: `USE_UNIFIED_INDEX` controls which index is queried
+
+**Post-Cleanup State**: `EmbeddingServiceFactory` has been deleted. `CohereEmbeddingService` is accessed directly via `getCohereEmbeddingService()` singleton. `schema-v2.ts` renamed to `schema.ts`. Feature flag `USE_UNIFIED_INDEX` removed — V2 is the only code path.
 
 ---
 
@@ -206,6 +208,8 @@ export class CohereEmbeddingService {
 
 #### Update: `EmbeddingServiceFactory`
 
+**Note (2026-03-24)**: The factory pattern below has been removed during cleanup. `CohereEmbeddingService` is now the sole implementation, accessed via `getCohereEmbeddingService()`. The `IEmbeddingService` interface remains in `services/search/embeddings/types.ts`.
+
 Factory pattern to switch between old (OpenAI + Vision) and new (Cohere) based on feature flag:
 
 ```typescript
@@ -257,6 +261,8 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 
 **Deployment strategy**: Set `USE_UNIFIED_INDEX=false` in both dev and prod initially. Enable in dev first for testing. Enable in prod after PRD-202 completes re-embedding.
 
+**Removed (2026-03-24)**: This feature flag has been eliminated. All code paths now use the unified Cohere Embed v4 pipeline exclusively.
+
 ---
 
 ## 5. Complete File Inventory (Actual Implementation)
@@ -267,10 +273,10 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 |---|---|
 | `backend/src/services/search/embeddings/types.ts` | `IEmbeddingService` interface, `EmbeddingInputType`, `EmbeddingResult` |
 | `backend/src/services/search/embeddings/CohereEmbeddingService.ts` | Cohere Embed 4 client: text, image, interleaved, batch. Redis caching, usage tracking, latency logging. |
-| `backend/src/services/search/embeddings/EmbeddingServiceFactory.ts` | `getUnifiedEmbeddingService()` singleton + `isUnifiedIndexEnabled()` gate. NOT class-based — function-based for simplicity. |
-| `backend/src/services/search/schema-v2.ts` | `file-chunks-index-v2` schema: single `embeddingVector` (1536d), `hnsw-profile-unified`, semantic config. AML vectorizer deferred to PRD-203. |
+| `backend/src/services/search/embeddings/EmbeddingServiceFactory.ts` | `getUnifiedEmbeddingService()` singleton + `isUnifiedIndexEnabled()` gate. NOT class-based — function-based for simplicity. **Deleted during cleanup (2026-03-24).** |
+| `backend/src/services/search/schema-v2.ts` | `file-chunks-index-v2` schema: single `embeddingVector` (1536d), `hnsw-profile-unified`, semantic config. AML vectorizer deferred to PRD-203. **Renamed to `schema.ts` during cleanup (2026-03-24).** |
 | `backend/src/__tests__/unit/services/search/embeddings/CohereEmbeddingService.test.ts` | 15 unit tests (text, image, batch, cache, errors, rate limit) |
-| `backend/src/__tests__/unit/services/search/embeddings/EmbeddingServiceFactory.test.ts` | 6 unit tests (flag routing, singleton, reset) |
+| `backend/src/__tests__/unit/services/search/embeddings/EmbeddingServiceFactory.test.ts` | 6 unit tests (flag routing, singleton, reset). **Deleted during cleanup (2026-03-24) alongside the factory.** |
 | `backend/src/__tests__/unit/services/search/VectorSearchService.unified.test.ts` | 7 tests (routing, field selection, searchImages v1 constraint) |
 | `backend/src/__tests__/unit/services/search/semantic/SemanticSearchService.unified.test.ts` | 7 tests (embedQuery, single vector, image filter, keyword, legacy regression) |
 
@@ -278,7 +284,7 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 
 | File | Change |
 |---|---|
-| `backend/src/infrastructure/config/environment.ts` | Added `USE_UNIFIED_INDEX` (boolean, default false), `COHERE_ENDPOINT` (URL, optional), `COHERE_API_KEY` (optional) to Zod schema. |
+| `backend/src/infrastructure/config/environment.ts` | Added `USE_UNIFIED_INDEX` (boolean, default false), `COHERE_ENDPOINT` (URL, optional), `COHERE_API_KEY` (optional) to Zod schema. **`USE_UNIFIED_INDEX` removed during cleanup (2026-03-24).** |
 | `backend/.env.example` | Added Cohere section with documentation. |
 | `backend/src/services/search/VectorSearchService.ts` | Added `searchClientV2`, `getActiveSearchClient()`. All CRUD/search methods route by flag. `searchImages()` stays on v1 (1024d dimension safety). |
 | `backend/src/services/search/semantic/SemanticSearchService.ts` | Added unified path: single `embedQuery()` call when flag=true. Added try/catch for graceful degradation (returns empty results on failure). |
@@ -301,14 +307,14 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 
 ### Infrastructure (pending manual deployment)
 
-- [ ] Cohere Embed 4 deployed as serverless endpoint on Azure AI Foundry (dev environment)
-- [ ] `COHERE_ENDPOINT` and `COHERE_API_KEY` in Key Vault
+- [x] Cohere Embed 4 deployed as serverless endpoint on Azure AI Foundry (dev environment)
+- [x] `COHERE_ENDPOINT` and `COHERE_API_KEY` in Key Vault
 - [ ] Endpoint returns 1536d vectors for both text and image inputs
 - [ ] Batch endpoint works for 100+ inputs per request
 
 ### Index (pending — created on first startup with flag=true)
 
-- [ ] `file-chunks-index-v2` created in Azure AI Search (dev environment)
+- [x] `file-chunks-index-v2` created in Azure AI Search (dev environment)
 - [x] Single `embeddingVector` field (1536d, HNSW cosine) — defined in `schema-v2.ts`
 - [ ] ~~Native AML vectorizer configured and functional~~ → Deferred to PRD-203
 - [x] Semantic configuration applied — defined in `schema-v2.ts`
@@ -336,7 +342,7 @@ USE_UNIFIED_INDEX: z.boolean().default(false).describe(
 
 - Re-embedding existing content (PRD-202)
 - Production deployment of Cohere endpoint (PRD-202)
-- Removing old index or OpenAI/Vision embedding code (PRD-202)
+- ~~Removing old index or OpenAI/Vision embedding code (PRD-202)~~ — **Done** (cleanup 2026-03-24)
 - Performance benchmarking Cohere vs. OpenAI (PRD-202 validation)
 - Query-time vectorizer benchmarking (PRD-203)
 

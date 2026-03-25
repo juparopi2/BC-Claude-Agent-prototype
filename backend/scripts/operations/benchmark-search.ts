@@ -1,26 +1,23 @@
 /**
- * PRD-203: Search Benchmark Script
+ * Search Benchmark Script
  *
  * Compares search latency and result quality between:
- *   - Application-side vectorization (current: Cohere API → vector → Azure AI Search)
- *   - Query-time vectorization (PRD-203: Azure AI Search native vectorizer)
+ *   - Application-side vectorization (Cohere API → vector → Azure AI Search)
+ *   - Query-time vectorization (Azure AI Search native vectorizer)
  *
  * Usage:
  *   npx tsx scripts/operations/benchmark-search.ts [--user-id <UUID>] [--threshold <ms>]
  *
  * Requires:
- *   - USE_UNIFIED_INDEX=true
  *   - COHERE_ENDPOINT and COHERE_API_KEY configured
- *   - file-chunks-index-v2 with vectorizer configured (for query-time path)
  *
  * Exit codes:
  *   0 — Query-time vectorization overhead < threshold (default: 100ms)
  *   1 — Overhead exceeds threshold or errors occurred
  */
 
-import { env } from '../../src/infrastructure/config/environment';
 import { VectorSearchService } from '../../src/services/search/VectorSearchService';
-import { getUnifiedEmbeddingService } from '../../src/services/search/embeddings/EmbeddingServiceFactory';
+import { getCohereEmbeddingService } from '../../src/services/search/embeddings/CohereEmbeddingService';
 import { createChildLogger } from '../../src/shared/utils/logger';
 
 const logger = createChildLogger({ service: 'BenchmarkSearch' });
@@ -51,7 +48,7 @@ async function benchmarkQuery(
   userId: string,
   vectorSearchService: VectorSearchService,
 ): Promise<BenchmarkResult> {
-  const embeddingService = getUnifiedEmbeddingService();
+  const embeddingService = getCohereEmbeddingService();
   if (!embeddingService) {
     throw new Error('Cohere embedding service not available');
   }
@@ -109,12 +106,7 @@ async function main() {
   const userId = userIdIdx >= 0 ? args[userIdIdx + 1] : 'BENCHMARK-USER';
   const threshold = thresholdIdx >= 0 ? parseInt(args[thresholdIdx + 1], 10) : 100;
 
-  if (!env.USE_UNIFIED_INDEX) {
-    console.error('ERROR: USE_UNIFIED_INDEX must be true to run this benchmark');
-    process.exit(1);
-  }
-
-  console.log('=== PRD-203: Search Benchmark ===');
+  console.log('=== Search Benchmark ===');
   console.log(`User ID: ${userId}`);
   console.log(`Overhead threshold: ${threshold}ms`);
   console.log(`Queries: ${TEST_QUERIES.length}`);

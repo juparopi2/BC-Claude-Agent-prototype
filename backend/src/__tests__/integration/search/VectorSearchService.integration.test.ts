@@ -80,8 +80,8 @@ describe.skipIf(!runIntegrationTests)('VectorSearchService Integration', () => {
     describe('Image Search', () => {
         // UPPERCASE per CLAUDE.md Section 12 - service normalizes all IDs
         const testImageFileId = 'INTEGRATION-TEST-IMAGE-FILE';
-        // PRD-201: V2 (Cohere Embed v4) uses 1536d unified space; V1 uses 1024d Azure Vision
-        const imageDims = env.USE_UNIFIED_INDEX ? 1536 : 1024;
+        // All image embeddings use Cohere Embed v4 — 1536d unified space
+        const imageDims = 1536;
 
         afterAll(async () => {
             // Cleanup image documents (documentId format: img_FILEID)

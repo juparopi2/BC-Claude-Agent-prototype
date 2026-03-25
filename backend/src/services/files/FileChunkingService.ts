@@ -278,60 +278,6 @@ export class FileChunkingService {
         dbRecordFound: !!fileMeta,
       }, '[TRACE] indexImageEmbedding - mimeType from DB re-read (image path)');
 
-      // Generate text embedding from caption for contentVector search path.
-      // PRD-202: Skip when unified index is enabled — the unified embeddingVector field
-      // replaces both contentVector and imageVector, so a separate captionContentVector
-      // is not needed and would reference a different vector space (legacy OpenAI).
-      let captionContentVector: number[] | undefined;
-      const { isUnifiedIndexEnabled } = await import(
-        '@/services/search/embeddings/EmbeddingServiceFactory'
-      );
-      if (!isUnifiedIndexEnabled() && embeddingRecord.caption) {
-        // Legacy: generate captionContentVector for contentVector field
-        // (unified index uses single embeddingVector — no separate captionContentVector needed)
-        try {
-          const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
-          const embeddingService = EmbeddingService.getInstance();
-          logger.info(
-            { fileId, userId, captionLength: embeddingRecord.caption.length },
-            'Generating contentVector from caption'
-          );
-          const captionEmbedding = await embeddingService.generateTextEmbedding(
-            embeddingRecord.caption, userId, fileId
-          );
-          captionContentVector = captionEmbedding.embedding;
-          logger.info(
-            { fileId, userId, dimensions: captionContentVector.length },
-            'contentVector generated successfully from caption'
-          );
-        } catch (error) {
-          // Non-fatal: image still findable via imageVector and Semantic Ranker
-          const errorInfo = error instanceof Error
-            ? { message: error.message, name: error.name, stack: error.stack?.split('\n').slice(0, 3).join(' | ') }
-            : { value: String(error) };
-          logger.error(
-            {
-              error: errorInfo,
-              fileId,
-              userId,
-              captionLength: embeddingRecord.caption.length,
-              captionPreview: embeddingRecord.caption.substring(0, 80),
-            },
-            'FAILED to generate contentVector from caption - image missing from hybrid text search'
-          );
-        }
-      } else if (!isUnifiedIndexEnabled()) {
-        logger.warn(
-          { fileId, userId },
-          'No caption available for contentVector generation'
-        );
-      } else {
-        logger.debug(
-          { fileId, userId },
-          'Unified index enabled — skipping captionContentVector generation (embeddingVector covers both text and image)'
-        );
-      }
-
       // Index in Azure AI Search
       const { VectorSearchService } = await import('@services/search/VectorSearchService');
       const vectorSearchService = VectorSearchService.getInstance();
@@ -341,7 +287,6 @@ export class FileChunkingService {
         mimeTypePassedToVSS: fileMimeType,
         mimeTypePassedToVSSType: typeof fileMimeType,
         hasCaption: !!embeddingRecord.caption,
-        hasCaptionContentVector: !!captionContentVector,
       }, '[TRACE] indexImageEmbedding - about to call VectorSearchService.indexImageEmbedding');
 
       await vectorSearchService.indexImageEmbedding({
@@ -351,7 +296,6 @@ export class FileChunkingService {
         fileName,
         caption: embeddingRecord.caption ?? undefined,
         mimeType: fileMimeType,
-        contentVector: captionContentVector,
         fileModifiedAt,
         sizeBytes,
         siteId: imageSiteId,

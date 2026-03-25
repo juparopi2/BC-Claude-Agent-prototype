@@ -1,7 +1,7 @@
 # RAG Agent Stabilization — Master Plan
 
 **Project**: RAG Agent Tool Redesign & Embedding Unification
-**Status**: In Progress
+**Status**: Feature Flag Cleanup Complete
 **Created**: 2026-03-24
 **Last Updated**: 2026-03-24
 
@@ -9,11 +9,11 @@
 
 ## 1. Business Context
 
-The RAG Agent is MyWorkMate's knowledge retrieval specialist. It searches user files using Azure AI Search with dual vector fields (text-embedding-3-small 1536d + Azure Vision 1024d). The current tool design has three problems:
+The RAG Agent is MyWorkMate's knowledge retrieval specialist. It searches user files using Azure AI Search with a unified vector field (Cohere Embed v4, 1536d). The original dual-vector architecture (text-embedding-3-small + Azure Vision) has been replaced. The current tool design has three problems:
 
 1. **Ambiguity**: 3 tools with overlapping scopes. The LLM frequently picks the wrong one (e.g., `search_knowledge` vs `visual_image_search` for "find photos of red cars").
 2. **Rigidity**: Hardcoded thresholds, result limits, and search modes prevent the LLM from adapting search strategy to query intent.
-3. **Dual-index complexity**: Two separate vector fields with different dimensions, models, and weights add architectural overhead with no user-facing benefit.
+3. ~~**Dual-index complexity**~~: Eliminated — single unified `embeddingVector` field (1536d, Cohere Embed v4).
 
 This initiative addresses all three through tool consolidation, power tool design, and embedding unification via Cohere Embed 4.
 
@@ -78,11 +78,11 @@ This initiative addresses all three through tool consolidation, power tool desig
 | PRD | Title | Phase | Status | Est. Effort |
 |---|---|---|---|---|
 | [PRD-200](./PRD-200-tool-consolidation-power-search.md) | Tool Consolidation & Power Search Design | 1 — Tool Redesign | **Implemented** (code) | 3-4 days |
-| [PRD-201](./PRD-201-cohere-embed4-infrastructure.md) | Cohere Embed 4 — Infrastructure & Index | 2 — Embedding Model | **Implemented** (code) | 2-3 days |
-| [PRD-202](./PRD-202-cohere-embed4-data-cutover.md) | Cohere Embed 4 — Re-Embedding & Cutover | 3 — Data Migration | **Implemented** (code) | 3-4 days |
-| [PRD-203](./PRD-203-advanced-search-optimization.md) | Advanced Search Capabilities | 4 — Optimization | **Implemented** (code) | 2-3 days |
+| [PRD-201](./PRD-201-cohere-embed4-infrastructure.md) | Cohere Embed 4 — Infrastructure & Index | 2 — Embedding Model | **Complete** (cleanup done) | 2-3 days |
+| [PRD-202](./PRD-202-cohere-embed4-data-cutover.md) | Cohere Embed 4 — Re-Embedding & Cutover | 3 — Data Migration | **Complete** (cleanup done) | 3-4 days |
+| [PRD-203](./PRD-203-advanced-search-optimization.md) | Advanced Search Capabilities | 4 — Optimization | **Implemented** (code) — PRD-203 flag remains | 2-3 days |
 | — | [Deployment Runbook](./01-DEPLOYMENT-RUNBOOK.md) | All | **Active** | — |
-| — | [Cleanup Checklist](./03-CLEANUP-CHECKLIST.md) | Post-cutover | Reference | — |
+| — | [Cleanup Checklist](./03-CLEANUP-CHECKLIST.md) | Post-cutover | **Steps 1-8 Complete** | — |
 
 ### Dependency Chain
 
@@ -116,6 +116,8 @@ PRD-203 (Advanced Search)
 ### Key Constraint
 
 **PRD-200 is self-contained.** It delivers immediate value (better tool design, error passthrough, LLM-controlled parameters) without any infrastructure changes. PRD-201+ are independent initiatives that build on top.
+
+**Update (2026-03-24)**: PRD-200 through PRD-202 are complete. The feature flag `USE_UNIFIED_INDEX` has been removed. V2 (Cohere Embed v4) is now the sole code path. PRD-203's `USE_QUERY_TIME_VECTORIZATION` remains for ongoing validation.
 
 ---
 

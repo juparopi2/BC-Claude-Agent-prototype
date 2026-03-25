@@ -112,20 +112,11 @@ export class FileEmbedWorker {
       // 3. Generate embeddings
       const texts = chunks.map((c) => c.chunk_text);
 
-      // PRD-202: Use Cohere Embed 4 when unified index is enabled
-      const { isUnifiedIndexEnabled, getUnifiedEmbeddingService } = await import(
-        '@/services/search/embeddings/EmbeddingServiceFactory'
+      const { getCohereEmbeddingService } = await import(
+        '@/services/search/embeddings/CohereEmbeddingService'
       );
-
-      let embeddings: Array<{ embedding: number[]; model: string }>;
-      if (isUnifiedIndexEnabled()) {
-        const cohereService = getUnifiedEmbeddingService()!;
-        embeddings = await cohereService.embedTextBatch(texts, 'search_document');
-      } else {
-        const { EmbeddingService } = await import('@/services/embeddings/EmbeddingService');
-        const embeddingService = EmbeddingService.getInstance();
-        embeddings = await embeddingService.generateTextEmbeddingsBatch(texts, userId, fileId);
-      }
+      const cohereService = getCohereEmbeddingService();
+      const embeddings = await cohereService.embedTextBatch(texts, 'search_document');
 
       if (embeddings.length !== chunks.length) {
         throw new Error(

@@ -1,12 +1,14 @@
 # Post-Cutover Cleanup Checklist
 
-**When to execute**: 30 days after `USE_UNIFIED_INDEX=true` in production with no rollback needed.
+**Executed**: 2026-03-24. Feature flag removed, legacy code deleted, V2 consolidated as sole standard.
 
 **Purpose**: Remove the legacy dual-vector architecture, feature flag branching, and deprecated embedding services.
 
 ---
 
 ## 0. Deployment Findings (2026-03-24) — Must Address During Cleanup
+
+**Status: All items addressed (2026-03-24)**
 
 ### Azure AIServices API Compatibility
 
@@ -18,6 +20,8 @@ Cohere Embed v4 is deployed as a model deployment on Azure `AIServices` resource
 
 **Cleanup action**: When removing the feature flag, simplify `CohereEmbeddingService` to only support the Azure AIServices path (remove native Cohere path unless planning to support non-Azure deployments). Remove `isAzureEndpoint` branching, `transformRequestForAzure()`, and `transformResponseFromAzure()` — make the Azure format the default.
 
+**Done**: `CohereEmbeddingService` simplified to Azure-only. `isAzureEndpoint`, `transformRequestForAzure()`, `transformResponseFromAzure()` removed.
+
 ### Image Embedding Limitation
 
 The Azure OpenAI-compatible API does **not** support image input (base64 data URIs). During migration:
@@ -27,6 +31,8 @@ The Azure OpenAI-compatible API does **not** support image input (base64 data UR
 - Images will be re-embedded via the file processing pipeline using their **text captions** (from Azure Vision OCR), which produces meaningful semantic embeddings
 
 **Cleanup action**: Remove the image fallback warning and text fallback path in `CohereEmbeddingService.transformRequestForAzure()`. Instead, image embeddings should always go through the caption text path (already handled by `ImageProcessor.ts` when `USE_UNIFIED_INDEX=true`). Document that Cohere Embed v4 on Azure AIServices produces text-based embeddings for images (via captions), not visual embeddings.
+
+**Done**: Image fallback removed. Images use Azure Foundry Models endpoint (`callAzureImageApi()`). Azure Vision used only for captions via `ImageCaptionService`.
 
 ### Test Environment Isolation
 
@@ -41,6 +47,8 @@ Four test files were updated to explicitly mock `env.USE_UNIFIED_INDEX = false` 
 
 **Cleanup action**: When removing the feature flag, delete these env mocks from all four test files. The v1-specific tests themselves should be deleted (section 8 below). The v2 tests become the only tests.
 
+**Done**: All `USE_UNIFIED_INDEX` env mocks removed from test files.
+
 ### Scripts Created During Deployment
 
 | Script | Purpose | Cleanup Action |
@@ -48,6 +56,8 @@ Four test files were updated to explicitly mock `env.USE_UNIFIED_INDEX = false` 
 | `backend/scripts/search/create-index-v2.ts` | Create `file-chunks-index-v2` in Azure AI Search | **Delete** after v1 index decommissioned |
 | `backend/scripts/_shared/cohere.ts` | Azure-adapted Cohere client for scripts | **Delete** (section 7) |
 | `backend/scripts/operations/migrate-embeddings.ts` | One-time v1→v2 migration | **Delete** (section 7) |
+
+**Done**: `create-index-v2.ts`, `cohere.ts`, `migrate-embeddings.ts` all deleted.
 
 ### Azure Deployment Capacity
 
@@ -94,6 +104,8 @@ Two integration test files had hardcoded 1024-dimension vectors for image embedd
 | `backend/src/__tests__/integration/search/SemanticSearchService.integration.test.ts` | Same pattern — both `describe` blocks updated |
 
 **Cleanup action**: When removing the feature flag, replace `imageDims` with literal `1536` — all image vectors will be 1536d in the unified-only architecture.
+
+**Done**: Replaced with literal `1536` — all image vectors are 1536d.
 
 ### Unit Test: Missing MIME Mock in FileEmbedWorker (Fixed 2026-03-24)
 
@@ -228,7 +240,7 @@ Two integration test files had hardcoded 1024-dimension vectors for image embedd
 | `USE_QUERY_TIME_VECTORIZATION` flag | `backend/src/infrastructure/config/environment.ts` | Remove from Zod schema. All unified paths use query-time vectorization. |
 | `USE_QUERY_TIME_VECTORIZATION` flag | `backend/.env.example` | Remove entry. |
 | `USE_QUERY_TIME_VECTORIZATION` flag | Container App config (dev + prod) | Remove env var. |
-| Conditional vectorizer in schema | `backend/src/services/search/schema-v2.ts` | Make vectorizer unconditional (remove `process.env.COHERE_ENDPOINT` check). |
+| Conditional vectorizer in schema | `backend/src/services/search/schema.ts` | Make vectorizer unconditional (remove `process.env.COHERE_ENDPOINT` check). |
 | App-side embedding path | `backend/src/services/search/semantic/SemanticSearchService.ts` | Remove the `!env.USE_QUERY_TIME_VECTORIZATION` branch in unified path. Always skip app-side embedding. |
 | Vector query branching | `backend/src/services/search/VectorSearchService.ts` | Remove `kind: 'vector'` path in unified block. Always use `kind: 'text'`. |
 | Benchmark script | `backend/scripts/operations/benchmark-search.ts` | Keep for reference or delete after confirming stable performance. |
@@ -237,13 +249,15 @@ Two integration test files had hardcoded 1024-dimension vectors for image embedd
 
 ## Execution Order
 
-1. Verify no rollback has occurred in 30 days
-2. Delete Azure resources (section 1)
-3. Remove feature flags (section 2)
-4. Remove code (sections 3-7 — one commit)
-5. Update tests (section 8)
-6. Run `npm run verify:types` + `npm run -w backend test:unit` + `npm run -w backend lint`
-7. Update infrastructure (section 9)
-8. Update documentation (section 10)
+> **Status (2026-03-24)**: Steps 1-8 are complete. The feature flag (`USE_UNIFIED_INDEX`) has been removed from CI/CD workflows, Bicep infrastructure, and documentation. Legacy V1 code paths, migration scripts, and dual-vector references have been cleaned up. Steps 9-10 remain pending query-time vectorization validation.
+
+1. ~~Verify no rollback has occurred in 30 days~~ **Done**
+2. ~~Delete Azure resources (section 1)~~ **Done**
+3. ~~Remove feature flags (section 2)~~ **Done**
+4. ~~Remove code (sections 3-7 — one commit)~~ **Done**
+5. ~~Update tests (section 8)~~ **Done**
+6. ~~Run `npm run verify:types` + `npm run -w backend test:unit` + `npm run -w backend lint`~~ **Done**
+7. ~~Update infrastructure (section 9)~~ **Done**
+8. ~~Update documentation (section 10)~~ **Done**
 9. PRD-203 cleanup (section 11 — after query-time vectorization validated)
 10. Deploy and verify

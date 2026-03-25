@@ -1,41 +1,35 @@
-import { SearchIndex } from '@azure/search-documents';
+import type { SearchIndex } from '@azure/search-documents';
+import { env } from '@/infrastructure/config/environment';
 
-export const INDEX_NAME = 'file-chunks-index';
+export const INDEX_NAME = 'file-chunks-index-v2';
 
 /**
- * Text profile name constant for use in code
+ * Vector profile name constant for use in code
  */
-export const TEXT_PROFILE_NAME = 'hnsw-profile';
+export const VECTOR_PROFILE_NAME = 'hnsw-profile-unified';
 
 /**
- * Image profile name constant for use in code
+ * Algorithm name constant
  */
-export const IMAGE_PROFILE_NAME = 'hnsw-profile-image';
+export const VECTOR_ALGORITHM_NAME = 'hnsw-unified';
 
 /**
- * Algorithm name constants
- */
-export const TEXT_ALGORITHM_NAME = 'hnsw-algorithm';
-export const IMAGE_ALGORITHM_NAME = 'hnsw-algorithm-image';
-
-/**
- * D26: Semantic configuration name for reranking
+ * Semantic configuration name for reranking
  */
 export const SEMANTIC_CONFIG_NAME = 'semantic-config';
 
 /**
  * Azure AI Search Index Schema Definition.
  *
- * Supports two vector search modes:
- * - Text embeddings: 1536 dimensions (OpenAI text-embedding-3-small)
- * - Image embeddings: 1024 dimensions (Azure Computer Vision VectorizeImage)
+ * Uses a single unified vector field `embeddingVector` (1536d) for both text and image content,
+ * powered by Cohere Embed 4 which produces a unified multimodal embedding.
  *
- * Both use HNSW algorithm with cosine similarity for semantic search.
+ * Both text and image chunks share the same 1536d vector space, enabling cross-modal search.
  */
 export const indexSchema: SearchIndex = {
   name: INDEX_NAME,
   fields: [
-    // ===== Existing Fields =====
+    // ===== Identity / Key =====
     {
       name: 'chunkId',
       type: 'Edm.String',
@@ -61,6 +55,7 @@ export const indexSchema: SearchIndex = {
       sortable: false,
       facetable: false
     },
+    // ===== Content =====
     {
       name: 'content',
       type: 'Edm.String',
@@ -68,17 +63,19 @@ export const indexSchema: SearchIndex = {
       filterable: false,
       sortable: false,
       facetable: false,
-      analyzerName: 'standard.lucene' // Good default for general text
+      analyzerName: 'standard.lucene'
     },
+    // ===== Unified Vector Field =====
     {
-      name: 'contentVector',
+      name: 'embeddingVector',
       type: 'Collection(Edm.Single)',
       searchable: true,
       stored: true,
       hidden: false, // Retrievable in getDocument/search results (for verification scripts)
-      vectorSearchDimensions: 1536,
-      vectorSearchProfileName: TEXT_PROFILE_NAME,
+      vectorSearchDimensions: 1536, // Cohere Embed 4 unified 1536d space (text + image)
+      vectorSearchProfileName: VECTOR_PROFILE_NAME,
     },
+    // ===== Chunk Metadata =====
     {
       name: 'chunkIndex',
       type: 'Edm.Int32',
@@ -96,7 +93,7 @@ export const indexSchema: SearchIndex = {
       facetable: false
     },
     {
-      name: 'embeddingModel', // Added for cost tracking
+      name: 'embeddingModel',
       type: 'Edm.String',
       searchable: false,
       filterable: true,
@@ -111,17 +108,7 @@ export const indexSchema: SearchIndex = {
       sortable: true,
       facetable: false
     },
-
-    // ===== NEW: Image Search Fields =====
-    {
-      name: 'imageVector',
-      type: 'Collection(Edm.Single)',
-      searchable: true,
-      stored: true,
-      hidden: false, // Retrievable in getDocument/search results (for verification scripts)
-      vectorSearchDimensions: 1024, // Azure Computer Vision VectorizeImage dimensions
-      vectorSearchProfileName: IMAGE_PROFILE_NAME,
-    },
+    // ===== Image Metadata =====
     {
       name: 'isImage',
       type: 'Edm.Boolean',
@@ -204,39 +191,43 @@ export const indexSchema: SearchIndex = {
   vectorSearch: {
     profiles: [
       {
-        name: TEXT_PROFILE_NAME,
-        algorithmConfigurationName: TEXT_ALGORITHM_NAME
-      },
-      {
-        name: IMAGE_PROFILE_NAME,
-        algorithmConfigurationName: IMAGE_ALGORITHM_NAME
+        name: VECTOR_PROFILE_NAME,
+        algorithmConfigurationName: VECTOR_ALGORITHM_NAME,
+        // Link to vectorizer for query-time vectorization (when configured)
+        ...(process.env.COHERE_ENDPOINT ? { vectorizerName: 'cohere-vectorizer' } : {}),
       },
     ],
     algorithms: [
       {
-        name: TEXT_ALGORITHM_NAME,
+        name: VECTOR_ALGORITHM_NAME,
         kind: 'hnsw',
         parameters: {
-          m: 4,               // Bi-directional links per node (lower = faster build, less precision)
-          efConstruction: 400, // Size of dynamic candidate list during build
-          efSearch: 500,       // Size of dynamic candidate list during search (higher = better recall)
+          m: env.HNSW_M,                       // Bi-directional links per node (default: 4, proposed: 6 after benchmarking)
+          efConstruction: env.HNSW_EF_CONSTRUCTION, // Size of dynamic candidate list during build (default: 400)
+          efSearch: env.HNSW_EF_SEARCH,         // Size of dynamic candidate list during search (default: 500, proposed: 250)
           metric: 'cosine'
         }
       },
-      {
-        name: IMAGE_ALGORITHM_NAME,
-        kind: 'hnsw',
-        parameters: {
-          m: 4,
-          efConstruction: 400,
-          efSearch: 500,
-          metric: 'cosine'
-        }
-      },
-    ]
+    ],
+    // Native query-time vectorizer via Cohere Embed 4 (Azure AI Foundry)
+    // Only included when Cohere endpoint is configured.
+    // Enables `kind: 'text'` vector queries (Azure generates embeddings at query time).
+    ...(process.env.COHERE_ENDPOINT ? {
+      vectorizers: [
+        {
+          vectorizerName: 'cohere-vectorizer',
+          kind: 'customWebApi' as const,
+          parameters: {
+            uri: `${process.env.COHERE_ENDPOINT}/v2/embed`,
+            httpHeaders: {},
+            httpMethod: 'POST',
+          },
+        },
+      ],
+    } : {}),
   },
 
-  // D26: Semantic Search Configuration for Reranking
+  // Semantic Search Configuration for Reranking
   // Enables Azure AI Search Semantic Ranker to improve relevance
   // by understanding the semantic meaning of content.
   // Free tier: 1000 queries/month; Standard tier: unlimited (paid)
@@ -247,11 +238,10 @@ export const indexSchema: SearchIndex = {
         name: SEMANTIC_CONFIG_NAME,
         prioritizedFields: {
           // Content field is primary for semantic understanding
-          // For images, this now contains AI-generated captions (D26)
+          // For images, this contains AI-generated captions
           contentFields: [
             { name: 'content' }
           ],
-          // No title field in current schema, but could add fileName in future
         },
       },
     ],

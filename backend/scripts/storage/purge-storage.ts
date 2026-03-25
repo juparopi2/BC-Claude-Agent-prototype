@@ -21,7 +21,7 @@
 import 'dotenv/config';
 import { createInterface } from 'readline/promises';
 import { createPrisma } from '../_shared/prisma';
-import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, getActiveIndexName } from '../_shared/azure';
+import { createBlobContainerClient, createSearchClient, CONTAINER_NAME, INDEX_NAME } from '../_shared/azure';
 import { getFlag, hasFlag } from '../_shared/args';
 
 type PurgeTarget = 'db' | 'blobs' | 'search' | 'all';
@@ -208,15 +208,14 @@ async function purgeBlobs(): Promise<PurgeResult['blobs']> {
 
 async function purgeSearch(): Promise<PurgeResult['search']> {
   console.log(`\n${YELLOW}Purging Azure AI Search...${RESET}`);
-  const indexName = getActiveIndexName();
-  const searchClient = createSearchClient<ChunkDocument>(indexName);
+  const searchClient = createSearchClient<ChunkDocument>(INDEX_NAME);
 
   if (!searchClient) {
     console.log('AI Search credentials not configured, skipping.');
     return null;
   }
 
-  console.log(`Index: ${indexName}`);
+  console.log(`Index: ${INDEX_NAME}`);
 
   // Paginated search for all documents (avoids async iterator hangs)
   console.log('Searching for all documents...');

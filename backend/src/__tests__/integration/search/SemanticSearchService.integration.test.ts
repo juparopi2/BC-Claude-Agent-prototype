@@ -27,8 +27,8 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
     const TEST_USER_ID = 'integration-semantic-test-user';
     const OTHER_USER_ID = 'integration-semantic-other-user';
 
-    // PRD-201: V2 (Cohere Embed v4) uses 1536d unified space; V1 uses 1024d Azure Vision
-    const imageDims = env.USE_UNIFIED_INDEX ? 1536 : 1024;
+    // All image embeddings use Cohere Embed v4 — 1536d unified space
+    const imageDims = 1536;
 
     // Test data
     const textFileId = 'integration-text-file';
@@ -225,8 +225,8 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Multi
     let semanticSearchService: SemanticSearchService;
     let vectorSearchService: VectorSearchService;
 
-    // PRD-201: V2 (Cohere Embed v4) uses 1536d unified space; V1 uses 1024d Azure Vision
-    const imageDims = env.USE_UNIFIED_INDEX ? 1536 : 1024;
+    // All image embeddings use Cohere Embed v4 — 1536d unified space
+    const imageDims = 1536;
 
     const USER_A = 'security-test-user-a';
     const USER_B = 'security-test-user-b';

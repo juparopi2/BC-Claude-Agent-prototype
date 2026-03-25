@@ -12,7 +12,7 @@
 import 'dotenv/config';
 import { SearchClient, AzureKeyCredential } from '@azure/search-documents';
 import { hasFlag, getPositionalArg } from '../_shared/args.js';
-import { INDEX_NAME, INDEX_NAME_V2, getActiveIndexName } from '../_shared/azure.js';
+import { INDEX_NAME } from '../_shared/azure.js';
 
 const RED = '\x1b[31m';
 const GREEN = '\x1b[32m';
@@ -30,11 +30,8 @@ ${BOLD}Usage:${RESET}
   npx tsx scripts/storage/purge-user-search-docs.ts <userId>            ${DIM}(dry-run)${RESET}
   npx tsx scripts/storage/purge-user-search-docs.ts <userId> --confirm  ${DIM}(execute)${RESET}
 
-${BOLD}Index flags:${RESET}
-  (default)       Use active index (respects USE_UNIFIED_INDEX env var)
-  --v1            Force V1 index (file-chunks-index)
-  --v2            Force V2 index (file-chunks-index-v2)
-  --all-indexes   Purge from both V1 and V2 indexes
+${BOLD}Index:${RESET}
+  Uses the active search index (INDEX_NAME from _shared/azure)
 `);
   process.exit(0);
 }
@@ -46,13 +43,8 @@ if (!userId) {
 }
 
 const confirm = hasFlag('--confirm');
-const allIndexes = hasFlag('--all-indexes');
-const forceV1 = hasFlag('--v1');
-const forceV2 = hasFlag('--v2');
 
-const indexNames: string[] = allIndexes
-  ? [INDEX_NAME, INDEX_NAME_V2]
-  : [forceV1 ? INDEX_NAME : forceV2 ? INDEX_NAME_V2 : getActiveIndexName()];
+const indexNames: string[] = [INDEX_NAME];
 
 const endpoint = process.env.AZURE_SEARCH_ENDPOINT;
 const key = process.env.AZURE_SEARCH_KEY;

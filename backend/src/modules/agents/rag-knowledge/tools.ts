@@ -22,7 +22,6 @@ import type { CitationResult, CitedDocument, CitationPassage, FileTypeCategory }
 import { getMimeTypesForCategory } from '@bc-agent/shared';
 import { getSemanticSearchService } from '@/services/search/semantic';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
-import { isUnifiedIndexEnabled } from '@/services/search/embeddings/EmbeddingServiceFactory';
 import { getImageEmbeddingRepository } from '@/repositories/ImageEmbeddingRepository';
 import { getFileService } from '@/services/files/FileService';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -363,19 +362,19 @@ export const findSimilarImagesTool = tool(
         }
         sourceEmbedding = dbEmbedding;
 
-        // PRD-202: Dimension safety check during transition period
-        // Images indexed before re-embedding have 1024d (Azure Vision) embeddings.
-        // V2 index uses 1536d (Cohere) — querying with mismatched dimensions will fail.
-        if (isUnifiedIndexEnabled() && dbEmbedding.dimensions !== 1536) {
+        // Data integrity guard: embedding dimensions must match the 1536d Cohere vector space.
+        // Images indexed before migration may have 1024d (Azure Vision) embeddings.
+        // Querying with mismatched dimensions will fail.
+        if (dbEmbedding.dimensions !== 1536) {
           return JSON.stringify(createErrorSearchResult(
             'similar images',
-            'This image has not been re-embedded with the unified model yet. ' +
+            'This image embedding dimensions do not match the expected 1536d. ' +
               'Please use search_knowledge with fileTypeCategory "images" and describe what you see in the image instead.',
           ));
         }
       }
 
-      // 3. Use searchImages() — pure vector on imageVector, no Semantic Ranker
+      // 3. Use searchImages() — pure vector on embeddingVector, no Semantic Ranker
       const vectorSearchService = VectorSearchService.getInstance();
       const results = await vectorSearchService.searchImages({
         embedding: sourceEmbedding.embedding,

@@ -1,10 +1,8 @@
-import { EmbeddingService } from '@/services/embeddings/EmbeddingService';
 import { VectorSearchService } from '@/services/search/VectorSearchService';
-import { VECTOR_WEIGHTS } from '@/services/search/types';
 import { getFileService } from '@/services/files/FileService';
 import { createChildLogger } from '@/shared/utils/logger';
 import { env } from '@/infrastructure/config/environment';
-import { getUnifiedEmbeddingService, isUnifiedIndexEnabled } from '../embeddings/EmbeddingServiceFactory';
+import { getCohereEmbeddingService } from '../embeddings/CohereEmbeddingService';
 import type {
   SemanticSearchOptions,
   SemanticSearchResult,
@@ -70,7 +68,6 @@ export class SemanticSearchService {
       additionalFilter: callerAdditionalFilter,
     } = options;
 
-    const embeddingService = EmbeddingService.getInstance();
     const vectorSearchService = VectorSearchService.getInstance();
     const effectiveSearchType = resolveEffectiveSearchType(explicitSearchType, searchMode);
     const isImageMode = searchMode === 'image';
@@ -127,27 +124,22 @@ export class SemanticSearchService {
       });
       semanticResults = fullResult.results;
       extractiveAnswers = fullResult.extractiveAnswers;
-    } else if (isUnifiedIndexEnabled()) {
-      // PRD-201: Unified path — single Cohere embedding for ALL search types
-      // In unified vector space, the same text embedding works for both text and image content.
+    } else {
+      // Unified Cohere path — single embedding for ALL search types (text and image).
       // searchMode='image' is handled via OData filter (isImage eq true), not a different embedding.
 
-      // PRD-203: When query-time vectorization is enabled, skip application-side embedding.
+      // When query-time vectorization is enabled, skip application-side embedding.
       // Azure AI Search generates the embedding via native vectorizer.
       let textEmbeddingVector: number[] | undefined;
       if (!env.USE_QUERY_TIME_VECTORIZATION) {
-        const unifiedService = getUnifiedEmbeddingService();
-        if (!unifiedService) {
-          throw new Error('USE_UNIFIED_INDEX is true but Cohere embedding service is not available. Check COHERE_ENDPOINT and COHERE_API_KEY.');
-        }
-        const queryEmbedding = await unifiedService.embedQuery(query);
+        const cohereService = getCohereEmbeddingService();
+        const queryEmbedding = await cohereService.embedQuery(query);
         textEmbeddingVector = queryEmbedding.embedding;
       }
 
       const fullResult = await vectorSearchService.semanticSearch({
         text: effectiveSearchType === 'hybrid' || env.USE_QUERY_TIME_VECTORIZATION ? query : '',
         textEmbedding: textEmbeddingVector,
-        // No imageEmbedding — unified vector space covers both text and image content
         userId,
         fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
         finalTopK: maxFiles * maxChunksPerFile * 2,
@@ -157,62 +149,6 @@ export class SemanticSearchService {
           : additionalFilter,
         useVectorSearch: true,
         useSemanticRanker: true,
-        orderBy,
-      });
-      semanticResults = fullResult.results;
-      extractiveAnswers = fullResult.extractiveAnswers;
-    } else if (isImageMode) {
-      // Image mode (semantic or hybrid): only generate image query embedding (1024d)
-      // Visual similarity is the primary signal — no text embedding needed
-      const imageQueryEmbedding = await embeddingService.generateImageQueryEmbedding(query, userId, 'visual-search');
-
-      const fullResult = await vectorSearchService.semanticSearch({
-        text: effectiveSearchType === 'hybrid' ? query : '',
-        imageEmbedding: imageQueryEmbedding.embedding,
-        userId,
-        fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
-        finalTopK: maxFiles * maxChunksPerFile * 2,
-        minScore: threshold,
-        additionalFilter: additionalFilter
-          ? `isImage eq true and ${additionalFilter}`
-          : 'isImage eq true',
-        searchMode: 'image',
-        useVectorSearch: true,
-        useSemanticRanker: effectiveSearchType === 'hybrid',
-        vectorWeights: {
-          contentVector: VECTOR_WEIGHTS.IMAGE_MODE_CONTENT,
-          imageVector: VECTOR_WEIGHTS.IMAGE_MODE_IMAGE,
-        },
-        orderBy,
-      });
-      semanticResults = fullResult.results;
-      extractiveAnswers = fullResult.extractiveAnswers;
-    } else {
-      // Text mode (semantic or hybrid): generate BOTH embeddings in parallel
-      const [textEmbedding, imageQueryEmbedding] = await Promise.all([
-        embeddingService.generateTextEmbedding(query, userId, 'semantic-search'),
-        embeddingService.generateImageQueryEmbedding(query, userId, 'semantic-search').catch(err => {
-          // Image search is optional - don't fail if Vision API is unavailable
-          this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Image query embedding failed, skipping image search');
-          return null;
-        }),
-      ]);
-
-      const fullResult = await vectorSearchService.semanticSearch({
-        text: effectiveSearchType === 'hybrid' ? query : '',
-        textEmbedding: textEmbedding.embedding,
-        imageEmbedding: imageQueryEmbedding?.embedding,
-        userId,
-        fetchTopK: maxFiles * maxChunksPerFile * env.SEARCH_FETCH_MULTIPLIER,
-        finalTopK: maxFiles * maxChunksPerFile * 2,
-        minScore: threshold,
-        additionalFilter,
-        useVectorSearch: true,
-        useSemanticRanker: true,
-        vectorWeights: {
-          contentVector: VECTOR_WEIGHTS.TEXT_MODE_CONTENT,
-          imageVector: VECTOR_WEIGHTS.TEXT_MODE_IMAGE,
-        },
         orderBy,
       });
       semanticResults = fullResult.results;
@@ -355,7 +291,6 @@ export class SemanticSearchService {
       effectiveSearchType,
       searchMode,
       sortBy: sortBy ?? 'relevance',
-      unifiedIndex: isUnifiedIndexEnabled(),
       extractiveAnswerCount: extractiveAnswers.length,
     }, 'PRD-200/PRD-203: Semantic search completed');
 

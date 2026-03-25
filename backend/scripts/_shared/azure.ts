@@ -13,19 +13,7 @@ import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/sear
 
 // Default names (overridable via env vars)
 export const CONTAINER_NAME = process.env.STORAGE_CONTAINER_NAME || 'user-files';
-export const INDEX_NAME = process.env.AZURE_SEARCH_INDEX_NAME || 'file-chunks-index';
-export const INDEX_NAME_V2 = 'file-chunks-index-v2';
-
-/**
- * Returns the active search index name based on USE_UNIFIED_INDEX flag.
- * Scripts should use this instead of hardcoded INDEX_NAME.
- */
-export function getActiveIndexName(): string {
-  if (process.env.USE_UNIFIED_INDEX === 'true') {
-    return INDEX_NAME_V2;
-  }
-  return INDEX_NAME;
-}
+export const INDEX_NAME = 'file-chunks-index-v2';
 
 /**
  * Create Blob Storage container client. Returns null if connection string is not set.
@@ -42,7 +30,7 @@ export function createBlobContainerClient(): ContainerClient | null {
 
 /**
  * Create AI Search client for document operations. Returns null if credentials not set.
- * @param indexName Optional index name override. Defaults to getActiveIndexName().
+ * @param indexName Optional index name override. Defaults to INDEX_NAME.
  */
 export function createSearchClient<T extends object>(indexName?: string): SearchClient<T> | null {
   const endpoint = process.env.AZURE_SEARCH_ENDPOINT;
@@ -51,7 +39,7 @@ export function createSearchClient<T extends object>(indexName?: string): Search
     console.warn('Warning: AI Search credentials not set, skipping search operations');
     return null;
   }
-  return new SearchClient<T>(endpoint, indexName ?? getActiveIndexName(), new AzureKeyCredential(key));
+  return new SearchClient<T>(endpoint, indexName ?? INDEX_NAME, new AzureKeyCredential(key));
 }
 
 /**

@@ -9,7 +9,7 @@ Automated health monitoring and recovery for the file synchronization pipeline. 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Daily 04:00 UTC (cron) | Compare DB `pipeline_status='ready'` files vs Azure AI Search index. Detect missing/orphaned documents. Optional auto-repair. |
+| `SyncReconciliationService` | Every 6 hours (cron, 4x/day) | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings. Optional auto-repair. |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 All three run via the existing `FILE_MAINTENANCE` BullMQ queue (`concurrency=1`, `lockDuration=120s`). No new queues or workers — they slot into `MaintenanceWorker`'s switch-case dispatch.

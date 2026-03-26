@@ -170,12 +170,12 @@ export class ScheduledJobManager {
         }
       );
 
-      // Sync reconciliation (daily at 04:00 UTC) — PRD-300
+      // Sync reconciliation (every 6 hours — PRD-300, 4x/day)
       await queue.add(
         JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
         { type: JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION },
         {
-          repeat: { pattern: CRON_PATTERNS.DAILY_AT_0400 },
+          repeat: { pattern: CRON_PATTERNS.EVERY_6_HOURS },
           jobId: JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
         }
       );

@@ -198,6 +198,7 @@ jobs:
               SYNC_POLLING_INTERVAL_MINUTES=30 \
               SUBSCRIPTION_RENEWAL_BUFFER_HOURS=48 \
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
+              SYNC_RECONCILIATION_AUTO_REPAIR=true \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
               COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vec-ep \
@@ -319,6 +320,7 @@ jobs:
               SYNC_POLLING_INTERVAL_MINUTES=30 \
               SUBSCRIPTION_RENEWAL_BUFFER_HOURS=48 \
               SUBSCRIPTION_MAX_DURATION_DAYS=29 \
+              SYNC_RECONCILIATION_AUTO_REPAIR=true \
               COHERE_ENDPOINT=secretref:cohere-endpoint \
               COHERE_API_KEY=secretref:cohere-api-key \
               COHERE_VECTORIZER_ENDPOINT=secretref:cohere-vec-ep \

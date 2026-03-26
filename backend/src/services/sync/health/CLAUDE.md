@@ -67,14 +67,25 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects two drift conditions:
+Detects five drift conditions:
 
-| Drift | DB State | Search State | Repair Action |
-|---|---|---|---|
-| Missing from search | `pipeline_status='ready'` | No chunks in index | Reset to `'queued'`, re-enqueue processing |
-| Orphaned in search | No matching file row | Chunks exist in index | Delete chunks via `VectorSearchService` |
+| Drift | Detection | Repair Action |
+|---|---|---|
+| Missing from search | `pipeline_status='ready'` but no chunks in AI Search index | Reset to `'queued'`, re-enqueue processing |
+| Orphaned in search | Chunks exist in index but no matching DB file row | Delete chunks via `VectorSearchService` |
+| Failed retriable | `pipeline_status='failed'` with `pipeline_retry_count < 3` | Reset to `'queued'`, clear retry count, re-enqueue |
+| Stuck pipeline | `pipeline_status IN ('extracting','chunking','embedding')` for > 30 min | Reset to `'queued'`, re-enqueue |
+| Images missing embeddings | Ready image files with no `image_embeddings` record | Reset to `'queued'`, re-enqueue |
 
 **Default: dry-run**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Processes max 50 users per run, paginates DB queries in batches of 500.
+
+### File Type Awareness
+
+The reconciliation service accounts for different expected states per file type:
+- **Text files**: Must have `file_chunks` + AI Search docs when `ready`
+- **Image files**: Must have `image_embeddings` record when `ready` (0 chunks is correct)
+- **External files**: `blob_path=null` is correct (content fetched via Graph API)
+- See `scripts/storage/CLAUDE.md` for the full expected state matrix
 
 ## API Endpoints
 

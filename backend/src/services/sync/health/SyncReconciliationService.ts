@@ -16,6 +16,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
+import { env } from '@/infrastructure/config/environment';
 import { getMessageQueue } from '@/infrastructure/queue';
 import type { ReconciliationReport, ReconciliationRepairs } from './types';
 
@@ -127,19 +128,78 @@ export class SyncReconciliationService {
     const missingFromSearch = [...dbFileIds].filter((id) => !searchFileIds.has(id));
     const orphanedInSearch = [...searchFileIds].filter((id) => !dbFileIds.has(id));
 
-    // ── d. Optionally repair ──────────────────────────────────────────────
+    // ── d. Detect failed files eligible for retry ───────────────────────
 
-    const autoRepair = process.env.SYNC_RECONCILIATION_AUTO_REPAIR === 'true';
+    const failedRetriableRows = await prisma.files.findMany({
+      where: {
+        user_id: userId,
+        pipeline_status: 'failed',
+        pipeline_retry_count: { lt: 3 },
+        deleted_at: null,
+      },
+      select: { id: true, name: true, mime_type: true, connection_scope_id: true },
+    });
+    const failedRetriable = failedRetriableRows.map((f) => f.id.toUpperCase());
+
+    // ── e. Detect stuck intermediate pipeline files (> 30 min) ──────────
+
+    const stuckThreshold = new Date(Date.now() - 30 * 60 * 1000);
+    const stuckFileRows = await prisma.files.findMany({
+      where: {
+        user_id: userId,
+        pipeline_status: { in: ['extracting', 'chunking', 'embedding'] },
+        updated_at: { lt: stuckThreshold },
+        deleted_at: null,
+      },
+      select: { id: true, name: true, mime_type: true, connection_scope_id: true },
+    });
+    const stuckFiles = stuckFileRows.map((f) => f.id.toUpperCase());
+
+    // ── f. Detect ready images missing image_embeddings ─────────────────
+
+    const readyImages = await prisma.files.findMany({
+      where: {
+        user_id: userId,
+        pipeline_status: 'ready',
+        deleted_at: null,
+        mime_type: { startsWith: 'image/' },
+      },
+      select: { id: true },
+    });
+
+    let imagesMissingEmbeddings: string[] = [];
+    if (readyImages.length > 0) {
+      const imageIds = readyImages.map((f) => f.id);
+      const imagesWithEmbs = await prisma.image_embeddings.findMany({
+        where: { user_id: userId, file_id: { in: imageIds } },
+        select: { file_id: true },
+      });
+      const embFileIds = new Set(imagesWithEmbs.map((e) => e.file_id.toUpperCase()));
+      imagesMissingEmbeddings = readyImages
+        .filter((f) => !embFileIds.has(f.id.toUpperCase()))
+        .map((f) => f.id.toUpperCase());
+    }
+
+    // ── g. Optionally repair ────────────────────────────────────────────
+
+    const autoRepair = env.SYNC_RECONCILIATION_AUTO_REPAIR;
 
     let repairs: ReconciliationRepairs;
 
     if (autoRepair) {
-      repairs = await this.performRepairs(userId, missingFromSearch, orphanedInSearch);
+      repairs = await this.performRepairs(
+        userId,
+        missingFromSearch,
+        orphanedInSearch,
+        failedRetriableRows,
+        stuckFileRows,
+        imagesMissingEmbeddings,
+      );
     } else {
-      repairs = { missingRequeued: 0, orphansDeleted: 0, errors: 0 };
+      repairs = { missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0, errors: 0 };
     }
 
-    // ── e. Build and log report ───────────────────────────────────────────
+    // ── h. Build and log report ─────────────────────────────────────────
 
     const report: ReconciliationReport = {
       timestamp: new Date(),
@@ -148,6 +208,9 @@ export class SyncReconciliationService {
       searchIndexedFiles: searchFileIds.size,
       missingFromSearch,
       orphanedInSearch,
+      failedRetriable,
+      stuckFiles,
+      imagesMissingEmbeddings,
       repairs,
       dryRun: !autoRepair,
     };
@@ -158,8 +221,14 @@ export class SyncReconciliationService {
         // Omit full arrays from log — use counts instead
         missingFromSearch: undefined,
         orphanedInSearch: undefined,
+        failedRetriable: undefined,
+        stuckFiles: undefined,
+        imagesMissingEmbeddings: undefined,
         missingCount: missingFromSearch.length,
         orphanedCount: orphanedInSearch.length,
+        failedRetriableCount: failedRetriable.length,
+        stuckFilesCount: stuckFiles.length,
+        imagesMissingEmbeddingsCount: imagesMissingEmbeddings.length,
       },
       'Reconciliation report for user',
     );
@@ -175,6 +244,9 @@ export class SyncReconciliationService {
    * Attempt to repair detected drift:
    *   - Missing from search: reset pipeline_status to 'queued' and re-enqueue.
    *   - Orphaned in search:  delete all chunks for the stale fileId.
+   *   - Failed retriable: reset pipeline_status to 'queued', clear retry count, re-enqueue.
+   *   - Stuck files: reset pipeline_status to 'queued', re-enqueue.
+   *   - Images missing embeddings: reset pipeline_status to 'queued', re-enqueue.
    *
    * Errors are captured per-file so that one failure does not abort the rest.
    */
@@ -182,8 +254,15 @@ export class SyncReconciliationService {
     userId: string,
     missingFromSearch: string[],
     orphanedInSearch: string[],
+    failedRetriableRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
+    stuckFileRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
+    imagesMissingEmbeddings: string[],
   ): Promise<ReconciliationRepairs> {
-    const repairs: ReconciliationRepairs = { missingRequeued: 0, orphansDeleted: 0, errors: 0 };
+    const repairs: ReconciliationRepairs = {
+      missingRequeued: 0, orphansDeleted: 0,
+      failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0,
+      errors: 0,
+    };
 
     // ── Re-enqueue files missing from the search index ───────────────────
 
@@ -246,6 +325,104 @@ export class SyncReconciliationService {
           { fileId, error: errorInfo },
           'Failed to delete orphaned search chunks',
         );
+        repairs.errors++;
+      }
+    }
+
+    // ── Re-enqueue failed files eligible for retry ──────────────────────
+
+    for (const file of failedRetriableRows) {
+      try {
+        await prisma.files.update({
+          where: { id: file.id },
+          data: {
+            pipeline_status: 'queued',
+            pipeline_retry_count: 0,
+            last_processing_error: null,
+            updated_at: new Date(),
+          },
+        });
+
+        await getMessageQueue().addFileProcessingFlow({
+          fileId: file.id,
+          batchId: file.connection_scope_id ?? file.id,
+          userId,
+          mimeType: file.mime_type,
+          fileName: file.name,
+        });
+
+        repairs.failedRequeued++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn({ fileId: file.id, error: errorInfo }, 'Failed to re-enqueue failed file');
+        repairs.errors++;
+      }
+    }
+
+    // ── Re-enqueue stuck intermediate pipeline files ────────────────────
+
+    for (const file of stuckFileRows) {
+      try {
+        await prisma.files.update({
+          where: { id: file.id },
+          data: {
+            pipeline_status: 'queued',
+            updated_at: new Date(),
+          },
+        });
+
+        await getMessageQueue().addFileProcessingFlow({
+          fileId: file.id,
+          batchId: file.connection_scope_id ?? file.id,
+          userId,
+          mimeType: file.mime_type,
+          fileName: file.name,
+        });
+
+        repairs.stuckRequeued++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn({ fileId: file.id, error: errorInfo }, 'Failed to re-enqueue stuck file');
+        repairs.errors++;
+      }
+    }
+
+    // ── Re-enqueue ready images missing embeddings ──────────────────────
+
+    for (const fileId of imagesMissingEmbeddings) {
+      try {
+        const file = await prisma.files.findUnique({
+          where: { id: fileId },
+          select: { id: true, name: true, mime_type: true, connection_scope_id: true },
+        });
+        if (!file) continue;
+
+        await prisma.files.update({
+          where: { id: fileId },
+          data: { pipeline_status: 'queued', updated_at: new Date() },
+        });
+
+        await getMessageQueue().addFileProcessingFlow({
+          fileId: file.id,
+          batchId: file.connection_scope_id ?? file.id,
+          userId,
+          mimeType: file.mime_type,
+          fileName: file.name,
+        });
+
+        repairs.imageRequeued++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn({ fileId, error: errorInfo }, 'Failed to re-enqueue image missing embedding');
         repairs.errors++;
       }
     }

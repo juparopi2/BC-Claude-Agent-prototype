@@ -75,7 +75,7 @@ router.post(
           include: { connections: { select: { user_id: true } } },
         });
 
-        if (!scope || scope.connections.user_id !== userId) {
+        if (!scope || scope.connections.user_id.toUpperCase() !== userId.toUpperCase()) {
           res.status(403).json({ error: 'Scope not found or not owned by user' });
           return;
         }

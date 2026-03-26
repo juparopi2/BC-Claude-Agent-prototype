@@ -377,6 +377,11 @@ export type {
   StuckFileRecoveryMetrics,
   OrphanCleanupMetrics,
   BatchTimeoutMetrics,
+
+  // File Health types (file health diagnostic system)
+  FileHealthIssueType,
+  FileHealthIssue,
+  FileHealthIssuesResponse,
 } from './types';
 
 // Type guards (runtime functions, not types)

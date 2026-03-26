@@ -507,3 +507,10 @@ export type {
 } from './onboarding.types';
 
 export { DEFAULT_ONBOARDING_PREFERENCES } from './onboarding.types';
+
+// File Health types (file health diagnostic system)
+export type {
+  FileHealthIssueType,
+  FileHealthIssue,
+  FileHealthIssuesResponse,
+} from './file-health.types';

@@ -74,6 +74,14 @@ export {
   type ActiveBatch,
 } from './uploadBatchStore';
 
+// File Health Store
+export {
+  useFileHealthStore,
+  resetFileHealthStore,
+  type FileHealthState,
+  type FileHealthActions,
+} from './fileHealthStore';
+
 // Duplicate Resolution Stores (merged from duplicateStore + folderDuplicateStore)
 export {
   useDuplicateStore,

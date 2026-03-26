@@ -19,11 +19,12 @@
  *   - Deletion audit log is written for GDPR traceability
  *
  * Usage:
- *   npx tsx scripts/database/purge-user.ts --userId <UUID>                # Interactive
- *   npx tsx scripts/database/purge-user.ts --userId <UUID> --dry-run      # Preview only
- *   npx tsx scripts/database/purge-user.ts --userId <UUID> --confirm      # Skip prompt
- *   npx tsx scripts/database/purge-user.ts --userId <UUID> --keep-account # Preserve users row
- *   npx tsx scripts/database/purge-user.ts --userId <UUID> --skip-redis   # Skip Redis phase
+ *   npx tsx scripts/database/purge-user.ts --userId <UUID>                    # Interactive
+ *   npx tsx scripts/database/purge-user.ts --userId <UUID> --dry-run          # Preview only
+ *   npx tsx scripts/database/purge-user.ts --userId <UUID> --confirm          # Skip prompt
+ *   npx tsx scripts/database/purge-user.ts --userId <UUID> --keep-account     # Preserve users row
+ *   npx tsx scripts/database/purge-user.ts --userId <UUID> --reset-onboarding # Only reset onboarding preferences
+ *   npx tsx scripts/database/purge-user.ts --userId <UUID> --skip-redis       # Skip Redis phase
  *   npx tsx scripts/database/purge-user.ts --help
  */
 import 'dotenv/config';
@@ -66,19 +67,23 @@ ${BOLD}Usage:${RESET}
   npx tsx scripts/database/purge-user.ts --userId <UUID> [flags]
 
 ${BOLD}Flags:${RESET}
-  --userId <UUID>  Target user ID (required)
-  --confirm        Skip interactive confirmation
-  --dry-run        Preview what would be deleted (no changes)
-  --keep-account   Preserve the users row + user_settings (account remains functional)
-  --skip-redis     Skip Redis cleanup
-  --help           Show this help
+  --userId <UUID>      Target user ID (required)
+  --confirm            Skip interactive confirmation
+  --dry-run            Preview what would be deleted (no changes)
+  --keep-account       Preserve the users row + user_settings (account remains functional)
+  --reset-onboarding   ONLY reset onboarding preferences (no data deletion)
+  --skip-redis         Skip Redis cleanup
+  --help               Show this help
 
 ${BOLD}Examples:${RESET}
   # Preview cleanup for a user
-  npx tsx scripts/database/purge-user.ts --userId BCD5A31B-C560-40D5-972F-50E134A8389D --dry-run
+  npx tsx scripts/database/purge-user.ts --userId BCD5A31B-... --dry-run
 
   # Full purge, keep account alive
-  npx tsx scripts/database/purge-user.ts --userId BCD5A31B-C560-40D5-972F-50E134A8389D --keep-account --confirm
+  npx tsx scripts/database/purge-user.ts --userId BCD5A31B-... --keep-account --confirm
+
+  # Only reset onboarding (simulate first-time experience)
+  npx tsx scripts/database/purge-user.ts --userId BCD5A31B-... --reset-onboarding --confirm
 `);
 }
 
@@ -314,6 +319,13 @@ async function purgeDatabase(
         data: { current_token_usage: 0, current_api_call_usage: 0, current_storage_usage: 0 },
       });
       console.log(`  ${GREEN}user_quotas: reset counters to 0 (account preserved)${RESET}`);
+
+      // Clear onboarding preferences so next login triggers the welcome tour
+      await prisma.user_settings.updateMany({
+        where: { user_id: userId },
+        data: { preferences: null },
+      });
+      console.log(`  ${GREEN}user_settings.preferences: cleared (onboarding reset)${RESET}`);
     }
 
     console.log(`\n  ${GREEN}SQL phase complete.${RESET}`);
@@ -580,6 +592,7 @@ async function main(): Promise<void> {
   const autoConfirm = hasFlag('--confirm');
   const skipRedis = hasFlag('--skip-redis');
   const keepAccount = hasFlag('--keep-account');
+  const resetOnboarding = hasFlag('--reset-onboarding');
 
   const prisma = createPrisma();
 
@@ -589,6 +602,39 @@ async function main(): Promise<void> {
     if (!user) {
       console.error(`${RED}Error: User ${userId} not found.${RESET}`);
       process.exit(1);
+    }
+
+    // ── Fast path: --reset-onboarding only clears preferences ──
+    if (resetOnboarding) {
+      console.log(`${BOLD}Reset Onboarding Preferences${RESET}`);
+      console.log(`User:    ${user.full_name ?? '(no name)'} <${user.email}>`);
+      console.log(`ID:      ${userId}`);
+      console.log(`Mode:    ${dryRun ? 'DRY RUN' : 'LIVE'}\n`);
+
+      const existing = await prisma.user_settings.findUnique({ where: { user_id: userId } });
+      const hasPrefs = existing?.preferences != null;
+
+      if (dryRun) {
+        logStep('user_settings.preferences', hasPrefs ? 1 : 0, true);
+        console.log(`\n${GREEN}${BOLD}DRY RUN complete — no changes made.${RESET}`);
+      } else if (!hasPrefs) {
+        console.log(`  ${DIM}No onboarding preferences found — already clean.${RESET}`);
+      } else {
+        if (!autoConfirm) {
+          const ok = await confirm(userId);
+          if (!ok) { console.log('\nCancelled.'); process.exit(0); }
+        }
+        await prisma.user_settings.updateMany({
+          where: { user_id: userId },
+          data: { preferences: null },
+        });
+        console.log(`  ${GREEN}user_settings.preferences: cleared to NULL${RESET}`);
+        console.log(`\n${GREEN}${BOLD}Onboarding reset complete — next login will trigger the welcome tour.${RESET}`);
+        console.log(`${DIM}Remember to clear localStorage key "bc-agent-onboarding" in the browser.${RESET}`);
+      }
+
+      await prisma.$disconnect();
+      process.exit(0);
     }
 
     console.log(`${BOLD}Per-User Data Purge${RESET}`);

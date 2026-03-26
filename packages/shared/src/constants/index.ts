@@ -140,3 +140,13 @@ export {
   getValidCategories,
   type FileTypeCategory,
 } from './file-type-categories';
+
+// Onboarding Constants
+export {
+  TOUR_ID,
+  TIP_ID,
+  TIP_MAX_SHOW_COUNTS,
+  NEW_CHAT_TIP_MESSAGE_THRESHOLD,
+  type TourId,
+  type TipId,
+} from './onboarding.constants';

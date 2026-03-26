@@ -49,4 +49,5 @@ export const SETTINGS_TAB = {
   CAPABILITIES: 'capabilities',
   BILLING: 'billing',
   CONNECTIONS: 'connections',
+  HELP: 'help',
 } as const;

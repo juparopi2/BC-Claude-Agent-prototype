@@ -90,14 +90,25 @@ export class SettingsService {
         this.logger.debug({ userId }, 'No settings found, returning defaults');
         return {
           theme: SETTINGS_DEFAULT_THEME,
+          preferences: null,
           updatedAt: null,
         };
       }
 
       const row = result.recordset[0]!;
 
+      let preferences = null;
+      try {
+        if (row.preferences) {
+          preferences = JSON.parse(row.preferences);
+        }
+      } catch {
+        this.logger.warn({ userId }, 'Failed to parse onboarding preferences, using defaults');
+      }
+
       return {
         theme: row.theme as UserSettings['theme'],
+        preferences,
         updatedAt: row.updated_at.toISOString(),
       };
     } catch (error) {
@@ -145,10 +156,11 @@ export class SettingsService {
         WHEN MATCHED THEN
           UPDATE SET
             theme = COALESCE(@theme, target.theme),
+            preferences = COALESCE(@preferences, target.preferences),
             updated_at = GETUTCDATE()
         WHEN NOT MATCHED THEN
-          INSERT (id, user_id, theme, created_at, updated_at)
-          VALUES (NEWID(), @userId, COALESCE(@theme, '${SETTINGS_DEFAULT_THEME}'), GETUTCDATE(), GETUTCDATE())
+          INSERT (id, user_id, theme, preferences, created_at, updated_at)
+          VALUES (NEWID(), @userId, COALESCE(@theme, '${SETTINGS_DEFAULT_THEME}'), @preferences, GETUTCDATE(), GETUTCDATE())
         OUTPUT inserted.id, inserted.user_id, inserted.theme, inserted.preferences, inserted.created_at, inserted.updated_at;
       `;
 
@@ -156,6 +168,7 @@ export class SettingsService {
         .request()
         .input('userId', sql.UniqueIdentifier, userId)
         .input('theme', sql.NVarChar(20), settings.theme ?? null)
+        .input('preferences', sql.NVarChar(sql.MAX), settings.preferences ? JSON.stringify(settings.preferences) : null)
         .query<UserSettingsRow>(query);
 
       const row = result.recordset[0];
@@ -166,8 +179,18 @@ export class SettingsService {
 
       this.logger.info({ userId, theme: row.theme }, 'User settings updated');
 
+      let preferences = null;
+      try {
+        if (row.preferences) {
+          preferences = JSON.parse(row.preferences);
+        }
+      } catch {
+        this.logger.warn({ userId }, 'Failed to parse onboarding preferences in update response');
+      }
+
       return {
         theme: row.theme as UserSettings['theme'],
+        preferences,
         updatedAt: row.updated_at.toISOString(),
       };
     } catch (error) {

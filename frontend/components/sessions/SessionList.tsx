@@ -99,6 +99,7 @@ export default function SessionList() {
           className="w-full gap-2"
           disabled={isLoading}
           data-testid="new-chat-button"
+          data-tour="new-chat-button"
         >
           <Plus className="size-4" />
           New Chat

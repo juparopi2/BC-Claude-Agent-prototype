@@ -156,6 +156,7 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
               className="h-8"
               onClick={handleRefresh}
               disabled={isLoading}
+              data-tour="refresh-button"
             >
               <RefreshCw className={cn(
                 'size-4',
@@ -171,7 +172,7 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8">
+                <Button variant="ghost" size="sm" className="h-8" data-tour="toggle-columns">
                   <Settings2 className="size-4" />
                 </Button>
               </DropdownMenuTrigger>

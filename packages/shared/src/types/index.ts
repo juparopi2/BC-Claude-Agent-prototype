@@ -500,3 +500,10 @@ export type {
   SharePointSiteListResult,
   SharePointLibraryListResult,
 } from './sharepoint.types';
+
+// Onboarding types
+export type {
+  OnboardingPreferences,
+} from './onboarding.types';
+
+export { DEFAULT_ONBOARDING_PREFERENCES } from './onboarding.types';

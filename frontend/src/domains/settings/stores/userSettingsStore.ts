@@ -12,6 +12,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import type { ThemePreference, UserSettingsResponse } from '@bc-agent/shared';
 import { SETTINGS_DEFAULT_THEME, SETTINGS_API } from '@bc-agent/shared';
 import { env } from '@/lib/config/env';
+import { getOnboardingStore } from '@/src/domains/onboarding';
 
 // ============================================
 // State Interface
@@ -109,6 +110,11 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
           isLoading: false,
           hasFetched: true,
         });
+
+        // Hydrate onboarding store from backend preferences
+        if (data.preferences) {
+          getOnboardingStore().hydrateFromBackend(data.preferences);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to fetch settings';
         set({
@@ -123,15 +129,16 @@ export const useUserSettingsStore = create<UserSettingsStore>()(
     updateTheme: async (theme: ThemePreference) => {
       const previous = get().settings;
 
-      // Optimistic update
-      set({
+      // Optimistic update (preserve existing preferences)
+      set((state) => ({
         settings: {
+          ...state.settings,
           theme,
           updatedAt: new Date().toISOString(),
         },
         isSaving: true,
         error: null,
-      });
+      }));
 
       try {
         const data = await updateSettingsOnApi(theme);

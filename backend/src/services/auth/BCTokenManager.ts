@@ -70,10 +70,10 @@ export class BCTokenManager {
    * @param tokenData - BC token data to store (only accessToken and expiresAt are used)
    */
   async storeBCToken(userId: string, tokenData: TokenAcquisitionResult): Promise<void> {
-    try {
-      const accessTokenEncrypted = this.encryptToken(tokenData.accessToken);
+    const accessTokenEncrypted = this.encryptToken(tokenData.accessToken);
 
-      await executeQuery(
+    try {
+      const result = await executeQuery(
         `
         UPDATE users
         SET bc_access_token_encrypted = @accessToken,
@@ -88,10 +88,14 @@ export class BCTokenManager {
         }
       );
 
+      if (!result.rowsAffected[0]) {
+        throw new Error(`User ${userId} not found — cannot store BC token`);
+      }
+
       this.logger.info('Stored encrypted BC token for user', { userId, expiresAt: tokenData.expiresAt });
     } catch (error) {
       this.logger.error('Failed to store BC token', { error, userId });
-      throw new Error('Failed to store Business Central token');
+      throw error;
     }
   }
 
@@ -102,7 +106,7 @@ export class BCTokenManager {
    */
   async clearBCToken(userId: string): Promise<void> {
     try {
-      await executeQuery(
+      const result = await executeQuery(
         `
         UPDATE users
         SET bc_access_token_encrypted = NULL,
@@ -113,10 +117,14 @@ export class BCTokenManager {
         { userId }
       );
 
+      if (!result.rowsAffected[0]) {
+        this.logger.warn('clearBCToken: No user found', { userId });
+      }
+
       this.logger.info('Cleared BC token for user', { userId });
     } catch (error) {
       this.logger.error('Failed to clear BC token', { error, userId });
-      throw new Error('Failed to clear Business Central token');
+      throw error;
     }
   }
 }

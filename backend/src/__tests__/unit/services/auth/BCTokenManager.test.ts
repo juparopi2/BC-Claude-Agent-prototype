@@ -177,7 +177,7 @@ describe('BCTokenManager', () => {
 
       mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
 
-      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Failed to store Business Central token');
+      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Failed to encrypt token');
 
       cryptoSpy.mockRestore();
     });
@@ -232,6 +232,18 @@ describe('BCTokenManager', () => {
       );
     });
 
+    it('should throw when user not found (0 rows affected)', async () => {
+      const tokenData: TokenAcquisitionResult = {
+        accessToken: 'test-token',
+        expiresAt: new Date(Date.now() + 3600000),
+      };
+
+      mockExecuteQuery.mockResolvedValue({ recordset: [], rowsAffected: [0] });
+
+      await expect(tokenManager.storeBCToken('NONEXISTENT-USER', tokenData))
+        .rejects.toThrow('User NONEXISTENT-USER not found');
+    });
+
     it('should handle database write errors', async () => {
       const tokenData: TokenAcquisitionResult = {
         accessToken: 'test-token',
@@ -240,7 +252,7 @@ describe('BCTokenManager', () => {
 
       mockExecuteQuery.mockRejectedValue(new Error('Database connection failed'));
 
-      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Failed to store Business Central token');
+      await expect(tokenManager.storeBCToken('user-123', tokenData)).rejects.toThrow('Database connection failed');
     });
 
     it('should store token expiration time', async () => {
@@ -283,7 +295,7 @@ describe('BCTokenManager', () => {
     it('should handle database errors on clear', async () => {
       mockExecuteQuery.mockRejectedValue(new Error('Database error'));
 
-      await expect(tokenManager.clearBCToken('user-123')).rejects.toThrow('Failed to clear Business Central token');
+      await expect(tokenManager.clearBCToken('user-123')).rejects.toThrow('Database error');
     });
   });
 });

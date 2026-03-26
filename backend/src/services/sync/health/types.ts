@@ -74,6 +74,9 @@ export interface SyncHealthReport {
 export interface ReconciliationRepairs {
   missingRequeued: number;
   orphansDeleted: number;
+  failedRequeued: number;
+  stuckRequeued: number;
+  imageRequeued: number;
   errors: number;
 }
 
@@ -84,6 +87,9 @@ export interface ReconciliationReport {
   searchIndexedFiles: number;
   missingFromSearch: string[];
   orphanedInSearch: string[];
+  failedRetriable: string[];
+  stuckFiles: string[];
+  imagesMissingEmbeddings: string[];
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }

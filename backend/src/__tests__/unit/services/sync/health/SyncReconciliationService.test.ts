@@ -31,12 +31,18 @@ const mockFilesFindMany = vi.hoisted(() => vi.fn());
 const mockFilesFindUnique = vi.hoisted(() => vi.fn());
 const mockFilesUpdate = vi.hoisted(() => vi.fn());
 
+// image_embeddings table
+const mockImageEmbeddingsFindMany = vi.hoisted(() => vi.fn());
+
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
     files: {
       findMany: mockFilesFindMany,
       findUnique: mockFilesFindUnique,
       update: mockFilesUpdate,
+    },
+    image_embeddings: {
+      findMany: mockImageEmbeddingsFindMany,
     },
   },
 }));
@@ -60,6 +66,15 @@ vi.mock('@/services/search/VectorSearchService', () => ({
       getUniqueFileIds: mockGetUniqueFileIds,
       deleteChunksForFile: mockDeleteChunksForFile,
     })),
+  },
+}));
+
+// env — mock the module so SYNC_RECONCILIATION_AUTO_REPAIR is controllable per-test
+const mockEnv = vi.hoisted(() => ({ SYNC_RECONCILIATION_AUTO_REPAIR: false as boolean }));
+
+vi.mock('@/infrastructure/config/environment', () => ({
+  get env() {
+    return mockEnv;
   },
 }));
 
@@ -102,6 +117,9 @@ function makeFileRecord(fileId: string, overrides?: { name?: string; mime_type?:
 beforeEach(() => {
   vi.clearAllMocks();
 
+  // Reset env to safe default (dry-run) before each test
+  mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = false;
+
   // Safe defaults — operations succeed, return empty results
   mockFilesFindMany.mockResolvedValue([]);
   mockFilesFindUnique.mockResolvedValue(null);
@@ -109,11 +127,12 @@ beforeEach(() => {
   mockAddFileProcessingFlow.mockResolvedValue(undefined);
   mockGetUniqueFileIds.mockResolvedValue([]);
   mockDeleteChunksForFile.mockResolvedValue(undefined);
+  mockImageEmbeddingsFindMany.mockResolvedValue([]);
 });
 
 afterEach(() => {
-  // Always clean up the env var to avoid test pollution
-  delete process.env.SYNC_RECONCILIATION_AUTO_REPAIR;
+  // Reset env mock to avoid test pollution
+  mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = false;
 });
 
 // ============================================================================
@@ -209,8 +228,8 @@ describe('SyncReconciliationService', () => {
 
   describe('run() — dry-run mode', () => {
     it('does NOT perform repairs when SYNC_RECONCILIATION_AUTO_REPAIR is not set', async () => {
-      // Ensure env var is absent (redundant safety, afterEach handles cleanup)
-      delete process.env.SYNC_RECONCILIATION_AUTO_REPAIR;
+      // Ensure auto-repair is disabled (beforeEach already sets this, redundant safety)
+      mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = false;
 
       mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
         if (args.distinct) {
@@ -230,11 +249,11 @@ describe('SyncReconciliationService', () => {
       expect(mockDeleteChunksForFile).not.toHaveBeenCalled();
 
       expect(reports[0].dryRun).toBe(true);
-      expect(reports[0].repairs).toEqual({ missingRequeued: 0, orphansDeleted: 0, errors: 0 });
+      expect(reports[0].repairs).toMatchObject({ missingRequeued: 0, orphansDeleted: 0, errors: 0 });
     });
 
     it('does NOT perform repairs when SYNC_RECONCILIATION_AUTO_REPAIR=false', async () => {
-      process.env.SYNC_RECONCILIATION_AUTO_REPAIR = 'false';
+      mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = false;
 
       mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
         if (args.distinct) {
@@ -260,7 +279,7 @@ describe('SyncReconciliationService', () => {
 
   describe('run() — auto-repair mode', () => {
     beforeEach(() => {
-      process.env.SYNC_RECONCILIATION_AUTO_REPAIR = 'true';
+      mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = true;
     });
 
     it('re-enqueues missing files: resets pipeline_status and calls addFileProcessingFlow', async () => {
@@ -350,11 +369,17 @@ describe('SyncReconciliationService', () => {
     });
 
     it('skips re-enqueueing a missing file when findUnique returns null', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown; mime_type?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
         }
-        return Promise.resolve([{ id: FILE_ID_1 }]);
+        // Only return files for the paginated ready-files query; return empty for
+        // failed-retriable, stuck-files, and ready-images queries so that only the
+        // missingFromSearch repair path is exercised in this test.
+        if (args.where?.pipeline_status === 'ready' && !args.where?.mime_type) {
+          return Promise.resolve([{ id: FILE_ID_1 }]);
+        }
+        return Promise.resolve([]);
       });
 
       // FILE_ID_1 is missing from search
@@ -491,8 +516,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // findMany should have been called: 1 (distinct users) + 2 (batches) = 3 times total
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(3);
+      // findMany called: 1 (distinct users) + 2 (batches) + 3 (failed retriable, stuck, ready images) = 6 times
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(6);
 
       // Report should reflect all 502 DB files (500 + 2)
       expect(reports[0].dbReadyFiles).toBe(502);
@@ -511,8 +536,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // 1 (distinct users) + 1 (single batch) = 2 calls
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(2);
+      // 1 (distinct users) + 1 (single batch) + 3 (failed retriable, stuck, ready images) = 5 calls
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(5);
       expect(reports[0].dbReadyFiles).toBe(3);
     });
   });

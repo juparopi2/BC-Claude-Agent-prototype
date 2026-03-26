@@ -140,13 +140,25 @@ npx tsx scripts/redis/redis-cleanup.ts               # Clean queues
 
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
+| `audit-file-health.ts` | **Comprehensive per-file health audit** across DB, Blob, AI Search with recovery | `--userId`, `--all`, `--env dev\|prod`, `--check-vectors`, `--fix`, `--confirm`, `--json`, `--strict` |
 | `verify-storage.ts` | Cross-system verification (SQL + Blob + Search) | `--userId`, `--all`, `--section` |
 | `fix-storage.ts` | Repair inconsistencies (stuck deletions, ghosts, orphans) | `--userId`, `--dry-run` |
 | `purge-storage.ts` | Destructive purge of all data | `--target`, `--confirm` |
 
+### File Health Audit Workflow
+
+```bash
+npx tsx scripts/storage/audit-file-health.ts --userId <ID>                # Basic audit
+npx tsx scripts/storage/audit-file-health.ts --userId <ID> --check-vectors # Deep vector validation
+npx tsx scripts/storage/audit-file-health.ts --userId <ID> --fix           # Preview recovery
+npx tsx scripts/storage/audit-file-health.ts --userId <ID> --fix --confirm # Execute recovery
+npx tsx scripts/storage/audit-file-health.ts --all --env prod              # Prod audit (Key Vault + firewall)
+npx tsx scripts/storage/audit-file-health.ts --all --env prod --json       # Machine-readable prod audit
 ```
-verify-storage.ts  →  fix-storage.ts  →  purge-storage.ts
-  (read-only)          (targeted fix)     (nuclear delete)
+
+```
+audit-file-health.ts  →  verify-storage.ts  →  fix-storage.ts  →  purge-storage.ts
+  (full audit + fix)       (per-section)        (targeted fix)     (nuclear delete)
 ```
 
 ---

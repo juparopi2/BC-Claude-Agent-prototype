@@ -174,6 +174,29 @@ export interface SyncRecoveryCompletedPayload {
   };
 }
 
+export interface SyncReconciliationCompletedPayload {
+  userId: string;
+  triggeredBy: 'login' | 'manual' | 'cron';
+  report: {
+    dryRun: boolean;
+    dbReadyFiles: number;
+    searchIndexedFiles: number;
+    missingFromSearchCount: number;
+    orphanedInSearchCount: number;
+    failedRetriableCount: number;
+    stuckFilesCount: number;
+    imagesMissingEmbeddingsCount: number;
+    repairs: {
+      missingRequeued: number;
+      orphansDeleted: number;
+      failedRequeued: number;
+      stuckRequeued: number;
+      imageRequeued: number;
+      errors: number;
+    };
+  };
+}
+
 export type SyncWebSocketEvent =
   | { type: 'sync:progress' } & SyncProgress
   | { type: 'sync:completed' } & SyncCompletedPayload
@@ -188,4 +211,5 @@ export type SyncWebSocketEvent =
   | { type: 'processing:progress' } & ProcessingProgressPayload
   | { type: 'processing:completed' } & ProcessingCompletedPayload
   | { type: 'sync:health_report' } & SyncHealthReportPayload
-  | { type: 'sync:recovery_completed' } & SyncRecoveryCompletedPayload;
+  | { type: 'sync:recovery_completed' } & SyncRecoveryCompletedPayload
+  | { type: 'sync:reconciliation_completed' } & SyncReconciliationCompletedPayload;

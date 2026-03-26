@@ -110,6 +110,28 @@ export interface RecoveryResult {
 export type RecoveryAction = 'reset_stuck' | 'retry_errors' | 'retry_files' | 'full_recovery';
 
 // ============================================================================
+// On-Demand Reconciliation Errors
+// ============================================================================
+
+/** Thrown when reconciliation is already running for the same user */
+export class ReconciliationInProgressError extends Error {
+  constructor(userId: string) {
+    super(`Reconciliation already in progress for user ${userId}`);
+    this.name = 'ReconciliationInProgressError';
+  }
+}
+
+/** Thrown when on-demand reconciliation is called within cooldown period */
+export class ReconciliationCooldownError extends Error {
+  public readonly retryAfterSeconds: number;
+  constructor(retryAfterSeconds: number) {
+    super(`Reconciliation on cooldown, retry after ${retryAfterSeconds}s`);
+    this.name = 'ReconciliationCooldownError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+// ============================================================================
 // Metrics
 // ============================================================================
 

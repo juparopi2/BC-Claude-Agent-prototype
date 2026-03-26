@@ -9,7 +9,7 @@ Automated health monitoring and recovery for the file synchronization pipeline. 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every 6 hours (cron, 4x/day) | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings. Optional auto-repair. |
+| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings. Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 All three run via the existing `FILE_MAINTENANCE` BullMQ queue (`concurrency=1`, `lockDuration=120s`). No new queues or workers — they slot into `MaintenanceWorker`'s switch-case dispatch.
@@ -77,7 +77,7 @@ Detects five drift conditions:
 | Stuck pipeline | `pipeline_status IN ('extracting','chunking','embedding')` for > 30 min | Reset to `'queued'`, re-enqueue |
 | Images missing embeddings | Ready image files with no `image_embeddings` record | Reset to `'queued'`, re-enqueue |
 
-**Default: dry-run**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Processes max 50 users per run, paginates DB queries in batches of 500.
+**Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 
 ### File Type Awareness
 
@@ -93,6 +93,19 @@ The reconciliation service accounts for different expected states per file type:
 |---|---|---|---|
 | `GET` | `/api/sync/health` | `authenticateMicrosoft` | Per-user health report (all scopes) |
 | `POST` | `/api/sync/health/recover` | `authenticateMicrosoft` | Manual recovery trigger |
+| `POST` | `/api/sync/health/reconcile` | `authenticateMicrosoft` | On-demand per-user reconciliation (diagnose + repair) |
+
+### POST /health/reconcile
+
+On-demand file health reconciliation for the authenticated user. Diagnoses 5 drift conditions and repairs them.
+
+- **Body**: `{ trigger?: 'login' | 'manual' }` (defaults to `'manual'`)
+- **Rate limit**: Redis cooldown — 5 min between calls per user (429 if too soon)
+- **Concurrency**: In-memory guard — one reconciliation per user at a time (409 if in progress)
+- **Auto-repair**: Always repairs (bypasses `SYNC_RECONCILIATION_AUTO_REPAIR` env var)
+- **WebSocket**: Emits `sync:reconciliation_completed` to `user:{userId}` on completion
+
+**Optimistic concurrency**: All repair DB updates use `updateMany` with expected `pipeline_status` in WHERE clause. If a worker transitions the file between detection and repair, the update is a no-op (count=0) and enqueue is skipped.
 
 ### POST Actions
 
@@ -111,6 +124,7 @@ Multi-tenant isolation: `scopeId` ownership validated against `req.userId`.
 |---|---|---|
 | `sync:health_report` | `SyncHealthCheckService.run()` | Per-user health report after each 15-min check |
 | `sync:recovery_completed` | POST `/recover` endpoint | Recovery action result |
+| `sync:reconciliation_completed` | POST `/reconcile` endpoint | Reconciliation report summary (counts + repairs) |
 
 Both emitted to `user:{userId}` rooms via `getSocketIO()`.
 

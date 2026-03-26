@@ -12,7 +12,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateMicrosoft } from '@/domains/auth/middleware/auth-oauth';
 import { createChildLogger } from '@/shared/utils/logger';
-import { getSyncRecoveryService, getSyncHealthCheckService } from '@/services/sync/health';
+import {
+  getSyncRecoveryService,
+  getSyncHealthCheckService,
+  getSyncReconciliationService,
+  ReconciliationCooldownError,
+  ReconciliationInProgressError,
+} from '@/services/sync/health';
 import { prisma } from '@/infrastructure/database/prisma';
 import { getSocketIO, isSocketServiceInitialized } from '@/services/websocket/SocketService';
 import { SYNC_WS_EVENTS } from '@bc-agent/shared';
@@ -112,6 +118,85 @@ router.post(
 
       res.json({ success: true, result });
     } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/sync/health/reconcile
+ * On-demand per-user file health reconciliation.
+ *
+ * Diagnoses 5 drift conditions between DB and AI Search, then repairs them.
+ * Rate-limited to once per 5 minutes per user (Redis cooldown).
+ *
+ * Body:
+ *   trigger - (Optional) 'login' | 'manual' — for logging/analytics. Defaults to 'manual'.
+ */
+router.post(
+  '/health/reconcile',
+  authenticateMicrosoft,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.userId!;
+      const { trigger = 'manual' } = req.body as { trigger?: 'login' | 'manual' };
+
+      logger.info({ userId, trigger }, 'On-demand reconciliation requested');
+
+      const service = getSyncReconciliationService();
+      const report = await service.reconcileUserOnDemand(userId);
+
+      // Notify the user via WebSocket
+      if (isSocketServiceInitialized()) {
+        getSocketIO().to(`user:${userId}`).emit(SYNC_WS_EVENTS.SYNC_RECONCILIATION_COMPLETED, {
+          userId,
+          triggeredBy: trigger,
+          report: {
+            dryRun: report.dryRun,
+            dbReadyFiles: report.dbReadyFiles,
+            searchIndexedFiles: report.searchIndexedFiles,
+            missingFromSearchCount: report.missingFromSearch.length,
+            orphanedInSearchCount: report.orphanedInSearch.length,
+            failedRetriableCount: report.failedRetriable.length,
+            stuckFilesCount: report.stuckFiles.length,
+            imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+            repairs: report.repairs,
+          },
+        });
+      }
+
+      res.json({
+        success: true,
+        report: {
+          dryRun: report.dryRun,
+          dbReadyFiles: report.dbReadyFiles,
+          searchIndexedFiles: report.searchIndexedFiles,
+          missingFromSearchCount: report.missingFromSearch.length,
+          orphanedInSearchCount: report.orphanedInSearch.length,
+          failedRetriableCount: report.failedRetriable.length,
+          stuckFilesCount: report.stuckFiles.length,
+          imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+          repairs: report.repairs,
+        },
+      });
+    } catch (error) {
+      if (error instanceof ReconciliationCooldownError) {
+        res.status(429).json({
+          error: 'Too Many Requests',
+          message: 'Reconciliation recently ran',
+          code: 'RECONCILIATION_COOLDOWN',
+          details: { retryAfterSeconds: error.retryAfterSeconds },
+        });
+        return;
+      }
+      if (error instanceof ReconciliationInProgressError) {
+        res.status(409).json({
+          error: 'Conflict',
+          message: 'Reconciliation already in progress',
+          code: 'RECONCILIATION_IN_PROGRESS',
+        });
+        return;
+      }
       next(error);
     }
   }

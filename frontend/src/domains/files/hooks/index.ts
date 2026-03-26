@@ -54,6 +54,12 @@ export {
   type UseSandboxFileDownloadReturn,
 } from './useSandboxFileDownload';
 
+// File Health Reconciliation Hook
+export {
+  useFileReconciliation,
+  type UseFileReconciliationReturn,
+} from './useFileReconciliation';
+
 // Sandbox File Metadata Hook
 export {
   useSandboxFileMetadata,

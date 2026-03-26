@@ -433,6 +433,46 @@ export class ApiClient {
   async healthCheck(): Promise<ApiResponse<{ status: string; timestamp: string }>> {
     return this.request<{ status: string; timestamp: string }>('GET', '/api/health');
   }
+
+  // ============================================
+  // File Health Reconciliation
+  // ============================================
+
+  /**
+   * Trigger on-demand file health reconciliation for the authenticated user.
+   * Diagnoses drift between DB and AI Search, then repairs.
+   *
+   * @param trigger - 'login' (auto on auth) or 'manual' (user-initiated)
+   * @returns Reconciliation report summary, or 429/409 errors
+   */
+  async triggerReconciliation(
+    trigger: 'login' | 'manual' = 'manual',
+  ): Promise<ApiResponse<ReconciliationResponse>> {
+    return this.request<ReconciliationResponse>('POST', '/api/sync/health/reconcile', { trigger });
+  }
+}
+
+/** Response shape from POST /api/sync/health/reconcile */
+export interface ReconciliationResponse {
+  success: boolean;
+  report: {
+    dryRun: boolean;
+    dbReadyFiles: number;
+    searchIndexedFiles: number;
+    missingFromSearchCount: number;
+    orphanedInSearchCount: number;
+    failedRetriableCount: number;
+    stuckFilesCount: number;
+    imagesMissingEmbeddingsCount: number;
+    repairs: {
+      missingRequeued: number;
+      orphansDeleted: number;
+      failedRequeued: number;
+      stuckRequeued: number;
+      imageRequeued: number;
+      errors: number;
+    };
+  };
 }
 
 /**

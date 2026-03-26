@@ -23,3 +23,7 @@ export type {
   ReconciliationReport,
   SyncHealthCheckMetrics,
 } from './types';
+export {
+  ReconciliationInProgressError,
+  ReconciliationCooldownError,
+} from './types';

@@ -141,13 +141,13 @@ export class SyncReconciliationService {
     });
     const failedRetriable = failedRetriableRows.map((f) => f.id.toUpperCase());
 
-    // ── e. Detect stuck intermediate pipeline files (> 30 min) ──────────
+    // ── e. Detect stuck pipeline files (> 30 min in any non-terminal state) ──
 
     const stuckThreshold = new Date(Date.now() - 30 * 60 * 1000);
     const stuckFileRows = await prisma.files.findMany({
       where: {
         user_id: userId,
-        pipeline_status: { in: ['extracting', 'chunking', 'embedding'] },
+        pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
         updated_at: { lt: stuckThreshold },
         deleted_at: null,
       },

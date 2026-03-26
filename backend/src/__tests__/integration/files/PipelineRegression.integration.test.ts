@@ -355,7 +355,9 @@ describe('Pipeline Regression — Original Bug Scenarios', () => {
       const service = new StuckFileRecoveryService();
       const result = await service.run(15 * 60 * 1000, 3); // 15 min threshold, max 3 retries
 
-      expect(result.reEnqueued).toBe(1);
+      // Service operates globally — may find residual stuck files from other processes.
+      // Verify our file was recovered (at least 1 re-enqueued), not exact global count.
+      expect(result.reEnqueued).toBeGreaterThanOrEqual(1);
 
       // Verify file is now queued
       const fileResult = await executeQuery<{ pipeline_status: string }>(
@@ -388,10 +390,12 @@ describe('Pipeline Regression — Original Bug Scenarios', () => {
       const service = new StuckFileRecoveryService();
       const result = await service.run(15 * 60 * 1000, 3);
 
-      expect(result.totalStuck).toBe(3);
-      expect(result.reEnqueued).toBe(3);
+      // Service operates globally — may find more stuck files than our 3.
+      // Verify at least our 3 were found and recovered.
+      expect(result.totalStuck).toBeGreaterThanOrEqual(3);
+      expect(result.reEnqueued).toBeGreaterThanOrEqual(3);
 
-      // Verify all are queued
+      // Verify OUR specific files are all queued (the definitive check)
       const fileResults = await executeQuery<{ id: string; pipeline_status: string }>(
         `SELECT id, pipeline_status FROM files WHERE id IN (@file1, @file2, @file3)`,
         { file1: file1.id, file2: file2.id, file3: file3.id }

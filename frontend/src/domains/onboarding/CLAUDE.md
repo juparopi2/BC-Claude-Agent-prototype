@@ -78,6 +78,8 @@ Every ProTip has a **max occurrence limit** defined in `@bc-agent/shared` (`TIP_
 
 Tour definitions: `constants/tourSteps.ts`
 
+**Replay Tour (`restartTour`):** Bypasses the `completedTours` check (unlike `startTour`). Also resets all ProTip state (`dismissedTips`, `tipShowCounts`, `activeTipId`) so tips restart from scratch, and syncs the reset to the backend.
+
 ## Components
 
 | Component | Purpose |

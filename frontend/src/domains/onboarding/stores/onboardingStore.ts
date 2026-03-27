@@ -117,12 +117,14 @@ export const useOnboardingStore = create<OnboardingState & OnboardingActions>()(
 
       completeTour: (tourId) => {
         const state = get();
-        if (state.completedTours.includes(tourId)) return;
-        set({
-          completedTours: [...state.completedTours, tourId],
+        const updates: Partial<OnboardingState> = {
           activeTourId: null,
           tourStepIndex: 0,
-        });
+        };
+        if (!state.completedTours.includes(tourId)) {
+          updates.completedTours = [...state.completedTours, tourId];
+        }
+        set(updates);
         debouncedSync(() => get().syncToBackend());
       },
 
@@ -263,7 +265,14 @@ export const useOnboardingStore = create<OnboardingState & OnboardingActions>()(
       // --- Restart Tour (ignores completedTours check) ---
 
       restartTour: (tourId) => {
-        set({ activeTourId: tourId, tourStepIndex: 0 });
+        set({
+          activeTourId: tourId,
+          tourStepIndex: 0,
+          dismissedTips: [],
+          tipShowCounts: {},
+          activeTipId: null,
+        });
+        debouncedSync(() => get().syncToBackend());
       },
 
       // --- Reset ---

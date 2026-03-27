@@ -270,7 +270,7 @@ export class SyncReconciliationService {
       repairs = {
         missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
         imageRequeued: 0, externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
-        folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, errors: 0 },
+        folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, foldersRestored: 0, errors: 0 },
         errors: 0,
       };
     }

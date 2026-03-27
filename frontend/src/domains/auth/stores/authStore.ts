@@ -171,8 +171,10 @@ export const useAuthStore = create<AuthStore>()(
 
           const socketClient = getSocketClient();
 
-          // Idempotent: skip if already connected
           if (socketClient.isConnected) {
+            // Already connected (e.g., page refresh with active socket)
+            // Still join user room to trigger login reconciliation
+            socketClient.joinUserRoom(user.id);
             return;
           }
 

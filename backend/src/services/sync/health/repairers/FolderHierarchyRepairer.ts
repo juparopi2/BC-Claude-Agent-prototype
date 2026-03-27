@@ -53,6 +53,7 @@ export class FolderHierarchyRepairer {
       scopesResynced: 0,
       scopesSkippedDisconnected: 0,
       localFilesReparented: 0,
+      foldersRestored: 0,
       errors: 0,
     };
 
@@ -185,6 +186,43 @@ export class FolderHierarchyRepairer {
             ? { message: err.message, name: err.name }
             : { value: String(err) };
         this.logger.warn({ error: errorInfo }, 'Failed to reparent local orphans');
+        repairs.errors++;
+      }
+    }
+
+    // ── 4. Restore soft-deleted folders on active scopes ────────────────────
+    // These folders were erroneously soft-deleted (e.g., FileExtractWorker 404 on
+    // folders, or disconnect/reconnect race) but belong to active synced scopes.
+
+    if (detection.softDeletedFoldersOnActiveScopes.length > 0) {
+      try {
+        const folderIds = detection.softDeletedFoldersOnActiveScopes.map((f) => f.id);
+        const { prisma: db } = await import('@/infrastructure/database/prisma');
+
+        const result = await db.files.updateMany({
+          where: {
+            id: { in: folderIds },
+            is_folder: true,
+            deletion_status: { not: null },
+          },
+          data: {
+            deleted_at: null,
+            deletion_status: null,
+            pipeline_status: 'ready',
+          },
+        });
+
+        repairs.foldersRestored = result.count;
+        this.logger.info(
+          { count: result.count, folderIds: folderIds.slice(0, 5) },
+          'Restored soft-deleted folders on active scopes',
+        );
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn({ error: errorInfo }, 'Failed to restore soft-deleted folders');
         repairs.errors++;
       }
     }

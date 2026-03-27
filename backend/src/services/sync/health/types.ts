@@ -161,6 +161,12 @@ export interface FolderHierarchyDetection {
     provider: string;
     microsoftDriveId: string | null;
   }>;
+  /** Folders soft-deleted but belonging to active (connected + synced) scopes */
+  softDeletedFoldersOnActiveScopes: Array<{
+    id: string;
+    name: string;
+    connectionScopeId: string;
+  }>;
   /** Distinct scope IDs that need resync (union of affected scopes) */
   scopeIdsToResync: string[];
 }
@@ -171,6 +177,7 @@ export interface FolderHierarchyRepairs {
   scopesResynced: number;
   scopesSkippedDisconnected: number;
   localFilesReparented: number;
+  foldersRestored: number;
   errors: number;
 }
 

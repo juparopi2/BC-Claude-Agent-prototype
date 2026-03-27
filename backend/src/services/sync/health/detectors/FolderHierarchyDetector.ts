@@ -113,7 +113,27 @@ export class FolderHierarchyDetector implements DriftDetector<FolderHierarchyDet
       }
     }
 
-    // ── 3. Build deduplicated set of scope IDs that need resync ────────────
+    // ── 3. Soft-deleted folders on active scopes ──────────────────────────
+    // Folders that were soft-deleted (e.g., by FileExtractWorker 404 or disconnect race)
+    // but belong to scopes that are still connected and synced. These should be alive.
+
+    const softDeletedFolders = await prisma.$queryRaw<Array<{
+      id: string;
+      name: string;
+      connection_scope_id: string;
+    }>>`
+      SELECT f.id, f.name, f.connection_scope_id
+      FROM files f
+      INNER JOIN connection_scopes cs ON cs.id = f.connection_scope_id
+      INNER JOIN connections c ON c.id = cs.connection_id
+      WHERE f.user_id = ${userId}
+        AND f.is_folder = 1
+        AND f.deletion_status IS NOT NULL
+        AND c.status = 'connected'
+        AND cs.sync_status NOT IN ('error')
+    `;
+
+    // ── 4. Build deduplicated set of scope IDs that need resync ────────────
 
     const scopeIdsToResync = new Set<string>();
 
@@ -127,11 +147,19 @@ export class FolderHierarchyDetector implements DriftDetector<FolderHierarchyDet
       scopeIdsToResync.add(missing.scopeId.toUpperCase());
     }
 
+    // Soft-deleted folders also imply their scopes need attention
+    for (const folder of softDeletedFolders) {
+      if (folder.connection_scope_id) {
+        scopeIdsToResync.add(folder.connection_scope_id.toUpperCase());
+      }
+    }
+
     this.logger.debug(
       {
         userId,
         orphanedChildrenCount: orphanedChildren.length,
         missingScopeRootsCount: missingScopeRoots.length,
+        softDeletedFoldersCount: softDeletedFolders.length,
         scopesToResyncCount: scopeIdsToResync.size,
       },
       'FolderHierarchyDetector: detection complete',
@@ -146,6 +174,11 @@ export class FolderHierarchyDetector implements DriftDetector<FolderHierarchyDet
         sourceType: o.source_type,
       })),
       missingScopeRoots,
+      softDeletedFoldersOnActiveScopes: softDeletedFolders.map((f) => ({
+        id: f.id,
+        name: f.name,
+        connectionScopeId: f.connection_scope_id,
+      })),
       scopeIdsToResync: [...scopeIdsToResync],
     };
   }

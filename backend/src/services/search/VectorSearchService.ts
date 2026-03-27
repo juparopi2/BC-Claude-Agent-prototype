@@ -840,8 +840,11 @@ export class VectorSearchService {
         ? (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore)
         : vectorScore;
 
-      // Filter by minimum score
-      if (score < minScore) continue;
+      // Filter by minimum score — only when Semantic Ranker is ON.
+      // RRF scores (0.01-0.03) are NOT comparable to Semantic Ranker scores (0-1 normalized
+      // from 0-4). Applying the same threshold to RRF scores discards all results.
+      // When Semantic Ranker is OFF (e.g., image mode), finalTopK already caps results.
+      if (useSemanticRanker && score < minScore) continue;
 
       results.push({
         chunkId: doc.chunkId,

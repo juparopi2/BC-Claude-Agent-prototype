@@ -135,6 +135,19 @@ Pure vector search on `embeddingVector` field, filtered to `isImage eq true`. Re
 ### 5. Image Mode via `search_knowledge` (`SemanticSearchService`)
 When the RAG agent searches with `fileTypeCategory: "images"`, the service sets `useSemanticRanker: false` and uses `searchText: '*'` (skip BM25). This produces **pure vector search** — the Cohere Embed v4 vector handles all visual semantic retrieval without text-based signal contamination.
 
+### Score Handling & Normalization
+
+Two different score scales exist depending on search mode:
+
+| Mode | Score Source | Range | Threshold Applied |
+|------|------------|-------|-------------------|
+| Semantic Ranker ON (text) | `rerankerScore / 4` | 0–1 | Yes (`SEMANTIC_THRESHOLD = 0.55`) |
+| Semantic Ranker OFF (images) | RRF `vectorScore` | 0.005–0.03 | **No** — `finalTopK` caps results instead |
+
+**Why no threshold for images**: RRF (Reciprocal Rank Fusion) scores are reciprocals of rank positions (1/k), NOT similarity probabilities. A score of 0.016 doesn't mean "1.6% relevant" — it means "ranked ~60th by the fusion algorithm." Applying `SEMANTIC_THRESHOLD = 0.55` to RRF scores would discard ALL image results.
+
+**Score normalization**: `SemanticSearchService` normalizes image mode scores to 0–1 relative to the top result before returning to the frontend. This ensures the UI shows meaningful percentages regardless of search mode. The normalization happens AFTER sorting, so ranking is preserved.
+
 ## Image Embedding Architecture
 
 Image embeddings use **Cohere Embed v4** in the same 1536d unified vector space as text. This means a single text query can retrieve both documents and images simultaneously.
@@ -189,13 +202,14 @@ The OpenAI-compatible embedding endpoint does **NOT** accept image input. Sendin
 4. Enrich with file metadata (FileService.getFile())
 
 5. Sort by relevance score, limit to maxFiles
+6. **Normalize scores** (image mode only): scale RRF scores to 0–1 relative to top result
 ```
 
 ### Default Configuration
 
 | Parameter | Default | Description |
 |---|---|---|
-| `SEMANTIC_THRESHOLD` | 0.55 | Minimum score to include result |
+| `SEMANTIC_THRESHOLD` | 0.55 | Minimum score to include result (text mode with Semantic Ranker only) |
 | `DEFAULT_MAX_FILES` | 10 | Maximum files returned |
 | `DEFAULT_MAX_CHUNKS_PER_FILE` | 5 | Maximum chunks per text file |
 

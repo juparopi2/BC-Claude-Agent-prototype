@@ -262,7 +262,18 @@ export class SemanticSearchService {
       });
     }
 
-    // 6. Sort and limit results
+    // 6. Normalize scores when Semantic Ranker is OFF (e.g., image mode)
+    // RRF scores (0.01-0.03) are not user-friendly. Normalize to 0-1 range relative
+    // to the top result so scores are meaningful regardless of search mode.
+    // When Semantic Ranker is ON, scores are already normalized (rerankerScore/4 = 0-1).
+    if (isImageMode && results.length > 0) {
+      const maxRawScore = Math.max(...results.map(r => r.relevanceScore), 0.001);
+      for (const r of results) {
+        r.relevanceScore = r.relevanceScore / maxRawScore;
+      }
+    }
+
+    // 7. Sort and limit results
     // PRD-200: When sortBy is date-based, preserve Azure AI Search ordering (already sorted by orderBy)
     // When sortBy is 'relevance' (default), sort by score
     const sortedResults = (!sortBy || sortBy === 'relevance')

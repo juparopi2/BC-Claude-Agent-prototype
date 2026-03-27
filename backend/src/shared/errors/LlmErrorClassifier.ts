@@ -60,6 +60,7 @@ function parseRetryAfterMs(headers: Record<string, string | undefined> | undefin
  * Classify an error from LLM execution into a user-friendly error with retry metadata.
  *
  * Detection order (inheritance matters — check subclasses before base classes):
+ * 0. ConnectionTokenExpiredError (connector error from mention resolution) → CONNECTION_TOKEN_EXPIRED
  * 1. AbortSignal TimeoutError → LLM_TIMEOUT
  * 2. APIConnectionTimeoutError (extends APIConnectionError) → LLM_TIMEOUT
  * 3. APIConnectionError → LLM_CONNECTION_ERROR
@@ -73,6 +74,18 @@ function parseRetryAfterMs(headers: Record<string, string | undefined> | undefin
  */
 export function classifyLlmError(error: unknown): ClassifiedLlmError {
   const errorMessage = error instanceof Error ? error.message : String(error);
+
+  // 0. Connection token expired (Microsoft Graph / OneDrive / SharePoint)
+  // This is NOT an LLM error — it's a connector error that bubbled up from mention resolution.
+  // Retryable: user reconnects via existing UI, then re-sends the message.
+  if (error instanceof Error && error.name === 'ConnectionTokenExpiredError') {
+    return {
+      code: ErrorCode.CONNECTION_TOKEN_EXPIRED,
+      userMessage: ERROR_MESSAGES[ErrorCode.CONNECTION_TOKEN_EXPIRED],
+      technicalMessage: `Connection token expired: ${errorMessage}`,
+      retryable: true,
+    };
+  }
 
   // 1. AbortSignal TimeoutError (DOMException with name "TimeoutError")
   // This is OUR pipeline timeout (AbortSignal.timeout()) — the agent was actively working.

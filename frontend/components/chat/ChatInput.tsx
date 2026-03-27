@@ -575,6 +575,7 @@ export default function ChatInput({
     <div
       className={cn("border-t bg-background", isDragOver && "ring-2 ring-emerald-500/50")}
       data-testid="chat-input"
+      data-tour="chat-input"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -646,7 +647,7 @@ export default function ChatInput({
             disabled={effectiveIsBusy || disabled}
           />
 
-          <div className="flex items-center gap-1 ml-auto">
+          <div className="flex items-center gap-1 ml-auto" data-tour="web-search-attachments">
             {/* Mic button — visible in options row when there's text (continue dictation) */}
             {canSend && (
               <div className="relative">
@@ -745,7 +746,7 @@ export default function ChatInput({
             resultsRef={autocompleteResultsRef}
           />
 
-          <div className="relative flex-1">
+          <div className="relative w-full flex-1">
             <MentionHighlightOverlay
               text={message}
               mentions={mentions}
@@ -777,7 +778,7 @@ export default function ChatInput({
             />
           </div>
 
-          <div className="relative shrink-0">
+          <div className="relative shrink-0" data-tour="voice-input">
             {isRecording && !canSend && (
               <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-destructive text-white text-xs font-medium px-2 py-0.5 rounded-full tabular-nums animate-in fade-in slide-in-from-bottom-1">
                 {formatRecordingDuration(recordingDuration)}

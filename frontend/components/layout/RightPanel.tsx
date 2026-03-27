@@ -26,6 +26,16 @@ export default function RightPanel() {
   // Controlled tab state for programmatic switching
   const [activeTab, setActiveTab] = useState('files');
 
+  // Listen for tour:switch-tab CustomEvent from OnboardingProvider
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent<{ tab: string }>).detail?.tab;
+      if (tab) setActiveTab(tab);
+    };
+    window.addEventListener('tour:switch-tab', handler);
+    return () => window.removeEventListener('tour:switch-tab', handler);
+  }, []);
+
   // OAuth callback query params
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -85,7 +95,7 @@ export default function RightPanel() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
         {/* Tabs Navigation */}
         <TabsList className="w-full">
-          <TabsTrigger value="files" className="flex-1">
+          <TabsTrigger value="files" className="flex-1" data-tour="files-tab">
             <Folder />
             {!isNarrow && 'Files'}
           </TabsTrigger>
@@ -93,7 +103,7 @@ export default function RightPanel() {
             <Database />
             {!isNarrow && 'Entities'}
           </TabsTrigger>
-          <TabsTrigger value="connections" className="flex-1">
+          <TabsTrigger value="connections" className="flex-1" data-tour="connections-tab">
             <Link />
             {!isNarrow && 'Connections'}
           </TabsTrigger>

@@ -84,7 +84,7 @@ npx tsx scripts/connectors/cleanup-connections.ts --userId <ID> --provider all -
 | `verify-constraints.ts` | Verify constraints.sql matches DB state | `--table`, `--json`, `--strict` |
 | `find-user.ts` | Search users by name or email | `<search>`, `--exact`, `--files` |
 | `inventory-user.ts` | Full data inventory across all tables + Blob + AI Search | `<name\|UUID>`, `--all`, `--external` |
-| `purge-user.ts` | Per-user purge across SQL, Blob, AI Search, Redis (5 phases) | `--userId`, `--dry-run`, `--confirm`, `--keep-account` |
+| `purge-user.ts` | Per-user purge across SQL, Blob, AI Search, Redis (5 phases) | `--userId`, `--dry-run`, `--confirm`, `--keep-account`, `--reset-onboarding` |
 | `purge-test-users.ts` | Bulk remove empty test/fixture users | `--confirm`, `--exclude`, `--include-data` |
 | `reset-user-data.ts` | Global platform reset (ALL users) — SQL, Blob, Search, Redis | `--confirm`, `--dry-run`, `--skip-redis`, `--skip-files` |
 | `run-migration.ts` | Run raw SQL migration files | positional arg (file path) |
@@ -97,6 +97,7 @@ npx tsx scripts/database/find-user.ts Juan                                      
 npx tsx scripts/database/inventory-user.ts Juan --external                      # Full inventory
 npx tsx scripts/database/purge-user.ts --userId <UUID> --dry-run                # Preview purge
 npx tsx scripts/database/purge-user.ts --userId <UUID> --keep-account --confirm # Clean + keep login
+npx tsx scripts/database/purge-user.ts --userId <UUID> --reset-onboarding --confirm # Only reset onboarding
 npx tsx scripts/database/purge-user.ts --userId <UUID> --confirm                # Full account delete
 npx tsx scripts/database/purge-test-users.ts                                    # Dry-run test users
 npx tsx scripts/database/purge-test-users.ts --confirm                          # Delete test users
@@ -181,6 +182,17 @@ Scripts use `../_shared/` relative imports (no `@/` aliases — run outside main
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
 | `diagnose-unified-vector-pipeline.ts` | End-to-end diagnostic: DB → chunks → embeddings → search index | `--userId`, `--verbose` |
+| `backfill-imageCaption.ts` | Migrate image captions from `content` field to separate `imageCaption` field | `--dry-run`, `--userId` |
+
+### Image Caption Backfill
+
+```bash
+npx tsx scripts/search/backfill-imageCaption.ts --dry-run          # Preview changes
+npx tsx scripts/search/backfill-imageCaption.ts --userId <UUID>    # Scope to one user
+npx tsx scripts/search/backfill-imageCaption.ts                     # Execute full migration
+```
+
+Uses `mergeDocuments` — preserves embeddings and all other fields. Idempotent: re-running skips already-migrated documents. Run `update-search-schema.ts` first to add the `imageCaption` field.
 
 ---
 

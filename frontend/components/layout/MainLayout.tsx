@@ -49,6 +49,22 @@ export function MainLayout({
     }
   }, [rightPanelVisible]);
 
+  // Listen for tour:ensure-panel CustomEvent from OnboardingProvider
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const panel = (e as CustomEvent<{ panel: string }>).detail?.panel;
+      if (panel === 'right' && !rightPanelVisible && onToggleRightPanel) {
+        isTogglingRight.current = true;
+        onToggleRightPanel();
+        setTimeout(() => {
+          isTogglingRight.current = false;
+        }, 50);
+      }
+    };
+    window.addEventListener('tour:ensure-panel', handler);
+    return () => window.removeEventListener('tour:ensure-panel', handler);
+  }, [rightPanelVisible, onToggleRightPanel]);
+
   const handleToggleLeft = () => {
     if (onToggleLeftPanel) {
       onToggleLeftPanel();

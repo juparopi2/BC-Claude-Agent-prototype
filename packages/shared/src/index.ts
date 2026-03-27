@@ -120,7 +120,6 @@ export type {
   FolderDuplicateCheckResult,
   CheckFolderDuplicatesResponse,
   // Retry & Cleanup types
-  RetryPhase,
   RetryScope,
   RetryDecisionReason,
   RetryDecisionResult,
@@ -180,6 +179,9 @@ export type {
   UserSettingsResponse,
   UpdateUserSettingsRequest,
   UserSettingsRow,
+
+  // Onboarding types
+  OnboardingPreferences,
 
   // Job event types (Phase 3, Task 3.3)
   JobQueueName,
@@ -374,6 +376,11 @@ export type {
   StuckFileRecoveryMetrics,
   OrphanCleanupMetrics,
   BatchTimeoutMetrics,
+
+  // File Health types (file health diagnostic system)
+  FileHealthIssueType,
+  FileHealthIssue,
+  FileHealthIssuesResponse,
 } from './types';
 
 // Type guards (runtime functions, not types)
@@ -416,6 +423,9 @@ export {
   DEFAULT_SOURCE_TYPE,
   DEFAULT_FETCH_STRATEGY,
 } from './types';
+
+// Onboarding constants
+export { DEFAULT_ONBOARDING_PREFERENCES } from './types';
 
 // Job event utilities (Phase 3, Task 3.3)
 export { JOB_QUEUE_DISPLAY_NAMES, getQueueDisplayName } from './types';
@@ -590,6 +600,14 @@ export {
   getValidCategories,
   type FileTypeCategory,
 
+  // Onboarding Constants
+  TOUR_ID,
+  TIP_ID,
+  TIP_MAX_SHOW_COUNTS,
+  NEW_CHAT_TIP_MESSAGE_THRESHOLD,
+  type TourId,
+  type TipId,
+
   // Pipeline Status (PRD-01)
   PIPELINE_STATUS,
   PIPELINE_TRANSITIONS,
@@ -618,6 +636,8 @@ export {
   // Settings schemas
   themePreferenceSchema,
   updateUserSettingsSchema,
+  // Onboarding schemas
+  onboardingPreferencesSchema,
   // Chat attachment schemas and validators
   chatAttachmentIdSchema,
   uploadChatAttachmentSchema,

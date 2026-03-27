@@ -100,19 +100,13 @@ export interface FileDbRecord {
   /** SHA-256 hash of file content for duplicate detection (NULL for folders) */
   content_hash: string | null;
 
-  /** Number of processing retry attempts (Phase 5) */
-  processing_retry_count: number;
+  /** Unified pipeline retry count */
+  pipeline_retry_count: number;
 
-  /** Number of embedding retry attempts (Phase 5) */
-  embedding_retry_count: number;
+  /** Unified error message from last failed pipeline stage */
+  last_error: string | null;
 
-  /** Last error message from processing failure (Phase 5) */
-  last_processing_error: string | null;
-
-  /** Last error message from embedding failure (Phase 5) */
-  last_embedding_error: string | null;
-
-  /** UTC timestamp when file permanently failed (Phase 5) */
+  /** UTC timestamp when file permanently failed */
   failed_at: Date | null;
 
   /** Deletion status for soft delete workflow (NULL = active) */
@@ -328,8 +322,7 @@ export interface UpdateFileOptions {
  * ```
  */
 export function parseFile(record: FileDbRecord): ParsedFile {
-  // Compute last error from either processing or embedding error
-  const lastError = record.last_processing_error || record.last_embedding_error || null;
+  const lastError = record.last_error || null;
 
   return {
     id: record.id,
@@ -345,8 +338,7 @@ export function parseFile(record: FileDbRecord): ParsedFile {
     isFavorite: record.is_favorite,
     pipelineStatus: record.pipeline_status,
     readinessState: computeReadinessState(record.pipeline_status),
-    processingRetryCount: record.processing_retry_count ?? 0,
-    embeddingRetryCount: record.embedding_retry_count ?? 0,
+    retryCount: record.pipeline_retry_count ?? 0,
     lastError,
     failedAt: record.failed_at ? record.failed_at.toISOString() : null,
     hasExtractedText: record.extracted_text !== null,

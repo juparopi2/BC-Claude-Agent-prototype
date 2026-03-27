@@ -125,6 +125,14 @@ export const useAuthStore = create<AuthStore>()(
                 authFailureReason: null,
               });
 
+              // Fire-and-forget: trigger file health reconciliation once per tab session.
+              // sessionStorage clears on tab close → new login = new trigger.
+              // Backend cooldown (5 min) is the safety net for concurrent tabs.
+              if (authenticated && !sessionStorage.getItem('bc:reconciliation-triggered')) {
+                sessionStorage.setItem('bc:reconciliation-triggered', '1');
+                api.triggerReconciliation('login').catch(() => { /* silent — best effort */ });
+              }
+
               return authenticated;
             } else {
               // Determine the failure reason based on the error code
@@ -163,8 +171,10 @@ export const useAuthStore = create<AuthStore>()(
 
           const socketClient = getSocketClient();
 
-          // Idempotent: skip if already connected
           if (socketClient.isConnected) {
+            // Already connected (e.g., page refresh with active socket)
+            // Still join user room to trigger login reconciliation
+            socketClient.joinUserRoom(user.id);
             return;
           }
 

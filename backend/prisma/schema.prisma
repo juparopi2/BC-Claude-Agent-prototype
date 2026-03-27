@@ -301,18 +301,16 @@ model files {
   external_url             String?                    @db.NVarChar(2048)
   external_modified_at     DateTime?
   content_hash_external    String?                    @db.Char(64)
-  processing_retry_count   Int                        @default(0, map: "DF__files__processin__3335971A")
-  embedding_retry_count    Int                        @default(0, map: "DF__files__embedding__3429BB53")
-  last_processing_error    String?
-  last_embedding_error     String?
   failed_at                DateTime?
   deletion_status          String?                    @db.NVarChar(20)
   deleted_at               DateTime?
   /// Unified pipeline status (PRD-01). Required after PRD-07 migration.
   pipeline_status          String                     @db.NVarChar(50)
   batch_id                 String?                    @db.UniqueIdentifier
-  /// V2 pipeline retry count (PRD-05). Incremented on each automatic recovery attempt.
+  /// Unified retry count. Incremented on each automatic recovery attempt.
   pipeline_retry_count     Int                        @default(0)
+  /// Unified error message from last failed pipeline stage.
+  last_error               String?                    @db.NVarChar(1000)
   file_modified_at         DateTime?
   is_shared                Boolean                    @default(false)
   file_chunks              file_chunks[]

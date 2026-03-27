@@ -1,15 +1,28 @@
 /**
  * SyncReconciliationService (PRD-300)
  *
- * Daily reconciliation between DB files (pipeline_status='ready') and Azure AI Search
- * index to detect and optionally repair drift. Runs at 04:00 UTC via MaintenanceWorker.
+ * Reconciliation between DB files and Azure AI Search index to detect and
+ * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
+ * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Two drift conditions detected:
- *   1. Files in DB as 'ready' but missing from the search index → re-enqueue for processing
- *   2. Documents in search index with no matching DB file → orphaned, remove from index
+ * Eleven drift conditions detected:
+ *   1. Files in DB as 'ready' but missing from the search index
+ *   2. Documents in search index with no matching DB file (orphaned)
+ *   3. Failed files eligible for retry (retry_count < 3)
+ *   4. Stuck pipeline files (> 30 min in intermediate state)
+ *   5. Ready images missing image_embeddings records
+ *   6. External files (OneDrive/SharePoint) that no longer exist (Graph API 404)
+ *   7. Broken folder hierarchy (orphaned children, missing scope roots)
+ *   8. Files on disconnected/expired connections (orphaned by disconnection)
+ *   9. Ready non-image files with zero file_chunks records
+ *  10. Ready files with stale metadata in the search index (sourceType/parentFolderId mismatch)
+ *  11. Stuck deletion files (deletion_status='pending' > 1h — resurrect or hard-delete)
  *
- * Default behaviour is dry-run (no mutations). Set env var
- * SYNC_RECONCILIATION_AUTO_REPAIR=true to enable automatic repairs.
+ * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
+ * On-demand: always repairs (user explicitly requested it).
+ *
+ * All repair paths use optimistic concurrency (status guard) to prevent race
+ * conditions with active file processing workers.
  *
  * @module services/sync/health
  */
@@ -17,15 +30,32 @@
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
 import { env } from '@/infrastructure/config/environment';
-import { getMessageQueue } from '@/infrastructure/queue';
+import { getRedisClient } from '@/infrastructure/redis/redis-client';
 import type { ReconciliationReport, ReconciliationRepairs } from './types';
+import { ReconciliationInProgressError, ReconciliationCooldownError } from './types';
+import { SearchIndexComparator } from './detectors/SearchIndexComparator';
+import { FailedRetriableDetector } from './detectors/FailedRetriableDetector';
+import { StuckPipelineDetector } from './detectors/StuckPipelineDetector';
+import { ExternalNotFoundDetector } from './detectors/ExternalNotFoundDetector';
+import { ImageEmbeddingDetector } from './detectors/ImageEmbeddingDetector';
+import { FolderHierarchyDetector } from './detectors/FolderHierarchyDetector';
+import { DisconnectedFilesDetector } from './detectors/DisconnectedFilesDetector';
+import { ReadyWithoutChunksDetector } from './detectors/ReadyWithoutChunksDetector';
+import { StaleSearchMetadataDetector } from './detectors/StaleSearchMetadataDetector';
+import { StuckDeletionDetector } from './detectors/StuckDeletionDetector';
+import { FileRequeueRepairer } from './repairers/FileRequeueRepairer';
+import { OrphanCleanupRepairer } from './repairers/OrphanCleanupRepairer';
+import { ExternalFileCleanupRepairer } from './repairers/ExternalFileCleanupRepairer';
+import { FolderHierarchyRepairer } from './repairers/FolderHierarchyRepairer';
+import { StuckDeletionRepairer } from './repairers/StuckDeletionRepairer';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
 // ──────────────────────────────────────────────────────────────────────────────
 
 const MAX_USERS_PER_RUN = 50;
-const DB_BATCH_SIZE = 500;
+const COOLDOWN_SECONDS = 300; // 5 minutes
+const COOLDOWN_KEY_PREFIX = 'sync:reconcile_cooldown:';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Service
@@ -34,16 +64,18 @@ const DB_BATCH_SIZE = 500;
 export class SyncReconciliationService {
   private readonly logger = createChildLogger({ service: 'SyncReconciliationService' });
 
+  /** In-memory guard to prevent concurrent reconciliation for the same user. */
+  private readonly activeReconciliations = new Set<string>();
+
   // ──────────────────────────────────────────────────────────────────────────
   // Public API
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Run reconciliation for up to MAX_USERS_PER_RUN users.
+   * Cron entry point — run reconciliation for up to MAX_USERS_PER_RUN users.
    *
-   * Each user is processed sequentially (not concurrently) so that a single
-   * user's failure does not abort the entire run. Errors are captured
-   * per-user and logged at warn level.
+   * Each user is processed sequentially so that one failure does not abort the
+   * entire run. Errors are captured per-user and logged at warn level.
    *
    * @returns One ReconciliationReport per successfully checked user.
    */
@@ -51,7 +83,7 @@ export class SyncReconciliationService {
     this.logger.info({ maxUsers: MAX_USERS_PER_RUN }, 'SyncReconciliationService: starting run');
 
     const users = await prisma.files.findMany({
-      where: { pipeline_status: 'ready', deleted_at: null },
+      where: { deleted_at: null },
       distinct: ['user_id'],
       select: { user_id: true },
       take: MAX_USERS_PER_RUN,
@@ -66,6 +98,11 @@ export class SyncReconciliationService {
         const report = await this.reconcileUser(userId);
         reports.push(report);
       } catch (err) {
+        // Skip ReconciliationInProgressError silently — on-demand is running for this user
+        if (err instanceof ReconciliationInProgressError) {
+          this.logger.info({ userId }, 'SyncReconciliationService: user reconciliation in progress via on-demand, skipping');
+          continue;
+        }
         const errorInfo =
           err instanceof Error
             ? { message: err.message, name: err.name, stack: err.stack }
@@ -85,134 +122,220 @@ export class SyncReconciliationService {
     return reports;
   }
 
+  /**
+   * On-demand reconciliation for a single user.
+   *
+   * Enforces:
+   *   - Redis cooldown (5 min between calls per user)
+   *   - In-memory concurrency guard (one active reconciliation per user)
+   *   - Always repairs (bypasses SYNC_RECONCILIATION_AUTO_REPAIR)
+   *
+   * @throws ReconciliationCooldownError if called within cooldown period
+   * @throws ReconciliationInProgressError if reconciliation is already active for this user
+   */
+  async reconcileUserOnDemand(userId: string): Promise<ReconciliationReport> {
+    const normalizedId = userId.toUpperCase();
+
+    // ── Check Redis cooldown ──────────────────────────────────────────────
+    await this.checkCooldown(normalizedId);
+
+    // ── Run reconciliation (with forceRepair) ─────────────────────────────
+    const report = await this.reconcileUser(userId, { forceRepair: true });
+
+    // ── Set cooldown on success ───────────────────────────────────────────
+    await this.setCooldown(normalizedId);
+
+    return report;
+  }
+
+  /**
+   * Reconcile a single user's files against the search index.
+   *
+   * Diagnoses 7 drift conditions, then optionally repairs them.
+   *
+   * @param userId - The user whose files to reconcile.
+   * @param options.forceRepair - When true, always repair regardless of env var.
+   */
+  async reconcileUser(
+    userId: string,
+    options?: { forceRepair?: boolean },
+  ): Promise<ReconciliationReport> {
+    const normalizedId = userId.toUpperCase();
+
+    // ── Concurrency guard ─────────────────────────────────────────────────
+    if (this.activeReconciliations.has(normalizedId)) {
+      throw new ReconciliationInProgressError(userId);
+    }
+
+    this.activeReconciliations.add(normalizedId);
+
+    try {
+      return await this.doReconcileUser(userId, options);
+    } finally {
+      this.activeReconciliations.delete(normalizedId);
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // Private — per-user reconciliation
   // ──────────────────────────────────────────────────────────────────────────
 
-  private async reconcileUser(userId: string): Promise<ReconciliationReport> {
-    // ── a. Collect all file IDs from DB (paginated) ───────────────────────
+  private async doReconcileUser(
+    userId: string,
+    options?: { forceRepair?: boolean },
+  ): Promise<ReconciliationReport> {
+    const normalizedId = userId.toUpperCase();
+    const shouldRepair = options?.forceRepair || env.SYNC_RECONCILIATION_AUTO_REPAIR;
 
-    const dbFileIds = new Set<string>();
-    let skip = 0;
+    // ── Detection phase ───────────────────────────────────────────────────
 
-    while (true) {
-      const batch = await prisma.files.findMany({
-        where: { user_id: userId, pipeline_status: 'ready', deleted_at: null },
-        select: { id: true },
-        skip,
-        take: DB_BATCH_SIZE,
-      });
+    // a/b/c. DB vs Search index comparison (missing + orphaned)
+    const comparator = new SearchIndexComparator();
+    const comparison = await comparator.compare(normalizedId);
 
-      if (batch.length === 0) break;
+    // d. Failed files eligible for retry
+    const failedRetriableResult = await new FailedRetriableDetector().detect(normalizedId);
+    const failedRetriableRows = failedRetriableResult.items;
+    const failedRetriable = failedRetriableRows.map((f) => f.id);
 
-      for (const f of batch) {
-        dbFileIds.add(f.id.toUpperCase());
-      }
+    // e. Stuck pipeline files
+    const stuckPipelineResult = await new StuckPipelineDetector().detect(normalizedId);
+    const stuckFileRows = stuckPipelineResult.items;
+    const stuckFiles = stuckFileRows.map((f) => f.id);
 
-      skip += DB_BATCH_SIZE;
+    // f. External files that no longer exist (Graph API 404)
+    const externalNotFoundResult = await new ExternalNotFoundDetector().detect(normalizedId);
+    const externalNotFound = externalNotFoundResult.items;
 
-      if (batch.length < DB_BATCH_SIZE) break;
-    }
+    // g. Ready images missing image_embeddings
+    const imagesMissingResult = await new ImageEmbeddingDetector().detect(normalizedId);
+    const imagesMissingEmbeddings = imagesMissingResult.items;
 
-    // ── b. Collect all file IDs from search index ─────────────────────────
+    // h. Folder hierarchy issues
+    const folderHierarchyIssues = await new FolderHierarchyDetector().detectIssues(normalizedId);
 
-    const { VectorSearchService } = await import('@/services/search/VectorSearchService');
-    const searchFileIds = new Set(
-      (await VectorSearchService.getInstance().getUniqueFileIds(userId)).map((id) =>
-        id.toUpperCase(),
-      ),
-    );
+    // i. Files on disconnected/expired connections
+    const disconnectedResult = await new DisconnectedFilesDetector().detect(normalizedId);
+    const disconnectedConnectionFiles = disconnectedResult.items;
 
-    // ── c. Compute set differences ────────────────────────────────────────
+    // 8. Ready files with 0 chunks (text files never properly processed)
+    const readyWithoutChunksResult = await new ReadyWithoutChunksDetector().detect(normalizedId);
+    const readyWithoutChunksRows = readyWithoutChunksResult.items;
+    const readyWithoutChunks = readyWithoutChunksRows.map((f) => f.id);
 
-    const missingFromSearch = [...dbFileIds].filter((id) => !searchFileIds.has(id));
-    const orphanedInSearch = [...searchFileIds].filter((id) => !dbFileIds.has(id));
+    // 9. Stale search metadata (sourceType, parentFolderId mismatch)
+    const staleMetadataResult = await new StaleSearchMetadataDetector().detect(normalizedId);
+    const staleMetadataRows = staleMetadataResult.items;
+    const staleSearchMetadata = staleMetadataRows.map((f) => f.id);
 
-    // ── d. Detect failed files eligible for retry ───────────────────────
+    // 10. Stuck deletion files (pending > 1h, resolve via hierarchical truth)
+    const stuckDeletionResult = await new StuckDeletionDetector().detect(normalizedId);
+    const stuckDeletionRows = stuckDeletionResult.items;
+    const stuckDeletionFiles = stuckDeletionRows.map((f) => f.id);
 
-    const failedRetriableRows = await prisma.files.findMany({
-      where: {
-        user_id: userId,
-        pipeline_status: 'failed',
-        pipeline_retry_count: { lt: 3 },
-        deleted_at: null,
-      },
-      select: { id: true, name: true, mime_type: true, connection_scope_id: true },
-    });
-    const failedRetriable = failedRetriableRows.map((f) => f.id.toUpperCase());
-
-    // ── e. Detect stuck pipeline files (> 30 min in any non-terminal state) ──
-
-    const stuckThreshold = new Date(Date.now() - 30 * 60 * 1000);
-    const stuckFileRows = await prisma.files.findMany({
-      where: {
-        user_id: userId,
-        pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
-        updated_at: { lt: stuckThreshold },
-        deleted_at: null,
-      },
-      select: { id: true, name: true, mime_type: true, connection_scope_id: true },
-    });
-    const stuckFiles = stuckFileRows.map((f) => f.id.toUpperCase());
-
-    // ── f. Detect ready images missing image_embeddings ─────────────────
-
-    const readyImages = await prisma.files.findMany({
-      where: {
-        user_id: userId,
-        pipeline_status: 'ready',
-        deleted_at: null,
-        mime_type: { startsWith: 'image/' },
-      },
-      select: { id: true },
-    });
-
-    let imagesMissingEmbeddings: string[] = [];
-    if (readyImages.length > 0) {
-      const imageIds = readyImages.map((f) => f.id);
-      const imagesWithEmbs = await prisma.image_embeddings.findMany({
-        where: { user_id: userId, file_id: { in: imageIds } },
-        select: { file_id: true },
-      });
-      const embFileIds = new Set(imagesWithEmbs.map((e) => e.file_id.toUpperCase()));
-      imagesMissingEmbeddings = readyImages
-        .filter((f) => !embFileIds.has(f.id.toUpperCase()))
-        .map((f) => f.id.toUpperCase());
-    }
-
-    // ── g. Optionally repair ────────────────────────────────────────────
-
-    const autoRepair = env.SYNC_RECONCILIATION_AUTO_REPAIR;
+    // ── Repair phase ──────────────────────────────────────────────────────
 
     let repairs: ReconciliationRepairs;
 
-    if (autoRepair) {
-      repairs = await this.performRepairs(
-        userId,
-        missingFromSearch,
-        orphanedInSearch,
-        failedRetriableRows,
-        stuckFileRows,
-        imagesMissingEmbeddings,
-      );
+    if (shouldRepair) {
+      const requeuer = new FileRequeueRepairer();
+      const orphanCleaner = new OrphanCleanupRepairer();
+      const externalCleaner = new ExternalFileCleanupRepairer();
+      const hierarchyRepairer = new FolderHierarchyRepairer();
+
+      // Re-enqueue files missing from the search index
+      const missingResult = await requeuer.requeueMissingFromSearch(normalizedId, comparison.missingFromSearch);
+
+      // Delete orphaned search documents
+      const orphanResult = await orphanCleaner.cleanup(normalizedId, comparison.orphanedInSearch);
+
+      // Re-enqueue failed files eligible for retry
+      const failedResult = await requeuer.requeueFailedRetriable(normalizedId, failedRetriableRows);
+
+      // Re-enqueue stuck pipeline files
+      const stuckResult = await requeuer.requeueStuckFiles(normalizedId, stuckFileRows);
+
+      // Re-enqueue ready images missing embeddings
+      const imageResult = await requeuer.requeueImagesMissingEmbeddings(normalizedId, imagesMissingEmbeddings);
+
+      // Soft-delete external files that no longer exist
+      const externalResult = await externalCleaner.cleanup(normalizedId, externalNotFound);
+
+      // Soft-delete files on disconnected/expired connections
+      const disconnectedCleanResult = await externalCleaner.cleanup(normalizedId, disconnectedConnectionFiles);
+
+      // Repair folder hierarchy issues
+      const hierarchyRepairs = await hierarchyRepairer.repair(normalizedId, folderHierarchyIssues);
+
+      // Re-enqueue ready files with 0 chunks
+      const readyWithoutChunksRepairResult = await requeuer.requeueReadyWithoutChunks(normalizedId, readyWithoutChunksRows);
+
+      // Re-enqueue files with stale search metadata
+      const staleMetadataRepairResult = await requeuer.requeueStaleMetadata(normalizedId, staleMetadataRows);
+
+      // Resolve stuck deletions via hierarchical truth (resurrect or hard-delete)
+      const stuckDeletionRepairer = new StuckDeletionRepairer();
+      const stuckDeletionRepairs = await stuckDeletionRepairer.repair(normalizedId, stuckDeletionRows);
+
+      // Aggregate all errors
+      const totalErrors =
+        missingResult.errors +
+        orphanResult.errors +
+        failedResult.errors +
+        stuckResult.errors +
+        imageResult.errors +
+        externalResult.errors +
+        disconnectedCleanResult.errors +
+        readyWithoutChunksRepairResult.errors +
+        staleMetadataRepairResult.errors +
+        stuckDeletionRepairs.errors;
+
+      repairs = {
+        missingRequeued: missingResult.missingRequeued,
+        orphansDeleted: orphanResult.orphansDeleted,
+        failedRequeued: failedResult.failedRequeued,
+        stuckRequeued: stuckResult.stuckRequeued,
+        imageRequeued: imageResult.imageRequeued,
+        externalNotFoundCleaned: externalResult.cleaned,
+        disconnectedConnectionCleaned: disconnectedCleanResult.cleaned,
+        folderHierarchy: hierarchyRepairs,
+        readyWithoutChunksRequeued: readyWithoutChunksRepairResult.readyWithoutChunksRequeued,
+        staleMetadataRequeued: staleMetadataRepairResult.staleMetadataRequeued,
+        stuckDeletions: stuckDeletionRepairs,
+        errors: totalErrors,
+      };
     } else {
-      repairs = { missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0, errors: 0 };
+      repairs = {
+        missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
+        imageRequeued: 0, externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
+        folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, foldersRestored: 0, errors: 0 },
+        readyWithoutChunksRequeued: 0,
+        staleMetadataRequeued: 0,
+        stuckDeletions: { resurrected: 0, hardDeleted: 0, errors: 0 },
+        errors: 0,
+      };
     }
 
-    // ── h. Build and log report ─────────────────────────────────────────
+    // ── Build and log report ──────────────────────────────────────────────
 
     const report: ReconciliationReport = {
       timestamp: new Date(),
       userId,
-      dbReadyFiles: dbFileIds.size,
-      searchIndexedFiles: searchFileIds.size,
-      missingFromSearch,
-      orphanedInSearch,
+      dbReadyFiles: comparison.dbFileIds.size,
+      searchIndexedFiles: comparison.searchFileIds.size,
+      missingFromSearch: comparison.missingFromSearch,
+      orphanedInSearch: comparison.orphanedInSearch,
       failedRetriable,
       stuckFiles,
       imagesMissingEmbeddings,
+      externalNotFound,
+      disconnectedConnectionFiles,
+      folderHierarchyIssues,
+      readyWithoutChunks,
+      staleSearchMetadata,
+      stuckDeletionFiles,
       repairs,
-      dryRun: !autoRepair,
+      dryRun: !shouldRepair,
     };
 
     this.logger.info(
@@ -224,11 +347,25 @@ export class SyncReconciliationService {
         failedRetriable: undefined,
         stuckFiles: undefined,
         imagesMissingEmbeddings: undefined,
-        missingCount: missingFromSearch.length,
-        orphanedCount: orphanedInSearch.length,
+        externalNotFound: undefined,
+        folderHierarchyIssues: undefined, // Don't log full details
+        readyWithoutChunks: undefined,
+        staleSearchMetadata: undefined,
+        stuckDeletionFiles: undefined,
+        missingCount: comparison.missingFromSearch.length,
+        orphanedCount: comparison.orphanedInSearch.length,
         failedRetriableCount: failedRetriable.length,
         stuckFilesCount: stuckFiles.length,
         imagesMissingEmbeddingsCount: imagesMissingEmbeddings.length,
+        externalNotFoundCount: externalNotFound.length,
+        disconnectedConnectionFiles: undefined,
+        disconnectedConnectionFilesCount: disconnectedConnectionFiles.length,
+        orphanedChildrenCount: folderHierarchyIssues.orphanedChildren.length,
+        missingScopeRootsCount: folderHierarchyIssues.missingScopeRoots.length,
+        scopesToResyncCount: folderHierarchyIssues.scopeIdsToResync.length,
+        readyWithoutChunksCount: readyWithoutChunks.length,
+        staleSearchMetadataCount: staleSearchMetadata.length,
+        stuckDeletionFilesCount: stuckDeletionFiles.length,
       },
       'Reconciliation report for user',
     );
@@ -237,197 +374,45 @@ export class SyncReconciliationService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Private — repairs
+  // Private — Redis cooldown
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Attempt to repair detected drift:
-   *   - Missing from search: reset pipeline_status to 'queued' and re-enqueue.
-   *   - Orphaned in search:  delete all chunks for the stale fileId.
-   *   - Failed retriable: reset pipeline_status to 'queued', clear retry count, re-enqueue.
-   *   - Stuck files: reset pipeline_status to 'queued', re-enqueue.
-   *   - Images missing embeddings: reset pipeline_status to 'queued', re-enqueue.
-   *
-   * Errors are captured per-file so that one failure does not abort the rest.
+   * Check if user is within cooldown period. Throws if cooldown is active.
+   * Fails open: if Redis is unavailable, allow the call through.
    */
-  private async performRepairs(
-    userId: string,
-    missingFromSearch: string[],
-    orphanedInSearch: string[],
-    failedRetriableRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
-    stuckFileRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
-    imagesMissingEmbeddings: string[],
-  ): Promise<ReconciliationRepairs> {
-    const repairs: ReconciliationRepairs = {
-      missingRequeued: 0, orphansDeleted: 0,
-      failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0,
-      errors: 0,
-    };
+  private async checkCooldown(normalizedUserId: string): Promise<void> {
+    const client = getRedisClient();
+    if (!client) return; // Fail open
 
-    // ── Re-enqueue files missing from the search index ───────────────────
+    try {
+      const key = `${COOLDOWN_KEY_PREFIX}${normalizedUserId}`;
+      const ttl = await client.ttl(key);
 
-    for (const fileId of missingFromSearch) {
-      try {
-        const file = await prisma.files.findUnique({
-          where: { id: fileId },
-          select: {
-            id: true,
-            name: true,
-            mime_type: true,
-            user_id: true,
-            connection_scope_id: true,
-          },
-        });
-
-        if (!file) continue;
-
-        // Reset pipeline status so the processing pipeline picks it up again
-        await prisma.files.update({
-          where: { id: fileId },
-          data: { pipeline_status: 'queued' },
-        });
-
-        await getMessageQueue().addFileProcessingFlow({
-          fileId: file.id,
-          batchId: file.connection_scope_id ?? fileId,
-          userId: file.user_id,
-          mimeType: file.mime_type,
-          fileName: file.name,
-        });
-
-        repairs.missingRequeued++;
-      } catch (err) {
-        const errorInfo =
-          err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-        this.logger.warn(
-          { fileId, error: errorInfo },
-          'Failed to re-enqueue missing file',
-        );
-        repairs.errors++;
+      if (ttl > 0) {
+        throw new ReconciliationCooldownError(ttl);
       }
+    } catch (err) {
+      if (err instanceof ReconciliationCooldownError) throw err;
+      // Redis error — fail open
+      this.logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Redis cooldown check failed, proceeding');
     }
+  }
 
-    // ── Delete orphaned search documents ──────────────────────────────────
+  /**
+   * Set cooldown after successful reconciliation.
+   * Best-effort: Redis failure does not fail the reconciliation.
+   */
+  private async setCooldown(normalizedUserId: string): Promise<void> {
+    const client = getRedisClient();
+    if (!client) return;
 
-    for (const fileId of orphanedInSearch) {
-      try {
-        const { VectorSearchService } = await import('@/services/search/VectorSearchService');
-        await VectorSearchService.getInstance().deleteChunksForFile(fileId, userId);
-        repairs.orphansDeleted++;
-      } catch (err) {
-        const errorInfo =
-          err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-        this.logger.warn(
-          { fileId, error: errorInfo },
-          'Failed to delete orphaned search chunks',
-        );
-        repairs.errors++;
-      }
+    try {
+      const key = `${COOLDOWN_KEY_PREFIX}${normalizedUserId}`;
+      await client.set(key, '1', { EX: COOLDOWN_SECONDS });
+    } catch (err) {
+      this.logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to set reconciliation cooldown');
     }
-
-    // ── Re-enqueue failed files eligible for retry ──────────────────────
-
-    for (const file of failedRetriableRows) {
-      try {
-        await prisma.files.update({
-          where: { id: file.id },
-          data: {
-            pipeline_status: 'queued',
-            pipeline_retry_count: 0,
-            last_processing_error: null,
-            updated_at: new Date(),
-          },
-        });
-
-        await getMessageQueue().addFileProcessingFlow({
-          fileId: file.id,
-          batchId: file.connection_scope_id ?? file.id,
-          userId,
-          mimeType: file.mime_type,
-          fileName: file.name,
-        });
-
-        repairs.failedRequeued++;
-      } catch (err) {
-        const errorInfo =
-          err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-        this.logger.warn({ fileId: file.id, error: errorInfo }, 'Failed to re-enqueue failed file');
-        repairs.errors++;
-      }
-    }
-
-    // ── Re-enqueue stuck intermediate pipeline files ────────────────────
-
-    for (const file of stuckFileRows) {
-      try {
-        await prisma.files.update({
-          where: { id: file.id },
-          data: {
-            pipeline_status: 'queued',
-            updated_at: new Date(),
-          },
-        });
-
-        await getMessageQueue().addFileProcessingFlow({
-          fileId: file.id,
-          batchId: file.connection_scope_id ?? file.id,
-          userId,
-          mimeType: file.mime_type,
-          fileName: file.name,
-        });
-
-        repairs.stuckRequeued++;
-      } catch (err) {
-        const errorInfo =
-          err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-        this.logger.warn({ fileId: file.id, error: errorInfo }, 'Failed to re-enqueue stuck file');
-        repairs.errors++;
-      }
-    }
-
-    // ── Re-enqueue ready images missing embeddings ──────────────────────
-
-    for (const fileId of imagesMissingEmbeddings) {
-      try {
-        const file = await prisma.files.findUnique({
-          where: { id: fileId },
-          select: { id: true, name: true, mime_type: true, connection_scope_id: true },
-        });
-        if (!file) continue;
-
-        await prisma.files.update({
-          where: { id: fileId },
-          data: { pipeline_status: 'queued', updated_at: new Date() },
-        });
-
-        await getMessageQueue().addFileProcessingFlow({
-          fileId: file.id,
-          batchId: file.connection_scope_id ?? file.id,
-          userId,
-          mimeType: file.mime_type,
-          fileName: file.name,
-        });
-
-        repairs.imageRequeued++;
-      } catch (err) {
-        const errorInfo =
-          err instanceof Error
-            ? { message: err.message, name: err.name }
-            : { value: String(err) };
-        this.logger.warn({ fileId, error: errorInfo }, 'Failed to re-enqueue image missing embedding');
-        repairs.errors++;
-      }
-    }
-
-    return repairs;
   }
 }
 

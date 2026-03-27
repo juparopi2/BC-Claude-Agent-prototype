@@ -275,6 +275,7 @@ export type RenewSasRequestInput = z.infer<typeof renewSasRequestSchema>;
 // ============================================
 
 import { SETTINGS_THEME_VALUES } from '../constants/settings.constants';
+import { onboardingPreferencesSchema } from './onboarding.schemas';
 
 /**
  * Theme Preference Schema
@@ -292,9 +293,14 @@ export type ThemePreferenceInput = z.infer<typeof themePreferenceSchema>;
  */
 export const updateUserSettingsSchema = z.object({
   theme: themePreferenceSchema.optional(),
+  preferences: onboardingPreferencesSchema.optional(),
 });
 
 export type UpdateUserSettingsInput = z.infer<typeof updateUserSettingsSchema>;
+
+// Onboarding Schemas
+export { onboardingPreferencesSchema } from './onboarding.schemas';
+export type { OnboardingPreferencesInput } from './onboarding.schemas';
 
 // ============================================
 // Chat Attachments Schemas

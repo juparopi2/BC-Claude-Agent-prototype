@@ -14,6 +14,7 @@ import folderRouter from './folder.routes';
 import folderBatchRouter from './folder-batch.routes';
 import searchRouter from './search.routes';
 import sandboxDownloadRouter from './sandbox-download.routes';
+import healthRouter from './health.routes';
 import processingRouter from './processing.routes';
 import downloadRouter from './download.routes';
 import crudRouter from './crud.routes';
@@ -37,6 +38,9 @@ router.use('/', searchRouter);
 
 // GET /sandbox/:fileId/download - Sandbox file download (Anthropic Files API proxy)
 router.use('/', sandboxDownloadRouter);
+
+// GET /health/issues - File health diagnostics
+router.use('/health', healthRouter);
 
 // POST /:id/retry-processing - Retry failed file processing
 router.use('/', processingRouter);

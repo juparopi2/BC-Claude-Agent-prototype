@@ -267,6 +267,12 @@ async function resetDatabase(dryRun: boolean, skipFiles: boolean): Promise<Phase
       console.log(`  ${GREEN}user_quotas: reset counters to 0${RESET}`);
     }
 
+    // 10. Clear onboarding preferences so next login triggers the welcome tour
+    await prisma.user_settings.updateMany({
+      data: { preferences: null },
+    });
+    console.log(`  ${GREEN}user_settings.preferences: cleared for all users (onboarding reset)${RESET}`);
+
     console.log(`\n  ${GREEN}SQL Database reset complete.${RESET}`);
     return { name: 'SQL Database', deleted };
   } catch (error) {

@@ -181,6 +181,8 @@ export interface SemanticSearchResult {
   captionText?: string;
   /** Highlighted caption with <em> tags from Semantic Ranker (PRD-203) */
   captionHighlights?: string;
+  /** AI-generated image caption (stored separately from content, not searchable) */
+  imageCaption?: string;
 }
 
 // ===== PRD-203: Extractive Search Types =====

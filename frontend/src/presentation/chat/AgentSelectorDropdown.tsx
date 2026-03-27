@@ -65,6 +65,7 @@ export function AgentSelectorDropdown({ disabled, value, onChange }: AgentSelect
                   borderColor: selectedAgent.color,
                 }}
                 data-testid="agent-selector"
+                data-tour="agent-selector"
               >
                 <span>{selectedAgent.icon}</span>
                 <span>{selectedAgent.name}</span>

@@ -140,3 +140,26 @@ export {
   getValidCategories,
   type FileTypeCategory,
 } from './file-type-categories';
+
+// File Health State Definitions (PRD-304)
+export {
+  HEALTHY_FILE_STATES,
+  getFileHealthKey,
+  getExpectedHealthState,
+  validateFileHealth,
+  isResourceExpectationMet,
+  type HealthyFileExpectation,
+  type FileHealthViolation,
+  type FileHealthStateKey,
+  type ResourceExpectation,
+} from './file-health-state';
+
+// Onboarding Constants
+export {
+  TOUR_ID,
+  TIP_ID,
+  TIP_MAX_SHOW_COUNTS,
+  NEW_CHAT_TIP_MESSAGE_THRESHOLD,
+  type TourId,
+  type TipId,
+} from './onboarding.constants';

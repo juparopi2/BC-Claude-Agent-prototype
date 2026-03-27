@@ -1,0 +1,82 @@
+{
+  "onboarding": {
+    "tour": {
+      "welcome": {
+        "title": "Welcome to MyWorkMate",
+        "content": "Your AI-powered business assistant. Let us give you a quick tour of the key features."
+      },
+      "filesTab": {
+        "title": "Your Knowledge Base",
+        "content": "Upload documents here to give MyWorkMate recurring context. These files will be available across all your conversations."
+      },
+      "connectionsTab": {
+        "title": "Cloud Connections",
+        "content": "Connect your OneDrive or SharePoint accounts to automatically sync your business documents."
+      },
+      "agentSelector": {
+        "title": "Specialized Agents",
+        "content": "Each agent is an expert in a different area. Choose the one that best fits your question."
+      },
+      "orchestratorDefault": {
+        "title": "Orchestrator — Recommended",
+        "content": "The Orchestrator automatically routes your questions to the best agent. We recommend keeping it as your default."
+      },
+      "webSearchAttachments": {
+        "title": "Web Search & Attachments",
+        "content": "Enable web search with the Globe icon for up-to-date information, or attach temporary files with the Paperclip for single-session context."
+      },
+      "done": {
+        "title": "You're All Set!",
+        "content": "Start chatting to explore what MyWorkMate can do for your business. You can always revisit this tour from Settings."
+      }
+    },
+    "connectionTutorial": {
+      "fileExplorer": {
+        "title": "Your Synced Documents",
+        "content": "Connected documents appear here. Use the source filter to browse by OneDrive or SharePoint."
+      },
+      "documentTypes": {
+        "title": "Organized by Type",
+        "content": "Files are automatically categorized and processed so MyWorkMate can search and reference them in conversations."
+      }
+    },
+    "tips": {
+      "newChat": {
+        "title": "Pro Tip: Keep Context Clean",
+        "content": "Start a new chat for different topics — it helps MyWorkMate stay focused and accurate."
+      },
+      "useAsContext": {
+        "title": "Pro Tip: Use Files as Context",
+        "content": "Drag files from the panel into the chat, or right-click any file and select \"Use as Context\" to reference it."
+      },
+      "atMention": {
+        "title": "Pro Tip: Quick File Reference",
+        "content": "Type @ in the chat input to instantly search and reference your files."
+      },
+      "toggleColumns": {
+        "title": "Pro Tip: Customize Your View",
+        "content": "Click here to show or hide table columns and tailor the file view to your needs."
+      },
+      "tableResize": {
+        "title": "Pro Tip: Resize & Reorder Columns",
+        "content": "Drag column edges to resize, or drag column headers to reorder them."
+      },
+      "refreshSync": {
+        "title": "Pro Tip: Refresh Sync",
+        "content": "Hit refresh to check for pending sync updates and re-verify your cloud connections."
+      },
+      "voiceInput": {
+        "title": "Pro Tip: Use Voice Input",
+        "content": "Tap the microphone to dictate longer, more detailed messages — richer context means better results."
+      }
+    },
+    "common": {
+      "skip": "Skip Tour",
+      "next": "Next",
+      "back": "Back",
+      "finish": "Get Started",
+      "dismiss": "Got it",
+      "stepOf": "Step {current} of {total}"
+    }
+  }
+}

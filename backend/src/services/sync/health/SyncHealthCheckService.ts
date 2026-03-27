@@ -34,6 +34,7 @@ import type {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_STUCK_THRESHOLD_MS = 600_000; // 10 minutes
+const DEFAULT_STUCK_QUEUED_THRESHOLD_MS = 3_600_000; // 1 hour
 const STALE_SYNC_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
 const HIGH_FAILURE_RATE_THRESHOLD = 0.5; // 50%
 const MAX_BACKOFF_ATTEMPTS = 5;
@@ -99,6 +100,8 @@ export class SyncHealthCheckService {
       scopesChecked: 0,
       stuckSyncingDetected: 0,
       stuckSyncingReset: 0,
+      stuckSyncQueuedDetected: 0,
+      stuckSyncQueuedReset: 0,
       errorScopesDetected: 0,
       errorScopesRetried: 0,
       errorScopesSkippedExpiredConnection: 0,
@@ -117,6 +120,7 @@ export class SyncHealthCheckService {
     metrics.scopesChecked = scopes.length;
 
     const stuckScopeIds: string[] = [];
+    const stuckQueuedScopeIds: string[] = [];
     const retryScopeIds: string[] = [];
     // Map from userId -> ScopeHealthReport[] for WS emission
     const scopesByUser = new Map<string, ScopeHealthReport[]>();
@@ -139,6 +143,11 @@ export class SyncHealthCheckService {
         if (issueTypes.includes('stuck_syncing')) {
           metrics.stuckSyncingDetected++;
           stuckScopeIds.push(scope.id.toUpperCase());
+        }
+
+        if (issueTypes.includes('stuck_sync_queued')) {
+          metrics.stuckSyncQueuedDetected++;
+          stuckQueuedScopeIds.push(scope.id.toUpperCase());
         }
 
         if (issueTypes.includes('error_state')) {
@@ -171,6 +180,11 @@ export class SyncHealthCheckService {
     if (stuckScopeIds.length > 0) {
       const resetResult = await getSyncRecoveryService().resetStuckScopes(stuckScopeIds);
       metrics.stuckSyncingReset = resetResult.scopesReset;
+    }
+
+    if (stuckQueuedScopeIds.length > 0) {
+      const queuedResetResult = await getSyncRecoveryService().resetStuckQueuedScopes(stuckQueuedScopeIds);
+      metrics.stuckSyncQueuedReset = queuedResetResult.scopesRequeued;
     }
 
     if (retryScopeIds.length > 0) {
@@ -214,6 +228,8 @@ export class SyncHealthCheckService {
         scopesChecked: metrics.scopesChecked,
         stuckSyncingDetected: metrics.stuckSyncingDetected,
         stuckSyncingReset: metrics.stuckSyncingReset,
+        stuckSyncQueuedDetected: metrics.stuckSyncQueuedDetected,
+        stuckSyncQueuedReset: metrics.stuckSyncQueuedReset,
         errorScopesDetected: metrics.errorScopesDetected,
         errorScopesRetried: metrics.errorScopesRetried,
         errorScopesSkippedExpiredConnection: metrics.errorScopesSkippedExpiredConnection,
@@ -294,6 +310,17 @@ export class SyncHealthCheckService {
         type: 'stuck_syncing',
         severity: 'critical',
         message: `Scope has been in 'syncing' state since ${scope.updated_at.toISOString()} (threshold: ${this.stuckThresholdMs}ms)`,
+        detectedAt: now,
+      });
+    }
+
+    // 1b. Stuck sync_queued: scope waiting > threshold to start syncing
+    const queuedCutoff = new Date(Date.now() - DEFAULT_STUCK_QUEUED_THRESHOLD_MS);
+    if (scope.sync_status === 'sync_queued' && scope.updated_at < queuedCutoff) {
+      issues.push({
+        type: 'stuck_sync_queued',
+        severity: 'critical',
+        message: `Scope has been in 'sync_queued' state since ${scope.updated_at.toISOString()} (threshold: ${DEFAULT_STUCK_QUEUED_THRESHOLD_MS}ms)`,
         detectedAt: now,
       });
     }

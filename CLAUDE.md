@@ -46,6 +46,7 @@
 | Operational scripts | `backend/scripts/` | `CLAUDE.md` |
 | Frontend files UI | `frontend/src/domains/files/` | `CLAUDE.md` |
 | Frontend integrations | `frontend/src/domains/integrations/` | `CLAUDE.md` |
+| Frontend onboarding | `frontend/src/domains/onboarding/` | `CLAUDE.md` |
 | Production operations | `infrastructure/` | `CLAUDE.md` |
 
 ## 5. Commands & Pre-Commit

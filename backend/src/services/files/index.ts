@@ -46,3 +46,8 @@ export {
   __resetFileMetadataService,
   type IFileMetadataService,
 } from './operations';
+
+// ========================================================================
+// Health Layer
+// ========================================================================
+export { FileHealthService, getFileHealthService, __resetFileHealthService } from './FileHealthService';

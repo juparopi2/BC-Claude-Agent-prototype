@@ -147,7 +147,6 @@ export {
 
 export type {
   // Retry & Cleanup types (D25 Sprint 2)
-  RetryPhase,
   RetryScope,
   RetryDecisionReason,
   RetryDecisionResult,
@@ -500,3 +499,17 @@ export type {
   SharePointSiteListResult,
   SharePointLibraryListResult,
 } from './sharepoint.types';
+
+// Onboarding types
+export type {
+  OnboardingPreferences,
+} from './onboarding.types';
+
+export { DEFAULT_ONBOARDING_PREFERENCES } from './onboarding.types';
+
+// File Health types (file health diagnostic system)
+export type {
+  FileHealthIssueType,
+  FileHealthIssue,
+  FileHealthIssuesResponse,
+} from './file-health.types';

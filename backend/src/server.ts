@@ -1314,6 +1314,55 @@ function configureSocketIO(): void {
       });
 
       socket.emit('user:joined', { userId: authenticatedUserId });
+
+      // PRD-300: Fire-and-forget reconciliation on login/reconnect
+      // Respects 5-min Redis cooldown — safe for rapid reconnects
+      (async () => {
+        try {
+          const { getSyncReconciliationService } = await import('@/services/sync/health');
+          const service = getSyncReconciliationService();
+          const report = await service.reconcileUserOnDemand(authenticatedUserId);
+
+          // Emit result to user room (same transform as sync-health.routes.ts)
+          const { SYNC_WS_EVENTS } = await import('@bc-agent/shared');
+          const { getSocketIO: getIO, isSocketServiceInitialized } = await import('@/services/websocket/SocketService');
+          if (isSocketServiceInitialized()) {
+            getIO().to(userRoom).emit(SYNC_WS_EVENTS.SYNC_RECONCILIATION_COMPLETED, {
+              userId: authenticatedUserId,
+              triggeredBy: 'login',
+              report: {
+                dryRun: report.dryRun,
+                dbReadyFiles: report.dbReadyFiles,
+                searchIndexedFiles: report.searchIndexedFiles,
+                missingFromSearchCount: report.missingFromSearch.length,
+                orphanedInSearchCount: report.orphanedInSearch.length,
+                failedRetriableCount: report.failedRetriable.length,
+                stuckFilesCount: report.stuckFiles.length,
+                imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+                folderHierarchy: {
+                  orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
+                  missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
+                  scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
+                },
+                repairs: report.repairs,
+              },
+            });
+          }
+
+          logger.info({
+            userId: authenticatedUserId,
+            missingFromSearch: report.missingFromSearch.length,
+            failedRetriable: report.failedRetriable.length,
+            scopeRootsRecreated: report.repairs.folderHierarchy.scopeRootsRecreated,
+          }, '[Socket.IO] Login reconciliation completed');
+        } catch (err) {
+          // Silently ignore cooldown/in-progress — expected for rapid reconnects
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('cooldown') || msg.includes('in progress')) return;
+          logger.warn({ error: msg, userId: authenticatedUserId },
+            '[Socket.IO] Login reconciliation failed (non-blocking)');
+        }
+      })();
     });
 
     // Disconnect handler

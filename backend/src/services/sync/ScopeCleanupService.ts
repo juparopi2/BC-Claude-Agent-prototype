@@ -19,6 +19,12 @@ import { VectorSearchService } from '@/services/search/VectorSearchService';
 
 const logger = createChildLogger({ service: 'ScopeCleanupService' });
 
+/** Max concurrent AI Search delete operations during scope cleanup */
+const SEARCH_CLEANUP_CONCURRENCY = 10;
+
+/** Files per batch when deleting from database to limit cascade load */
+const FILE_DELETION_BATCH_SIZE = 50;
+
 export interface ScopeRemovalResult {
   scopeId: string;
   filesDeleted: number;
@@ -100,22 +106,29 @@ export class ScopeCleanupService {
       logger.debug({ scopeId, fileCount: fileIds.length }, 'Citations unlinked');
     }
 
-    // 5. Best-effort AI Search cleanup
+    // 5. Best-effort AI Search cleanup (concurrent with limited parallelism)
     const vectorService = VectorSearchService.getInstance();
     let searchCleanupFailures = 0;
 
-    for (const file of files) {
-      try {
-        await vectorService.deleteChunksForFile(file.id, userId);
-      } catch (error) {
-        searchCleanupFailures++;
-        const errorInfo = error instanceof Error
-          ? { message: error.message, name: error.name }
-          : { value: String(error) };
-        logger.warn(
-          { error: errorInfo, fileId: file.id, scopeId },
-          'AI Search cleanup failed for file — continuing'
-        );
+    for (let i = 0; i < files.length; i += SEARCH_CLEANUP_CONCURRENCY) {
+      const wave = files.slice(i, i + SEARCH_CLEANUP_CONCURRENCY);
+      const results = await Promise.allSettled(
+        wave.map(file => vectorService.deleteChunksForFile(file.id, userId))
+      );
+
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j]!;
+        if (result.status === 'rejected') {
+          searchCleanupFailures++;
+          const error = result.reason as unknown;
+          const errorInfo = error instanceof Error
+            ? { message: error.message, name: error.name }
+            : { value: String(error) };
+          logger.warn(
+            { error: errorInfo, fileId: wave[j]!.id, scopeId },
+            'AI Search cleanup failed for file — continuing'
+          );
+        }
       }
     }
 
@@ -126,19 +139,28 @@ export class ScopeCleanupService {
       );
     }
 
-    // 6. Delete all files for this scope (FK cascades handle chunks, embeddings, attachments)
-    //    NULL parent_folder_id first to break self-referential FK before bulk delete.
-    //    Batch transaction avoids MSSQL adapter EREQINPROG (two implicit transactions on same connection).
+    // 6. Delete all files for this scope.
+    //    Pre-delete cascade targets (file_chunks, image_embeddings, message_file_attachments)
+    //    explicitly to avoid heavy CASCADE deletes that exceed the MSSQL request timeout.
     if (fileIds.length > 0) {
-      await prisma.$transaction([
-        prisma.$executeRaw`
-          UPDATE files SET parent_folder_id = NULL
-          WHERE connection_scope_id = ${scopeId}
-        `,
-        prisma.files.deleteMany({
-          where: { connection_scope_id: scopeId },
-        }),
-      ]);
+      await prisma.$executeRaw`
+        UPDATE files SET parent_folder_id = NULL
+        WHERE connection_scope_id = ${scopeId}
+      `;
+
+      for (let i = 0; i < fileIds.length; i += FILE_DELETION_BATCH_SIZE) {
+        const batch = fileIds.slice(i, i + FILE_DELETION_BATCH_SIZE);
+
+        // Delete child records in parallel (different tables, no contention)
+        await Promise.all([
+          prisma.file_chunks.deleteMany({ where: { file_id: { in: batch } } }),
+          prisma.image_embeddings.deleteMany({ where: { file_id: { in: batch } } }),
+          prisma.message_file_attachments.deleteMany({ where: { file_id: { in: batch } } }),
+        ]);
+
+        // Now delete files — lightweight, no cascade targets remain
+        await prisma.files.deleteMany({ where: { id: { in: batch } } });
+      }
 
       logger.debug({ scopeId, filesDeleted: fileIds.length }, 'Files deleted');
     }

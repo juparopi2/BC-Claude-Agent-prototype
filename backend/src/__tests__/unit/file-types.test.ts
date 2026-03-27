@@ -47,8 +47,7 @@ describe('File Types', () => {
         readinessState: expect.any(String), // computed from pipeline_status
         hasExtractedText: true, // Computed from extracted_text !== null
         contentHash: null, // Fixture default is null
-        processingRetryCount: 0,
-        embeddingRetryCount: 0,
+        retryCount: 0,
         lastError: null,
         failedAt: null,
         fileModifiedAt: null, // Default for files without original modification date

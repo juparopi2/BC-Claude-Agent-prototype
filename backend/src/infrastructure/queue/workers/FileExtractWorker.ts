@@ -47,6 +47,18 @@ export class FileExtractWorker {
 
     jobLogger.info({ mimeType, fileName }, 'Extract worker started');
 
+    // Guard: Folders are metadata-only — they should never enter the extract pipeline.
+    // This can happen if a folder is mistakenly enqueued (e.g., during reconciliation resync).
+    if (mimeType === 'inode/directory') {
+      const { prisma } = await import('@/infrastructure/database/prisma');
+      await prisma.files.updateMany({
+        where: { id: fileId, is_folder: true },
+        data: { pipeline_status: 'ready' },
+      });
+      jobLogger.warn({ fileId }, 'Folder entered extract pipeline — reset to ready, skipping');
+      return;
+    }
+
     // 1. CAS transition: queued → extracting
     const { getFileRepository } = await import(
       '@/services/files/repository/FileRepository'
@@ -95,6 +107,45 @@ export class FileExtractWorker {
 
       jobLogger.info('Extract completed successfully');
     } catch (error) {
+      // Detect Graph API 404 for external files — soft-delete instead of retry
+      const { GraphApiError } = await import(
+        '@/services/connectors/onedrive/GraphHttpClient'
+      );
+      if (error instanceof GraphApiError && error.statusCode === 404) {
+        const fileRecord = await repo.findById(userId, fileId);
+        const isExternal =
+          fileRecord?.sourceType === 'onedrive' ||
+          fileRecord?.sourceType === 'sharepoint';
+
+        if (isExternal) {
+          jobLogger.warn(
+            { fileId, userId, sourceType: fileRecord.sourceType },
+            'External file no longer exists (Graph API 404) — soft-deleting',
+          );
+
+          const { prisma } = await import('@/infrastructure/database/prisma');
+
+          // Soft-delete — must set BOTH fields per project convention
+          await prisma.files.update({
+            where: { id: fileId },
+            data: { deleted_at: new Date(), deletion_status: 'pending' },
+          });
+
+          // Vector cleanup (fire-and-forget, best-effort)
+          try {
+            const { VectorSearchService } = await import('@/services/search/VectorSearchService');
+            await VectorSearchService.getInstance().deleteChunksForFile(fileId, userId);
+          } catch { /* best-effort */ }
+
+          try {
+            await prisma.file_chunks.deleteMany({ where: { file_id: fileId } });
+          } catch { /* best-effort */ }
+
+          // DO NOT rethrow — BullMQ job completes successfully, no retry
+          return;
+        }
+      }
+
       // Transition to failed state
       await repo.transitionStatus(
         fileId, userId,

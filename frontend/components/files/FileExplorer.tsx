@@ -113,7 +113,9 @@ export function FileExplorer({ className, isNarrow = false }: FileExplorerProps)
             collapsedSize={0}
             className="min-w-0"
           >
-            <FolderTree className="h-full" />
+            <div className="h-full" data-tour="source-filter">
+              <FolderTree className="h-full" />
+            </div>
           </ResizablePanel>
           <ResizableHandle className="hover:bg-primary/20 transition-colors" />
 

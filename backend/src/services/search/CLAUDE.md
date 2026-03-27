@@ -62,7 +62,8 @@ Index name: `file-chunks-index-v2` (constant: `INDEX_NAME`)
 | `chunkId` | Edm.String | **Yes** | Yes | No | Primary key (UPPERCASE UUID or `img_` prefix for images) |
 | `fileId` | Edm.String | No | Yes | No | Parent file reference |
 | `userId` | Edm.String | No | Yes | No | **Multi-tenant isolation** (always filtered) |
-| `content` | Edm.String | No | No | Yes | Text chunk or image caption (`standard.lucene` analyzer) |
+| `content` | Edm.String | No | No | Yes | Text chunk or `[Image: filename]` marker (`standard.lucene` analyzer) |
+| `imageCaption` | Edm.String | No | No | No | AI-generated caption (non-searchable, stored for LLM context) |
 | `embeddingVector` | Collection(Edm.Single) | No | No | Yes | Unified embedding (1536d, Cohere Embed v4) — used for all content (text and images) |
 | `chunkIndex` | Edm.Int32 | No | Yes | No | Position within file |
 | `tokenCount` | Edm.Int32 | No | Yes | No | Token count for billing |
@@ -83,6 +84,8 @@ A single `embeddingVector` field (1536d, Cohere Embed v4) covers both text and i
 ### Semantic Configuration
 
 Name: `semantic-config`. Uses Azure AI Search Semantic Ranker to rerank results by semantic meaning. Content field: `content`. Pricing: Free tier = 1000 queries/month; Standard = unlimited (paid).
+
+**Image mode**: Semantic Ranker is **disabled** for image-type searches (`useSemanticRanker: !isImageMode` in `SemanticSearchService`). The `content` field for images only contains `[Image: filename]` — text-based reranking is not useful. The 1536d Cohere Embed v4 vector handles all visual semantic retrieval.
 
 **PRD-203 Extractive Features** (always requested when semantic ranker is ON):
 - **Extractive Answers**: Direct answers to questions, extracted from document content. Returns up to 3 answers with confidence scores. Available at top-level `SemanticSearchFullResult.extractiveAnswers`.
@@ -127,7 +130,23 @@ The primary search mode (D26). Combines:
 Parameters: `fetchTopK` (candidates before reranking, default 30), `finalTopK` (results after reranking, default 10).
 
 ### 4. Image Search (`VectorSearchService.searchImages()`)
-Pure vector search on `embeddingVector` field, filtered to `isImage eq true`. Returns `ImageSearchResult[]` with extracted file names from content.
+Pure vector search on `embeddingVector` field, filtered to `isImage eq true`. Returns `ImageSearchResult[]` using the indexed `fileName` field.
+
+### 5. Image Mode via `search_knowledge` (`SemanticSearchService`)
+When the RAG agent searches with `fileTypeCategory: "images"`, the service sets `useSemanticRanker: false` and uses `searchText: '*'` (skip BM25). This produces **pure vector search** — the Cohere Embed v4 vector handles all visual semantic retrieval without text-based signal contamination.
+
+### Score Handling & Normalization
+
+Two different score scales exist depending on search mode:
+
+| Mode | Score Source | Range | Threshold Applied |
+|------|------------|-------|-------------------|
+| Semantic Ranker ON (text) | `rerankerScore / 4` | 0–1 | Yes (`SEMANTIC_THRESHOLD = 0.55`) |
+| Semantic Ranker OFF (images) | RRF `vectorScore` | 0.005–0.03 | **No** — `finalTopK` caps results instead |
+
+**Why no threshold for images**: RRF (Reciprocal Rank Fusion) scores are reciprocals of rank positions (1/k), NOT similarity probabilities. A score of 0.016 doesn't mean "1.6% relevant" — it means "ranked ~60th by the fusion algorithm." Applying `SEMANTIC_THRESHOLD = 0.55` to RRF scores would discard ALL image results.
+
+**Score normalization**: `SemanticSearchService` normalizes image mode scores to 0–1 relative to the top result before returning to the frontend. This ensures the UI shows meaningful percentages regardless of search mode. The normalization happens AFTER sorting, so ranking is preserved.
 
 ## Image Embedding Architecture
 
@@ -149,12 +168,17 @@ Azure exposes two separate APIs on the same resource:
 ```
 ImageProcessor.extractText()
   ├── cohereService.embedImage(base64) → callAzureImageApi() → 1536d visual embedding
-  └── embeddingService.generateImageCaption() → caption text (for BM25/keyword search)
+  └── captionService.generateCaption() → caption text (stored separately, not in searchable content)
       ↓
 FileChunkingService.indexImageEmbedding()
   └── VectorSearchService.indexImageEmbedding()
-      └── embeddingVector: 1536d (Cohere), content: caption, embeddingModel: 'Cohere-embed-v4'
+      ├── embeddingVector: 1536d (Cohere) — handles all visual retrieval
+      ├── content: "[Image: filename]" — minimal marker only (NOT caption)
+      ├── imageCaption: caption text — non-searchable, passed to LLM for context
+      └── embeddingModel: 'Cohere-embed-v4'
 ```
+
+**Design rationale**: AI-generated captions (e.g., "a chart with blue bars") are too generic for keyword matching and can contaminate BM25/Semantic Ranker scores. The 1536d Cohere Embed v4 vector captures visual semantics directly from pixels — far more accurate. The caption is preserved in `imageCaption` for LLM context only.
 
 ### Key Constraint
 The OpenAI-compatible embedding endpoint does **NOT** accept image input. Sending base64 data URIs as text produces garbage embeddings. `transformRequestForAzure()` now throws an error if images are passed through the text endpoint as a safety net.
@@ -173,18 +197,19 @@ The OpenAI-compatible embedding endpoint does **NOT** accept image input. Sendin
 
 3. Group results by fileId
    ├── Text files: accumulate chunks, track max score
-   └── Image files: single entry with caption content
+   └── Image files: single entry with imageCaption for LLM context
 
 4. Enrich with file metadata (FileService.getFile())
 
 5. Sort by relevance score, limit to maxFiles
+6. **Normalize scores** (image mode only): scale RRF scores to 0–1 relative to top result
 ```
 
 ### Default Configuration
 
 | Parameter | Default | Description |
 |---|---|---|
-| `SEMANTIC_THRESHOLD` | 0.55 | Minimum score to include result |
+| `SEMANTIC_THRESHOLD` | 0.55 | Minimum score to include result (text mode with Semantic Ranker only) |
 | `DEFAULT_MAX_FILES` | 10 | Maximum files returned |
 | `DEFAULT_MAX_CHUNKS_PER_FILE` | 5 | Maximum chunks per text file |
 

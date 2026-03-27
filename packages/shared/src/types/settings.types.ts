@@ -7,6 +7,7 @@
  */
 
 import type { SETTINGS_THEME, SETTINGS_TAB } from '../constants/settings.constants';
+import type { OnboardingPreferences } from './onboarding.types';
 
 /** Theme preference derived from constants */
 export type ThemePreference = (typeof SETTINGS_THEME)[keyof typeof SETTINGS_THEME];
@@ -17,16 +18,19 @@ export type SettingsTabId = (typeof SETTINGS_TAB)[keyof typeof SETTINGS_TAB];
 /** Core user settings structure */
 export interface UserSettings {
   theme: ThemePreference;
+  preferences?: OnboardingPreferences | null;
 }
 
 /** API response for GET /api/user/settings */
 export interface UserSettingsResponse extends UserSettings {
   updatedAt: string | null; // null if using defaults
+  preferences?: OnboardingPreferences | null;
 }
 
 /** API request for PATCH /api/user/settings */
 export interface UpdateUserSettingsRequest {
   theme?: ThemePreference;
+  preferences?: OnboardingPreferences;
 }
 
 /** Database row representation */

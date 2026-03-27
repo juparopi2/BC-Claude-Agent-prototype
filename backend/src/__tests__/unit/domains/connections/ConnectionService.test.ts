@@ -8,7 +8,6 @@
  * - listConnections
  * - getConnection (found, not found, forbidden)
  * - createConnection
- * - deleteConnection
  * - listScopes
  */
 
@@ -198,40 +197,6 @@ describe('ConnectionService', () => {
       expect(result.provider).toBe('onedrive');
       expect(result.scopeCount).toBe(0);
       expect(mockCreate).toHaveBeenCalledOnce();
-    });
-  });
-
-  // ==========================================================================
-  // deleteConnection
-  // ==========================================================================
-
-  describe('deleteConnection', () => {
-    it('deletes connection when owned by the user', async () => {
-      mockFindById.mockResolvedValue(makeRow());
-      mockDelete.mockResolvedValue(undefined);
-
-      await expect(service.deleteConnection(USER_ID, CONN_ID)).resolves.not.toThrow();
-
-      expect(mockDelete).toHaveBeenCalledOnce();
-    });
-
-    it('throws ConnectionNotFoundError when connection does not exist', async () => {
-      mockFindById.mockResolvedValue(null);
-
-      await expect(service.deleteConnection(USER_ID, CONN_ID)).rejects.toThrow(
-        ConnectionNotFoundError
-      );
-    });
-
-    it('throws ConnectionForbiddenError when ownership check fails', async () => {
-      mockFindById.mockResolvedValue(makeRow());
-      mockTimingSafeCompare.mockReturnValue(false);
-
-      await expect(service.deleteConnection(USER_ID, CONN_ID)).rejects.toThrow(
-        ConnectionForbiddenError
-      );
-
-      expect(mockDelete).not.toHaveBeenCalled();
     });
   });
 

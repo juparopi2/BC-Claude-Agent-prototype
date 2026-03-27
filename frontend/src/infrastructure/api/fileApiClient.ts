@@ -42,6 +42,8 @@ import type {
   // Folder conflict types
   FolderConflictResolution,
   ResolveFolderConflictsResponse,
+  // File health types
+  FileHealthIssuesResponse,
 } from '@bc-agent/shared';
 import { isApiErrorResponse, ErrorCode } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
@@ -701,6 +703,20 @@ export class FileApiClient {
       `/api/files/${fileId}/retry-processing`,
       request ?? {}
     );
+  }
+
+  // ============================================
+  // File Health Endpoints
+  // ============================================
+
+  /**
+   * Get health issues for the current user's files
+   *
+   * Returns all problematic files (failed, stuck, blob-missing)
+   * with classification metadata for the FileHealthWarning UI.
+   */
+  async getHealthIssues(): Promise<ApiResponse<FileHealthIssuesResponse>> {
+    return this.request<FileHealthIssuesResponse>('GET', '/api/files/health/issues');
   }
 
   // ============================================

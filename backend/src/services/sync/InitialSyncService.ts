@@ -492,8 +492,6 @@ export class InitialSyncService {
             file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
             content_hash_external: item.eTag ?? null,
             pipeline_status: 'queued',
-            processing_retry_count: 0,
-            embedding_retry_count: 0,
             is_favorite: false,
             is_shared: !!scope.remote_drive_id,
           },

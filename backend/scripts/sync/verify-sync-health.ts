@@ -68,7 +68,7 @@ interface FailedFile {
   id: string;
   name: string;
   scopeName: string | null;
-  last_processing_error: string | null;
+  last_error: string | null;
 }
 
 interface UserSearchComparison {
@@ -220,7 +220,7 @@ async function getFailedFiles(
     select: {
       id: true,
       name: true,
-      last_processing_error: true,
+      last_error: true,
       connection_scope_id: true,
     },
     orderBy: { updated_at: 'desc' },
@@ -245,7 +245,7 @@ async function getFailedFiles(
     id: row.id,
     name: row.name,
     scopeName: row.connection_scope_id ? (scopeMap[row.connection_scope_id] ?? row.connection_scope_id) : null,
-    last_processing_error: row.last_processing_error,
+    last_error: row.last_error,
   }));
 }
 
@@ -532,7 +532,7 @@ function printReport(report: HealthReport): void {
   } else {
     for (const file of report.failedFiles) {
       const scopePart = file.scopeName ? ` (scope: ${file.scopeName})` : '';
-      const errPart = file.last_processing_error ? `"${file.last_processing_error}"` : '(no error message)';
+      const errPart = file.last_error ? `"${file.last_error}"` : '(no error message)';
       console.log(`  ${RED}  - ${file.name}${scopePart}: ${errPart}${RESET}`);
     }
     if (report.filePipelineDistribution['failed'] > report.failedFiles.length) {

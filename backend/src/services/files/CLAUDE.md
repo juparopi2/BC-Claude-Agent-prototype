@@ -49,6 +49,7 @@ Infrastructure services for file operations — blob storage, text extraction, c
 | `FileUploadService.ts` | Azure Blob Storage operations: SAS URL generation, blob download, container management |
 | `FileProcessingService.ts` | Text extraction orchestrator: download blob → select processor → extract → update DB → enqueue chunking |
 | `FileChunkingService.ts` | Chunking orchestrator: read extracted text → chunk → insert to DB → enqueue embedding job |
+| `FileHealthService.ts` | Diagnoses file health issues: classifies failed/stuck files into 5 issue types (`external_not_found`, `retry_exhausted`, `blob_missing`, `failed_retriable`, `stuck_processing`). Batch-checks blob existence for local files. Used by `GET /api/files/health/issues`. |
 | `DeletionAuditService.ts` | GDPR audit trail for file deletions |
 | `MessageFileAttachmentService.ts` | Attaches file context to chat messages |
 | `MessageChatAttachmentService.ts` | Attaches chat-related file references |
@@ -105,7 +106,7 @@ On error: status → `'failed'`, emit error event, rethrow (triggers BullMQ retr
 | `DocxProcessor` | mammoth.js | `.docx` | Text (HTML → plain text) |
 | `ExcelProcessor` | xlsx library | `.xlsx` | Markdown tables per sheet + sheet count |
 | `TextProcessor` | UTF-8 decode | `text/plain`, `text/csv`, `text/markdown`, `text/javascript`, `text/html`, `text/css`, `application/json` | Raw text |
-| `ImageProcessor` | Azure Computer Vision (captions) + Cohere Embed v4 (embeddings) | `image/jpeg`, `image/png`, `image/gif`, `image/webp` | Caption text + 1536d image embedding (Cohere Embed v4) + caption confidence |
+| `ImageProcessor` | Azure Computer Vision (captions) + Cohere Embed v4 (embeddings) | `image/jpeg`, `image/png`, `image/gif`, `image/webp` | 1536d image embedding (Cohere Embed v4) + caption (stored in `imageCaption`, NOT in searchable `content` field) + caption confidence |
 
 All processors implement the `DocumentProcessor` interface:
 ```typescript

@@ -144,8 +144,7 @@ export function useFileProcessingEvents(
         // Update file list store
         updateFile(e.fileId, {
           readinessState: 'failed',
-          processingRetryCount: e.processingRetryCount,
-          embeddingRetryCount: e.embeddingRetryCount,
+          retryCount: e.retryCount,
           lastError: e.error,
           failedAt: e.timestamp,
         });

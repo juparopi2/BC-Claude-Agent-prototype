@@ -22,8 +22,7 @@ infrastructure/
     deploy.sh                               # Deploy wrapper (what-if + apply)
     setup-storage-cors.sh                   # Post-deploy: CORS rules
     setup-container-app-identity.sh         # Post-deploy: RBAC for MIs
-    update-search-index-schema.sh           # Post-deploy: Search index fields
-    update-search-semantic-config.sh        # Post-deploy: Semantic config
+    update-search-index-schema.sh           # Post-deploy: Search index fields + semantic config
   diagnostics/                              # Troubleshooting scripts
   blob-lifecycle-policy.json                # Reference (inlined in data.bicep)
 ```
@@ -66,7 +65,7 @@ Changing `environment` from `dev` to `prod` automatically creates an entirely se
 **Auto-derived** (from Bicep outputs — no manual input needed):
 - `SqlDb-ConnectionString`, `Redis-ConnectionString`, `Storage-ConnectionString`
 - `Database-Server`, `Database-Name`, `Database-User`, `Database-Password`
-- `AZURE-OPENAI-ENDPOINT`, `AZURE-OPENAI-KEY`, `AZURE-OPENAI-EMBEDDING-DEPLOYMENT`
+- `AZURE-OPENAI-ENDPOINT`, `AZURE-OPENAI-KEY`
 - `AZURE-SEARCH-ENDPOINT`, `AZURE-SEARCH-KEY`
 - `AZURE-VISION-ENDPOINT`, `AZURE-VISION-KEY`
 - `DocumentIntelligence-Endpoint`, `DocumentIntelligence-Key`
@@ -137,10 +136,7 @@ ENVIRONMENT=dev bash infrastructure/scripts/setup-storage-cors.sh
 # 3. Create/update AI Search index
 bash infrastructure/scripts/update-search-index-schema.sh
 
-# 4. Configure semantic search
-bash infrastructure/scripts/update-search-semantic-config.sh
-
-# 5. Configure App Registration (redirect URIs for OAuth)
+# 4. Configure App Registration (redirect URIs for OAuth)
 ENVIRONMENT=dev bash infrastructure/scripts/setup-app-registration.sh
 ```
 

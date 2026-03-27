@@ -495,7 +495,7 @@ export function FileDataTable() {
 
   return (
     <>
-      <div ref={containerRef} tabIndex={0} className="outline-none h-full min-h-0 flex flex-col">
+      <div ref={containerRef} tabIndex={0} className="outline-none h-full min-h-0 flex flex-col w-full">
         {/* Table */}
         <ScrollArea
           className={cn(
@@ -512,7 +512,7 @@ export function FileDataTable() {
             onDragEnd={handleDragEnd}
           >
             <Table style={{ width: table.getTotalSize(), tableLayout: 'fixed' }}>
-              <TableHeader className="group/header sticky top-0 bg-background z-10">
+              <TableHeader className="group/header sticky top-0 bg-background z-10" data-tour="table-header">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id}>
                     <SortableContext

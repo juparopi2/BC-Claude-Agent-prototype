@@ -81,7 +81,7 @@ On success: `readinessState` → `ready` (available for RAG). On failure: `Proce
 
 ## Configuration
 
-Retry: `FILE_MAX_PROCESSING_RETRIES` (2), `FILE_MAX_EMBEDDING_RETRIES` (3), exponential backoff with jitter.
+Retry: `FILE_MAX_PIPELINE_RETRIES` (3), exponential backoff with jitter.
 Cleanup: `FILE_FAILED_RETENTION_DAYS` (30), `FILE_ORPHANED_CHUNK_RETENTION_DAYS` (7).
 Rate limit: `FILE_MAX_MANUAL_RETRIES_PER_HOUR` (10).
 
@@ -98,7 +98,7 @@ Formula: `delay = min(baseDelay × multiplier^retryCount, maxDelay) × (1 + rand
 
 ## Troubleshooting
 
-- **Stuck in "processing"**: Check `processing_retry_count`, worker logs (`LOG_SERVICES=FileProcessingService`)
+- **Stuck in "processing"**: Check `pipeline_retry_count`, worker logs (`LOG_SERVICES=FileProcessingService`)
 - **Stuck in "pending_processing"**: Verify `FileProcessingScheduler` running, check queue depth, Redis connection
 - **Not in search**: Verify `embedding_status='completed'` + `readiness_state='ready'`
 - **Upload session stuck**: Check Redis key `upload-session:{id}`, TTL, folder batch state

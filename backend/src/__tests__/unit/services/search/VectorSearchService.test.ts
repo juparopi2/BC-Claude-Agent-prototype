@@ -190,7 +190,8 @@ describe('VectorSearchService - Index Management', () => {
       const callArgs = mockSearchClient.uploadDocuments.mock.calls[0][0];
       expect(callArgs).toHaveLength(1);
       expect(callArgs[0].embeddingVector).toEqual(embedding);
-      expect(callArgs[0].content).toBe('A warehouse photo [Image: photo.jpg]');
+      expect(callArgs[0].content).toBe('[Image: photo.jpg]');
+      expect(callArgs[0].imageCaption).toBe('A warehouse photo');
       expect(callArgs[0].isImage).toBe(true);
       expect(callArgs[0].imageVector).toBeUndefined();
       expect(callArgs[0].contentVector).toBeUndefined();
@@ -1044,11 +1045,11 @@ describe('VectorSearchService - D24 UserId Normalization', () => {
       const mockResults = {
         results: createAsyncIterable([
           {
-            document: { fileId: 'file-1', content: '[Image: photo.jpg]' },
+            document: { fileId: 'file-1', content: '[Image: photo.jpg]', fileName: 'photo.jpg' },
             score: 0.95
           },
           {
-            document: { fileId: 'file-2', content: 'A beautiful sunset [Image: sunset.png]' },
+            document: { fileId: 'file-2', content: '[Image: sunset.png]', fileName: 'sunset.png' },
             score: 0.85
           }
         ])

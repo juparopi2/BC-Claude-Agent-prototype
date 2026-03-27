@@ -186,7 +186,7 @@ interface FileRecord {
   connection_id: string | null;
   pipeline_retry_count: number;
   updated_at: Date | null;
-  last_processing_error: string | null;
+  last_error: string | null;
   created_at: Date | null;
 }
 
@@ -434,7 +434,7 @@ async function collectUserData(
         connection_id:         true,
         pipeline_retry_count:  true,
         updated_at:            true,
-        last_processing_error: true,
+        last_error: true,
         created_at:            true,
       },
     }),
@@ -802,7 +802,7 @@ function scoreFileHealth(
     issues.push({
       check:    'pipeline_failed',
       severity: 'error',
-      detail:   file.last_processing_error ?? 'Pipeline failed (no error message recorded)',
+      detail:   file.last_error ?? 'Pipeline failed (no error message recorded)',
     });
 
     // Blob check only for local files — external files download from Graph API
@@ -917,7 +917,7 @@ function scoreFileHealth(
     status,
     issues,
     retryCount:     file.pipeline_retry_count,
-    lastError:      file.last_processing_error,
+    lastError:      file.last_error,
     blobPath:       file.blob_path,
     sizeBytes:      file.size_bytes,
   };
@@ -1369,7 +1369,7 @@ async function handleFix(
   if (!confirm) {
     console.log(`\n${YELLOW}Dry-run mode  -  pass --confirm to execute recovery.${RESET}`);
     console.log(`  Actions that would be taken:`);
-    console.log(`  1. UPDATE pipeline_status='queued', pipeline_retry_count=0, last_processing_error=NULL`);
+    console.log(`  1. UPDATE pipeline_status='queued', pipeline_retry_count=0, last_error=NULL`);
     console.log(`  2. Enqueue BullMQ flow: extract -> chunk -> embed -> pipeline-complete`);
     return;
   }
@@ -1407,7 +1407,7 @@ async function handleFix(
           data: {
             pipeline_status:       'queued',
             pipeline_retry_count:  0,
-            last_processing_error: null,
+            last_error: null,
             updated_at:            new Date(),
           },
         });

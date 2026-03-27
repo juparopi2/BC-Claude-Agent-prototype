@@ -83,6 +83,20 @@ and the actual DB will block the pipeline.
 **Auto-sync**: Run `npx tsx scripts/database/export-constraints.ts --write` to regenerate
 constraints.sql from the live DB.
 
+## Image Caption Must NOT Be in Searchable `content` Field
+```typescript
+// ❌ WRONG: Caption in content pollutes BM25 keyword search
+const content = `${caption} [Image: ${fileName}]`;
+
+// ✅ CORRECT: Content is minimal marker, caption in separate non-searchable field
+const content = `[Image: ${fileName}]`;
+document.imageCaption = caption || null;
+```
+**Why**: AI-generated captions (e.g., "a chart with blue bars") are generic and contaminate BM25/Semantic Ranker scores. The 1536d Cohere Embed v4 vector captures visual semantics directly from pixels. Caption is stored in `imageCaption` (non-searchable) for LLM context only.
+
+## @Mentioned Files Must Handle Missing `blobPath`
+OneDrive/SharePoint files have `blobPath: null` — use `ContentProviderFactory` to download via Graph API. Never assume `blobPath` exists for all files. Catch `ConnectionTokenExpiredError` and re-throw (triggers reconnect UI).
+
 ## Polling Fallback Must Check BOTH Statuses
 ```typescript
 // ❌ WRONG: Misses scopes that completed initial sync

@@ -35,6 +35,15 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     files: {
       deleteMany: vi.fn(),
     },
+    file_chunks: {
+      deleteMany: vi.fn(),
+    },
+    image_embeddings: {
+      deleteMany: vi.fn(),
+    },
+    message_file_attachments: {
+      deleteMany: vi.fn(),
+    },
   },
 }));
 
@@ -121,6 +130,9 @@ beforeEach(() => {
   mockRepo.deleteScopeById.mockResolvedValue(undefined);
   (prisma.$executeRaw as ReturnType<typeof vi.fn>).mockResolvedValue(0);
   (prisma.files.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+  (prisma.file_chunks.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+  (prisma.image_embeddings.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
+  (prisma.message_file_attachments.deleteMany as ReturnType<typeof vi.fn>).mockResolvedValue({ count: 0 });
   mockVectorService.deleteChunksForFile.mockResolvedValue(undefined);
 });
 
@@ -182,13 +194,13 @@ describe('ScopeCleanupService', () => {
       expect(mockVectorService.deleteChunksForFile).toHaveBeenCalledWith(FILE_ID_2, USER_ID);
     });
 
-    it('deletes files from the database using connection_scope_id filter', async () => {
+    it('deletes files from the database using batched id filter', async () => {
       mockRepo.findFilesByScopeId.mockResolvedValue([makeFile(FILE_ID_1)]);
 
       await service.removeScope(CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(prisma.files.deleteMany).toHaveBeenCalledWith({
-        where: { connection_scope_id: SCOPE_ID },
+        where: { id: { in: [FILE_ID_1] } },
       });
     });
 
@@ -357,9 +369,9 @@ describe('ScopeCleanupService', () => {
 
       // Scope still deleted
       expect(mockRepo.deleteScopeById).toHaveBeenCalledWith(SCOPE_ID);
-      // Files still deleted
+      // Files still deleted (batched by id)
       expect(prisma.files.deleteMany).toHaveBeenCalledWith({
-        where: { connection_scope_id: SCOPE_ID },
+        where: { id: { in: [FILE_ID_1, FILE_ID_2, FILE_ID_3] } },
       });
       // Result still reports correct count
       expect(result).toEqual({ scopeId: SCOPE_ID, filesDeleted: 3 });
@@ -467,8 +479,20 @@ describe('ScopeCleanupService', () => {
         callOrder.push('deleteChunksForFile');
         return Promise.resolve(undefined);
       });
+      (prisma.file_chunks.deleteMany as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        callOrder.push('deleteChunks');
+        return Promise.resolve({ count: 0 });
+      });
+      (prisma.image_embeddings.deleteMany as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        callOrder.push('deleteImageEmbeddings');
+        return Promise.resolve({ count: 0 });
+      });
+      (prisma.message_file_attachments.deleteMany as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        callOrder.push('deleteFileAttachments');
+        return Promise.resolve({ count: 0 });
+      });
       (prisma.files.deleteMany as ReturnType<typeof vi.fn>).mockImplementation(() => {
-        callOrder.push('deleteMany');
+        callOrder.push('deleteFiles');
         return Promise.resolve({ count: 1 });
       });
       mockRepo.deleteScopeById.mockImplementation(() => {
@@ -478,15 +502,25 @@ describe('ScopeCleanupService', () => {
 
       await service.removeScope(CONNECTION_ID, SCOPE_ID, USER_ID);
 
-      expect(callOrder).toEqual([
-        'findScopeById',
-        'findFilesByScopeId',
-        '$executeRaw',          // NULL message_citations.file_id
-        'deleteChunksForFile',
-        '$executeRaw',          // NULL parent_folder_id (break self-ref FK)
-        'deleteMany',
-        'deleteScopeById',
-      ]);
+      // Cascade targets (chunks, embeddings, attachments) are deleted in parallel
+      // before files, so their order relative to each other is non-deterministic.
+      // Verify the key ordering constraints instead:
+      const executeRawIndices = callOrder
+        .map((v, i) => v === '$executeRaw' ? i : -1)
+        .filter(i => i >= 0);
+      const deleteFilesIdx = callOrder.indexOf('deleteFiles');
+      const deleteScopeIdx = callOrder.indexOf('deleteScopeById');
+      const deleteChunksIdx = callOrder.indexOf('deleteChunks');
+
+      // Step order: findScope → findFiles → citations → AI Search → NULL FK → cascade targets → files → scope
+      expect(callOrder[0]).toBe('findScopeById');
+      expect(callOrder[1]).toBe('findFilesByScopeId');
+      expect(executeRawIndices[0]).toBe(2);            // NULL citations first
+      expect(callOrder[3]).toBe('deleteChunksForFile'); // AI Search cleanup
+      expect(executeRawIndices[1]).toBe(4);             // NULL parent_folder_id
+      expect(deleteChunksIdx).toBeGreaterThan(4);       // cascade targets after NULL FK
+      expect(deleteFilesIdx).toBeGreaterThan(deleteChunksIdx); // files after cascade targets
+      expect(deleteScopeIdx).toBe(callOrder.length - 1); // scope record last
     });
   });
 });

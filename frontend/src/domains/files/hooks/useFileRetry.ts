@@ -101,8 +101,7 @@ export function useFileRetry(): UseFileRetryReturn {
         updateFileInStore(fileId, {
           readinessState: result.data.file.readinessState,
           pipelineStatus: result.data.file.pipelineStatus,
-          processingRetryCount: result.data.file.processingRetryCount,
-          embeddingRetryCount: result.data.file.embeddingRetryCount,
+          retryCount: result.data.file.retryCount,
           lastError: result.data.file.lastError,
           failedAt: result.data.file.failedAt,
         });

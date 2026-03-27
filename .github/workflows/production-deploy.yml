@@ -45,7 +45,7 @@ jobs:
       NODE_ENV: test
       STORAGE_CONTAINER_NAME: "user-files"
       STORAGE_CONTAINER_NAME_TEST: "user-files-test"
-      AZURE_SEARCH_INDEX_NAME: "file-chunks-index"
+      AZURE_SEARCH_INDEX_NAME: "file-chunks-index-v2"
 
     steps:
       - name: Checkout code
@@ -89,7 +89,6 @@ jobs:
           fetch "Claude-ApiKey"                     "ANTHROPIC_API_KEY"
           fetch "AZURE-OPENAI-ENDPOINT"             "AZURE_OPENAI_ENDPOINT"
           fetch "AZURE-OPENAI-KEY"                  "AZURE_OPENAI_KEY"
-          fetch "AZURE-OPENAI-EMBEDDING-DEPLOYMENT" "AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
           fetch "AZURE-SEARCH-ENDPOINT"             "AZURE_SEARCH_ENDPOINT"
           fetch "AZURE-SEARCH-KEY"                  "AZURE_SEARCH_KEY"
           fetch "AZURE-VISION-ENDPOINT"             "AZURE_VISION_ENDPOINT"
@@ -384,10 +383,9 @@ jobs:
               MICROSOFT_REDIRECT_URI=$BACKEND_REDIRECT_URI \
               AZURE_OPENAI_ENDPOINT=secretref:openai-endpoint \
               AZURE_OPENAI_KEY=secretref:azure-openai-key \
-              AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
               AZURE_SEARCH_ENDPOINT=secretref:search-endpoint \
               AZURE_SEARCH_KEY=secretref:azure-search-key \
-              AZURE_SEARCH_INDEX_NAME=file-chunks-index \
+              AZURE_SEARCH_INDEX_NAME=file-chunks-index-v2 \
               AZURE_VISION_ENDPOINT=secretref:vision-endpoint \
               AZURE_VISION_KEY=secretref:azure-vision-key \
               AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \

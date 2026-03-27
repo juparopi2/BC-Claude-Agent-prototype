@@ -1,10 +1,11 @@
 /**
  * OrphanCleanupService (PRD-05)
  *
- * Cleans up orphaned data across three scopes:
+ * Cleans up orphaned data across four scopes:
  * 1. Orphan blobs — blobs in Azure Storage with no matching DB record
  * 2. Abandoned uploads — files stuck in 'registered' status (blob uploaded but never confirmed)
  * 3. Old failures — files in 'failed' status beyond retention period
+ * 4. Stuck deletions — files with deletion_status='pending' for > 24h (safety net)
  *
  * Called by the MaintenanceWorker daily at 03:00 UTC.
  *
@@ -42,6 +43,7 @@ export class OrphanCleanupService {
       orphanBlobsDeleted: 0,
       abandonedUploadsDeleted: 0,
       oldFailuresDeleted: 0,
+      stuckDeletionsDeleted: 0,
     };
 
     // Scope 1: Orphan blobs (optional — can be slow for large blob containers)
@@ -78,6 +80,16 @@ export class OrphanCleanupService {
         ? { message: error.message, stack: error.stack }
         : { value: String(error) };
       this.log.error({ error: errorInfo }, 'Old failure cleanup failed');
+    }
+
+    // Scope 4: Stuck deletions (pending > 24 hours — safety net)
+    try {
+      metrics.stuckDeletionsDeleted = await this.cleanupStuckDeletions();
+    } catch (error) {
+      const errorInfo = error instanceof Error
+        ? { message: error.message, stack: error.stack }
+        : { value: String(error) };
+      this.log.error({ error: errorInfo }, 'Stuck deletion cleanup failed');
     }
 
     this.log.info({ metrics }, 'Orphan cleanup completed');
@@ -205,6 +217,60 @@ export class OrphanCleanupService {
     }
 
     this.log.info({ deleted, total: oldFailedFiles.length, retentionDays }, 'Old failures cleaned up');
+    return deleted;
+  }
+
+  /**
+   * Scope 4: Hard-delete files stuck in 'pending' deletion for more than 24 hours.
+   * Safety net — catches zombies that survive the hourly reconciliation.
+   */
+  private async cleanupStuckDeletions(): Promise<number> {
+    const { prisma } = await import('@/infrastructure/database/prisma');
+
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours
+
+    const stuckFiles = await prisma.files.findMany({
+      where: {
+        deletion_status: 'pending',
+        deleted_at: { lt: cutoff },
+      },
+      select: { id: true, user_id: true, blob_path: true },
+      take: 500,
+    });
+
+    if (stuckFiles.length === 0) return 0;
+
+    let deleted = 0;
+    for (const file of stuckFiles) {
+      try {
+        // Best-effort vector cleanup
+        try {
+          const { VectorSearchService } = await import('@/services/search/VectorSearchService');
+          await VectorSearchService.getInstance().deleteChunksForFile(file.id, file.user_id);
+        } catch { /* best-effort */ }
+
+        // Delete blob if exists
+        if (file.blob_path) {
+          try {
+            const { getFileUploadService } = await import('@/services/files/FileUploadService');
+            await getFileUploadService().deleteFromBlob(file.blob_path);
+          } catch { /* best-effort */ }
+        }
+
+        // Hard-delete chunks + embeddings + file
+        await prisma.file_chunks.deleteMany({ where: { file_id: file.id } });
+        await prisma.image_embeddings.deleteMany({ where: { file_id: file.id } });
+        await prisma.files.deleteMany({ where: { id: file.id } });
+        deleted++;
+      } catch (error) {
+        this.log.warn(
+          { fileId: file.id, error: error instanceof Error ? error.message : String(error) },
+          'Failed to clean up stuck deletion file',
+        );
+      }
+    }
+
+    this.log.info({ deleted, total: stuckFiles.length }, 'Stuck deletions cleaned up');
     return deleted;
   }
 }

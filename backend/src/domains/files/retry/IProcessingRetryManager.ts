@@ -11,7 +11,6 @@ import type {
   RetryDecisionResult,
   ManualRetryResult,
   RetryScope,
-  RetryPhase,
 } from '@bc-agent/shared';
 
 /**
@@ -28,13 +27,11 @@ export interface IProcessingRetryManager {
    *
    * @param userId - User ID for multi-tenant isolation
    * @param fileId - File ID
-   * @param phase - Which phase failed ('processing' | 'embedding')
    * @returns Retry decision with backoff delay
    */
   shouldRetry(
     userId: string,
-    fileId: string,
-    phase: RetryPhase
+    fileId: string
   ): Promise<RetryDecisionResult>;
 
   /**

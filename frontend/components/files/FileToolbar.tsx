@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, useSyncExternalStore } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Upload, Star, RefreshCw, PanelLeftClose, PanelLeftOpen, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
@@ -12,12 +13,44 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CreateFolderDialog } from './CreateFolderDialog';
+import { FileHealthWarning } from './FileHealthWarning';
 import { useFileUploadTrigger } from './FileUploadZone';
 import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { useSortFilterStore } from '@/src/domains/files/stores/sortFilterStore';
+import { useFileListStore } from '@/src/domains/files/stores/fileListStore';
 import { useFiles } from '@/src/domains/files';
 import { useUIPreferencesStore } from '@/src/domains/ui';
 import { cn } from '@/lib/utils';
+
+/**
+ * Returns true once the file list has completed its first load cycle
+ * (isLoading transitioned from true → false for the first time).
+ *
+ * Uses useSyncExternalStore to subscribe to the Zustand fileListStore directly,
+ * avoiding setState-in-effect lint violations while still reacting to store updates.
+ * The tracker object is created once per component instance via useRef, so it
+ * persists across re-renders without relying on React state or effect side-effects.
+ */
+function useInitialLoadComplete(): boolean {
+  // Tracker persists across renders for this component instance
+  const trackerRef = useRef({ wasLoading: false, completed: false });
+
+  return useSyncExternalStore(
+    (onStoreChange) => useFileListStore.subscribe(onStoreChange),
+    () => {
+      const tracker = trackerRef.current;
+      if (tracker.completed) return true;
+      const isLoading = useFileListStore.getState().isLoading;
+      if (isLoading) {
+        tracker.wasLoading = true;
+      } else if (tracker.wasLoading) {
+        tracker.completed = true;
+      }
+      return tracker.completed;
+    },
+    () => false, // SSR snapshot — always show skeleton server-side
+  );
+}
 
 /** Columns that support visibility toggling (excludes favorite and name which are always visible) */
 const TOGGLEABLE_COLUMNS: { id: string; label: string }[] = [
@@ -40,6 +73,7 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
     || sourceTypeFilter === FILE_SOURCE_TYPE.SHAREPOINT;
   const { isFileSidebarVisible: isSidebarVisible, toggleFileSidebar: toggleSidebar } = useUIPreferencesStore();
   const { isLoading, refreshCurrentFolder } = useFiles();
+  const initialLoadComplete = useInitialLoadComplete();
 
   const [toolbarWidth, setToolbarWidth] = useState<number>(Infinity);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -126,72 +160,86 @@ export function FileToolbar({ className, isNarrow = false }: FileToolbarProps) {
 
       </div>
       <div className="flex items-center gap-0">
-        {/* Favorites only toggle */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Toggle
-              size="sm"
-              pressed={showFavoritesOnly}
-              onPressedChange={toggleFavoritesOnly}
-              className="h-8"
-              aria-label={showFavoritesOnly ? 'Show all files' : 'Show favorites only'}
-            >
-              <Star className={cn(
-                'size-4',
-                showFavoritesOnly && 'fill-amber-400 text-amber-400'
-              )} />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipContent>
-            {showFavoritesOnly ? 'Show All' : 'Favorites'}
-          </TooltipContent>
-        </Tooltip>
+        {!initialLoadComplete ? (
+          <div className="flex items-center gap-1">
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+          </div>
+        ) : (
+          <>
+            {/* Favorites only toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Toggle
+                  size="sm"
+                  pressed={showFavoritesOnly}
+                  onPressedChange={toggleFavoritesOnly}
+                  className="h-8"
+                  aria-label={showFavoritesOnly ? 'Show all files' : 'Show favorites only'}
+                >
+                  <Star className={cn(
+                    'size-4',
+                    showFavoritesOnly && 'fill-amber-400 text-amber-400'
+                  )} />
+                </Toggle>
+              </TooltipTrigger>
+              <TooltipContent>
+                {showFavoritesOnly ? 'Show All' : 'Favorites'}
+              </TooltipContent>
+            </Tooltip>
 
-        {/* Refresh button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              <RefreshCw className={cn(
-                'size-4',
-                isLoading && 'animate-spin'
-              )} />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh</TooltipContent>
-        </Tooltip>
-
-        {/* Column visibility toggle */}
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8">
-                  <Settings2 className="size-4" />
+            {/* Refresh button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8"
+                  onClick={handleRefresh}
+                  disabled={isLoading}
+                  data-tour="refresh-button"
+                >
+                  <RefreshCw className={cn(
+                    'size-4',
+                    isLoading && 'animate-spin'
+                  )} />
                 </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent>Toggle columns</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end">
-            {TOGGLEABLE_COLUMNS.map((col) => (
-              <DropdownMenuCheckboxItem
-                key={col.id}
-                checked={columnVisibility[col.id] !== false}
-                onCheckedChange={(checked) => {
-                  setColumnVisibility({ ...columnVisibility, [col.id]: !!checked });
-                }}
-              >
-                {col.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+
+            {/* File health warning — only visible when issues exist */}
+            <FileHealthWarning />
+
+            {/* Column visibility toggle */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8" data-tour="toggle-columns">
+                      <Settings2 className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Toggle columns</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                {TOGGLEABLE_COLUMNS.map((col) => (
+                  <DropdownMenuCheckboxItem
+                    key={col.id}
+                    checked={columnVisibility[col.id] !== false}
+                    onCheckedChange={(checked) => {
+                      setColumnVisibility({ ...columnVisibility, [col.id]: !!checked });
+                    }}
+                  >
+                    {col.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import type { SearchIndex } from '@azure/search-documents';
 import { env } from '@/infrastructure/config/environment';
 import { COHERE_EMBEDDING_DIMENSIONS, COHERE_MODEL_NAME } from './embeddings/models';
 
-export const INDEX_NAME = 'file-chunks-index-v2';
+export const INDEX_NAME = env.AZURE_SEARCH_INDEX_NAME;
 
 /**
  * Vector profile name constant for use in code
@@ -117,6 +117,15 @@ export const indexSchema: SearchIndex = {
       filterable: true, // Filter for image-only searches
       sortable: false,
       facetable: true
+    },
+    {
+      name: 'imageCaption',
+      type: 'Edm.String',
+      searchable: false,   // NOT searchable — vector does all image retrieval
+      filterable: false,
+      sortable: false,
+      facetable: false,
+      // Stored and retrievable for passing image context to the LLM
     },
     {
       name: 'mimeType',
@@ -239,8 +248,9 @@ export const indexSchema: SearchIndex = {
       {
         name: SEMANTIC_CONFIG_NAME,
         prioritizedFields: {
-          // Content field is primary for semantic understanding
-          // For images, this contains AI-generated captions
+          // Content field is primary for semantic understanding (text documents only).
+          // For images, Semantic Ranker is disabled at query time (useSemanticRanker: !isImageMode)
+          // — the 1536d Cohere Embed v4 vector handles all visual retrieval.
           contentFields: [
             { name: 'content' }
           ],

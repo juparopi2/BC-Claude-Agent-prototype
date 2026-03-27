@@ -457,18 +457,19 @@ export class VectorSearchService {
       'Documents found for deletion'
     );
 
-    // Azure Search batch size limit is typically 1000 actions.
-    // For safety, we process in batches of 1000 if needed, but SDK handles batches well usually.
-    // We'll trust SDK or implement simple slicing if robust.
-    // For this implementation scope, simple call is sufficient, SDK often handles batching logic or throws if too large,
-    // requiring manual batching. Given strict TDD scope, simple is good.
+    // Azure AI Search limit: 1000 actions per batch request.
+    // Process in batches to handle files with many chunks.
+    const SEARCH_DELETE_BATCH_SIZE = 1000;
 
-    const result = await client.deleteDocuments('chunkId', chunkIds);
+    for (let i = 0; i < chunkIds.length; i += SEARCH_DELETE_BATCH_SIZE) {
+      const batch = chunkIds.slice(i, i + SEARCH_DELETE_BATCH_SIZE);
+      const result = await client.deleteDocuments('chunkId', batch);
 
-    const failed = result.results.filter(r => !r.succeeded);
-    if (failed.length > 0) {
+      const failed = result.results.filter(r => !r.succeeded);
+      if (failed.length > 0) {
         logger.error({ failedCount: failed.length, errors: failed }, 'Failed to delete some chunks');
         throw new Error(`Failed to delete chunks: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
+      }
     }
 
     return chunkIds.length;
@@ -499,11 +500,9 @@ export class VectorSearchService {
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
 
-    // Use caption as content if available for better semantic search
-    // This enables Semantic Ranker to understand image context
-    const content = caption
-      ? `${caption} [Image: ${fileName}]`
-      : `[Image: ${fileName}]`;
+    // Caption stored in separate non-searchable field; content is minimal for BM25
+    // The 1536d Cohere Embed v4 vector handles all visual semantic retrieval
+    const content = `[Image: ${fileName}]`;
 
     const document: Record<string, unknown> = {
       chunkId: documentId,
@@ -524,6 +523,7 @@ export class VectorSearchService {
       siteId: siteId ?? null,
       sourceType: sourceType ?? null,
       parentFolderId: parentFolderId ?? null,
+      imageCaption: caption || null,
     };
 
     logger.debug({
@@ -606,6 +606,7 @@ export class VectorSearchService {
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top,
+      select: ['fileId', 'content', 'fileName', 'imageCaption'],
       vectorSearchOptions: {
         queries: [
           {
@@ -622,15 +623,13 @@ export class VectorSearchService {
 
     const results: ImageSearchResult[] = [];
     for await (const result of searchResults.results) {
-      const doc = result.document as { fileId: string; content: string };
+      const doc = result.document as { fileId: string; content: string; fileName?: string; imageCaption?: string };
       const score = result.score ?? 0;
 
       // Filter by minimum score
       if (score < minScore) continue;
 
-      // Extract filename from content like "[Image: filename.jpg]"
-      const fileNameMatch = doc.content.match(/\[Image: (.+?)\]/);
-      const fileName = fileNameMatch?.[1] ?? 'unknown';
+      const fileName = doc.fileName ?? 'unknown';
 
       results.push({
         fileId: doc.fileId,
@@ -756,7 +755,7 @@ export class VectorSearchService {
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top: fetchTopK,
-      select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage'],
+      select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage', 'imageCaption'],
     };
 
     // Conditionally enable Semantic Ranker (PRD-200: controlled by useSemanticRanker + queryType)
@@ -822,6 +821,7 @@ export class VectorSearchService {
         content: string;
         chunkIndex: number;
         isImage?: boolean;
+        imageCaption?: string;
       };
 
       const vectorScore = result.score ?? 0;
@@ -840,8 +840,11 @@ export class VectorSearchService {
         ? (rerankerScore !== undefined ? rerankerScore / 4 : vectorScore)
         : vectorScore;
 
-      // Filter by minimum score
-      if (score < minScore) continue;
+      // Filter by minimum score — only when Semantic Ranker is ON.
+      // RRF scores (0.01-0.03) are NOT comparable to Semantic Ranker scores (0-1 normalized
+      // from 0-4). Applying the same threshold to RRF scores discards all results.
+      // When Semantic Ranker is OFF (e.g., image mode), finalTopK already caps results.
+      if (useSemanticRanker && score < minScore) continue;
 
       results.push({
         chunkId: doc.chunkId,
@@ -854,6 +857,7 @@ export class VectorSearchService {
         isImage: doc.isImage ?? false,
         captionText: captions?.[0]?.text,
         captionHighlights: captions?.[0]?.highlights,
+        imageCaption: doc.imageCaption,
       });
     }
 
@@ -1099,5 +1103,57 @@ export class VectorSearchService {
     );
 
     return count;
+  }
+
+  /**
+   * Returns metadata for all indexed file documents for a given user.
+   *
+   * Used by StaleSearchMetadataDetector to compare search index metadata
+   * against the DB and detect stale fields (sourceType, parentFolderId).
+   *
+   * @param userId - User ID (normalized to uppercase internally for D24 compatibility)
+   * @returns Map from fileId (UPPERCASE) to metadata fields
+   */
+  async getFileMetadataForUser(
+    userId: string,
+  ): Promise<Map<string, { sourceType: string | null; parentFolderId: string | null; siteId: string | null }>> {
+    if (!this.searchClient) {
+      await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
+    const client = this.searchClient;
+
+    const normalizedUserId = this.normalizeUserId(userId);
+    const result = new Map<string, { sourceType: string | null; parentFolderId: string | null; siteId: string | null }>();
+
+    const filter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
+    const searchOptions = {
+      filter,
+      select: ['fileId', 'sourceType', 'parentFolderId', 'siteId'],
+      top: 1000,
+    };
+
+    const searchResults = await client.search('*', searchOptions);
+
+    for await (const searchResult of searchResults.results) {
+      const doc = searchResult.document as Record<string, unknown>;
+      const fileId = (doc.fileId as string)?.toUpperCase();
+      if (fileId && !result.has(fileId)) {
+        result.set(fileId, {
+          sourceType: (doc.sourceType as string) ?? null,
+          parentFolderId: (doc.parentFolderId as string) ?? null,
+          siteId: (doc.siteId as string) ?? null,
+        });
+      }
+    }
+
+    logger.debug(
+      { userId, normalizedUserId, fileCount: result.size },
+      'Retrieved file metadata from AI Search for drift detection',
+    );
+
+    return result;
   }
 }

@@ -226,6 +226,51 @@ export function useSyncEvents(): void {
       case SYNC_WS_EVENTS.SYNC_RECOVERY_COMPLETED:
         // PRD-300: Recovery completed — future UI will surface this
         break;
+
+      case SYNC_WS_EVENTS.SYNC_RECONCILIATION_COMPLETED as 'sync:reconciliation_completed': {
+        const totalIssues =
+          event.report.missingFromSearchCount +
+          event.report.orphanedInSearchCount +
+          event.report.failedRetriableCount +
+          event.report.stuckFilesCount +
+          event.report.imagesMissingEmbeddingsCount;
+
+        const totalRepairs =
+          event.report.repairs.missingRequeued +
+          event.report.repairs.orphansDeleted +
+          event.report.repairs.failedRequeued +
+          event.report.repairs.stuckRequeued +
+          event.report.repairs.imageRequeued;
+
+        const folderRepairs = event.report.repairs?.folderHierarchy?.scopeRootsRecreated ?? 0;
+
+        // Refresh UI for ANY trigger when repairs were made (folders restored, files requeued)
+        if (totalRepairs > 0 || folderRepairs > 0) {
+          refreshRef.current();
+          // Invalidate folder tree cache so expanded libraries re-fetch their children
+          for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
+            invalidateTreeFolderRef.current(key);
+          }
+        }
+
+        // Toast: cron shows background repair, login shows subtle notification
+        if (event.triggeredBy === 'cron' && totalIssues > 0) {
+          if (event.report.dryRun) {
+            toast.info('Background file check', {
+              description: `${totalIssues} issue${totalIssues !== 1 ? 's' : ''} detected.`,
+            });
+          } else {
+            toast.success('Background file repair', {
+              description: `${totalRepairs} file${totalRepairs !== 1 ? 's' : ''} repaired automatically.`,
+            });
+          }
+        } else if (event.triggeredBy === 'login' && (totalRepairs > 0 || folderRepairs > 0)) {
+          toast.success('Files synchronized', {
+            description: `${totalRepairs + folderRepairs} issue${(totalRepairs + folderRepairs) !== 1 ? 's' : ''} repaired on login.`,
+          });
+        }
+        break;
+      }
     }
   }, [getProviderName]);
 

@@ -797,7 +797,7 @@ async function verifyPipelineSection(
       name: true,
       pipeline_status: true,
       updated_at: true,
-      last_processing_error: true,
+      last_error: true,
     },
   });
 
@@ -861,7 +861,7 @@ async function verifyPipelineSection(
   if (failedFiles.length > 0) {
     subheader(`Failed Files (${failedFiles.length})`);
     for (const f of failedFiles.slice(0, 10)) {
-      fail(`"${f.name}" — ${f.last_processing_error ?? 'no error message'}`);
+      fail(`"${f.name}" — ${f.last_error ?? 'no error message'}`);
       console.log(`    ${DIM}${f.id}${RESET}`);
     }
     if (failedFiles.length > 10) {
@@ -888,7 +888,7 @@ async function verifyPipelineSection(
       subheader('Error Pattern Analysis');
       const errorPatterns: Record<string, number> = {};
       for (const f of failedFiles) {
-        const errorMsg = f.last_processing_error ?? '(no error message)';
+        const errorMsg = f.last_error ?? '(no error message)';
         // Normalize: strip UUIDs and URLs for grouping
         const normalized = errorMsg
           .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
@@ -906,7 +906,7 @@ async function verifyPipelineSection(
       }
 
       // Files without any error message
-      const noErrorMsg = failedFiles.filter((f) => !f.last_processing_error);
+      const noErrorMsg = failedFiles.filter((f) => !f.last_error);
       if (noErrorMsg.length > 0) {
         warn(`${noErrorMsg.length} failed file(s) have NO error message recorded — check processing logs`);
       }

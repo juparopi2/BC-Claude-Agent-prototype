@@ -196,12 +196,11 @@ declare -A EXPECTED_VARS=(
   # Azure OpenAI
   ["AZURE_OPENAI_ENDPOINT"]="secretRef"
   ["AZURE_OPENAI_KEY"]="secretRef"
-  ["AZURE_OPENAI_EMBEDDING_DEPLOYMENT"]="text-embedding-3-small"
 
   # Azure AI Search
   ["AZURE_SEARCH_ENDPOINT"]="secretRef"
   ["AZURE_SEARCH_KEY"]="secretRef"
-  ["AZURE_SEARCH_INDEX_NAME"]="file-chunks-index"
+  ["AZURE_SEARCH_INDEX_NAME"]="file-chunks-index-v2"
 
   # Azure Vision
   ["AZURE_VISION_ENDPOINT"]="secretRef"

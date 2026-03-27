@@ -91,7 +91,7 @@ export const CRON_PATTERNS = {
   EVERY_12_HOURS: '0 */12 * * *',
   /** Every 30 minutes */
   EVERY_30_MIN: '*/30 * * * *',
-  /** Every 6 hours at :00 (sync reconciliation — PRD-300, 4x/day) */
+  /** Every 6 hours at :00 (legacy — kept for reference) */
   EVERY_6_HOURS: '0 */6 * * *',
 } as const;
 

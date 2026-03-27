@@ -97,15 +97,14 @@ const envSchema = z.object({
   AZURE_DI_ENDPOINT: z.string().url().optional(),
   AZURE_DI_KEY: z.string().optional(),
 
-  // Azure OpenAI (Embeddings)
+  // Azure OpenAI (Chat)
   AZURE_OPENAI_ENDPOINT: z.string().url().optional(),
   AZURE_OPENAI_KEY: z.string().optional(),
-  AZURE_OPENAI_EMBEDDING_DEPLOYMENT: z.string().default('text-embedding-3-small'),
 
   // Azure AI Search (Vector Store)
   AZURE_SEARCH_ENDPOINT: z.string().url().optional(),
   AZURE_SEARCH_KEY: z.string().optional(),
-  AZURE_SEARCH_INDEX_NAME: z.string().default('file-chunks-index'),
+  AZURE_SEARCH_INDEX_NAME: z.string().default('file-chunks-index-v2'),
 
   // Azure Computer Vision (Image Embeddings)
   AZURE_VISION_ENDPOINT: z.string().url().optional(),

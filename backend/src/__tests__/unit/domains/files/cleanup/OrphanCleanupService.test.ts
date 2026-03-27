@@ -119,6 +119,7 @@ describe('OrphanCleanupService', () => {
         orphanBlobsDeleted: 0,
         abandonedUploadsDeleted: 0,
         oldFailuresDeleted: 0,
+        stuckDeletionsDeleted: 0,
       });
     });
 
@@ -131,6 +132,7 @@ describe('OrphanCleanupService', () => {
             orphanBlobsDeleted: 0,
             abandonedUploadsDeleted: 0,
             oldFailuresDeleted: 0,
+            stuckDeletionsDeleted: 0,
           },
         }),
         'Orphan cleanup completed'
@@ -230,15 +232,17 @@ describe('OrphanCleanupService', () => {
       mockListBlobs.mockResolvedValue(blobPaths);
       // Scope 1: 2 batches for 1000 blobs (BATCH_SIZE = 500)
       // Scope 3: 1 query for old failed files
+      // Scope 4: 1 query for stuck deletions
       mockFindMany
         .mockResolvedValueOnce([]) // Batch 1 (items 0-499)
         .mockResolvedValueOnce([]) // Batch 2 (items 500-999)
-        .mockResolvedValueOnce([]); // Scope 3
+        .mockResolvedValueOnce([]) // Scope 3
+        .mockResolvedValueOnce([]); // Scope 4
 
       const metrics = await service.run();
 
-      // Should query DB 3 times total (2 for scope 1, 1 for scope 3)
-      expect(mockFindMany).toHaveBeenCalledTimes(3);
+      // Should query DB 4 times total (2 for scope 1, 1 for scope 3, 1 for scope 4)
+      expect(mockFindMany).toHaveBeenCalledTimes(4);
       expect(metrics.orphanBlobsDeleted).toBe(1000);
     });
 
@@ -421,7 +425,9 @@ describe('OrphanCleanupService', () => {
         },
       ];
 
-      mockFindMany.mockResolvedValue(oldFailedFiles);
+      mockFindMany
+        .mockResolvedValueOnce(oldFailedFiles)  // Scope 3: old failures
+        .mockResolvedValueOnce([]);             // Scope 4: stuck deletions
       mockDeleteMany.mockResolvedValue({ count: 1 });
 
       const metrics = await service.run();
@@ -734,6 +740,7 @@ describe('OrphanCleanupService', () => {
         orphanBlobsDeleted: 3,
         abandonedUploadsDeleted: 2,
         oldFailuresDeleted: 2,
+        stuckDeletionsDeleted: 0,
       });
 
       expect(mockLogger.info).toHaveBeenCalledWith(
@@ -742,6 +749,7 @@ describe('OrphanCleanupService', () => {
             orphanBlobsDeleted: 3,
             abandonedUploadsDeleted: 2,
             oldFailuresDeleted: 2,
+            stuckDeletionsDeleted: 0,
           },
         }),
         'Orphan cleanup completed'

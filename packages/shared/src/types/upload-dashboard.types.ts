@@ -123,6 +123,7 @@ export interface OrphanCleanupMetrics {
   orphanBlobsDeleted: number;
   abandonedUploadsDeleted: number;
   oldFailuresDeleted: number;
+  stuckDeletionsDeleted: number;
 }
 
 /**

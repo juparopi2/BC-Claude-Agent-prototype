@@ -8,6 +8,7 @@
 // ── Interfaces & shared types ─────────────────────────────────────────────────
 export type {
   DetectedFileRow,
+  StuckDeletionFileRow,
   DetectionResult,
   DriftDetector,
   DriftRepairer,
@@ -28,3 +29,4 @@ export { FolderHierarchyDetector } from './FolderHierarchyDetector';
 export { DisconnectedFilesDetector } from './DisconnectedFilesDetector';
 export { ReadyWithoutChunksDetector } from './ReadyWithoutChunksDetector';
 export { StaleSearchMetadataDetector } from './StaleSearchMetadataDetector';
+export { StuckDeletionDetector } from './StuckDeletionDetector';

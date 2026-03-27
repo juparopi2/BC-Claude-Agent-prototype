@@ -14,6 +14,12 @@ export interface DetectedFileRow {
   connection_scope_id: string | null;
 }
 
+/** File row returned by StuckDeletionDetector — extends base with connection context */
+export interface StuckDeletionFileRow extends DetectedFileRow {
+  connection_id: string | null;
+  source_type: string | null;
+}
+
 /** Result of a drift detection operation */
 export interface DetectionResult<T = string> {
   /** Detected items (file IDs or full rows depending on detector) */

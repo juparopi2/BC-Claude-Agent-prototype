@@ -191,12 +191,15 @@ export class SyncFileIngestionService {
   ): Promise<void> {
     const existing = await tx.files.findFirst({
       where: { connection_id: ctx.connectionId, external_id: item.id },
-      select: { id: true, pipeline_status: true },
+      select: { id: true, pipeline_status: true, deletion_status: true },
     });
 
     const parentFolderId = resolveParentFolderId(item.parentId, ctx.folderMap);
 
     if (existing) {
+      // HIERARCHICAL TRUTH: File exists in source during active sync → clear soft-delete
+      const isResurrection = existing.deletion_status != null;
+
       await tx.files.update({
         where: { id: existing.id },
         data: {
@@ -209,8 +212,25 @@ export class SyncFileIngestionService {
           parent_folder_id: parentFolderId,
           connection_scope_id: ctx.scopeId,
           last_synced_at: new Date(),
+          ...(isResurrection && {
+            deleted_at: null,
+            deletion_status: null,
+            pipeline_status: 'queued',
+          }),
         },
       });
+
+      if (isResurrection) {
+        logger.info(
+          { fileId: existing.id, externalId: item.id, scopeId: ctx.scopeId },
+          'Resurrected soft-deleted file during ingestion — source confirms existence',
+        );
+        newFiles.push({
+          fileId: existing.id,
+          mimeType: item.mimeType ?? 'application/octet-stream',
+          fileName: item.name,
+        });
+      }
     } else {
       const fileId = randomUUID().toUpperCase();
 

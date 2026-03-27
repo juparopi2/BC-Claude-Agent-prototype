@@ -451,10 +451,52 @@ export class DeltaSyncService {
 
           const existing = await prisma.files.findFirst({
             where: { connection_id: connectionId, external_id: item.id },
-            select: { id: true, content_hash_external: true },
+            select: { id: true, content_hash_external: true, deletion_status: true },
           });
 
           if (existing) {
+            // HIERARCHICAL TRUTH: File exists in source + scope is active → RESURRECT if soft-deleted
+            if (existing.deletion_status != null) {
+              logger.info(
+                { fileId: existing.id, externalId: item.id, deletionStatus: existing.deletion_status },
+                'Resurrecting soft-deleted file — source confirms existence during delta sync',
+              );
+              try {
+                await VectorSearchService.getInstance().deleteChunksForFile(existing.id, userId);
+              } catch { /* best-effort vector cleanup */ }
+              await prisma.file_chunks.deleteMany({ where: { file_id: existing.id } });
+
+              const resurrectParentFolderId = resolveParentFolderId(item.parentId, folderMap);
+              await prisma.files.update({
+                where: { id: existing.id },
+                data: {
+                  name: item.name,
+                  mime_type: item.mimeType ?? 'application/octet-stream',
+                  size_bytes: BigInt(item.sizeBytes ?? 0),
+                  external_url: item.webUrl || null,
+                  external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                  file_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
+                  content_hash_external: item.eTag ?? null,
+                  parent_folder_id: resurrectParentFolderId,
+                  pipeline_status: 'queued',
+                  last_synced_at: new Date(),
+                  deleted_at: null,
+                  deletion_status: null,
+                },
+              });
+
+              await getMessageQueue().addFileProcessingFlow({
+                fileId: existing.id,
+                batchId: scopeId,
+                userId,
+                mimeType: item.mimeType ?? 'application/octet-stream',
+                fileName: item.name,
+              });
+
+              result.updatedFiles++;
+              continue;
+            }
+
             // eTag matches — no content change
             if (existing.content_hash_external === (item.eTag ?? null)) {
               result.skipped++;

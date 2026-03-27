@@ -11,7 +11,7 @@ Automated health monitoring and recovery for the file synchronization pipeline. 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | **Orchestrator**: runs 10 detectors → 4 repairers. Cron checks all users with non-deleted files; respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
+| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | **Orchestrator**: runs 11 detectors → 5 repairers. Cron checks all users with non-deleted files; respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 ### Detector/Repairer Pattern (PRD-304)
@@ -36,8 +36,10 @@ health/
     DisconnectedFilesDetector.ts
     ReadyWithoutChunksDetector.ts — Ready non-image files with 0 file_chunks
     StaleSearchMetadataDetector.ts — AI Search metadata mismatch vs DB
+    StuckDeletionDetector.ts    — Files stuck in deletion_status='pending' > 1h
   repairers/
     FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images, no-chunks, stale-metadata)
+    StuckDeletionRepairer.ts    — Hierarchical truth: resurrect or hard-delete stuck deletions
     OrphanCleanupRepairer.ts    — Delete orphaned search docs
     ExternalFileCleanupRepairer.ts — Soft-delete 404 + disconnected files
     FolderHierarchyRepairer.ts  — Restore scope roots, queue resyncs, reparent
@@ -123,7 +125,7 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects ten drift conditions:
+Detects eleven drift conditions:
 
 | Drift | Detection | Repair Action |
 |---|---|---|
@@ -137,6 +139,7 @@ Detects ten drift conditions:
 | Disconnected connection files | Files with `connection_id` pointing to a `disconnected`/`expired` connection, or a connection that was hard-deleted | Soft-delete + vector cleanup (files are inaccessible, Graph API will fail) |
 | Ready without chunks | `pipeline_status='ready'` AND `file_chunks` count = 0 (non-image files only) | Reset to `'queued'`, re-enqueue — pipeline will re-extract, chunk, and index |
 | Stale search metadata | AI Search `sourceType`/`parentFolderId` differs from DB `source_type`/`parent_folder_id` | Reset to `'queued'`, re-enqueue — pipeline reads fresh metadata from `FileRepository.getFileWithScopeMetadata()` |
+| Stuck deletions | `deletion_status='pending'` AND `deleted_at` > 1h ago | **Hierarchical truth**: if connection connected → RESURRECT (clear deletion, re-queue); if connection dead → HARD-DELETE directly |
 
 **Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Cron checks all users with non-deleted files (not just ready). On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 

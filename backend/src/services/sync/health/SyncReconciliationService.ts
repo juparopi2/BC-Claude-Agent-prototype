@@ -5,7 +5,7 @@
  * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
  * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Ten drift conditions detected:
+ * Eleven drift conditions detected:
  *   1. Files in DB as 'ready' but missing from the search index
  *   2. Documents in search index with no matching DB file (orphaned)
  *   3. Failed files eligible for retry (retry_count < 3)
@@ -16,6 +16,7 @@
  *   8. Files on disconnected/expired connections (orphaned by disconnection)
  *   9. Ready non-image files with zero file_chunks records
  *  10. Ready files with stale metadata in the search index (sourceType/parentFolderId mismatch)
+ *  11. Stuck deletion files (deletion_status='pending' > 1h — resurrect or hard-delete)
  *
  * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
  * On-demand: always repairs (user explicitly requested it).
@@ -41,10 +42,12 @@ import { FolderHierarchyDetector } from './detectors/FolderHierarchyDetector';
 import { DisconnectedFilesDetector } from './detectors/DisconnectedFilesDetector';
 import { ReadyWithoutChunksDetector } from './detectors/ReadyWithoutChunksDetector';
 import { StaleSearchMetadataDetector } from './detectors/StaleSearchMetadataDetector';
+import { StuckDeletionDetector } from './detectors/StuckDeletionDetector';
 import { FileRequeueRepairer } from './repairers/FileRequeueRepairer';
 import { OrphanCleanupRepairer } from './repairers/OrphanCleanupRepairer';
 import { ExternalFileCleanupRepairer } from './repairers/ExternalFileCleanupRepairer';
 import { FolderHierarchyRepairer } from './repairers/FolderHierarchyRepairer';
+import { StuckDeletionRepairer } from './repairers/StuckDeletionRepairer';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -225,6 +228,11 @@ export class SyncReconciliationService {
     const staleMetadataRows = staleMetadataResult.items;
     const staleSearchMetadata = staleMetadataRows.map((f) => f.id);
 
+    // 10. Stuck deletion files (pending > 1h, resolve via hierarchical truth)
+    const stuckDeletionResult = await new StuckDeletionDetector().detect(normalizedId);
+    const stuckDeletionRows = stuckDeletionResult.items;
+    const stuckDeletionFiles = stuckDeletionRows.map((f) => f.id);
+
     // ── Repair phase ──────────────────────────────────────────────────────
 
     let repairs: ReconciliationRepairs;
@@ -265,6 +273,10 @@ export class SyncReconciliationService {
       // Re-enqueue files with stale search metadata
       const staleMetadataRepairResult = await requeuer.requeueStaleMetadata(normalizedId, staleMetadataRows);
 
+      // Resolve stuck deletions via hierarchical truth (resurrect or hard-delete)
+      const stuckDeletionRepairer = new StuckDeletionRepairer();
+      const stuckDeletionRepairs = await stuckDeletionRepairer.repair(normalizedId, stuckDeletionRows);
+
       // Aggregate all errors
       const totalErrors =
         missingResult.errors +
@@ -275,7 +287,8 @@ export class SyncReconciliationService {
         externalResult.errors +
         disconnectedCleanResult.errors +
         readyWithoutChunksRepairResult.errors +
-        staleMetadataRepairResult.errors;
+        staleMetadataRepairResult.errors +
+        stuckDeletionRepairs.errors;
 
       repairs = {
         missingRequeued: missingResult.missingRequeued,
@@ -288,6 +301,7 @@ export class SyncReconciliationService {
         folderHierarchy: hierarchyRepairs,
         readyWithoutChunksRequeued: readyWithoutChunksRepairResult.readyWithoutChunksRequeued,
         staleMetadataRequeued: staleMetadataRepairResult.staleMetadataRequeued,
+        stuckDeletions: stuckDeletionRepairs,
         errors: totalErrors,
       };
     } else {
@@ -297,6 +311,7 @@ export class SyncReconciliationService {
         folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, foldersRestored: 0, errors: 0 },
         readyWithoutChunksRequeued: 0,
         staleMetadataRequeued: 0,
+        stuckDeletions: { resurrected: 0, hardDeleted: 0, errors: 0 },
         errors: 0,
       };
     }
@@ -318,6 +333,7 @@ export class SyncReconciliationService {
       folderHierarchyIssues,
       readyWithoutChunks,
       staleSearchMetadata,
+      stuckDeletionFiles,
       repairs,
       dryRun: !shouldRepair,
     };
@@ -335,6 +351,7 @@ export class SyncReconciliationService {
         folderHierarchyIssues: undefined, // Don't log full details
         readyWithoutChunks: undefined,
         staleSearchMetadata: undefined,
+        stuckDeletionFiles: undefined,
         missingCount: comparison.missingFromSearch.length,
         orphanedCount: comparison.orphanedInSearch.length,
         failedRetriableCount: failedRetriable.length,
@@ -348,6 +365,7 @@ export class SyncReconciliationService {
         scopesToResyncCount: folderHierarchyIssues.scopeIdsToResync.length,
         readyWithoutChunksCount: readyWithoutChunks.length,
         staleSearchMetadataCount: staleSearchMetadata.length,
+        stuckDeletionFilesCount: stuckDeletionFiles.length,
       },
       'Reconciliation report for user',
     );

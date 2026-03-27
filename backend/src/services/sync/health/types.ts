@@ -72,6 +72,12 @@ export interface SyncHealthReport {
 // Reconciliation
 // ============================================================================
 
+export interface StuckDeletionRepairs {
+  resurrected: number;
+  hardDeleted: number;
+  errors: number;
+}
+
 export interface ReconciliationRepairs {
   missingRequeued: number;
   orphansDeleted: number;
@@ -83,6 +89,7 @@ export interface ReconciliationRepairs {
   folderHierarchy: FolderHierarchyRepairs;
   readyWithoutChunksRequeued: number;
   staleMetadataRequeued: number;
+  stuckDeletions: StuckDeletionRepairs;
   errors: number;
 }
 
@@ -101,6 +108,7 @@ export interface ReconciliationReport {
   folderHierarchyIssues: FolderHierarchyDetection;
   readyWithoutChunks: string[];
   staleSearchMetadata: string[];
+  stuckDeletionFiles: string[];
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }

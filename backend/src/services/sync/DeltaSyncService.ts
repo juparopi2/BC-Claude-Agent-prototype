@@ -150,8 +150,8 @@ export class DeltaSyncService {
         }
       } else {
         if (scope.scope_type === 'folder' && scope.scope_resource_id) {
-          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id }, 'Starting folder-scoped delta with cursor');
-          page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id, scope.last_sync_cursor);
+          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id, driveId: effectiveDriveId }, 'Starting folder-scoped delta with cursor');
+          page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id, scope.last_sync_cursor, effectiveDriveId);
         } else {
           logger.info({ connectionId, scopeId }, 'Starting root-scoped delta with cursor');
           page = await getOneDriveService().executeDeltaQuery(connectionId, scope.last_sync_cursor);
@@ -197,6 +197,7 @@ export class DeltaSyncService {
           microsoftDriveId: effectiveDriveId,
           folderMap,
           provider: connection.provider,
+          isShared: !!scope.remote_drive_id,
         });
       }
 
@@ -420,6 +421,7 @@ export class DeltaSyncService {
             microsoftDriveId: effectiveDriveId,
             folderMap,
             provider: connection.provider,
+            isShared: !!scope.remote_drive_id,
           });
         } catch (folderErr) {
           const errorInfo =

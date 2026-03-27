@@ -125,22 +125,29 @@ export function FloatingProTip() {
     <div
       ref={floatingRef}
       style={floatingStyles}
-      className="z-[9999] animate-in fade-in slide-in-from-bottom-2 duration-200"
+      className="group z-[9999] animate-in fade-in slide-in-from-bottom-2 duration-200 transition-transform hover:-translate-y-0.5"
     >
-      {/* Arrow: two overlapping rotated squares.
-          Outer = border color, inner = background fill.
-          The inner square is 1px inward, covering the border line that would
-          otherwise be visible inside the card. */}
+      {/* Arrow: three layers — z-10 keeps them above the card's glow ring.
+          1. Base border (subtle, always visible)
+          2. Pulsing border (same glow-ping animation as the card)
+          3. Inner fill (solid, covers the card border line at the junction) */}
       <div
         ref={setArrowEl}
-        className="absolute size-2.5 rotate-45 border border-border"
+        className="absolute z-10 size-2.5 rotate-45 border border-primary/20"
         style={arrowPos}
       />
       <div
-        className="absolute size-2.5 rotate-45 bg-background"
+        className="absolute z-10 size-2.5 rotate-45 border border-primary/40 animate-[glow-ping_2.5s_ease-in-out_infinite]"
+        style={arrowPos}
+      />
+      <div
+        className="absolute z-10 size-2.5 rotate-45 bg-background"
         style={{ ...arrowPos, [staticSide]: '-4px' }}
       />
-      <div className="w-80 bg-background border rounded-xl shadow-lg p-4 space-y-3">
+      <div className="relative w-80 rounded-xl border border-primary/20 bg-background p-4 space-y-3 shadow-lg transition-all duration-300 group-hover:border-primary/40 group-hover:shadow-[0_0_20px_rgba(var(--primary-glow),0.25)]">
+        {/* Glow pulse ring — the main visible pulsing border */}
+        <span className="pointer-events-none absolute inset-0 rounded-xl border border-primary/40 animate-[glow-ping_2.5s_ease-in-out_infinite] w-full h-full" />
+
         <div className="flex items-start gap-3">
           <Lightbulb className="size-4 shrink-0 text-amber-500 mt-0.5" />
           <div className="space-y-1.5 flex-1">

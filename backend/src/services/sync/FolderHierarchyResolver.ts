@@ -47,6 +47,7 @@ export interface EnsureScopeRootParams {
   microsoftDriveId: string | null;
   folderMap: FolderIdMap;
   provider: string;
+  isShared: boolean;
 }
 
 export interface UpsertFolderParams {
@@ -57,6 +58,7 @@ export interface UpsertFolderParams {
   microsoftDriveId: string | null;
   folderMap: FolderIdMap;
   provider: string;
+  isShared: boolean;
 }
 
 // ============================================================================
@@ -115,6 +117,7 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
     microsoftDriveId,
     folderMap,
     provider,
+    isShared,
   } = params;
 
   if (folderMap.has(scopeResourceId)) {
@@ -146,6 +149,7 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
         pipeline_status: 'ready',
         connection_scope_id: scopeId,
         name: scopeDisplayName ?? (provider === 'sharepoint' ? 'SharePoint Folder' : 'OneDrive Folder'),
+        is_shared: isShared,
       },
     });
     folderMap.set(scopeResourceId, softDeletedFolder.id);
@@ -177,6 +181,7 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
         parent_folder_id: null,
         pipeline_status: 'ready',
         is_favorite: false,
+        is_shared: isShared,
       },
     });
     folderMap.set(scopeResourceId, scopeFolderId);
@@ -246,7 +251,7 @@ export function sortFoldersByDepth(folderChanges: DeltaChange[]): DeltaChange[] 
  * @returns The internal folder UUID (UPPERCASE).
  */
 export async function upsertFolder(params: UpsertFolderParams): Promise<string> {
-  const { item, connectionId, scopeId, userId, microsoftDriveId, folderMap, provider } = params;
+  const { item, connectionId, scopeId, userId, microsoftDriveId, folderMap, provider, isShared } = params;
 
   const parentFolderId = resolveParentFolderId(item.parentId, folderMap);
 
@@ -280,6 +285,7 @@ export async function upsertFolder(params: UpsertFolderParams): Promise<string> 
         deleted_at: null,
         deletion_status: null,
         pipeline_status: 'ready',
+        is_shared: isShared,
       },
     });
     folderMap.set(item.id, existing.id);
@@ -305,6 +311,7 @@ export async function upsertFolder(params: UpsertFolderParams): Promise<string> 
         parent_folder_id: parentFolderId,
         pipeline_status: 'ready',
         is_favorite: false,
+        is_shared: isShared,
       },
     });
     folderMap.set(item.id, folderId);

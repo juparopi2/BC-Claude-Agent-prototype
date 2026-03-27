@@ -74,6 +74,7 @@ export class FolderHierarchyRepairer {
           microsoftDriveId: effectiveDriveId,
           folderMap,
           provider: missing.provider,
+          isShared: !!missing.remoteDriveId,
         });
 
         repairs.scopeRootsRecreated++;

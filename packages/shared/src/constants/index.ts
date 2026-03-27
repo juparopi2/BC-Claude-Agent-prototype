@@ -141,6 +141,19 @@ export {
   type FileTypeCategory,
 } from './file-type-categories';
 
+// File Health State Definitions (PRD-304)
+export {
+  HEALTHY_FILE_STATES,
+  getFileHealthKey,
+  getExpectedHealthState,
+  validateFileHealth,
+  isResourceExpectationMet,
+  type HealthyFileExpectation,
+  type FileHealthViolation,
+  type FileHealthStateKey,
+  type ResourceExpectation,
+} from './file-health-state';
+
 // Onboarding Constants
 export {
   TOUR_ID,

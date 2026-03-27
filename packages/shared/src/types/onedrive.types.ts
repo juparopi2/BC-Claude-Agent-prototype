@@ -186,12 +186,27 @@ export interface SyncReconciliationCompletedPayload {
     failedRetriableCount: number;
     stuckFilesCount: number;
     imagesMissingEmbeddingsCount: number;
+    disconnectedConnectionFilesCount?: number;
+    folderHierarchy?: {
+      orphanedChildrenCount: number;
+      missingScopeRootsCount: number;
+      scopesToResyncCount: number;
+    };
     repairs: {
       missingRequeued: number;
       orphansDeleted: number;
       failedRequeued: number;
       stuckRequeued: number;
       imageRequeued: number;
+      externalNotFoundCleaned?: number;
+      disconnectedConnectionCleaned?: number;
+      folderHierarchy?: {
+        scopeRootsRecreated: number;
+        scopesResynced: number;
+        scopesSkippedDisconnected: number;
+        localFilesReparented: number;
+        errors: number;
+      };
       errors: number;
     };
   };

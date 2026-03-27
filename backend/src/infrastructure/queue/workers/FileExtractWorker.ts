@@ -47,6 +47,18 @@ export class FileExtractWorker {
 
     jobLogger.info({ mimeType, fileName }, 'Extract worker started');
 
+    // Guard: Folders are metadata-only — they should never enter the extract pipeline.
+    // This can happen if a folder is mistakenly enqueued (e.g., during reconciliation resync).
+    if (mimeType === 'inode/directory') {
+      const { prisma } = await import('@/infrastructure/database/prisma');
+      await prisma.files.updateMany({
+        where: { id: fileId, is_folder: true },
+        data: { pipeline_status: 'ready' },
+      });
+      jobLogger.warn({ fileId }, 'Folder entered extract pipeline — reset to ready, skipping');
+      return;
+    }
+
     // 1. CAS transition: queued → extracting
     const { getFileRepository } = await import(
       '@/services/files/repository/FileRepository'

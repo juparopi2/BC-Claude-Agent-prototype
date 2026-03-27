@@ -242,7 +242,7 @@ export function useSyncEvents(): void {
           event.report.repairs.stuckRequeued +
           event.report.repairs.imageRequeued;
 
-        const folderRepairs = event.report.folderHierarchy?.scopeRootsRecreated ?? 0;
+        const folderRepairs = event.report.repairs?.folderHierarchy?.scopeRootsRecreated ?? 0;
 
         // Refresh UI for ANY trigger when repairs were made (folders restored, files requeued)
         if (totalRepairs > 0 || folderRepairs > 0) {

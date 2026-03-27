@@ -27,7 +27,6 @@ import {
   AlertOctagon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import type { UseFileHealthReturn } from '@/src/domains/files';
@@ -56,6 +55,14 @@ interface SectionConfig {
 }
 
 const SECTIONS: SectionConfig[] = [
+  {
+    type: 'external_not_found',
+    label: 'Deleted from Source',
+    color: 'text-red-600 dark:text-red-400',
+    bgColor: 'bg-red-50 dark:bg-red-950/30',
+    icon: <AlertOctagon className="size-3.5" />,
+    showRetryAll: false,
+  },
   {
     type: 'retry_exhausted',
     label: 'Retry Exhausted',
@@ -126,6 +133,7 @@ export function FileHealthIssueList({ health, onClose }: FileHealthIssueListProp
     retryAllRetriable,
     deleteFile,
     acceptBlobMissing,
+    removeAllExternalNotFound,
     retryingFileIds,
     deletingFileIds,
   } = health;
@@ -147,7 +155,7 @@ export function FileHealthIssueList({ health, onClose }: FileHealthIssueListProp
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
@@ -174,7 +182,7 @@ export function FileHealthIssueList({ health, onClose }: FileHealthIssueListProp
       </div>
 
       {/* Content */}
-      <ScrollArea className="max-h-96">
+      <div className="max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-muted">
         {/* Loading */}
         {isLoading && totalIssueCount === 0 && (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
@@ -199,12 +207,23 @@ export function FileHealthIssueList({ health, onClose }: FileHealthIssueListProp
           return (
             <div key={section.type} className="border-b last:border-b-0">
               {/* Section header */}
-              <div className={cn('flex items-center justify-between px-4 py-2', section.bgColor)}>
+              <div className={cn('flex items-center justify-between px-4 py-2 sticky top-0 bg-background/95 backdrop-blur z-10 shadow-sm border-b', section.bgColor)}>
                 <div className={cn('flex items-center gap-1.5 text-xs font-medium', section.color)}>
                   {section.icon}
                   <span>{section.label}</span>
                   <span className="text-muted-foreground font-normal">({sectionIssues.length})</span>
                 </div>
+                {section.type === 'external_not_found' && sectionIssues.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    onClick={() => void removeAllExternalNotFound()}
+                  >
+                    <Trash2 className="size-3 mr-1" />
+                    Remove All
+                  </Button>
+                )}
                 {section.showRetryAll && sectionIssues.length > 1 && (
                   <Button
                     variant="ghost"
@@ -233,7 +252,7 @@ export function FileHealthIssueList({ health, onClose }: FileHealthIssueListProp
             </div>
           );
         })}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
@@ -255,7 +274,7 @@ function IssueRow({ issue, isRetrying, isDeleting, onRetry, onDelete, onAcceptBl
   const isBusy = isRetrying || isDeleting;
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2 hover:bg-muted/50 transition-colors">
+    <div className="flex items-center gap-2 px-4 py-2 hover:bg-muted/50 transition-colors overflow-hidden">
       {/* File icon */}
       <div className="shrink-0">
         {getMimeIcon(issue.mimeType)}
@@ -266,6 +285,11 @@ function IssueRow({ issue, isRetrying, isDeleting, onRetry, onDelete, onAcceptBl
         <p className="text-sm truncate" title={issue.fileName}>
           {issue.fileName}
         </p>
+        {issue.issueType === 'external_not_found' && (
+          <p className="text-xs text-red-500 dark:text-red-400 truncate">
+            No longer exists in {issue.sourceType === 'sharepoint' ? 'SharePoint' : 'OneDrive'}
+          </p>
+        )}
         {issue.issueType === 'blob_missing' && (
           <p className="text-xs text-red-500 dark:text-red-400 truncate">
             File not found in storage
@@ -276,7 +300,7 @@ function IssueRow({ issue, isRetrying, isDeleting, onRetry, onDelete, onAcceptBl
             Stuck for {getStuckDuration(issue.updatedAt)}
           </p>
         )}
-        {issue.lastError && issue.issueType !== 'blob_missing' && (
+        {issue.lastError && issue.issueType !== 'blob_missing' && issue.issueType !== 'external_not_found' && (
           <p className="text-xs text-muted-foreground truncate" title={issue.lastError}>
             {issue.lastError}
           </p>
@@ -285,7 +309,27 @@ function IssueRow({ issue, isRetrying, isDeleting, onRetry, onDelete, onAcceptBl
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
-        {issue.issueType === 'blob_missing' ? (
+        {issue.issueType === 'external_not_found' ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs px-2"
+                onClick={onDelete}
+                disabled={isBusy}
+              >
+                {isDeleting ? (
+                  <Loader2 className="size-3 animate-spin mr-1" />
+                ) : (
+                  <Trash2 className="size-3 mr-1" />
+                )}
+                Remove
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Remove file record (source file no longer exists)</TooltipContent>
+          </Tooltip>
+        ) : issue.issueType === 'blob_missing' ? (
           <>
             <Tooltip>
               <TooltipTrigger asChild>

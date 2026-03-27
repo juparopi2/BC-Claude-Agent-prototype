@@ -13,11 +13,13 @@ import { useFileHealthStore } from '../stores/fileHealthStore';
 import { useFileProcessingStore } from '../stores/fileProcessingStore';
 import { useFileListStore } from '../stores/fileListStore';
 import { useFolderNavigation } from './useFolderNavigation';
+import { useFolderTreeStore } from '../stores/folderTreeStore';
 import { useSortFilterStore } from '../stores/sortFilterStore';
+import { buildPathToFolderAsync } from '../utils/folderPathBuilder';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { toast } from 'sonner';
-import type { FileHealthIssue, FileHealthIssuesResponse } from '@bc-agent/shared';
+import type { FileHealthIssue, FileHealthIssuesResponse, ParsedFile } from '@bc-agent/shared';
 
 // ---------------------------------------------------------------------------
 // Return type
@@ -34,6 +36,7 @@ export interface UseFileHealthReturn {
   retryAllRetriable: () => Promise<void>;
   deleteFile: (fileId: string) => Promise<boolean>;
   acceptBlobMissing: (issue: FileHealthIssue) => Promise<void>;
+  removeAllExternalNotFound: () => Promise<void>;
   retryingFileIds: ReadonlySet<string>;
   deletingFileIds: ReadonlySet<string>;
 }
@@ -55,7 +58,7 @@ export function useFileHealth(): UseFileHealthReturn {
   const setProcessingStatus = useFileProcessingStore((s) => s.setProcessingStatus);
   const updateFileInStore = useFileListStore((s) => s.updateFile);
 
-  const { setCurrentFolder } = useFolderNavigation();
+  const { setCurrentFolder, toggleFolderExpanded } = useFolderNavigation();
 
   const [retryingFileIds, setRetryingFileIds] = useState<Set<string>>(new Set());
   const [deletingFileIds, setDeletingFileIds] = useState<Set<string>>(new Set());
@@ -217,6 +220,34 @@ export function useFileHealth(): UseFileHealthReturn {
   );
 
   // -----------------------------------------------------------------------
+  // Remove all external-not-found files in bulk
+  // -----------------------------------------------------------------------
+
+  const removeAllExternalNotFound = useCallback(async () => {
+    const externalNotFound = issues.filter((i) => i.issueType === 'external_not_found');
+    if (externalNotFound.length === 0) return;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const issue of externalNotFound) {
+      const ok = await deleteFile(issue.fileId);
+      if (ok) successCount++;
+      else failCount++;
+    }
+
+    if (failCount === 0) {
+      toast.success('Files removed', {
+        description: `${successCount} externally deleted file${successCount !== 1 ? 's' : ''} removed.`,
+      });
+    } else {
+      toast.warning('Partial removal', {
+        description: `${successCount} removed, ${failCount} failed.`,
+      });
+    }
+  }, [issues, deleteFile]);
+
+  // -----------------------------------------------------------------------
   // Accept blob missing: delete + navigate to parent folder
   // -----------------------------------------------------------------------
 
@@ -226,23 +257,61 @@ export function useFileHealth(): UseFileHealthReturn {
       if (!deleted) return;
 
       if (issue.parentFolderId) {
+        const fileApi = getFileApiClient();
+
         // Switch source filter to match the file's source
         const targetFilter =
           issue.sourceType === FILE_SOURCE_TYPE.LOCAL ? null : issue.sourceType;
         useSortFilterStore.getState().setSourceTypeFilter(targetFilter);
 
-        setCurrentFolder(issue.parentFolderId, []);
+        // Expand the correct sidebar section
+        const folderTreeState = useFolderTreeStore.getState();
+        if (targetFilter === FILE_SOURCE_TYPE.ONEDRIVE) {
+          folderTreeState.setSectionExpanded('onedrive', true);
+        } else if (targetFilter === FILE_SOURCE_TYPE.SHAREPOINT) {
+          folderTreeState.setSectionExpanded('sharepoint', true);
+        } else {
+          folderTreeState.setSectionExpanded('local', true);
+        }
+
+        // Build breadcrumb path (same pattern as useGoToFilePath)
+        let path: ParsedFile[] = [];
+        try {
+          const parentResult = await fileApi.getFile(issue.parentFolderId);
+          if (parentResult.success) {
+            const fetchFolder = async (folderId: string): Promise<ParsedFile | null> => {
+              const r = await fileApi.getFile(folderId);
+              return r.success ? r.data.file : null;
+            };
+            path = await buildPathToFolderAsync(
+              parentResult.data.file,
+              folderTreeState.treeFolders,
+              fetchFolder,
+            );
+          }
+        } catch {
+          // Navigate with empty path as fallback
+        }
+
+        // Navigate with full breadcrumb
+        setCurrentFolder(issue.parentFolderId, path);
+
+        // Expand all folders in the path so the sidebar reflects navigation
+        for (const folder of path) {
+          toggleFolderExpanded(folder.id, true);
+        }
 
         toast.success('File removed', {
           description: 'You can re-upload it in this folder.',
         });
       } else {
+        setCurrentFolder(null, []);
         toast.success('File removed', {
           description: 'You can re-upload it from the root folder.',
         });
       }
     },
-    [deleteFile, setCurrentFolder],
+    [deleteFile, setCurrentFolder, toggleFolderExpanded],
   );
 
   return {
@@ -256,6 +325,7 @@ export function useFileHealth(): UseFileHealthReturn {
     retryAllRetriable,
     deleteFile,
     acceptBlobMissing,
+    removeAllExternalNotFound,
     retryingFileIds,
     deletingFileIds,
   };

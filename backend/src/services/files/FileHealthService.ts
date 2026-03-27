@@ -7,10 +7,11 @@
  * FileHealthWarning UI component.
  *
  * Issue classification:
- * - `blob_missing`:      Failed local file whose blob no longer exists in storage — must re-upload
- * - `retry_exhausted`:   Failed with retryCount >= MAX_RETRY_COUNT, blob exists — needs manual reset
- * - `failed_retriable`:  Failed with retryCount < MAX_RETRY_COUNT — safe to retry automatically
- * - `stuck_processing`:  Stuck in an intermediate pipeline state for > STUCK_THRESHOLD_MS
+ * - `external_not_found`: External file whose Graph API returned 404 — file deleted/moved in source system
+ * - `blob_missing`:       Failed local file whose blob no longer exists in storage — must re-upload
+ * - `retry_exhausted`:    Failed with retryCount >= MAX_RETRY_COUNT, blob exists — needs manual reset
+ * - `failed_retriable`:   Failed with retryCount < MAX_RETRY_COUNT — safe to retry automatically
+ * - `stuck_processing`:   Stuck in an intermediate pipeline state for > STUCK_THRESHOLD_MS
  *
  * @module services/files/FileHealthService
  */
@@ -68,11 +69,28 @@ const FILE_SELECT = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Classification helper
+// Classification helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the file is an external OneDrive/SharePoint file whose
+ * last processing error indicates the remote item was not found (404).
+ * These files were deleted or moved in the source system, so retrying
+ * would fail again — they should be removed, not retried.
+ */
+function isGraphApi404Error(file: DbFile): boolean {
+  if (file.source_type !== 'onedrive' && file.source_type !== 'sharepoint') return false;
+  if (!file.last_processing_error) return false;
+  return (
+    file.last_processing_error.includes('Graph API error (404)') ||
+    file.last_processing_error.includes('itemNotFound') ||
+    file.last_processing_error.includes('resource could not be found')
+  );
+}
 
 function classifyIssue(file: DbFile, blobExistsForFile: boolean): FileHealthIssueType {
   if (file.pipeline_status === 'failed') {
+    if (isGraphApi404Error(file)) return 'external_not_found';
     if (!blobExistsForFile && file.blob_path != null) return 'blob_missing';
     if ((file.pipeline_retry_count ?? 0) >= MAX_RETRY_COUNT) return 'retry_exhausted';
     return 'failed_retriable';
@@ -194,6 +212,7 @@ export class FileHealthService {
     // 5. Build summary counts
     // ------------------------------------------------------------------
     const summary = {
+      externalNotFound: issues.filter((i) => i.issueType === 'external_not_found').length,
       retryExhausted: issues.filter((i) => i.issueType === 'retry_exhausted').length,
       blobMissing: issues.filter((i) => i.issueType === 'blob_missing').length,
       failedRetriable: issues.filter((i) => i.issueType === 'failed_retriable').length,

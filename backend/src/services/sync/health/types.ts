@@ -77,6 +77,7 @@ export interface ReconciliationRepairs {
   failedRequeued: number;
   stuckRequeued: number;
   imageRequeued: number;
+  externalNotFoundCleaned: number;
   errors: number;
 }
 
@@ -90,6 +91,7 @@ export interface ReconciliationReport {
   failedRetriable: string[];
   stuckFiles: string[];
   imagesMissingEmbeddings: string[];
+  externalNotFound: string[];
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }

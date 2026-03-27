@@ -95,6 +95,45 @@ export class FileExtractWorker {
 
       jobLogger.info('Extract completed successfully');
     } catch (error) {
+      // Detect Graph API 404 for external files — soft-delete instead of retry
+      const { GraphApiError } = await import(
+        '@/services/connectors/onedrive/GraphHttpClient'
+      );
+      if (error instanceof GraphApiError && error.statusCode === 404) {
+        const fileRecord = await repo.findById(userId, fileId);
+        const isExternal =
+          fileRecord?.sourceType === 'onedrive' ||
+          fileRecord?.sourceType === 'sharepoint';
+
+        if (isExternal) {
+          jobLogger.warn(
+            { fileId, userId, sourceType: fileRecord.sourceType },
+            'External file no longer exists (Graph API 404) — soft-deleting',
+          );
+
+          const { prisma } = await import('@/infrastructure/database/prisma');
+
+          // Soft-delete — must set BOTH fields per project convention
+          await prisma.files.update({
+            where: { id: fileId },
+            data: { deleted_at: new Date(), deletion_status: 'pending' },
+          });
+
+          // Vector cleanup (fire-and-forget, best-effort)
+          try {
+            const { VectorSearchService } = await import('@/services/search/VectorSearchService');
+            await VectorSearchService.getInstance().deleteChunksForFile(fileId, userId);
+          } catch { /* best-effort */ }
+
+          try {
+            await prisma.file_chunks.deleteMany({ where: { file_id: fileId } });
+          } catch { /* best-effort */ }
+
+          // DO NOT rethrow — BullMQ job completes successfully, no retry
+          return;
+        }
+      }
+
       // Transition to failed state
       await repo.transitionStatus(
         fileId, userId,

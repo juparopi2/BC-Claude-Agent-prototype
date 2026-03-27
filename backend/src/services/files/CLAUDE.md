@@ -49,6 +49,7 @@ Infrastructure services for file operations — blob storage, text extraction, c
 | `FileUploadService.ts` | Azure Blob Storage operations: SAS URL generation, blob download, container management |
 | `FileProcessingService.ts` | Text extraction orchestrator: download blob → select processor → extract → update DB → enqueue chunking |
 | `FileChunkingService.ts` | Chunking orchestrator: read extracted text → chunk → insert to DB → enqueue embedding job |
+| `FileHealthService.ts` | Diagnoses file health issues: classifies failed/stuck files into 5 issue types (`external_not_found`, `retry_exhausted`, `blob_missing`, `failed_retriable`, `stuck_processing`). Batch-checks blob existence for local files. Used by `GET /api/files/health/issues`. |
 | `DeletionAuditService.ts` | GDPR audit trail for file deletions |
 | `MessageFileAttachmentService.ts` | Attaches file context to chat messages |
 | `MessageChatAttachmentService.ts` | Attaches chat-related file references |

@@ -10,12 +10,14 @@
 /**
  * Classification of file health issues.
  *
+ * - `external_not_found`: External file (OneDrive/SharePoint) returned Graph API 404 — file was deleted/moved in source
  * - `retry_exhausted`: Failed with retryCount >= 3, blob exists — needs manual retry count reset
  * - `blob_missing`: Failed, local file blob not found in storage — must be re-uploaded
  * - `failed_retriable`: Failed with retryCount < 3 — can be retried
  * - `stuck_processing`: Stuck in intermediate pipeline state > 30 min — needs re-queue
  */
 export type FileHealthIssueType =
+  | 'external_not_found'
   | 'retry_exhausted'
   | 'blob_missing'
   | 'failed_retriable'
@@ -48,6 +50,7 @@ export interface FileHealthIssue {
 export interface FileHealthIssuesResponse {
   issues: FileHealthIssue[];
   summary: {
+    externalNotFound: number;
     retryExhausted: number;
     blobMissing: number;
     failedRetriable: number;

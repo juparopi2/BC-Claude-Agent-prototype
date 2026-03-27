@@ -5,12 +5,13 @@
  * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
  * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Five drift conditions detected:
+ * Six drift conditions detected:
  *   1. Files in DB as 'ready' but missing from the search index
  *   2. Documents in search index with no matching DB file (orphaned)
  *   3. Failed files eligible for retry (retry_count < 3)
  *   4. Stuck pipeline files (> 30 min in intermediate state)
  *   5. Ready images missing image_embeddings records
+ *   6. External files (OneDrive/SharePoint) that no longer exist (Graph API 404)
  *
  * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
  * On-demand: always repairs (user explicitly requested it).
@@ -133,7 +134,7 @@ export class SyncReconciliationService {
   /**
    * Reconcile a single user's files against the search index.
    *
-   * Diagnoses 5 drift conditions, then optionally repairs them.
+   * Diagnoses 6 drift conditions, then optionally repairs them.
    *
    * @param userId - The user whose files to reconcile.
    * @param options.forceRepair - When true, always repair regardless of env var.
@@ -231,7 +232,26 @@ export class SyncReconciliationService {
     });
     const stuckFiles = stuckFileRows.map((f) => f.id.toUpperCase());
 
-    // ── f. Detect ready images missing image_embeddings ───────────────────
+    // ── f. Detect external files that no longer exist (Graph API 404) ────────
+
+    const externalNotFoundRows = await prisma.files.findMany({
+      where: {
+        user_id: userId,
+        pipeline_status: 'failed',
+        deleted_at: null,
+        deletion_status: null,
+        source_type: { in: ['onedrive', 'sharepoint'] },
+        OR: [
+          { last_processing_error: { contains: 'Graph API error (404)' } },
+          { last_processing_error: { contains: 'itemNotFound' } },
+          { last_processing_error: { contains: 'resource could not be found' } },
+        ],
+      },
+      select: { id: true },
+    });
+    const externalNotFound = externalNotFoundRows.map((f) => f.id.toUpperCase());
+
+    // ── g. Detect ready images missing image_embeddings ───────────────────
 
     const readyImages = await prisma.files.findMany({
       where: {
@@ -256,7 +276,7 @@ export class SyncReconciliationService {
         .map((f) => f.id.toUpperCase());
     }
 
-    // ── g. Optionally repair ──────────────────────────────────────────────
+    // ── h. Optionally repair ──────────────────────────────────────────────
 
     const shouldRepair = options?.forceRepair || env.SYNC_RECONCILIATION_AUTO_REPAIR;
 
@@ -270,12 +290,13 @@ export class SyncReconciliationService {
         failedRetriableRows,
         stuckFileRows,
         imagesMissingEmbeddings,
+        externalNotFound,
       );
     } else {
-      repairs = { missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0, errors: 0 };
+      repairs = { missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0, externalNotFoundCleaned: 0, errors: 0 };
     }
 
-    // ── h. Build and log report ───────────────────────────────────────────
+    // ── i. Build and log report ───────────────────────────────────────────
 
     const report: ReconciliationReport = {
       timestamp: new Date(),
@@ -287,6 +308,7 @@ export class SyncReconciliationService {
       failedRetriable,
       stuckFiles,
       imagesMissingEmbeddings,
+      externalNotFound,
       repairs,
       dryRun: !shouldRepair,
     };
@@ -300,11 +322,13 @@ export class SyncReconciliationService {
         failedRetriable: undefined,
         stuckFiles: undefined,
         imagesMissingEmbeddings: undefined,
+        externalNotFound: undefined,
         missingCount: missingFromSearch.length,
         orphanedCount: orphanedInSearch.length,
         failedRetriableCount: failedRetriable.length,
         stuckFilesCount: stuckFiles.length,
         imagesMissingEmbeddingsCount: imagesMissingEmbeddings.length,
+        externalNotFoundCount: externalNotFound.length,
       },
       'Reconciliation report for user',
     );
@@ -332,10 +356,12 @@ export class SyncReconciliationService {
     failedRetriableRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
     stuckFileRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
     imagesMissingEmbeddings: string[],
+    externalNotFound: string[],
   ): Promise<ReconciliationRepairs> {
     const repairs: ReconciliationRepairs = {
       missingRequeued: 0, orphansDeleted: 0,
       failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0,
+      externalNotFoundCleaned: 0,
       errors: 0,
     };
 
@@ -512,6 +538,42 @@ export class SyncReconciliationService {
             ? { message: err.message, name: err.name }
             : { value: String(err) };
         this.logger.warn({ fileId, error: errorInfo }, 'Failed to re-enqueue image missing embedding');
+        repairs.errors++;
+      }
+    }
+
+    // ── Soft-delete external files that no longer exist (Graph API 404) ───
+
+    for (const fileId of externalNotFound) {
+      try {
+        // Delete vector chunks (best-effort)
+        try {
+          const { VectorSearchService } = await import('@/services/search/VectorSearchService');
+          await VectorSearchService.getInstance().deleteChunksForFile(fileId, userId);
+        } catch (vecErr) {
+          const errorInfo =
+            vecErr instanceof Error
+              ? { message: vecErr.message, name: vecErr.name }
+              : { value: String(vecErr) };
+          this.logger.warn({ fileId, error: errorInfo }, 'Failed to delete vector chunks for external-not-found file');
+        }
+
+        // Delete file_chunks records
+        await prisma.file_chunks.deleteMany({ where: { file_id: fileId } });
+
+        // Soft-delete — must set BOTH fields per project convention
+        await prisma.files.update({
+          where: { id: fileId },
+          data: { deleted_at: new Date(), deletion_status: 'pending' },
+        });
+
+        repairs.externalNotFoundCleaned++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn({ fileId, error: errorInfo }, 'Failed to soft-delete external-not-found file');
         repairs.errors++;
       }
     }

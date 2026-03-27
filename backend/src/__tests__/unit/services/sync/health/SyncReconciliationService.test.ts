@@ -35,6 +35,9 @@ const mockFilesUpdateMany = vi.hoisted(() => vi.fn());
 // image_embeddings table
 const mockImageEmbeddingsFindMany = vi.hoisted(() => vi.fn());
 
+// file_chunks table
+const mockFileChunksDeleteMany = vi.hoisted(() => vi.fn());
+
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
     files: {
@@ -45,6 +48,9 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     },
     image_embeddings: {
       findMany: mockImageEmbeddingsFindMany,
+    },
+    file_chunks: {
+      deleteMany: mockFileChunksDeleteMany,
     },
   },
 }));
@@ -143,6 +149,7 @@ beforeEach(() => {
   mockGetUniqueFileIds.mockResolvedValue([]);
   mockDeleteChunksForFile.mockResolvedValue(undefined);
   mockImageEmbeddingsFindMany.mockResolvedValue([]);
+  mockFileChunksDeleteMany.mockResolvedValue({ count: 0 });
   mockRedisTtl.mockResolvedValue(-2); // Key does not exist = no cooldown
   mockRedisSet.mockResolvedValue('OK');
 });
@@ -300,9 +307,13 @@ describe('SyncReconciliationService', () => {
     });
 
     it('re-enqueues missing files: resets pipeline_status and calls addFileProcessingFlow', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
+        }
+        // Return empty for failed/stuck queries — only test missing-from-search detection
+        if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
         }
         // DB has FILE_ID_1 and FILE_ID_2
         return Promise.resolve([{ id: FILE_ID_1 }, { id: FILE_ID_2 }]);
@@ -336,11 +347,15 @@ describe('SyncReconciliationService', () => {
     });
 
     it('deletes orphaned search documents via deleteChunksForFile', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
         }
-        // DB only has FILE_ID_1
+        // Return empty for failed/stuck/external-not-found queries — only test orphan detection
+        if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
+        }
+        // DB only has FILE_ID_1 (ready files batch)
         return Promise.resolve([{ id: FILE_ID_1 }]);
       });
 
@@ -358,9 +373,13 @@ describe('SyncReconciliationService', () => {
     });
 
     it('repairs both missing and orphaned in the same run', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
+        }
+        // Return empty for failed/stuck queries — only test missing+orphan detection
+        if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
         }
         return Promise.resolve([{ id: FILE_ID_1 }, { id: FILE_ID_2 }]);
       });
@@ -416,9 +435,13 @@ describe('SyncReconciliationService', () => {
     });
 
     it('increments repairs.errors when a re-enqueue operation fails, continues processing', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
+        }
+        // Return empty for failed/stuck queries — only test missing-from-search repair error path
+        if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
         }
         return Promise.resolve([{ id: FILE_ID_1 }, { id: FILE_ID_2 }]);
       });
@@ -442,9 +465,13 @@ describe('SyncReconciliationService', () => {
     });
 
     it('increments repairs.errors when deleteChunksForFile fails, continues processing', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
+        }
+        // Return empty for failed/stuck queries — only test orphan deletion error path
+        if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
         }
         return Promise.resolve([{ id: FILE_ID_1 }]);
       });
@@ -533,8 +560,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // findMany called: 1 (distinct users) + 2 (batches) + 3 (failed retriable, stuck, ready images) = 6 times
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(6);
+      // findMany called: 1 (distinct users) + 2 (batches) + 4 (failed retriable, stuck, external-not-found, ready images) = 7 times
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(7);
 
       // Report should reflect all 502 DB files (500 + 2)
       expect(reports[0].dbReadyFiles).toBe(502);
@@ -553,8 +580,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // 1 (distinct users) + 1 (single batch) + 3 (failed retriable, stuck, ready images) = 5 calls
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(5);
+      // 1 (distinct users) + 1 (single batch) + 4 (failed retriable, stuck, external-not-found, ready images) = 6 calls
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(6);
       expect(reports[0].dbReadyFiles).toBe(3);
     });
   });
@@ -762,9 +789,13 @@ describe('SyncReconciliationService', () => {
     });
 
     it('skips enqueue when updateMany returns count=0 (file already transitioned)', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
+        }
+        // Return empty for failed/stuck queries — only test missing-from-search optimistic concurrency
+        if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
         }
         return Promise.resolve([{ id: FILE_ID_1 }]);
       });

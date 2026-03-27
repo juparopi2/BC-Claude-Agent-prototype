@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Automated health monitoring and recovery for the file synchronization pipeline. Detects three failure modes — stuck scopes, error scopes, DB-to-Search index drift — and provides both automated remediation (cron) and manual recovery (API).
+Automated health monitoring and recovery for the file synchronization pipeline. Detects four failure modes — stuck scopes, error scopes, DB-to-Search index drift, and externally deleted files — and provides both automated remediation (cron) and manual recovery (API).
 
 ## Architecture — 3 Stateless Singletons
 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings. Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. |
+| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings, externally deleted files (Graph 404). Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 All three run via the existing `FILE_MAINTENANCE` BullMQ queue (`concurrency=1`, `lockDuration=120s`). No new queues or workers — they slot into `MaintenanceWorker`'s switch-case dispatch.
@@ -67,7 +67,7 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects five drift conditions:
+Detects six drift conditions:
 
 | Drift | Detection | Repair Action |
 |---|---|---|
@@ -76,8 +76,17 @@ Detects five drift conditions:
 | Failed retriable | `pipeline_status='failed'` with `pipeline_retry_count < 3` | Reset to `'queued'`, clear retry count, re-enqueue |
 | Stuck pipeline | `pipeline_status IN ('extracting','chunking','embedding')` for > 30 min | Reset to `'queued'`, re-enqueue |
 | Images missing embeddings | Ready image files with no `image_embeddings` record | Reset to `'queued'`, re-enqueue |
+| External not found | External files (SP/OD) failed with `Graph API error (404)` | Soft-delete + vector cleanup (file no longer exists in source) |
 
 **Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
+
+### External File Deletion Detection
+
+When SharePoint/OneDrive files are deleted or moved externally, the delta sync normally detects them via the `deleted` facet. However, if delta sync misses a deletion (stale cursor, webhook failure), the file processing pipeline will fail with `Graph API error (404)`. After retries are exhausted, these files become permanently failed.
+
+The reconciliation service detects these by matching `last_processing_error` containing `'Graph API error (404)'`, `'itemNotFound'`, or `'resource could not be found'` for files with `source_type IN ('onedrive', 'sharepoint')`. Repair action: soft-delete (set both `deleted_at` + `deletion_status='pending'`) and clean up vector chunks.
+
+Additionally, `FileExtractWorker` now detects `GraphApiError(404)` at extraction time and immediately soft-deletes the file instead of retrying — preventing future accumulation of 404-failed files.
 
 ### File Type Awareness
 
@@ -97,7 +106,7 @@ The reconciliation service accounts for different expected states per file type:
 
 ### POST /health/reconcile
 
-On-demand file health reconciliation for the authenticated user. Diagnoses 5 drift conditions and repairs them.
+On-demand file health reconciliation for the authenticated user. Diagnoses 6 drift conditions and repairs them.
 
 - **Body**: `{ trigger?: 'login' | 'manual' }` (defaults to `'manual'`)
 - **Rate limit**: Redis cooldown — 5 min between calls per user (429 if too soon)

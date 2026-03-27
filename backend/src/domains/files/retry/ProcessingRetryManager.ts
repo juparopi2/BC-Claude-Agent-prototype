@@ -153,8 +153,9 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       };
     }
 
-    // 2. Validate file is in failed state
-    if (file.readinessState !== 'failed') {
+    // 2. Validate file is in a retryable state (failed or stuck in processing)
+    const isStuckProcessing = file.readinessState === 'processing';
+    if (file.readinessState !== 'failed' && !isStuckProcessing) {
       return {
         success: false,
         file,
@@ -162,8 +163,10 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       };
     }
 
-    // 3. Clear failed status and reset counters
-    await this.retryService.clearFailedStatus(userId, fileId, scope);
+    // 3. Clear failed status and reset counters (skip for stuck files — they aren't failed)
+    if (!isStuckProcessing) {
+      await this.retryService.clearFailedStatus(userId, fileId, scope);
+    }
 
     // 4. Update status based on scope
     if (scope === 'full') {

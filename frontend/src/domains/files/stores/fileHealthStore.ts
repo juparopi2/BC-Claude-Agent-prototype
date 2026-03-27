@@ -71,6 +71,7 @@ export const useFileHealthStore = create<FileHealthState & FileHealthActions>()(
       const updated = state.issues.filter((i) => i.fileId !== fileId);
       const summary = state.summary
         ? {
+            externalNotFound: updated.filter((i) => i.issueType === 'external_not_found').length,
             retryExhausted: updated.filter((i) => i.issueType === 'retry_exhausted').length,
             blobMissing: updated.filter((i) => i.issueType === 'blob_missing').length,
             failedRetriable: updated.filter((i) => i.issueType === 'failed_retriable').length,

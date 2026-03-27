@@ -138,6 +138,15 @@ FULL_SCHEMA=$(cat <<EOF
       "analyzer": "standard.lucene"
     },
     {
+      "name": "imageCaption",
+      "type": "Edm.String",
+      "searchable": false,
+      "filterable": false,
+      "sortable": false,
+      "facetable": false,
+      "retrievable": true
+    },
+    {
       "name": "embeddingVector",
       "type": "Collection(Edm.Single)",
       "searchable": true,
@@ -306,6 +315,7 @@ REQUIRED_FIELDS=(
   "fileId"
   "userId"
   "content"
+  "imageCaption"
   "embeddingVector"
   "chunkIndex"
   "tokenCount"

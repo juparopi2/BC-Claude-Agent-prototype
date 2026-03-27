@@ -13,7 +13,7 @@ import { SearchClient, SearchIndexClient, AzureKeyCredential } from '@azure/sear
 
 // Default names (overridable via env vars)
 export const CONTAINER_NAME = process.env.STORAGE_CONTAINER_NAME || 'user-files';
-export const INDEX_NAME = 'file-chunks-index-v2';
+export const INDEX_NAME = process.env.AZURE_SEARCH_INDEX_NAME || 'file-chunks-index-v2';
 
 /**
  * Create Blob Storage container client. Returns null if connection string is not set.

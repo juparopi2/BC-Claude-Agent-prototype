@@ -2,7 +2,7 @@ import type { SearchIndex } from '@azure/search-documents';
 import { env } from '@/infrastructure/config/environment';
 import { COHERE_EMBEDDING_DIMENSIONS, COHERE_MODEL_NAME } from './embeddings/models';
 
-export const INDEX_NAME = 'file-chunks-index-v2';
+export const INDEX_NAME = env.AZURE_SEARCH_INDEX_NAME;
 
 /**
  * Vector profile name constant for use in code

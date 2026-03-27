@@ -490,12 +490,12 @@ export class UsageTrackingService {
       let eventType: string;
 
       if (type === 'text') {
-        // Azure OpenAI text-embedding-3-small pricing
+        // Cohere Embed v4 text embedding pricing
         cost = tokens * UNIT_COSTS.text_embedding_token;
         unit = 'tokens';
         eventType = 'text_embedding';
       } else {
-        // Azure Computer Vision image embedding pricing
+        // Cohere Embed v4 image embedding pricing
         cost = tokens * UNIT_COSTS.image_embedding; // tokens = image count for images
         unit = 'images';
         eventType = 'image_embedding';

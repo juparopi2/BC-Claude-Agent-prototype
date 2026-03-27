@@ -142,7 +142,7 @@ jobs:
       NODE_ENV: test
       STORAGE_CONTAINER_NAME: "user-files"
       STORAGE_CONTAINER_NAME_TEST: "user-files-test"
-      AZURE_SEARCH_INDEX_NAME: "file-chunks-index"
+      AZURE_SEARCH_INDEX_NAME: "file-chunks-index-v2"
 
     steps:
       - name: Checkout code
@@ -184,7 +184,6 @@ jobs:
           fetch "Claude-ApiKey"                     "ANTHROPIC_API_KEY"
           fetch "AZURE-OPENAI-ENDPOINT"             "AZURE_OPENAI_ENDPOINT"
           fetch "AZURE-OPENAI-KEY"                  "AZURE_OPENAI_KEY"
-          fetch "AZURE-OPENAI-EMBEDDING-DEPLOYMENT" "AZURE_OPENAI_EMBEDDING_DEPLOYMENT"
           fetch "AZURE-SEARCH-ENDPOINT"             "AZURE_SEARCH_ENDPOINT"
           fetch "AZURE-SEARCH-KEY"                  "AZURE_SEARCH_KEY"
           fetch "AZURE-VISION-ENDPOINT"             "AZURE_VISION_ENDPOINT"

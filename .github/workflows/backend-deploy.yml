@@ -175,10 +175,9 @@ jobs:
               MICROSOFT_REDIRECT_URI=https://${{ vars.BACKEND_DOMAIN }}/api/auth/callback \
               AZURE_OPENAI_ENDPOINT=secretref:openai-endpoint \
               AZURE_OPENAI_KEY=secretref:azure-openai-key \
-              AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
               AZURE_SEARCH_ENDPOINT=secretref:search-endpoint \
               AZURE_SEARCH_KEY=secretref:azure-search-key \
-              AZURE_SEARCH_INDEX_NAME=file-chunks-index \
+              AZURE_SEARCH_INDEX_NAME=file-chunks-index-v2 \
               AZURE_VISION_ENDPOINT=secretref:vision-endpoint \
               AZURE_VISION_KEY=secretref:azure-vision-key \
               AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \
@@ -297,10 +296,9 @@ jobs:
               MICROSOFT_REDIRECT_URI=https://${{ vars.BACKEND_DOMAIN }}/api/auth/callback \
               AZURE_OPENAI_ENDPOINT=secretref:openai-endpoint \
               AZURE_OPENAI_KEY=secretref:azure-openai-key \
-              AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small \
               AZURE_SEARCH_ENDPOINT=secretref:search-endpoint \
               AZURE_SEARCH_KEY=secretref:azure-search-key \
-              AZURE_SEARCH_INDEX_NAME=file-chunks-index \
+              AZURE_SEARCH_INDEX_NAME=file-chunks-index-v2 \
               AZURE_VISION_ENDPOINT=secretref:vision-endpoint \
               AZURE_VISION_KEY=secretref:azure-vision-key \
               AZURE_DI_ENDPOINT=secretref:azure-di-endpoint \

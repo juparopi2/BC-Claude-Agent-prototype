@@ -11,7 +11,7 @@ Automated health monitoring and recovery for the file synchronization pipeline. 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | **Orchestrator**: runs 8 detectors → 4 repairers. Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
+| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | **Orchestrator**: runs 10 detectors → 4 repairers. Cron checks all users with non-deleted files; respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 ### Detector/Repairer Pattern (PRD-304)
@@ -34,8 +34,10 @@ health/
     ImageEmbeddingDetector.ts
     FolderHierarchyDetector.ts
     DisconnectedFilesDetector.ts
+    ReadyWithoutChunksDetector.ts — Ready non-image files with 0 file_chunks
+    StaleSearchMetadataDetector.ts — AI Search metadata mismatch vs DB
   repairers/
-    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images)
+    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images, no-chunks, stale-metadata)
     OrphanCleanupRepairer.ts    — Delete orphaned search docs
     ExternalFileCleanupRepairer.ts — Soft-delete 404 + disconnected files
     FolderHierarchyRepairer.ts  — Restore scope roots, queue resyncs, reparent
@@ -89,13 +91,14 @@ Each scope is inspected and classified into one of three statuses:
 |---|---|---|
 | `healthy` | No issues detected | — |
 | `degraded` | Only `warning` issues | `stale_sync` |
-| `unhealthy` | Any `critical` or `error` issue | `stuck_syncing`, `error_state`, `high_failure_rate` |
+| `unhealthy` | Any `critical` or `error` issue | `stuck_syncing`, `stuck_sync_queued`, `error_state`, `high_failure_rate` |
 
 ### Issue Types
 
 | Type | Severity | Detection |
 |---|---|---|
 | `stuck_syncing` | critical | `sync_status='syncing'` AND `updated_at` > 10 min ago |
+| `stuck_sync_queued` | critical | `sync_status='sync_queued'` AND `updated_at` > 1 hour ago |
 | `error_state` | error | `sync_status='error'` |
 | `stale_sync` | warning | `last_sync_at` is null or > 48 hours ago |
 | `high_failure_rate` | error | > 50% of scope files have `pipeline_status='failed'` |
@@ -120,7 +123,7 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects eight drift conditions:
+Detects ten drift conditions:
 
 | Drift | Detection | Repair Action |
 |---|---|---|
@@ -132,8 +135,10 @@ Detects eight drift conditions:
 | External not found | External files (SP/OD) failed with `Graph API error (404)` | Soft-delete + vector cleanup (file no longer exists in source) |
 | Broken folder hierarchy | Files/folders with `parent_folder_id` referencing non-existent folder, or scope root folders missing from DB | Recreate scope roots via `ensureScopeRootFolder()`, queue full resync (clears delta cursor), reparent local orphans to root |
 | Disconnected connection files | Files with `connection_id` pointing to a `disconnected`/`expired` connection, or a connection that was hard-deleted | Soft-delete + vector cleanup (files are inaccessible, Graph API will fail) |
+| Ready without chunks | `pipeline_status='ready'` AND `file_chunks` count = 0 (non-image files only) | Reset to `'queued'`, re-enqueue — pipeline will re-extract, chunk, and index |
+| Stale search metadata | AI Search `sourceType`/`parentFolderId` differs from DB `source_type`/`parent_folder_id` | Reset to `'queued'`, re-enqueue — pipeline reads fresh metadata from `FileRepository.getFileWithScopeMetadata()` |
 
-**Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
+**Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Cron checks all users with non-deleted files (not just ready). On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 
 ### External File Deletion Detection
 

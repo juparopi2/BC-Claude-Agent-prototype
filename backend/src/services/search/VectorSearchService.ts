@@ -1104,4 +1104,56 @@ export class VectorSearchService {
 
     return count;
   }
+
+  /**
+   * Returns metadata for all indexed file documents for a given user.
+   *
+   * Used by StaleSearchMetadataDetector to compare search index metadata
+   * against the DB and detect stale fields (sourceType, parentFolderId).
+   *
+   * @param userId - User ID (normalized to uppercase internally for D24 compatibility)
+   * @returns Map from fileId (UPPERCASE) to metadata fields
+   */
+  async getFileMetadataForUser(
+    userId: string,
+  ): Promise<Map<string, { sourceType: string | null; parentFolderId: string | null; siteId: string | null }>> {
+    if (!this.searchClient) {
+      await this.initializeClients();
+    }
+    if (!this.searchClient) {
+      throw new Error('Failed to initialize search client');
+    }
+    const client = this.searchClient;
+
+    const normalizedUserId = this.normalizeUserId(userId);
+    const result = new Map<string, { sourceType: string | null; parentFolderId: string | null; siteId: string | null }>();
+
+    const filter = `userId eq '${normalizedUserId}' and (fileStatus ne 'deleting' or fileStatus eq null)`;
+    const searchOptions = {
+      filter,
+      select: ['fileId', 'sourceType', 'parentFolderId', 'siteId'],
+      top: 1000,
+    };
+
+    const searchResults = await client.search('*', searchOptions);
+
+    for await (const searchResult of searchResults.results) {
+      const doc = searchResult.document as Record<string, unknown>;
+      const fileId = (doc.fileId as string)?.toUpperCase();
+      if (fileId && !result.has(fileId)) {
+        result.set(fileId, {
+          sourceType: (doc.sourceType as string) ?? null,
+          parentFolderId: (doc.parentFolderId as string) ?? null,
+          siteId: (doc.siteId as string) ?? null,
+        });
+      }
+    }
+
+    logger.debug(
+      { userId, normalizedUserId, fileCount: result.size },
+      'Retrieved file metadata from AI Search for drift detection',
+    );
+
+    return result;
+  }
 }

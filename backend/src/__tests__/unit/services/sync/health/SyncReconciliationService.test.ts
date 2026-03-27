@@ -37,6 +37,7 @@ const mockImageEmbeddingsFindMany = vi.hoisted(() => vi.fn());
 
 // file_chunks table
 const mockFileChunksDeleteMany = vi.hoisted(() => vi.fn());
+const mockFileChunksFindMany = vi.hoisted(() => vi.fn());
 
 // connection_scopes table (folder hierarchy detection)
 const mockConnectionScopesFindMany = vi.hoisted(() => vi.fn());
@@ -60,6 +61,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     },
     file_chunks: {
       deleteMany: mockFileChunksDeleteMany,
+      findMany: mockFileChunksFindMany,
     },
     connection_scopes: {
       findMany: mockConnectionScopesFindMany,
@@ -84,12 +86,14 @@ vi.mock('@/infrastructure/queue', () => ({
 // VectorSearchService (dynamic import in implementation)
 const mockGetUniqueFileIds = vi.hoisted(() => vi.fn());
 const mockDeleteChunksForFile = vi.hoisted(() => vi.fn());
+const mockGetFileMetadataForUser = vi.hoisted(() => vi.fn());
 
 vi.mock('@/services/search/VectorSearchService', () => ({
   VectorSearchService: {
     getInstance: vi.fn(() => ({
       getUniqueFileIds: mockGetUniqueFileIds,
       deleteChunksForFile: mockDeleteChunksForFile,
+      getFileMetadataForUser: mockGetFileMetadataForUser,
     })),
   },
 }));
@@ -172,6 +176,8 @@ beforeEach(() => {
   mockDeleteChunksForFile.mockResolvedValue(undefined);
   mockImageEmbeddingsFindMany.mockResolvedValue([]);
   mockFileChunksDeleteMany.mockResolvedValue({ count: 0 });
+  mockFileChunksFindMany.mockResolvedValue([]);
+  mockGetFileMetadataForUser.mockResolvedValue(new Map());
   mockRedisTtl.mockResolvedValue(-2); // Key does not exist = no cooldown
   mockRedisSet.mockResolvedValue('OK');
   mockQueryRaw.mockResolvedValue([]); // No orphaned children by default
@@ -455,6 +461,10 @@ describe('SyncReconciliationService', () => {
       // File no longer exists in DB (concurrent deletion race)
       mockFilesFindUnique.mockResolvedValue(null);
 
+      // Prevent ReadyWithoutChunksDetector from re-enqueueing FILE_ID_1
+      // (it would find it as ready-without-chunks and use updateMany, bypassing findUnique)
+      mockFileChunksFindMany.mockResolvedValue([{ file_id: FILE_ID_1 }]);
+
       const reports = await service.run();
 
       // updateMany and addFileProcessingFlow should NOT be called when file is gone
@@ -591,8 +601,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // findMany called: 1 (distinct users) + 2 (batches) + 5 (failed retriable, stuck, external-not-found, ready images, disconnected-connection) = 8 times
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(8);
+      // findMany called: 1 (distinct users) + 2 (batches) + 7 (failed retriable, stuck, external-not-found, ready images, disconnected-connection, ready-without-chunks, stale-metadata) = 10 times
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(10);
 
       // Report should reflect all 502 DB files (500 + 2)
       expect(reports[0].dbReadyFiles).toBe(502);
@@ -611,8 +621,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // 1 (distinct users) + 1 (single batch) + 5 (failed retriable, stuck, external-not-found, ready images, disconnected-connection) = 7 calls
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(7);
+      // 1 (distinct users) + 1 (single batch) + 7 (failed retriable, stuck, external-not-found, ready images, disconnected-connection, ready-without-chunks, stale-metadata) = 9 calls
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(9);
       expect(reports[0].dbReadyFiles).toBe(3);
     });
   });

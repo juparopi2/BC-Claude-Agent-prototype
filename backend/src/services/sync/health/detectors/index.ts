@@ -26,3 +26,5 @@ export { ExternalNotFoundDetector } from './ExternalNotFoundDetector';
 export { ImageEmbeddingDetector } from './ImageEmbeddingDetector';
 export { FolderHierarchyDetector } from './FolderHierarchyDetector';
 export { DisconnectedFilesDetector } from './DisconnectedFilesDetector';
+export { ReadyWithoutChunksDetector } from './ReadyWithoutChunksDetector';
+export { StaleSearchMetadataDetector } from './StaleSearchMetadataDetector';

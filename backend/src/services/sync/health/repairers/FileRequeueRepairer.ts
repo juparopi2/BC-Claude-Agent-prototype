@@ -27,6 +27,8 @@ export interface FileRequeueResult {
   failedRequeued: number;
   stuckRequeued: number;
   imageRequeued: number;
+  readyWithoutChunksRequeued: number;
+  staleMetadataRequeued: number;
   errors: number;
 }
 
@@ -275,5 +277,116 @@ export class FileRequeueRepairer {
     }
 
     return { imageRequeued, errors };
+  }
+
+  /**
+   * Re-queue 'ready' non-image files that have zero file_chunks records.
+   *
+   * These files completed the pipeline without producing searchable chunks,
+   * so they are not findable via RAG. Resetting to 'queued' triggers a full
+   * re-processing run.
+   *
+   * @param userId - Owning user
+   * @param files  - File rows detected as ready-without-chunks
+   * @returns Count of successfully re-queued files and error count
+   */
+  async requeueReadyWithoutChunks(
+    userId: string,
+    files: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
+  ): Promise<{ readyWithoutChunksRequeued: number; errors: number }> {
+    let readyWithoutChunksRequeued = 0;
+    let errors = 0;
+
+    const { prisma } = await import('@/infrastructure/database/prisma');
+    const { getMessageQueue } = await import('@/infrastructure/queue');
+
+    for (const file of files) {
+      try {
+        // Optimistic: only reset if still 'ready'
+        const result = await prisma.files.updateMany({
+          where: { id: file.id, pipeline_status: 'ready' },
+          data: { pipeline_status: 'queued', updated_at: new Date() },
+        });
+
+        if (result.count === 0) continue; // Already transitioned — skip enqueue
+
+        await getMessageQueue().addFileProcessingFlow({
+          fileId: file.id,
+          batchId: file.connection_scope_id ?? file.id,
+          userId,
+          mimeType: file.mime_type,
+          fileName: file.name,
+        });
+
+        readyWithoutChunksRequeued++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn(
+          { fileId: file.id, userId, error: errorInfo },
+          'Failed to re-enqueue ready-without-chunks file',
+        );
+        errors++;
+      }
+    }
+
+    return { readyWithoutChunksRequeued, errors };
+  }
+
+  /**
+   * Re-queue 'ready' files whose search index metadata is stale
+   * (sourceType or parentFolderId mismatch between DB and AI Search).
+   *
+   * Resetting to 'queued' triggers re-indexing which will write correct metadata.
+   *
+   * @param userId - Owning user
+   * @param files  - File rows detected as having stale search metadata
+   * @returns Count of successfully re-queued files and error count
+   */
+  async requeueStaleMetadata(
+    userId: string,
+    files: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
+  ): Promise<{ staleMetadataRequeued: number; errors: number }> {
+    let staleMetadataRequeued = 0;
+    let errors = 0;
+
+    const { prisma } = await import('@/infrastructure/database/prisma');
+    const { getMessageQueue } = await import('@/infrastructure/queue');
+
+    for (const file of files) {
+      try {
+        // Optimistic: only reset if still 'ready'
+        const result = await prisma.files.updateMany({
+          where: { id: file.id, pipeline_status: 'ready' },
+          data: { pipeline_status: 'queued', updated_at: new Date() },
+        });
+
+        if (result.count === 0) continue; // Already transitioned — skip enqueue
+
+        await getMessageQueue().addFileProcessingFlow({
+          fileId: file.id,
+          batchId: file.connection_scope_id ?? file.id,
+          userId,
+          mimeType: file.mime_type,
+          fileName: file.name,
+        });
+
+        staleMetadataRequeued++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn(
+          { fileId: file.id, userId, error: errorInfo },
+          'Failed to re-enqueue stale-metadata file',
+        );
+        errors++;
+      }
+    }
+
+    return { staleMetadataRequeued, errors };
   }
 }

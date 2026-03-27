@@ -5,7 +5,7 @@
  * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
  * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Eight drift conditions detected:
+ * Ten drift conditions detected:
  *   1. Files in DB as 'ready' but missing from the search index
  *   2. Documents in search index with no matching DB file (orphaned)
  *   3. Failed files eligible for retry (retry_count < 3)
@@ -14,6 +14,8 @@
  *   6. External files (OneDrive/SharePoint) that no longer exist (Graph API 404)
  *   7. Broken folder hierarchy (orphaned children, missing scope roots)
  *   8. Files on disconnected/expired connections (orphaned by disconnection)
+ *   9. Ready non-image files with zero file_chunks records
+ *  10. Ready files with stale metadata in the search index (sourceType/parentFolderId mismatch)
  *
  * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
  * On-demand: always repairs (user explicitly requested it).
@@ -37,6 +39,8 @@ import { ExternalNotFoundDetector } from './detectors/ExternalNotFoundDetector';
 import { ImageEmbeddingDetector } from './detectors/ImageEmbeddingDetector';
 import { FolderHierarchyDetector } from './detectors/FolderHierarchyDetector';
 import { DisconnectedFilesDetector } from './detectors/DisconnectedFilesDetector';
+import { ReadyWithoutChunksDetector } from './detectors/ReadyWithoutChunksDetector';
+import { StaleSearchMetadataDetector } from './detectors/StaleSearchMetadataDetector';
 import { FileRequeueRepairer } from './repairers/FileRequeueRepairer';
 import { OrphanCleanupRepairer } from './repairers/OrphanCleanupRepairer';
 import { ExternalFileCleanupRepairer } from './repairers/ExternalFileCleanupRepairer';
@@ -76,7 +80,7 @@ export class SyncReconciliationService {
     this.logger.info({ maxUsers: MAX_USERS_PER_RUN }, 'SyncReconciliationService: starting run');
 
     const users = await prisma.files.findMany({
-      where: { pipeline_status: 'ready', deleted_at: null },
+      where: { deleted_at: null },
       distinct: ['user_id'],
       select: { user_id: true },
       take: MAX_USERS_PER_RUN,
@@ -211,6 +215,16 @@ export class SyncReconciliationService {
     const disconnectedResult = await new DisconnectedFilesDetector().detect(normalizedId);
     const disconnectedConnectionFiles = disconnectedResult.items;
 
+    // 8. Ready files with 0 chunks (text files never properly processed)
+    const readyWithoutChunksResult = await new ReadyWithoutChunksDetector().detect(normalizedId);
+    const readyWithoutChunksRows = readyWithoutChunksResult.items;
+    const readyWithoutChunks = readyWithoutChunksRows.map((f) => f.id);
+
+    // 9. Stale search metadata (sourceType, parentFolderId mismatch)
+    const staleMetadataResult = await new StaleSearchMetadataDetector().detect(normalizedId);
+    const staleMetadataRows = staleMetadataResult.items;
+    const staleSearchMetadata = staleMetadataRows.map((f) => f.id);
+
     // ── Repair phase ──────────────────────────────────────────────────────
 
     let repairs: ReconciliationRepairs;
@@ -245,6 +259,12 @@ export class SyncReconciliationService {
       // Repair folder hierarchy issues
       const hierarchyRepairs = await hierarchyRepairer.repair(normalizedId, folderHierarchyIssues);
 
+      // Re-enqueue ready files with 0 chunks
+      const readyWithoutChunksRepairResult = await requeuer.requeueReadyWithoutChunks(normalizedId, readyWithoutChunksRows);
+
+      // Re-enqueue files with stale search metadata
+      const staleMetadataRepairResult = await requeuer.requeueStaleMetadata(normalizedId, staleMetadataRows);
+
       // Aggregate all errors
       const totalErrors =
         missingResult.errors +
@@ -253,7 +273,9 @@ export class SyncReconciliationService {
         stuckResult.errors +
         imageResult.errors +
         externalResult.errors +
-        disconnectedCleanResult.errors;
+        disconnectedCleanResult.errors +
+        readyWithoutChunksRepairResult.errors +
+        staleMetadataRepairResult.errors;
 
       repairs = {
         missingRequeued: missingResult.missingRequeued,
@@ -264,6 +286,8 @@ export class SyncReconciliationService {
         externalNotFoundCleaned: externalResult.cleaned,
         disconnectedConnectionCleaned: disconnectedCleanResult.cleaned,
         folderHierarchy: hierarchyRepairs,
+        readyWithoutChunksRequeued: readyWithoutChunksRepairResult.readyWithoutChunksRequeued,
+        staleMetadataRequeued: staleMetadataRepairResult.staleMetadataRequeued,
         errors: totalErrors,
       };
     } else {
@@ -271,6 +295,8 @@ export class SyncReconciliationService {
         missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
         imageRequeued: 0, externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
         folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, foldersRestored: 0, errors: 0 },
+        readyWithoutChunksRequeued: 0,
+        staleMetadataRequeued: 0,
         errors: 0,
       };
     }
@@ -290,6 +316,8 @@ export class SyncReconciliationService {
       externalNotFound,
       disconnectedConnectionFiles,
       folderHierarchyIssues,
+      readyWithoutChunks,
+      staleSearchMetadata,
       repairs,
       dryRun: !shouldRepair,
     };
@@ -305,6 +333,8 @@ export class SyncReconciliationService {
         imagesMissingEmbeddings: undefined,
         externalNotFound: undefined,
         folderHierarchyIssues: undefined, // Don't log full details
+        readyWithoutChunks: undefined,
+        staleSearchMetadata: undefined,
         missingCount: comparison.missingFromSearch.length,
         orphanedCount: comparison.orphanedInSearch.length,
         failedRetriableCount: failedRetriable.length,
@@ -316,6 +346,8 @@ export class SyncReconciliationService {
         orphanedChildrenCount: folderHierarchyIssues.orphanedChildren.length,
         missingScopeRootsCount: folderHierarchyIssues.missingScopeRoots.length,
         scopesToResyncCount: folderHierarchyIssues.scopeIdsToResync.length,
+        readyWithoutChunksCount: readyWithoutChunks.length,
+        staleSearchMetadataCount: staleSearchMetadata.length,
       },
       'Reconciliation report for user',
     );

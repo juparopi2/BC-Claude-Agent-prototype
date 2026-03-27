@@ -16,10 +16,11 @@ export type SyncHealthStatus = 'healthy' | 'degraded' | 'unhealthy';
 
 /** Issue type codes — used in structured logging and API responses */
 export type ScopeIssueType =
-  | 'stuck_syncing'      // sync_status='syncing' for > threshold (default 10min)
-  | 'error_state'        // sync_status='error'
-  | 'stale_sync'         // last synced_at > 48h (scope hasn't synced recently)
-  | 'high_failure_rate'; // > 50% of scope files in failed pipeline state
+  | 'stuck_syncing'       // sync_status='syncing' for > threshold (default 10min)
+  | 'stuck_sync_queued'   // sync_status='sync_queued' for > threshold (default 1h)
+  | 'error_state'         // sync_status='error'
+  | 'stale_sync'          // last synced_at > 48h (scope hasn't synced recently)
+  | 'high_failure_rate';  // > 50% of scope files in failed pipeline state
 
 export type ScopeIssueSeverity = 'warning' | 'error' | 'critical';
 
@@ -80,6 +81,8 @@ export interface ReconciliationRepairs {
   externalNotFoundCleaned: number;
   disconnectedConnectionCleaned: number;
   folderHierarchy: FolderHierarchyRepairs;
+  readyWithoutChunksRequeued: number;
+  staleMetadataRequeued: number;
   errors: number;
 }
 
@@ -96,6 +99,8 @@ export interface ReconciliationReport {
   externalNotFound: string[];
   disconnectedConnectionFiles: string[];
   folderHierarchyIssues: FolderHierarchyDetection;
+  readyWithoutChunks: string[];
+  staleSearchMetadata: string[];
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }
@@ -190,6 +195,8 @@ export interface SyncHealthCheckMetrics {
   scopesChecked: number;
   stuckSyncingDetected: number;
   stuckSyncingReset: number;
+  stuckSyncQueuedDetected: number;
+  stuckSyncQueuedReset: number;
   errorScopesDetected: number;
   errorScopesRetried: number;
   errorScopesSkippedExpiredConnection: number;

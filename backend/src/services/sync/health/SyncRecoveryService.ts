@@ -251,7 +251,86 @@ export class SyncRecoveryService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 3. retryFailedFiles
+  // 3. resetStuckQueuedScopes
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Re-enqueue sync jobs for scopes stuck in 'sync_queued' state beyond the
+   * threshold (default 1 hour). A scope stuck in sync_queued means the BullMQ
+   * job was lost or never picked up by a worker.
+   *
+   * Each scope's parent connection must have `status = 'connected'`.
+   * Scopes belonging to expired/disconnected connections are skipped.
+   */
+  async resetStuckQueuedScopes(
+    scopeIds: string[],
+  ): Promise<RecoveryResult> {
+    const result: RecoveryResult = { scopesReset: 0, scopesRequeued: 0, filesRequeued: 0, errors: [] };
+
+    this.logger.info({ scopeIds }, 'resetStuckQueuedScopes: starting');
+
+    for (const scopeId of scopeIds.map(id => id.toUpperCase())) {
+      try {
+        const scope = await prisma.connection_scopes.findUnique({
+          where: { id: scopeId },
+          include: { connections: { select: { id: true, user_id: true, status: true } } },
+        });
+
+        if (!scope) {
+          this.logger.warn({ scopeId }, 'resetStuckQueuedScopes: scope not found, skipping');
+          continue;
+        }
+
+        if (scope.connections.status !== 'connected') {
+          this.logger.warn(
+            { scopeId, connectionStatus: scope.connections.status },
+            'resetStuckQueuedScopes: connection not connected, skipping',
+          );
+          continue;
+        }
+
+        const connectionId = scope.connections.id.toUpperCase();
+        const userId = scope.connections.user_id.toUpperCase();
+        const hasCursor = !!scope.last_sync_cursor;
+
+        // Reset updated_at to clear the stuck state timestamp
+        await prisma.connection_scopes.update({
+          where: { id: scopeId },
+          data: { sync_status: 'sync_queued', updated_at: new Date() },
+        });
+
+        const queue = getMessageQueue();
+
+        if (hasCursor) {
+          await queue.addExternalFileSyncJob({ scopeId, connectionId, userId, triggerType: 'manual' });
+        } else {
+          await queue.addInitialSyncJob({ scopeId, connectionId, userId });
+        }
+
+        result.scopesRequeued++;
+        this.logger.info(
+          { scopeId, hasCursor, syncType: hasCursor ? 'delta' : 'initial' },
+          'resetStuckQueuedScopes: scope re-enqueued',
+        );
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        this.logger.error({ scopeId, error: errorInfo }, 'resetStuckQueuedScopes: failed');
+        result.errors.push(`resetStuckQueuedScopes[${scopeId}]: ${errorInfo.message ?? errorInfo.value}`);
+      }
+    }
+
+    this.logger.info(
+      { scopesRequeued: result.scopesRequeued, errors: result.errors.length },
+      'resetStuckQueuedScopes: complete',
+    );
+
+    return result;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 4. retryFailedFiles
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
@@ -348,7 +427,7 @@ export class SyncRecoveryService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 4. runFullRecovery
+  // 5. runFullRecovery
   // ──────────────────────────────────────────────────────────────────────────
 
   /**

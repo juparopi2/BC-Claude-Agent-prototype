@@ -1,16 +1,69 @@
-# Sync Health & Recovery (PRD-300)
+# Sync Health & Recovery (PRD-300 + PRD-304)
 
 ## Purpose
 
-Automated health monitoring and recovery for the file synchronization pipeline. Detects five failure modes — stuck scopes, error scopes, DB-to-Search index drift, externally deleted files, and broken folder hierarchy — and provides both automated remediation (cron) and manual recovery (API).
+Automated health monitoring and recovery for the file synchronization pipeline. Detects eight drift conditions and provides both automated remediation (cron) and manual recovery (API). The system uses a **Detector/Repairer** modular architecture for testability and extensibility.
 
-## Architecture — 3 Stateless Singletons
+## Architecture
+
+### Services (3 Stateless Singletons)
 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings, externally deleted files (Graph 404), broken folder hierarchy. Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. |
+| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | **Orchestrator**: runs 8 detectors → 4 repairers. Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
+
+### Detector/Repairer Pattern (PRD-304)
+
+Detection and repair are decoupled into independent modules under `detectors/` and `repairers/`:
+
+```
+health/
+  SyncReconciliationService.ts  — Orchestrator (~250 lines)
+  SyncHealthCheckService.ts     — Scope health + recovery delegation
+  SyncRecoveryService.ts        — Atomic recovery actions
+  detectors/
+    types.ts                    — DriftDetector<T> interface
+    SearchIndexComparator.ts    — Shared: paginated DB vs Search comparison
+    MissingFromSearchDetector.ts
+    OrphanedInSearchDetector.ts
+    FailedRetriableDetector.ts
+    StuckPipelineDetector.ts
+    ExternalNotFoundDetector.ts
+    ImageEmbeddingDetector.ts
+    FolderHierarchyDetector.ts
+    DisconnectedFilesDetector.ts
+  repairers/
+    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images)
+    OrphanCleanupRepairer.ts    — Delete orphaned search docs
+    ExternalFileCleanupRepairer.ts — Soft-delete 404 + disconnected files
+    FolderHierarchyRepairer.ts  — Restore scope roots, queue resyncs, reparent
+  types.ts                      — All type definitions
+  index.ts                      — Barrel exports
+```
+
+Each detector implements `DriftDetector<T>` with a `detect(userId)` method.
+Each repairer has specific repair methods for its domain.
+The orchestrator instantiates detectors/repairers per-run (stateless, no singletons needed).
+
+### Auto-Reconciliation on Login
+
+When a user connects via Socket.IO (`user:join`), the server fires a reconciliation request (`reconcileUserOnDemand`). This respects the 5-min Redis cooldown, so rapid reconnects don't spam. The frontend `useSyncEvents` handler listens for `sync:reconciliation_completed` and invalidates the folder tree cache when repairs are made.
+
+### Healthy File State (Single Source of Truth)
+
+`@bc-agent/shared` exports `HEALTHY_FILE_STATES` — a complete matrix defining what a healthy file looks like per type:
+
+| File Type | Blob | Chunks | Image Emb | Search Docs |
+|-----------|------|--------|-----------|-------------|
+| Local text | required | >=1 | no | >=1 |
+| Local image | required | 0 | yes (1) | 1 |
+| Cloud text | null | >=1 | no | >=1 |
+| Cloud image | null | 0 | yes (1) | 1 |
+| Folder | null | 0 | no | 0 |
+
+Use `getExpectedHealthState(file)` and `validateFileHealth(file, resources)` for validation.
 
 All three run via the existing `FILE_MAINTENANCE` BullMQ queue (`concurrency=1`, `lockDuration=120s`). No new queues or workers — they slot into `MaintenanceWorker`'s switch-case dispatch.
 
@@ -194,13 +247,43 @@ Both emitted to `user:{userId}` rooms via `getSocketIO()`.
 | File | Purpose |
 |---|---|
 | `SyncHealthCheckService.ts` | Cron health check + per-user API query |
-| `SyncReconciliationService.ts` | Daily DB-to-Search reconciliation |
+| `SyncReconciliationService.ts` | **Orchestrator** — runs detectors → repairers (~250 lines) |
 | `SyncRecoveryService.ts` | Atomic recovery actions (reset, retry, re-enqueue) |
+| `detectors/*.ts` | 8 drift detectors (one per condition) + `SearchIndexComparator` helper |
+| `repairers/*.ts` | 4 repairers (FileRequeue, OrphanCleanup, ExternalFileCleanup, FolderHierarchy) |
 | `types.ts` | All type definitions (health, reconciliation, recovery, metrics) |
 | `index.ts` | Barrel exports |
 
+## Common Failure Scenarios
+
+| Scenario | Root Cause | Detection | Recovery |
+|---|---|---|---|
+| Disconnect/reconnect race | `ScopeCleanupService` soft-deletes folders, new sync finds soft-deleted records via `external_id` | `FolderHierarchyDetector`: orphaned children + missing scope roots | `FolderHierarchyRepairer`: restore scope roots via `ensureScopeRootFolder()`, queue full resync |
+| Graph API 404 | File deleted in SharePoint/OneDrive but delta sync missed it | `ExternalNotFoundDetector`: `last_error` contains '404' | `ExternalFileCleanupRepairer`: soft-delete + vector cleanup |
+| Folder in extract pipeline | Folder mistakenly enqueued for file processing | `FileExtractWorker` guard: rejects `mimeType='inode/directory'` | Immediate reset to `pipeline_status='ready'` |
+| Search index drift | Processing completed but search indexing failed silently | `MissingFromSearchDetector`: DB ready files not in AI Search | `FileRequeueRepairer`: reset to `queued`, re-enqueue |
+| Stuck processing | Worker crashed mid-pipeline | `StuckPipelineDetector`: intermediate status > 30 min | `FileRequeueRepairer`: reset to `queued`, re-enqueue |
+
+## Testing
+
+### Simulation Script
+```bash
+npx tsx scripts/diagnostics/simulate-file-health-issues.ts --userId <ID> --confirm-dev
+```
+Simulates 5 scenarios: `retry_exhausted`, `blob_missing`, `failed_retriable`, `stuck_processing`, `soft_deleted_scope_root`.
+
+### Diagnostic Script
+```bash
+npx tsx scripts/connectors/debug-scope-folders.ts --scopeIds <ID1>,<ID2>
+```
+Queries DB to inspect scope root folders, parent hierarchy, and soft-delete status.
+
+### Unit Tests
+Tests for each detector and repairer live in `__tests__/unit/services/sync/health/`. The orchestrator test (`SyncReconciliationService.test.ts`) validates end-to-end behavior with mocked detectors/repairers.
+
 ## Related
 
+- Healthy file state definitions: `@bc-agent/shared` → `constants/file-health-state.ts`
 - Parent: `../CLAUDE.md` — Sync pipeline overview (discovery, ingestion, processing)
 - Queue: `../../../infrastructure/queue/CLAUDE.md` — MaintenanceWorker, ScheduledJobManager
 - Search: `../../search/CLAUDE.md` — VectorSearchService (reconciliation uses `getUniqueFileIds`, `deleteChunksForFile`)

@@ -182,13 +182,13 @@ describe('ScopeCleanupService', () => {
       expect(mockVectorService.deleteChunksForFile).toHaveBeenCalledWith(FILE_ID_2, USER_ID);
     });
 
-    it('deletes files from the database using connection_scope_id filter', async () => {
+    it('deletes files from the database using batched id filter', async () => {
       mockRepo.findFilesByScopeId.mockResolvedValue([makeFile(FILE_ID_1)]);
 
       await service.removeScope(CONNECTION_ID, SCOPE_ID, USER_ID);
 
       expect(prisma.files.deleteMany).toHaveBeenCalledWith({
-        where: { connection_scope_id: SCOPE_ID },
+        where: { id: { in: [FILE_ID_1] } },
       });
     });
 
@@ -357,9 +357,9 @@ describe('ScopeCleanupService', () => {
 
       // Scope still deleted
       expect(mockRepo.deleteScopeById).toHaveBeenCalledWith(SCOPE_ID);
-      // Files still deleted
+      // Files still deleted (batched by id)
       expect(prisma.files.deleteMany).toHaveBeenCalledWith({
-        where: { connection_scope_id: SCOPE_ID },
+        where: { id: { in: [FILE_ID_1, FILE_ID_2, FILE_ID_3] } },
       });
       // Result still reports correct count
       expect(result).toEqual({ scopeId: SCOPE_ID, filesDeleted: 3 });
@@ -482,9 +482,9 @@ describe('ScopeCleanupService', () => {
         'findScopeById',
         'findFilesByScopeId',
         '$executeRaw',          // NULL message_citations.file_id
-        'deleteChunksForFile',
+        'deleteChunksForFile',  // AI Search cleanup (concurrent waves)
         '$executeRaw',          // NULL parent_folder_id (break self-ref FK)
-        'deleteMany',
+        'deleteMany',           // Batched file deletion
         'deleteScopeById',
       ]);
     });

@@ -457,18 +457,19 @@ export class VectorSearchService {
       'Documents found for deletion'
     );
 
-    // Azure Search batch size limit is typically 1000 actions.
-    // For safety, we process in batches of 1000 if needed, but SDK handles batches well usually.
-    // We'll trust SDK or implement simple slicing if robust.
-    // For this implementation scope, simple call is sufficient, SDK often handles batching logic or throws if too large,
-    // requiring manual batching. Given strict TDD scope, simple is good.
+    // Azure AI Search limit: 1000 actions per batch request.
+    // Process in batches to handle files with many chunks.
+    const SEARCH_DELETE_BATCH_SIZE = 1000;
 
-    const result = await client.deleteDocuments('chunkId', chunkIds);
+    for (let i = 0; i < chunkIds.length; i += SEARCH_DELETE_BATCH_SIZE) {
+      const batch = chunkIds.slice(i, i + SEARCH_DELETE_BATCH_SIZE);
+      const result = await client.deleteDocuments('chunkId', batch);
 
-    const failed = result.results.filter(r => !r.succeeded);
-    if (failed.length > 0) {
+      const failed = result.results.filter(r => !r.succeeded);
+      if (failed.length > 0) {
         logger.error({ failedCount: failed.length, errors: failed }, 'Failed to delete some chunks');
         throw new Error(`Failed to delete chunks: ${failed.map(f => f.errorMessage || 'Unknown error').join(', ')}`);
+      }
     }
 
     return chunkIds.length;

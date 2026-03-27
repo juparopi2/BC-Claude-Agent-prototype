@@ -482,13 +482,8 @@ export class MessageContextBuilder {
           continue;
         }
 
-        if (!file.blobPath) {
-          logger.warn({ fileId: mention.fileId, userId }, 'Mentioned file has no blob path, skipping');
-          continue;
-        }
-
         if (isImageMimeType(file.mimeType)) {
-          // Image block — use SAS URL instead of base64 to avoid checkpoint bloat
+          // Image block — prefer SAS URL (no download, no checkpoint bloat); fall back to base64 for external files
           if (file.sizeBytes > MAX_IMAGE_BYTES) {
             logger.warn(
               { fileId: mention.fileId, sizeBytes: file.sizeBytes },
@@ -496,16 +491,30 @@ export class MessageContextBuilder {
             );
             continue;
           }
-          const sasUrl = uploadService.generateReadSasUrl(file.blobPath);
-          blocks.push({
-            type: 'image',
-            source: {
-              type: 'url',
-              url: sasUrl,
-            },
-          } as AnthropicAttachmentContentBlock);
+
+          if (file.blobPath) {
+            // Preferred: SAS URL (no download, no checkpoint bloat)
+            const sasUrl = uploadService.generateReadSasUrl(file.blobPath);
+            blocks.push({
+              type: 'image',
+              source: { type: 'url', url: sasUrl },
+            } as AnthropicAttachmentContentBlock);
+          } else {
+            // External file (OneDrive/SharePoint): download via content provider → base64
+            const { getContentProviderFactory } = await import('@/services/connectors');
+            const provider = getContentProviderFactory().getProvider(file.sourceType);
+            const { buffer } = await provider.getContent(file.id, file.userId);
+            blocks.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: file.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data: buffer.toString('base64'),
+              },
+            } as AnthropicAttachmentContentBlock);
+          }
         } else if (file.mimeType === 'application/pdf') {
-          // PDF document block — use SAS URL instead of base64 to avoid checkpoint bloat
+          // PDF document block — prefer SAS URL; fall back to base64 for external files
           if (file.sizeBytes > MAX_PDF_BYTES) {
             logger.warn(
               { fileId: mention.fileId, sizeBytes: file.sizeBytes },
@@ -513,14 +522,27 @@ export class MessageContextBuilder {
             );
             continue;
           }
-          const sasUrl = uploadService.generateReadSasUrl(file.blobPath);
-          blocks.push({
-            type: 'document',
-            source: {
-              type: 'url',
-              url: sasUrl,
-            },
-          } as AnthropicAttachmentContentBlock);
+
+          if (file.blobPath) {
+            const sasUrl = uploadService.generateReadSasUrl(file.blobPath);
+            blocks.push({
+              type: 'document',
+              source: { type: 'url', url: sasUrl },
+            } as AnthropicAttachmentContentBlock);
+          } else {
+            // External file (OneDrive/SharePoint): download via content provider → base64
+            const { getContentProviderFactory } = await import('@/services/connectors');
+            const provider = getContentProviderFactory().getProvider(file.sourceType);
+            const { buffer } = await provider.getContent(file.id, file.userId);
+            blocks.push({
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: buffer.toString('base64'),
+              },
+            } as AnthropicAttachmentContentBlock);
+          }
         } else if (TEXT_MIME_TYPES.has(file.mimeType)) {
           // Text block
           if (file.sizeBytes > MAX_TEXT_BYTES) {
@@ -530,7 +552,17 @@ export class MessageContextBuilder {
             );
             continue;
           }
-          const buffer = await uploadService.downloadFromBlob(file.blobPath);
+
+          let buffer: Buffer;
+          if (file.blobPath) {
+            buffer = await uploadService.downloadFromBlob(file.blobPath);
+          } else {
+            // External file (OneDrive/SharePoint): download via content provider
+            const { getContentProviderFactory } = await import('@/services/connectors');
+            const provider = getContentProviderFactory().getProvider(file.sourceType);
+            const result = await provider.getContent(file.id, file.userId);
+            buffer = result.buffer;
+          }
           const content = buffer.toString('utf-8');
           blocks.push({
             type: 'text',
@@ -538,6 +570,13 @@ export class MessageContextBuilder {
           });
         } else if (getAttachmentRoutingCategory(file.mimeType) === 'container_upload') {
           // Binary files (XLSX, DOCX, PPTX) → upload to Anthropic Files API for sandbox access
+          if (!file.blobPath) {
+            logger.warn(
+              { fileId: mention.fileId, sourceType: file.sourceType, mimeType: file.mimeType },
+              'Container upload for external file without blobPath not yet supported, falling back to semantic search context'
+            );
+            continue;
+          }
           if (file.sizeBytes > MAX_BINARY_BYTES) {
             logger.warn(
               { fileId: mention.fileId, sizeBytes: file.sizeBytes, mimeType: file.mimeType },
@@ -588,6 +627,16 @@ export class MessageContextBuilder {
           );
         }
       } catch (error) {
+        // Token expiration errors should bubble up to trigger reconnect UI
+        const { ConnectionTokenExpiredError } = await import('@/services/connectors');
+        if (error instanceof ConnectionTokenExpiredError) {
+          logger.warn(
+            { fileId: mention.fileId, userId, connectionId: (error as unknown as { connectionId?: string }).connectionId },
+            'Connection token expired while resolving mention content — re-throwing for reconnect flow'
+          );
+          throw error;
+        }
+
         const errorInfo = error instanceof Error
           ? { message: error.message, name: error.name }
           : { value: String(error) };

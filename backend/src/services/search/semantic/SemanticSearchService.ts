@@ -135,7 +135,10 @@ export class SemanticSearchService {
           ? (additionalFilter ? `isImage eq true and ${additionalFilter}` : 'isImage eq true')
           : additionalFilter,
         useVectorSearch: true,
-        useSemanticRanker: true,
+        // Image searches: pure vector (no Semantic Ranker) — caption removed from content field,
+        // so text-based reranking would operate on "[Image: filename.jpg]" which is not useful.
+        // The 1536d Cohere Embed v4 vector already captures visual semantics accurately.
+        useSemanticRanker: !isImageMode,
         orderBy,
       });
       semanticResults = fullResult.results;
@@ -189,6 +192,7 @@ export class SemanticSearchService {
               score: result.score,
               chunkIndex: result.chunkIndex,
               highlightedCaption,
+              imageCaption: result.imageCaption,
             }],
             isImage: true,
             maxScore: result.score,
@@ -206,6 +210,7 @@ export class SemanticSearchService {
               score: result.score,
               chunkIndex: result.chunkIndex,
               highlightedCaption,
+              imageCaption: result.imageCaption,
             }],
             isImage: false,
             maxScore: result.score,
@@ -217,6 +222,7 @@ export class SemanticSearchService {
             score: result.score,
             chunkIndex: result.chunkIndex,
             highlightedCaption,
+            imageCaption: result.imageCaption,
           });
           if (result.score > existing.maxScore) {
             existing.maxScore = result.score;

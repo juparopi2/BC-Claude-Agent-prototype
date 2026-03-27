@@ -161,6 +161,12 @@ export enum ErrorCode {
   LLM_TIMEOUT = 'LLM_TIMEOUT',
   /** Agent execution failed (generic) */
   AGENT_EXECUTION_FAILED = 'AGENT_EXECUTION_FAILED',
+
+  // ============================================
+  // Connection Errors - External connector issues
+  // ============================================
+  /** External connection (OneDrive/SharePoint) token expired — user must reconnect */
+  CONNECTION_TOKEN_EXPIRED = 'CONNECTION_TOKEN_EXPIRED',
 }
 
 /**
@@ -263,6 +269,9 @@ export const ERROR_MESSAGES: Readonly<Record<ErrorCode, string>> = {
   [ErrorCode.LLM_CONNECTION_ERROR]: 'Unable to reach our AI service. Please check your connection and try again',
   [ErrorCode.LLM_TIMEOUT]: 'The request took too long to process. Please try again with a shorter message',
   [ErrorCode.AGENT_EXECUTION_FAILED]: 'Something went wrong processing your request. Please try again',
+
+  // Connection Errors
+  [ErrorCode.CONNECTION_TOKEN_EXPIRED]: 'Your OneDrive/SharePoint connection has expired. Please reconnect and try again',
 } as const;
 
 /**
@@ -340,6 +349,9 @@ export const ERROR_STATUS_CODES: Readonly<Record<ErrorCode, number>> = {
   [ErrorCode.LLM_CONNECTION_ERROR]: 503,
   [ErrorCode.LLM_TIMEOUT]: 504,
   [ErrorCode.AGENT_EXECUTION_FAILED]: 500,
+
+  // Connection Errors
+  [ErrorCode.CONNECTION_TOKEN_EXPIRED]: 401,
 } as const;
 
 /**

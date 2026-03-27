@@ -26,6 +26,8 @@ export interface SemanticChunk {
   chunkIndex: number;
   /** Highlighted caption from Azure AI Search Semantic Ranker (PRD-203) */
   highlightedCaption?: string;
+  /** AI-generated image caption for LLM context (not in searchable content field) */
+  imageCaption?: string;
 }
 
 export interface SemanticSearchResult {

@@ -11,8 +11,12 @@ IFileContentProvider (interface)
     ├── BlobContentProvider      — Azure Blob Storage (uploaded files)
     └── GraphApiContentProvider  — Microsoft Graph API (OneDrive/SharePoint)
 
-ContentProviderFactory.create(file) → IFileContentProvider
-    Routes by file.source_type: 'upload' → Blob, 'onedrive'/'sharepoint' → Graph
+ContentProviderFactory.getProvider(sourceType) → IFileContentProvider
+    Routes by sourceType: 'local' → Blob, 'onedrive'/'sharepoint' → Graph
+
+Used by:
+  - FileProcessingService (text extraction during sync)
+  - MessageContextBuilder.resolveMentionContentBlocks() (download @mentioned files for LLM)
 ```
 
 ## GraphTokenManager

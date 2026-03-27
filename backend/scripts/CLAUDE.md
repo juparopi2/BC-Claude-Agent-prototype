@@ -182,6 +182,17 @@ Scripts use `../_shared/` relative imports (no `@/` aliases — run outside main
 | Script | Purpose | Key Flags |
 |--------|---------|-----------|
 | `diagnose-unified-vector-pipeline.ts` | End-to-end diagnostic: DB → chunks → embeddings → search index | `--userId`, `--verbose` |
+| `backfill-imageCaption.ts` | Migrate image captions from `content` field to separate `imageCaption` field | `--dry-run`, `--userId` |
+
+### Image Caption Backfill
+
+```bash
+npx tsx scripts/search/backfill-imageCaption.ts --dry-run          # Preview changes
+npx tsx scripts/search/backfill-imageCaption.ts --userId <UUID>    # Scope to one user
+npx tsx scripts/search/backfill-imageCaption.ts                     # Execute full migration
+```
+
+Uses `mergeDocuments` — preserves embeddings and all other fields. Idempotent: re-running skips already-migrated documents. Run `update-search-schema.ts` first to add the `imageCaption` field.
 
 ---
 

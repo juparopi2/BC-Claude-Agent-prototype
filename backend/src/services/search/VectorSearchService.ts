@@ -500,11 +500,9 @@ export class VectorSearchService {
     const normalizedUserId = userId.toUpperCase();
     const documentId = `img_${normalizedFileId}`;
 
-    // Use caption as content if available for better semantic search
-    // This enables Semantic Ranker to understand image context
-    const content = caption
-      ? `${caption} [Image: ${fileName}]`
-      : `[Image: ${fileName}]`;
+    // Caption stored in separate non-searchable field; content is minimal for BM25
+    // The 1536d Cohere Embed v4 vector handles all visual semantic retrieval
+    const content = `[Image: ${fileName}]`;
 
     const document: Record<string, unknown> = {
       chunkId: documentId,
@@ -525,6 +523,7 @@ export class VectorSearchService {
       siteId: siteId ?? null,
       sourceType: sourceType ?? null,
       parentFolderId: parentFolderId ?? null,
+      imageCaption: caption || null,
     };
 
     logger.debug({
@@ -607,6 +606,7 @@ export class VectorSearchService {
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top,
+      select: ['fileId', 'content', 'fileName', 'imageCaption'],
       vectorSearchOptions: {
         queries: [
           {
@@ -623,15 +623,13 @@ export class VectorSearchService {
 
     const results: ImageSearchResult[] = [];
     for await (const result of searchResults.results) {
-      const doc = result.document as { fileId: string; content: string };
+      const doc = result.document as { fileId: string; content: string; fileName?: string; imageCaption?: string };
       const score = result.score ?? 0;
 
       // Filter by minimum score
       if (score < minScore) continue;
 
-      // Extract filename from content like "[Image: filename.jpg]"
-      const fileNameMatch = doc.content.match(/\[Image: (.+?)\]/);
-      const fileName = fileNameMatch?.[1] ?? 'unknown';
+      const fileName = doc.fileName ?? 'unknown';
 
       results.push({
         fileId: doc.fileId,
@@ -757,7 +755,7 @@ export class VectorSearchService {
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
       top: fetchTopK,
-      select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage'],
+      select: ['chunkId', 'fileId', 'content', 'chunkIndex', 'isImage', 'imageCaption'],
     };
 
     // Conditionally enable Semantic Ranker (PRD-200: controlled by useSemanticRanker + queryType)
@@ -823,6 +821,7 @@ export class VectorSearchService {
         content: string;
         chunkIndex: number;
         isImage?: boolean;
+        imageCaption?: string;
       };
 
       const vectorScore = result.score ?? 0;
@@ -855,6 +854,7 @@ export class VectorSearchService {
         isImage: doc.isImage ?? false,
         captionText: captions?.[0]?.text,
         captionHighlights: captions?.[0]?.highlights,
+        imageCaption: doc.imageCaption,
       });
     }
 

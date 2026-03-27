@@ -161,13 +161,13 @@ export const searchKnowledgeTool = tool(
         passages: isConcise
           ? r.topChunks.slice(0, 1).map((chunk, idx): CitationPassage => ({
               citationId: `${r.fileId}-${idx}`,
-              excerpt: chunk.highlightedCaption ?? chunk.content.slice(0, 100),
+              excerpt: chunk.highlightedCaption ?? chunk.imageCaption ?? chunk.content.slice(0, 100),
               relevanceScore: chunk.score,
               highlightedCaption: chunk.highlightedCaption,
             }))
           : r.topChunks.map((chunk, idx): CitationPassage => ({
               citationId: `${r.fileId}-${idx}`,
-              excerpt: chunk.content.slice(0, 500),
+              excerpt: chunk.imageCaption ?? chunk.content.slice(0, 500),
               relevanceScore: chunk.score,
               highlightedCaption: chunk.highlightedCaption,
             })),

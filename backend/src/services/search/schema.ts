@@ -119,6 +119,15 @@ export const indexSchema: SearchIndex = {
       facetable: true
     },
     {
+      name: 'imageCaption',
+      type: 'Edm.String',
+      searchable: false,   // NOT searchable — vector does all image retrieval
+      filterable: false,
+      sortable: false,
+      facetable: false,
+      // Stored and retrievable for passing image context to the LLM
+    },
+    {
       name: 'mimeType',
       type: 'Edm.String',
       searchable: false,
@@ -239,8 +248,9 @@ export const indexSchema: SearchIndex = {
       {
         name: SEMANTIC_CONFIG_NAME,
         prioritizedFields: {
-          // Content field is primary for semantic understanding
-          // For images, this contains AI-generated captions
+          // Content field is primary for semantic understanding (text documents only).
+          // For images, Semantic Ranker is disabled at query time (useSemanticRanker: !isImageMode)
+          // — the 1536d Cohere Embed v4 vector handles all visual retrieval.
           contentFields: [
             { name: 'content' }
           ],

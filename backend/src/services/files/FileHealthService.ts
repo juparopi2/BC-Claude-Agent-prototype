@@ -124,6 +124,7 @@ export class FileHealthService {
         deleted_at: null,
         deletion_status: null,
         pipeline_status: 'failed',
+        is_folder: false, // Folders are metadata-only; they don't go through the processing pipeline
       },
       select: FILE_SELECT,
     });
@@ -139,6 +140,7 @@ export class FileHealthService {
         deletion_status: null,
         pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
         updated_at: { lt: stuckThreshold },
+        is_folder: false, // Folders are metadata-only; they don't go through the processing pipeline
       },
       select: FILE_SELECT,
     });

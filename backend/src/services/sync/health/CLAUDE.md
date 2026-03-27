@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Automated health monitoring and recovery for the file synchronization pipeline. Detects four failure modes — stuck scopes, error scopes, DB-to-Search index drift, and externally deleted files — and provides both automated remediation (cron) and manual recovery (API).
+Automated health monitoring and recovery for the file synchronization pipeline. Detects five failure modes — stuck scopes, error scopes, DB-to-Search index drift, externally deleted files, and broken folder hierarchy — and provides both automated remediation (cron) and manual recovery (API).
 
 ## Architecture — 3 Stateless Singletons
 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings, externally deleted files (Graph 404). Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. |
+| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | Compare DB files vs Azure AI Search index. Detect missing/orphaned docs, failed retriable files, stuck pipeline files, images missing embeddings, externally deleted files (Graph 404), broken folder hierarchy. Cron respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 All three run via the existing `FILE_MAINTENANCE` BullMQ queue (`concurrency=1`, `lockDuration=120s`). No new queues or workers — they slot into `MaintenanceWorker`'s switch-case dispatch.
@@ -67,7 +67,7 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects six drift conditions:
+Detects seven drift conditions:
 
 | Drift | Detection | Repair Action |
 |---|---|---|
@@ -77,6 +77,7 @@ Detects six drift conditions:
 | Stuck pipeline | `pipeline_status IN ('extracting','chunking','embedding')` for > 30 min | Reset to `'queued'`, re-enqueue |
 | Images missing embeddings | Ready image files with no `image_embeddings` record | Reset to `'queued'`, re-enqueue |
 | External not found | External files (SP/OD) failed with `Graph API error (404)` | Soft-delete + vector cleanup (file no longer exists in source) |
+| Broken folder hierarchy | Files/folders with `parent_folder_id` referencing non-existent folder, or scope root folders missing from DB | Recreate scope roots via `ensureScopeRootFolder()`, queue full resync (clears delta cursor), reparent local orphans to root |
 
 **Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 
@@ -95,6 +96,27 @@ The reconciliation service accounts for different expected states per file type:
 - **Image files**: Must have `image_embeddings` record when `ready` (0 chunks is correct)
 - **External files**: `blob_path=null` is correct (content fetched via Graph API)
 - See `scripts/storage/CLAUDE.md` for the full expected state matrix
+
+### Folder Hierarchy Integrity
+
+The reconciliation service verifies that the folder tree in the DB is structurally sound. Three issue types are detected:
+
+1. **Orphaned children**: Files/folders whose `parent_folder_id` references a non-existent (or soft-deleted) folder. Detected via raw SQL `NOT EXISTS` subquery.
+2. **Missing scope root folders**: `scope_type='folder'` scopes whose root folder (`external_id = scope_resource_id`) doesn't exist in the `files` table. The root folder is normally created by `ensureScopeRootFolder()` during initial sync.
+3. **Broken chains**: Subset of #1 where the orphan is itself a folder — its descendants are also unreachable.
+
+**Repair actions**:
+- Recreate missing scope root folders via `ensureScopeRootFolder()` (quick DB create, no Graph API call)
+- Queue full resync for affected scopes: clear `last_sync_cursor` → `addInitialSyncJob()` → `InitialSyncService` rebuilds complete folder hierarchy via `buildFolderMap()` + `sortFoldersByDepth()` + `upsertFolder()`
+- Reparent orphaned local files (no `connection_scope_id`) to root (`parent_folder_id = null`)
+
+**Rate limiting**: Max 5 scopes resynced per reconciliation run. Redis 30-min cooldown per scope (`sync:hierarchy_resync:{scopeId}`) prevents repeated resync.
+
+**Transient orphan guard**: Files belonging to scopes with `sync_status IN ('syncing', 'sync_queued')` are excluded from detection to avoid false positives during active sync.
+
+### FileHealthService — Folder Exclusion
+
+`FileHealthService.getHealthIssues()` excludes folders (`is_folder=true`) from both failed and stuck queries. Folders are metadata-only records that don't go through the extract→chunk→embed pipeline. Their `pipeline_status` is set to `'ready'` on creation. If a folder's status is corrupted (e.g., by a simulation script), the folder hierarchy reconciliation handles it, not the file health system.
 
 ## API Endpoints
 

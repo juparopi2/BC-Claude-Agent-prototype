@@ -65,7 +65,7 @@ npx tsx scripts/storage/audit-file-health.ts --userId <ID> --check-vectors
 
 Previously only checked: ready files missing from AI Search + orphaned search docs.
 
-Now detects **5 drift conditions**:
+Now detects **7 drift conditions**:
 
 | Drift | Detection | Repair |
 |-------|-----------|--------|
@@ -74,6 +74,8 @@ Now detects **5 drift conditions**:
 | Failed retriable | `failed` with retry_count < 3 | Reset to `queued`, clear retries, re-enqueue |
 | Stuck pipeline | `queued/extracting/chunking/embedding` > 30 min | Reset to `queued`, re-enqueue |
 | Images missing embeddings | `ready` image with no `image_embeddings` row | Reset to `queued`, re-enqueue |
+| External not found | External file failed with `Graph API error (404)` | Soft-delete + vector cleanup |
+| Broken folder hierarchy | `parent_folder_id` references non-existent folder, or scope root missing | Recreate root, queue resync, reparent local orphans |
 
 **Schedule**: Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC) via BullMQ cron.
 

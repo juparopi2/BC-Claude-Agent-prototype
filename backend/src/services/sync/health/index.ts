@@ -22,6 +22,8 @@ export type {
   ReconciliationRepairs,
   ReconciliationReport,
   SyncHealthCheckMetrics,
+  FolderHierarchyDetection,
+  FolderHierarchyRepairs,
 } from './types';
 export {
   ReconciliationInProgressError,

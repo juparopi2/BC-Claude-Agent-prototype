@@ -38,10 +38,19 @@ const mockImageEmbeddingsFindMany = vi.hoisted(() => vi.fn());
 // file_chunks table
 const mockFileChunksDeleteMany = vi.hoisted(() => vi.fn());
 
+// connection_scopes table (folder hierarchy detection)
+const mockConnectionScopesFindMany = vi.hoisted(() => vi.fn());
+const mockConnectionScopesUpdate = vi.hoisted(() => vi.fn());
+const mockConnectionScopesFindUnique = vi.hoisted(() => vi.fn());
+
+// Raw SQL queries (folder hierarchy detection)
+const mockQueryRaw = vi.hoisted(() => vi.fn());
+
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
     files: {
       findMany: mockFilesFindMany,
+      findFirst: vi.fn().mockResolvedValue(null),
       findUnique: mockFilesFindUnique,
       update: mockFilesUpdate,
       updateMany: mockFilesUpdateMany,
@@ -52,15 +61,23 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     file_chunks: {
       deleteMany: mockFileChunksDeleteMany,
     },
+    connection_scopes: {
+      findMany: mockConnectionScopesFindMany,
+      findUnique: mockConnectionScopesFindUnique,
+      update: mockConnectionScopesUpdate,
+    },
+    $queryRaw: mockQueryRaw,
   },
 }));
 
 // Queue
 const mockAddFileProcessingFlow = vi.hoisted(() => vi.fn());
+const mockAddInitialSyncJob = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/queue', () => ({
   getMessageQueue: vi.fn(() => ({
     addFileProcessingFlow: mockAddFileProcessingFlow,
+    addInitialSyncJob: mockAddInitialSyncJob,
   })),
 }));
 
@@ -75,6 +92,11 @@ vi.mock('@/services/search/VectorSearchService', () => ({
       deleteChunksForFile: mockDeleteChunksForFile,
     })),
   },
+}));
+
+// FolderHierarchyResolver (dynamic import for scope root folder recreation)
+vi.mock('@/services/sync/FolderHierarchyResolver', () => ({
+  ensureScopeRootFolder: vi.fn().mockResolvedValue(undefined),
 }));
 
 // env — mock the module so SYNC_RECONCILIATION_AUTO_REPAIR is controllable per-test
@@ -152,6 +174,11 @@ beforeEach(() => {
   mockFileChunksDeleteMany.mockResolvedValue({ count: 0 });
   mockRedisTtl.mockResolvedValue(-2); // Key does not exist = no cooldown
   mockRedisSet.mockResolvedValue('OK');
+  mockQueryRaw.mockResolvedValue([]); // No orphaned children by default
+  mockConnectionScopesFindMany.mockResolvedValue([]); // No scopes by default
+  mockConnectionScopesFindUnique.mockResolvedValue(null);
+  mockConnectionScopesUpdate.mockResolvedValue({});
+  mockAddInitialSyncJob.mockResolvedValue('job-id');
 });
 
 afterEach(() => {

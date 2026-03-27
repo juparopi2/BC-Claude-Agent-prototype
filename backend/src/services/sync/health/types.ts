@@ -78,6 +78,7 @@ export interface ReconciliationRepairs {
   stuckRequeued: number;
   imageRequeued: number;
   externalNotFoundCleaned: number;
+  folderHierarchy: FolderHierarchyRepairs;
   errors: number;
 }
 
@@ -92,6 +93,7 @@ export interface ReconciliationReport {
   stuckFiles: string[];
   imagesMissingEmbeddings: string[];
   externalNotFound: string[];
+  folderHierarchyIssues: FolderHierarchyDetection;
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }
@@ -131,6 +133,43 @@ export class ReconciliationCooldownError extends Error {
     this.name = 'ReconciliationCooldownError';
     this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+// ============================================================================
+// Folder Hierarchy Integrity (Layer 4)
+// ============================================================================
+
+/** Folder hierarchy detection results for a user */
+export interface FolderHierarchyDetection {
+  /** Files/folders whose parent_folder_id points to a non-existent row */
+  orphanedChildren: Array<{
+    id: string;
+    parentFolderId: string;
+    connectionScopeId: string | null;
+    isFolder: boolean;
+    sourceType: string | null;
+  }>;
+  /** Scopes whose root folder is missing from the files table */
+  missingScopeRoots: Array<{
+    scopeId: string;
+    connectionId: string;
+    scopeResourceId: string;
+    scopeDisplayName: string | null;
+    remoteDriveId: string | null;
+    provider: string;
+    microsoftDriveId: string | null;
+  }>;
+  /** Distinct scope IDs that need resync (union of affected scopes) */
+  scopeIdsToResync: string[];
+}
+
+/** Repair counts for folder hierarchy issues */
+export interface FolderHierarchyRepairs {
+  scopeRootsRecreated: number;
+  scopesResynced: number;
+  scopesSkippedDisconnected: number;
+  localFilesReparented: number;
+  errors: number;
 }
 
 // ============================================================================

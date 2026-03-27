@@ -5,13 +5,14 @@
  * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
  * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Six drift conditions detected:
+ * Seven drift conditions detected:
  *   1. Files in DB as 'ready' but missing from the search index
  *   2. Documents in search index with no matching DB file (orphaned)
  *   3. Failed files eligible for retry (retry_count < 3)
  *   4. Stuck pipeline files (> 30 min in intermediate state)
  *   5. Ready images missing image_embeddings records
  *   6. External files (OneDrive/SharePoint) that no longer exist (Graph API 404)
+ *   7. Broken folder hierarchy (orphaned children, missing scope roots)
  *
  * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
  * On-demand: always repairs (user explicitly requested it).
@@ -27,7 +28,7 @@ import { prisma } from '@/infrastructure/database/prisma';
 import { env } from '@/infrastructure/config/environment';
 import { getMessageQueue } from '@/infrastructure/queue';
 import { getRedisClient } from '@/infrastructure/redis/redis-client';
-import type { ReconciliationReport, ReconciliationRepairs } from './types';
+import type { ReconciliationReport, ReconciliationRepairs, FolderHierarchyDetection, FolderHierarchyRepairs } from './types';
 import { ReconciliationInProgressError, ReconciliationCooldownError } from './types';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -39,6 +40,9 @@ const DB_BATCH_SIZE = 500;
 const COOLDOWN_SECONDS = 300; // 5 minutes
 const COOLDOWN_KEY_PREFIX = 'sync:reconcile_cooldown:';
 const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+const HIERARCHY_RESYNC_COOLDOWN_PREFIX = 'sync:hierarchy_resync:';
+const HIERARCHY_RESYNC_COOLDOWN_SECONDS = 1800; // 30 minutes
+const MAX_SCOPES_TO_RESYNC_PER_RUN = 5;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Service
@@ -134,7 +138,7 @@ export class SyncReconciliationService {
   /**
    * Reconcile a single user's files against the search index.
    *
-   * Diagnoses 6 drift conditions, then optionally repairs them.
+   * Diagnoses 7 drift conditions, then optionally repairs them.
    *
    * @param userId - The user whose files to reconcile.
    * @param options.forceRepair - When true, always repair regardless of env var.
@@ -276,7 +280,11 @@ export class SyncReconciliationService {
         .map((f) => f.id.toUpperCase());
     }
 
-    // ── h. Optionally repair ──────────────────────────────────────────────
+    // ── h. Detect folder hierarchy issues ───────────────────────────────
+
+    const folderHierarchyIssues = await this.detectFolderHierarchyIssues(userId);
+
+    // ── i. Optionally repair ──────────────────────────────────────────────
 
     const shouldRepair = options?.forceRepair || env.SYNC_RECONCILIATION_AUTO_REPAIR;
 
@@ -292,11 +300,19 @@ export class SyncReconciliationService {
         imagesMissingEmbeddings,
         externalNotFound,
       );
+
+      // Folder hierarchy repair (independent of file-level repairs)
+      repairs.folderHierarchy = await this.repairFolderHierarchy(userId, folderHierarchyIssues);
     } else {
-      repairs = { missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0, externalNotFoundCleaned: 0, errors: 0 };
+      repairs = {
+        missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
+        imageRequeued: 0, externalNotFoundCleaned: 0,
+        folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, errors: 0 },
+        errors: 0,
+      };
     }
 
-    // ── i. Build and log report ───────────────────────────────────────────
+    // ── j. Build and log report ───────────────────────────────────────────
 
     const report: ReconciliationReport = {
       timestamp: new Date(),
@@ -309,6 +325,7 @@ export class SyncReconciliationService {
       stuckFiles,
       imagesMissingEmbeddings,
       externalNotFound,
+      folderHierarchyIssues,
       repairs,
       dryRun: !shouldRepair,
     };
@@ -323,12 +340,16 @@ export class SyncReconciliationService {
         stuckFiles: undefined,
         imagesMissingEmbeddings: undefined,
         externalNotFound: undefined,
+        folderHierarchyIssues: undefined, // Don't log full details
         missingCount: missingFromSearch.length,
         orphanedCount: orphanedInSearch.length,
         failedRetriableCount: failedRetriable.length,
         stuckFilesCount: stuckFiles.length,
         imagesMissingEmbeddingsCount: imagesMissingEmbeddings.length,
         externalNotFoundCount: externalNotFound.length,
+        orphanedChildrenCount: folderHierarchyIssues.orphanedChildren.length,
+        missingScopeRootsCount: folderHierarchyIssues.missingScopeRoots.length,
+        scopesToResyncCount: folderHierarchyIssues.scopeIdsToResync.length,
       },
       'Reconciliation report for user',
     );
@@ -362,6 +383,7 @@ export class SyncReconciliationService {
       missingRequeued: 0, orphansDeleted: 0,
       failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0,
       externalNotFoundCleaned: 0,
+      folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, errors: 0 },
       errors: 0,
     };
 
@@ -579,6 +601,294 @@ export class SyncReconciliationService {
     }
 
     return repairs;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Private — folder hierarchy detection & repair
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Detect folder hierarchy integrity issues for a user.
+   *
+   * Three issue types:
+   *   1. Orphaned children — files/folders whose parent_folder_id references a missing row
+   *   2. Missing scope root folders — folder/library scopes with no root folder in files table
+   *   3. Broken chains — subset of #1 where the orphan is itself a folder (cascading breakage)
+   */
+  private async detectFolderHierarchyIssues(userId: string): Promise<FolderHierarchyDetection> {
+    // ── 1. Orphaned children (parent_folder_id → non-existent or soft-deleted folder) ──
+
+    const orphanedChildren = await prisma.$queryRaw<Array<{
+      id: string;
+      parent_folder_id: string;
+      connection_scope_id: string | null;
+      is_folder: boolean;
+      source_type: string | null;
+    }>>`
+      SELECT f.id, f.parent_folder_id, f.connection_scope_id, f.is_folder, f.source_type
+      FROM files f
+      WHERE f.user_id = ${userId}
+        AND f.parent_folder_id IS NOT NULL
+        AND f.deleted_at IS NULL
+        AND f.deletion_status IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM files p
+          WHERE p.id = f.parent_folder_id
+            AND p.deleted_at IS NULL
+            AND p.deletion_status IS NULL
+        )
+        AND (f.connection_scope_id IS NULL OR f.connection_scope_id NOT IN (
+          SELECT id FROM connection_scopes WHERE sync_status IN ('syncing', 'sync_queued')
+        ))
+    `;
+
+    // ── 2. Missing scope root folders ──
+
+    const userScopes = await prisma.connection_scopes.findMany({
+      where: {
+        connections: { user_id: userId, status: 'connected' },
+        scope_type: { in: ['folder', 'library'] },
+        sync_status: { in: ['synced', 'idle', 'error'] },
+      },
+      select: {
+        id: true,
+        scope_resource_id: true,
+        connection_id: true,
+        scope_type: true,
+        scope_display_name: true,
+        remote_drive_id: true,
+        connections: { select: { provider: true, microsoft_drive_id: true } },
+      },
+    });
+
+    const missingScopeRoots: FolderHierarchyDetection['missingScopeRoots'] = [];
+
+    for (const scope of userScopes) {
+      if (!scope.scope_resource_id) continue;
+
+      const rootExists = await prisma.files.findFirst({
+        where: {
+          connection_id: scope.connection_id,
+          external_id: scope.scope_resource_id,
+          deleted_at: null,
+          deletion_status: null,
+        },
+        select: { id: true },
+      });
+
+      if (!rootExists) {
+        missingScopeRoots.push({
+          scopeId: scope.id,
+          connectionId: scope.connection_id,
+          scopeResourceId: scope.scope_resource_id,
+          scopeDisplayName: scope.scope_display_name,
+          remoteDriveId: scope.remote_drive_id,
+          provider: scope.connections.provider,
+          microsoftDriveId: scope.connections.microsoft_drive_id,
+        });
+      }
+    }
+
+    // ── 3. Build deduplicated set of scope IDs that need resync ──
+
+    const scopeIdsToResync = new Set<string>();
+
+    // From orphaned children — group by connection_scope_id
+    for (const orphan of orphanedChildren) {
+      if (orphan.connection_scope_id) {
+        scopeIdsToResync.add(orphan.connection_scope_id.toUpperCase());
+      }
+    }
+
+    // From missing scope roots
+    for (const missing of missingScopeRoots) {
+      scopeIdsToResync.add(missing.scopeId.toUpperCase());
+    }
+
+    return {
+      orphanedChildren: orphanedChildren.map((o) => ({
+        id: o.id,
+        parentFolderId: o.parent_folder_id,
+        connectionScopeId: o.connection_scope_id,
+        isFolder: o.is_folder,
+        sourceType: o.source_type,
+      })),
+      missingScopeRoots,
+      scopeIdsToResync: [...scopeIdsToResync],
+    };
+  }
+
+  /**
+   * Repair folder hierarchy issues.
+   *
+   * Three repair actions:
+   *   1. Recreate missing scope root folders (quick DB create, no Graph API)
+   *   2. Queue full resync for affected scopes (clears delta cursor → forces full initial sync)
+   *   3. Reparent orphaned local files to root (parent_folder_id = null)
+   */
+  private async repairFolderHierarchy(
+    userId: string,
+    detection: FolderHierarchyDetection,
+  ): Promise<FolderHierarchyRepairs> {
+    const repairs: FolderHierarchyRepairs = {
+      scopeRootsRecreated: 0,
+      scopesResynced: 0,
+      scopesSkippedDisconnected: 0,
+      localFilesReparented: 0,
+      errors: 0,
+    };
+
+    // ── 1. Recreate missing scope root folders ──
+
+    for (const missing of detection.missingScopeRoots) {
+      try {
+        const { ensureScopeRootFolder } = await import('@/services/sync/FolderHierarchyResolver');
+        const folderMap = new Map<string, string>();
+        const effectiveDriveId = missing.remoteDriveId ?? missing.microsoftDriveId;
+
+        await ensureScopeRootFolder({
+          connectionId: missing.connectionId,
+          scopeId: missing.scopeId,
+          userId,
+          scopeResourceId: missing.scopeResourceId,
+          scopeDisplayName: missing.scopeDisplayName,
+          microsoftDriveId: effectiveDriveId,
+          folderMap,
+          provider: missing.provider,
+        });
+
+        repairs.scopeRootsRecreated++;
+        this.logger.info(
+          { scopeId: missing.scopeId, scopeDisplayName: missing.scopeDisplayName },
+          'Recreated missing scope root folder',
+        );
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        this.logger.warn(
+          { scopeId: missing.scopeId, error: errorInfo },
+          'Failed to recreate scope root folder',
+        );
+        repairs.errors++;
+      }
+    }
+
+    // ── 2. Queue full resync for affected scopes (max cap per run) ──
+
+    let resyncCount = 0;
+    for (const scopeId of detection.scopeIdsToResync) {
+      if (resyncCount >= MAX_SCOPES_TO_RESYNC_PER_RUN) break;
+
+      try {
+        // Check Redis cooldown
+        if (await this.isResyncCooldownActive(scopeId)) {
+          this.logger.debug({ scopeId }, 'Scope hierarchy resync on cooldown, skipping');
+          continue;
+        }
+
+        const scope = await prisma.connection_scopes.findUnique({
+          where: { id: scopeId },
+          select: {
+            id: true,
+            connection_id: true,
+            sync_status: true,
+            connections: { select: { user_id: true, status: true } },
+          },
+        });
+
+        if (!scope) continue;
+
+        if (scope.connections.status !== 'connected') {
+          repairs.scopesSkippedDisconnected++;
+          continue;
+        }
+
+        if (['syncing', 'sync_queued'].includes(scope.sync_status)) continue;
+
+        // Clear delta cursor → forces full initial sync (rebuilds ALL folders)
+        await prisma.connection_scopes.update({
+          where: { id: scopeId },
+          data: {
+            last_sync_cursor: null,
+            sync_status: 'sync_queued',
+            updated_at: new Date(),
+          },
+        });
+
+        // Queue initial sync job
+        await getMessageQueue().addInitialSyncJob({
+          scopeId,
+          connectionId: scope.connection_id,
+          userId: scope.connections.user_id,
+        });
+
+        await this.setResyncCooldown(scopeId);
+        repairs.scopesResynced++;
+        resyncCount++;
+
+        this.logger.info({ scopeId }, 'Queued full resync for folder hierarchy repair');
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        this.logger.warn({ scopeId, error: errorInfo }, 'Failed to queue scope resync for hierarchy repair');
+        repairs.errors++;
+      }
+    }
+
+    // ── 3. Reparent orphaned local files (no connection_scope_id → move to root) ──
+
+    const localOrphans = detection.orphanedChildren.filter((o) => !o.connectionScopeId);
+    if (localOrphans.length > 0) {
+      try {
+        const localOrphanIds = localOrphans.map((o) => o.id);
+        await prisma.files.updateMany({
+          where: { id: { in: localOrphanIds } },
+          data: { parent_folder_id: null, updated_at: new Date() },
+        });
+        repairs.localFilesReparented = localOrphans.length;
+        this.logger.info(
+          { count: localOrphans.length },
+          'Reparented orphaned local files to root',
+        );
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        this.logger.warn({ error: errorInfo }, 'Failed to reparent local orphans');
+        repairs.errors++;
+      }
+    }
+
+    return repairs;
+  }
+
+  /** Check if a scope's hierarchy resync is on cooldown. Fail-open. */
+  private async isResyncCooldownActive(scopeId: string): Promise<boolean> {
+    const client = getRedisClient();
+    if (!client) return false;
+
+    try {
+      const key = `${HIERARCHY_RESYNC_COOLDOWN_PREFIX}${scopeId.toUpperCase()}`;
+      const ttl = await client.ttl(key);
+      return ttl > 0;
+    } catch {
+      return false; // Fail open
+    }
+  }
+
+  /** Set resync cooldown for a scope. Best-effort. */
+  private async setResyncCooldown(scopeId: string): Promise<void> {
+    const client = getRedisClient();
+    if (!client) return;
+
+    try {
+      const key = `${HIERARCHY_RESYNC_COOLDOWN_PREFIX}${scopeId.toUpperCase()}`;
+      await client.set(key, '1', { EX: HIERARCHY_RESYNC_COOLDOWN_SECONDS });
+    } catch {
+      // Best-effort
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────

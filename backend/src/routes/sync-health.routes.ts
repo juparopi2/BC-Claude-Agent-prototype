@@ -127,7 +127,7 @@ router.post(
  * POST /api/sync/health/reconcile
  * On-demand per-user file health reconciliation.
  *
- * Diagnoses 5 drift conditions between DB and AI Search, then repairs them.
+ * Diagnoses 7 drift conditions between DB and AI Search, then repairs them.
  * Rate-limited to once per 5 minutes per user (Redis cooldown).
  *
  * Body:
@@ -160,6 +160,11 @@ router.post(
             failedRetriableCount: report.failedRetriable.length,
             stuckFilesCount: report.stuckFiles.length,
             imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+            folderHierarchy: {
+              orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
+              missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
+              scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
+            },
             repairs: report.repairs,
           },
         });
@@ -176,6 +181,11 @@ router.post(
           failedRetriableCount: report.failedRetriable.length,
           stuckFilesCount: report.stuckFiles.length,
           imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+          folderHierarchy: {
+            orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
+            missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
+            scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
+          },
           repairs: report.repairs,
         },
       });

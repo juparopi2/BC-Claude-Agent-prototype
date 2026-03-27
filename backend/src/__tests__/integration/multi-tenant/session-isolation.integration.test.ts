@@ -13,7 +13,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import {
   createTestSocketClient,
   createTestSessionFactory,
-  cleanupAllTestData,
   createTestSocketIOServer,
   TestSocketClient,
   TestSessionFactory,
@@ -113,7 +112,7 @@ describe('Multi-Tenant Session Isolation', () => {
   }, TEST_TIMEOUTS.BEFORE_ALL);
 
   afterAll(async () => {
-    await cleanupAllTestData();
+    await factory.cleanup();
 
     for (const client of clients) {
       await client.disconnect();

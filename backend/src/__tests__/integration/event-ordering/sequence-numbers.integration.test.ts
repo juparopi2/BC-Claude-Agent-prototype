@@ -13,7 +13,6 @@ import { getRedis } from '@/infrastructure/redis/redis';
 import { getEventStore, EventStore, EventType } from '@/services/events/EventStore';
 import {
   createTestSessionFactory,
-  cleanupAllTestData,
   TestSessionFactory,
   initRedisForTests,
   closeRedisForTests,
@@ -65,7 +64,7 @@ describe.skipIf(!isRedisAvailable)('Event Ordering with Real Redis', () => {
   }, 60000);
 
   afterAll(async () => {
-    await cleanupAllTestData();
+    await factory.cleanup();
     // Close Redis connection explicitly
     await closeRedisForTests();
   }, 30000);

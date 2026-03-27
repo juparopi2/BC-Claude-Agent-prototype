@@ -12,7 +12,6 @@ import {
   setupDatabaseForTests,
   createTestSessionFactory,
   TestSessionFactory,
-  cleanupAllTestData,
   TEST_TIMEOUTS,
 } from '../../helpers';
 import { SettingsService, __resetSettingsService, getSettingsService } from '@/domains/settings';
@@ -42,7 +41,7 @@ describe('SettingsService Integration', () => {
         // Ignore cleanup errors
       }
     }
-    await cleanupAllTestData();
+    await factory.cleanup();
     __resetSettingsService();
   }, TEST_TIMEOUTS.AFTER_ALL);
 

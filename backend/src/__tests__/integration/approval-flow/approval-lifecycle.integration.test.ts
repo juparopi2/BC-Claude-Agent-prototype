@@ -17,7 +17,6 @@ import RedisStore from 'connect-redis';
 import {
   createTestSocketClient,
   createTestSessionFactory,
-  cleanupAllTestData,
   TestSocketClient,
   TestSessionFactory,
   TEST_SESSION_SECRET,
@@ -167,7 +166,7 @@ describe('Approval Flow Integration', () => {
       }
     }
 
-    await cleanupAllTestData();
+    await factory.cleanup();
     for (const client of clients) {
       await client.disconnect();
     }

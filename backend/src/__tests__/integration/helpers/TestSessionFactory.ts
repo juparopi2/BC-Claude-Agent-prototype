@@ -525,10 +525,21 @@ export class TestSessionFactory {
       const sessionIdList = this.createdSessions.join(',');
 
       // Delete in correct FK order (messages before message_events, etc.)
+      // Step 1: Delete messages by session_id
       await executeQuery(
         `DELETE FROM messages WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
         { ids: sessionIdList }
       );
+      // Step 2: Delete messages that reference message_events via event_id (FK safety)
+      // Some messages may have event_id pointing to message_events in our sessions
+      // but not be matched by session_id alone
+      await executeQuery(
+        `DELETE FROM messages WHERE event_id IN (
+          SELECT id FROM message_events WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))
+        )`,
+        { ids: sessionIdList }
+      );
+      // Step 3: Now safe to delete message_events
       await executeQuery(
         `DELETE FROM message_events WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
         { ids: sessionIdList }

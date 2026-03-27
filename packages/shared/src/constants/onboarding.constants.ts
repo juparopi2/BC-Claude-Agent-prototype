@@ -28,6 +28,7 @@ export const TIP_ID = {
   TOGGLE_COLUMNS: 'toggle-columns-tip',
   TABLE_RESIZE: 'table-resize-tip',
   REFRESH_SYNC: 'refresh-sync-tip',
+  VOICE_INPUT: 'voice-input-tip',
 } as const;
 
 export type TipId = (typeof TIP_ID)[keyof typeof TIP_ID];
@@ -44,6 +45,7 @@ export const TIP_MAX_SHOW_COUNTS: Record<TipId, number> = {
   [TIP_ID.TOGGLE_COLUMNS]: 1,
   [TIP_ID.TABLE_RESIZE]: 1,
   [TIP_ID.REFRESH_SYNC]: 3,
+  [TIP_ID.VOICE_INPUT]: 3,
 };
 
 /** Minimum messages in a session before showing the NEW_CHAT tip */

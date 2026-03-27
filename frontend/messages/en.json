@@ -64,6 +64,10 @@
       "refreshSync": {
         "title": "Pro Tip: Refresh Sync",
         "content": "Hit refresh to check for pending sync updates and re-verify your cloud connections."
+      },
+      "voiceInput": {
+        "title": "Pro Tip: Use Voice Input",
+        "content": "Tap the microphone to dictate longer, more detailed messages — richer context means better results."
       }
     },
     "common": {

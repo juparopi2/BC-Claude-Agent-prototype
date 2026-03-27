@@ -122,12 +122,37 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
   }
 
   const existingScopeFolder = await prisma.files.findFirst({
-    where: { connection_id: connectionId, external_id: scopeResourceId },
+    where: { connection_id: connectionId, external_id: scopeResourceId, deletion_status: null },
     select: { id: true },
   });
 
   if (existingScopeFolder) {
     folderMap.set(scopeResourceId, existingScopeFolder.id);
+    return;
+  }
+
+  // Check for soft-deleted scope root — un-delete instead of creating a duplicate
+  const softDeletedFolder = await prisma.files.findFirst({
+    where: { connection_id: connectionId, external_id: scopeResourceId, deletion_status: { not: null } },
+    select: { id: true },
+  });
+
+  if (softDeletedFolder) {
+    await prisma.files.update({
+      where: { id: softDeletedFolder.id },
+      data: {
+        deleted_at: null,
+        deletion_status: null,
+        pipeline_status: 'ready',
+        connection_scope_id: scopeId,
+        name: scopeDisplayName ?? (provider === 'sharepoint' ? 'SharePoint Folder' : 'OneDrive Folder'),
+      },
+    });
+    folderMap.set(scopeResourceId, softDeletedFolder.id);
+    logger.info(
+      { scopeId, scopeFolderId: softDeletedFolder.id, name: scopeDisplayName },
+      'Restored soft-deleted scope root folder'
+    );
     return;
   }
 
@@ -164,7 +189,7 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
     // Race condition: concurrent sync already created this folder
     if (err instanceof Error && 'code' in err && (err as { code: string }).code === 'P2002') {
       const existing = await prisma.files.findFirst({
-        where: { connection_id: connectionId, external_id: scopeResourceId },
+        where: { connection_id: connectionId, external_id: scopeResourceId, deletion_status: null },
         select: { id: true },
       });
       if (existing) {
@@ -251,6 +276,10 @@ export async function upsertFolder(params: UpsertFolderParams): Promise<string> 
         parent_folder_id: parentFolderId,
         connection_scope_id: scopeId,
         last_synced_at: new Date(),
+        // Restore if soft-deleted — folder exists in source, so it should be alive
+        deleted_at: null,
+        deletion_status: null,
+        pipeline_status: 'ready',
       },
     });
     folderMap.set(item.id, existing.id);

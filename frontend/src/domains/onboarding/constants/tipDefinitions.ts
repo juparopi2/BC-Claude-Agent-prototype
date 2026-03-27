@@ -53,4 +53,10 @@ export const TIP_DEFINITIONS: Record<TipId, TipDefinition> = {
     targetSelector: '[data-tour="refresh-button"]',
     placement: 'bottom',
   },
+  [TIP_ID.VOICE_INPUT]: {
+    id: TIP_ID.VOICE_INPUT,
+    i18nKey: 'tips.voiceInput',
+    targetSelector: '[data-tour="voice-input"]',
+    placement: 'top',
+  },
 };

@@ -43,6 +43,7 @@ Every ProTip has a **max occurrence limit** defined in `@bc-agent/shared` (`TIP_
 | `at-mention-tip` | 5 | Chat input is visible (visibility) |
 | `toggle-columns-tip` | 1 | File toolbar is visible (visibility) |
 | `table-resize-tip` | 1 | File data table is visible (visibility) |
+| `voice-input-tip` | 3 | Mic/send button area is visible (visibility) |
 
 **State tracked per tip:**
 - `tipShowCounts[tipId]` — incremented on each "Got it" dismiss
@@ -113,6 +114,7 @@ Tour definitions: `constants/tourSteps.ts`
 | `toggle-columns` | Column visibility button | `components/files/FileToolbar.tsx` |
 | `table-header` | Table header row | `components/files/FileDataTable.tsx` |
 | `source-filter` | Source filter area | `components/files/FileExplorer.tsx` |
+| `voice-input` | Mic/Send button wrapper | `components/chat/ChatInput.tsx` |
 
 ## CustomEvents for Tour Navigation
 

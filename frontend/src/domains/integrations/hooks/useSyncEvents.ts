@@ -242,7 +242,18 @@ export function useSyncEvents(): void {
           event.report.repairs.stuckRequeued +
           event.report.repairs.imageRequeued;
 
-        // Only show toast for cron-triggered reconciliation (login/manual already have toasts)
+        const folderRepairs = event.report.folderHierarchy?.scopeRootsRecreated ?? 0;
+
+        // Refresh UI for ANY trigger when repairs were made (folders restored, files requeued)
+        if (totalRepairs > 0 || folderRepairs > 0) {
+          refreshRef.current();
+          // Invalidate folder tree cache so expanded libraries re-fetch their children
+          for (const key of Object.keys(useFolderTreeStore.getState().treeFolders)) {
+            invalidateTreeFolderRef.current(key);
+          }
+        }
+
+        // Toast: cron shows background repair, login shows subtle notification
         if (event.triggeredBy === 'cron' && totalIssues > 0) {
           if (event.report.dryRun) {
             toast.info('Background file check', {
@@ -253,8 +264,10 @@ export function useSyncEvents(): void {
               description: `${totalRepairs} file${totalRepairs !== 1 ? 's' : ''} repaired automatically.`,
             });
           }
-          // Refresh file list so repaired files show updated status
-          refreshRef.current();
+        } else if (event.triggeredBy === 'login' && (totalRepairs > 0 || folderRepairs > 0)) {
+          toast.success('Files synchronized', {
+            description: `${totalRepairs + folderRepairs} issue${(totalRepairs + folderRepairs) !== 1 ? 's' : ''} repaired on login.`,
+          });
         }
         break;
       }

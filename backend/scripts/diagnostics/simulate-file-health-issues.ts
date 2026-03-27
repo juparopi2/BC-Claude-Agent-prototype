@@ -4,10 +4,11 @@
  * Creates REAL errors across DB + Azure Blob Storage + AI Search to trigger
  * all 4 issue types detected by the FileHealthWarning UI:
  *
- *   1. retry_exhausted  — DB: failed/retry=3, deletes file_chunks + AI Search docs
- *   2. blob_missing     — DB: failed, BACKS UP then DELETES the actual blob from Azure
- *   3. failed_retriable — DB: failed/retry=1, deletes AI Search docs only
- *   4. stuck_processing — DB: chunking + updated_at 2h ago, deletes file_chunks + AI Search docs
+ *   1. retry_exhausted       — DB: failed/retry=3, deletes file_chunks + AI Search docs
+ *   2. blob_missing          — DB: failed, BACKS UP then DELETES the actual blob from Azure
+ *   3. failed_retriable      — DB: failed/retry=1, deletes AI Search docs only
+ *   4. stuck_processing      — DB: chunking + updated_at 2h ago, deletes file_chunks + AI Search docs
+ *   5. soft_deleted_scope_root — DB: soft-deletes a folder scope's root folder (tests reconciliation restore)
  *
  * When "Retry" is clicked, the full BullMQ pipeline (extract → chunk → embed) executes
  * and the file genuinely returns to `ready`.
@@ -58,7 +59,7 @@ interface SavedFile {
   name: string;
   mimeType: string;
   blobPath: string | null;
-  scenario: 'retry_exhausted' | 'blob_missing' | 'failed_retriable' | 'stuck_processing';
+  scenario: 'retry_exhausted' | 'blob_missing' | 'failed_retriable' | 'stuck_processing' | 'soft_deleted_scope_root';
   originalDb: {
     pipeline_status: string;
     pipeline_retry_count: number;
@@ -605,6 +606,91 @@ async function simulate(): Promise<void> {
     }
   }
 
+  // ─── Scenario 5: soft_deleted_scope_root (1 folder scope) ──────────────────
+  console.log('\n--- Scenario 5: soft_deleted_scope_root (1 folder scope root) ---');
+  {
+    // Find a folder-type scope whose root folder exists and is alive
+    const folderScopes = await prisma.connection_scopes.findMany({
+      where: {
+        connections: { user_id: TARGET_USER, status: 'connected' },
+        scope_type: 'folder',
+        scope_resource_id: { not: null },
+      },
+      select: { id: true, scope_resource_id: true, connection_id: true, scope_display_name: true },
+      take: 5,
+    });
+
+    let simulated = false;
+    for (const scope of folderScopes) {
+      if (!scope.scope_resource_id) continue;
+
+      const rootFolder = await prisma.files.findFirst({
+        where: {
+          connection_id: scope.connection_id,
+          external_id: scope.scope_resource_id,
+          is_folder: true,
+          deletion_status: null,
+        },
+        select: {
+          id: true,
+          name: true,
+          mime_type: true,
+          blob_path: true,
+          pipeline_status: true,
+          pipeline_retry_count: true,
+          last_processing_error: true,
+          extracted_text: true,
+          updated_at: true,
+          deleted_at: true,
+          deletion_status: true,
+        },
+      });
+
+      if (!rootFolder) continue;
+
+      saved.push({
+        id:       rootFolder.id,
+        name:     rootFolder.name,
+        mimeType: rootFolder.mime_type,
+        blobPath: rootFolder.blob_path,
+        scenario: 'soft_deleted_scope_root',
+        originalDb: {
+          pipeline_status:       rootFolder.pipeline_status,
+          pipeline_retry_count:  rootFolder.pipeline_retry_count,
+          last_processing_error: rootFolder.last_processing_error,
+          blob_path:             rootFolder.blob_path,
+          extracted_text_length: rootFolder.extracted_text != null ? rootFolder.extracted_text.length : null,
+          updated_at:            rootFolder.updated_at,
+        },
+        originalExternal: {
+          fileChunkCount:   0,
+          searchDocCount:   0,
+          blobBackupPath:   null,
+          blobOriginalPath: null,
+        },
+      });
+
+      // Soft-delete the scope root folder (simulates disconnect/reconnect race)
+      await prisma.files.update({
+        where: { id: rootFolder.id },
+        data: {
+          deleted_at: new Date(),
+          deletion_status: 'pending',
+        },
+      });
+
+      console.log(`  [soft_deleted_scope_root] "${rootFolder.name}" (scope ${scope.id.substring(0, 8)}…) — soft-deleted`);
+      console.log(`    → Reconciliation should detect this via missing scope root check`);
+      console.log(`    → ensureScopeRootFolder should restore it (un-delete)`);
+      simulated = true;
+      break; // Only need one
+    }
+
+    if (!simulated) {
+      console.log('  [soft_deleted_scope_root] SKIPPED — no folder scopes with alive root folder found');
+    }
+  }
+
   // ─── Save Revert Data ────────────────────────────────────────────────────────
   fs.writeFileSync(REVERT_FILE, JSON.stringify(saved, null, 2), 'utf-8');
 
@@ -620,6 +706,8 @@ async function simulate(): Promise<void> {
       console.log(`  [failed_retriable] "${s.name}" — DB: failed, retry=1 | Deleted: ${ext.searchDocCount} search docs (kept chunks+text)`);
     } else if (s.scenario === 'stuck_processing') {
       console.log(`  [stuck_processing] "${s.name}" — DB: chunking, 2h ago | Deleted: ${ext.fileChunkCount} chunks, ${ext.searchDocCount} search docs`);
+    } else if (s.scenario === 'soft_deleted_scope_root') {
+      console.log(`  [scope_root_deleted] "${s.name}" — DB: soft-deleted (deletion_status='pending')`);
     }
   }
 
@@ -629,6 +717,8 @@ async function simulate(): Promise<void> {
   console.log('  3. Retry a failed_retriable → should succeed (check pipeline logs)');
   console.log('  4. blob_missing shows "Accept" not "Retry"');
   console.log('  5. stuck_processing auto-recovers within 15 min (StuckFileRecoveryService)');
+  console.log('  6. soft_deleted_scope_root auto-recovers on next reconciliation (login or cron)');
+  console.log('     → Check: POST /api/sync/health/reconcile → folderHierarchy.scopeRootsRecreated > 0');
   console.log('\n=== To Revert ===');
   console.log(`  npx tsx scripts/diagnostics/simulate-file-health-issues.ts --userId ${TARGET_USER} --revert --confirm-dev\n`);
   console.log(`Revert data saved to ${REVERT_FILE}`);
@@ -681,6 +771,23 @@ async function revert(): Promise<void> {
     if (file.pipeline_status === 'ready') {
       console.log(`  [SKIP]    "${entry.name}" — already ready (user retried successfully)`);
       skipped++;
+      continue;
+    }
+
+    // For soft_deleted_scope_root: just un-delete and restore original status
+    if (entry.scenario === 'soft_deleted_scope_root') {
+      await prisma.files.update({
+        where: { id: entry.id },
+        data: {
+          deleted_at: null,
+          deletion_status: null,
+          pipeline_status: entry.originalDb.pipeline_status,
+          pipeline_retry_count: entry.originalDb.pipeline_retry_count,
+          last_processing_error: entry.originalDb.last_processing_error,
+        },
+      });
+      console.log(`  [REVERTED] "${entry.name}" (soft_deleted_scope_root) — un-deleted`);
+      reverted++;
       continue;
     }
 

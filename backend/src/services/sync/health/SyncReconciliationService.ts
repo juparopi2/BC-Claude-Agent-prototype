@@ -724,7 +724,7 @@ export class SyncReconciliationService {
     const userScopes = await prisma.connection_scopes.findMany({
       where: {
         connections: { user_id: userId, status: 'connected' },
-        scope_type: { in: ['folder', 'library'] },
+        scope_type: 'folder',  // Only folder scopes have a root folder — library root items use parent_folder_id=null
         sync_status: { in: ['synced', 'idle', 'error'] },
       },
       select: {

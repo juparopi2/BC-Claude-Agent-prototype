@@ -778,7 +778,7 @@ export default function ChatInput({
             />
           </div>
 
-          <div className="relative shrink-0">
+          <div className="relative shrink-0" data-tour="voice-input">
             {isRecording && !canSend && (
               <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-destructive text-white text-xs font-medium px-2 py-0.5 rounded-full tabular-nums animate-in fade-in slide-in-from-bottom-1">
                 {formatRecordingDuration(recordingDuration)}

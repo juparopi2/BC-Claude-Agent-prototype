@@ -111,16 +111,14 @@ export class PipelineTestHelper {
       `INSERT INTO files (
         id, user_id, name, mime_type, size_bytes, blob_path,
         source_type, is_folder, is_favorite,
-        processing_retry_count, embedding_retry_count,
-        pipeline_status, pipeline_retry_count,
+        pipeline_status, pipeline_retry_count, last_error,
         content_hash, batch_id, parent_folder_id, deletion_status,
         created_at, updated_at
       )
       VALUES (
         @fileId, @userId, @name, @mimeType, @sizeBytes, @blobPath,
         @sourceType, @isFolder, @isFavorite,
-        @processingRetryCount, @embeddingRetryCount,
-        @pipelineStatus, @pipelineRetryCount,
+        @pipelineStatus, @pipelineRetryCount, @lastError,
         @contentHash, @batchId, @parentFolderId, @deletionStatus,
         @createdAt, @updatedAt
       )`,
@@ -134,10 +132,9 @@ export class PipelineTestHelper {
         sourceType: 'local',
         isFolder: false,
         isFavorite: false,
-        processingRetryCount: 0,
-        embeddingRetryCount: 0,
         pipelineStatus,
         pipelineRetryCount: opts?.pipelineRetryCount ?? 0,
+        lastError: null,
         contentHash: opts?.contentHash !== undefined ? opts.contentHash : null,
         batchId: opts?.batchId !== undefined ? opts.batchId : null,
         parentFolderId: opts?.parentFolderId !== undefined ? opts.parentFolderId : null,

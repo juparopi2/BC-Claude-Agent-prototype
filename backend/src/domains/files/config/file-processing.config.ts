@@ -20,11 +20,8 @@ import { z } from 'zod';
  */
 export const FileProcessingConfigSchema = z.object({
   retry: z.object({
-    /** Max processing retries (text extraction, OCR) */
-    maxProcessingRetries: z.number().int().min(1).max(10).default(2),
-
-    /** Max embedding retries (vector generation) */
-    maxEmbeddingRetries: z.number().int().min(1).max(10).default(3),
+    /** Max pipeline retries before permanent failure */
+    maxPipelineRetries: z.number().int().min(1).max(10).default(3),
 
     /** Base delay for exponential backoff (ms) */
     baseDelayMs: z.number().int().min(100).max(60000).default(5000),
@@ -68,8 +65,7 @@ export type FileProcessingConfig = z.infer<typeof FileProcessingConfigSchema>;
  */
 export const DEFAULT_FILE_PROCESSING_CONFIG: FileProcessingConfig = {
   retry: {
-    maxProcessingRetries: 2,
-    maxEmbeddingRetries: 3,
+    maxPipelineRetries: 3,
     baseDelayMs: 5000,
     maxDelayMs: 60000,
     backoffMultiplier: 2,
@@ -115,8 +111,7 @@ function parseEnvFloat(envVar: string | undefined, fallback: number): number {
  * Configuration is cached after first call.
  *
  * Environment variables:
- * - FILE_MAX_PROCESSING_RETRIES
- * - FILE_MAX_EMBEDDING_RETRIES
+ * - FILE_MAX_PIPELINE_RETRIES
  * - FILE_RETRY_BASE_DELAY_MS
  * - FILE_RETRY_MAX_DELAY_MS
  * - FILE_RETRY_BACKOFF_MULTIPLIER
@@ -135,13 +130,9 @@ export function getFileProcessingConfig(): FileProcessingConfig {
 
   const envConfig = {
     retry: {
-      maxProcessingRetries: parseEnvInt(
-        process.env.FILE_MAX_PROCESSING_RETRIES,
-        DEFAULT_FILE_PROCESSING_CONFIG.retry.maxProcessingRetries
-      ),
-      maxEmbeddingRetries: parseEnvInt(
-        process.env.FILE_MAX_EMBEDDING_RETRIES,
-        DEFAULT_FILE_PROCESSING_CONFIG.retry.maxEmbeddingRetries
+      maxPipelineRetries: parseEnvInt(
+        process.env.FILE_MAX_PIPELINE_RETRIES,
+        DEFAULT_FILE_PROCESSING_CONFIG.retry.maxPipelineRetries
       ),
       baseDelayMs: parseEnvInt(
         process.env.FILE_RETRY_BASE_DELAY_MS,

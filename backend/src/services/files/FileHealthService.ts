@@ -46,7 +46,7 @@ type DbFile = {
   source_type: string;
   pipeline_status: string;
   pipeline_retry_count: number | null;
-  last_processing_error: string | null;
+  last_error: string | null;
   blob_path: string | null;
   parent_folder_id: string | null;
   connection_scope_id: string | null;
@@ -61,7 +61,7 @@ const FILE_SELECT = {
   source_type: true,
   pipeline_status: true,
   pipeline_retry_count: true,
-  last_processing_error: true,
+  last_error: true,
   blob_path: true,
   parent_folder_id: true,
   connection_scope_id: true,
@@ -80,11 +80,11 @@ const FILE_SELECT = {
  */
 function isGraphApi404Error(file: DbFile): boolean {
   if (file.source_type !== 'onedrive' && file.source_type !== 'sharepoint') return false;
-  if (!file.last_processing_error) return false;
+  if (!file.last_error) return false;
   return (
-    file.last_processing_error.includes('Graph API error (404)') ||
-    file.last_processing_error.includes('itemNotFound') ||
-    file.last_processing_error.includes('resource could not be found')
+    file.last_error.includes('Graph API error (404)') ||
+    file.last_error.includes('itemNotFound') ||
+    file.last_error.includes('resource could not be found')
   );
 }
 
@@ -199,7 +199,7 @@ export class FileHealthService {
         sourceType: file.source_type,
         pipelineStatus: file.pipeline_status,
         retryCount: file.pipeline_retry_count ?? 0,
-        lastError: file.last_processing_error,
+        lastError: file.last_error,
         blobExists: blobExistsForFile,
         parentFolderId: file.parent_folder_id ? file.parent_folder_id.toUpperCase() : null,
         scopeId: file.connection_scope_id ? file.connection_scope_id.toUpperCase() : null,

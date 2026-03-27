@@ -36,8 +36,7 @@ export interface ReadinessChangedPayload {
  */
 export interface PermanentlyFailedPayload {
   error: string;
-  processingRetryCount: number;
-  embeddingRetryCount: number;
+  retryCount: number;
   canRetryManually: boolean;
 }
 

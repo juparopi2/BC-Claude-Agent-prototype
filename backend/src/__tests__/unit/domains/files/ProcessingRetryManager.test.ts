@@ -27,20 +27,16 @@ vi.mock('@/infrastructure/database/database', () => ({
 }));
 
 // ===== MOCK FILE RETRY SERVICE =====
-const mockIncrementProcessingRetryCount = vi.hoisted(() => vi.fn().mockResolvedValue(1));
-const mockIncrementEmbeddingRetryCount = vi.hoisted(() => vi.fn().mockResolvedValue(1));
-const mockSetLastProcessingError = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-const mockSetLastEmbeddingError = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const mockIncrementRetryCount = vi.hoisted(() => vi.fn().mockResolvedValue(1));
+const mockSetLastError = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockMarkAsPermanentlyFailed = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockClearFailedStatus = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const mockUpdatePipelineStatus = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('@/domains/files/retry/FileRetryService', () => ({
   getFileRetryService: vi.fn(() => ({
-    incrementProcessingRetryCount: mockIncrementProcessingRetryCount,
-    incrementEmbeddingRetryCount: mockIncrementEmbeddingRetryCount,
-    setLastProcessingError: mockSetLastProcessingError,
-    setLastEmbeddingError: mockSetLastEmbeddingError,
+    incrementRetryCount: mockIncrementRetryCount,
+    setLastError: mockSetLastError,
     markAsPermanentlyFailed: mockMarkAsPermanentlyFailed,
     clearFailedStatus: mockClearFailedStatus,
     updatePipelineStatus: mockUpdatePipelineStatus,
@@ -81,8 +77,7 @@ vi.mock('@/domains/files/cleanup', () => ({
 vi.mock('@/domains/files/config', () => ({
   getFileProcessingConfig: vi.fn(() => ({
     retry: {
-      maxProcessingRetries: 2,
-      maxEmbeddingRetries: 3,
+      maxPipelineRetries: 3,
       baseDelayMs: 5000,
       maxDelayMs: 60000,
       backoffMultiplier: 2,
@@ -139,8 +134,7 @@ describe('ProcessingRetryManager', () => {
     isFavorite: false,
     pipelineStatus: 'failed',
     readinessState: 'failed',
-    processingRetryCount: 0,
-    embeddingRetryCount: 0,
+    retryCount: 0,
     lastError: null,
     failedAt: new Date().toISOString(),
     hasExtractedText: false,
@@ -156,8 +150,7 @@ describe('ProcessingRetryManager', () => {
     vi.clearAllMocks();
 
     // Re-setup mock implementations
-    mockIncrementProcessingRetryCount.mockResolvedValue(1);
-    mockIncrementEmbeddingRetryCount.mockResolvedValue(1);
+    mockIncrementRetryCount.mockResolvedValue(1);
     mockGetFile.mockResolvedValue(createMockFile());
     mockCleanupForFile.mockResolvedValue({
       fileId: testFileId,
@@ -189,70 +182,59 @@ describe('ProcessingRetryManager', () => {
 
   // ========== SUITE 1: shouldRetry ==========
   describe('shouldRetry()', () => {
-    it('should return shouldRetry=true when retryCount < maxRetries (processing)', async () => {
-      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 0 }));
-      mockIncrementProcessingRetryCount.mockResolvedValue(1);
+    it('should return shouldRetry=true when retryCount < maxRetries', async () => {
+      mockGetFile.mockResolvedValue(createMockFile({ retryCount: 0 }));
+      mockIncrementRetryCount.mockResolvedValue(1);
 
-      const result = await retryManager.shouldRetry(testUserId, testFileId, 'processing');
+      const result = await retryManager.shouldRetry(testUserId, testFileId);
 
       expect(result.shouldRetry).toBe(true);
       expect(result.newRetryCount).toBe(1);
-      expect(result.maxRetries).toBe(2);
+      expect(result.maxRetries).toBe(3);
       expect(result.reason).toBe('within_limit');
     });
 
-    it('should return shouldRetry=false when retryCount >= maxRetries (processing)', async () => {
-      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 2 }));
-      mockIncrementProcessingRetryCount.mockResolvedValue(3);
+    it('should return shouldRetry=false when retryCount >= maxRetries', async () => {
+      mockGetFile.mockResolvedValue(createMockFile({ retryCount: 3 }));
+      mockIncrementRetryCount.mockResolvedValue(4);
 
-      const result = await retryManager.shouldRetry(testUserId, testFileId, 'processing');
+      const result = await retryManager.shouldRetry(testUserId, testFileId);
 
       expect(result.shouldRetry).toBe(false);
-      expect(result.newRetryCount).toBe(3);
+      expect(result.newRetryCount).toBe(4);
       expect(result.reason).toBe('max_retries_exceeded');
     });
 
     it('should return shouldRetry=false when retryCount equals maxRetries (boundary case)', async () => {
       // This test verifies the boundary condition: when count exactly equals max, no more retries
-      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 1 }));
-      mockIncrementProcessingRetryCount.mockResolvedValue(2); // equals maxRetries (2)
+      mockGetFile.mockResolvedValue(createMockFile({ retryCount: 2 }));
+      mockIncrementRetryCount.mockResolvedValue(3); // equals maxPipelineRetries (3)
 
-      const result = await retryManager.shouldRetry(testUserId, testFileId, 'processing');
+      const result = await retryManager.shouldRetry(testUserId, testFileId);
 
-      expect(result.shouldRetry).toBe(false); // 2 < 2 = false
-      expect(result.newRetryCount).toBe(2);
-      expect(result.maxRetries).toBe(2);
+      expect(result.shouldRetry).toBe(false); // 3 < 3 = false
+      expect(result.newRetryCount).toBe(3);
+      expect(result.maxRetries).toBe(3);
       expect(result.reason).toBe('max_retries_exceeded');
-    });
-
-    it('should return shouldRetry=true for embedding within limit', async () => {
-      mockGetFile.mockResolvedValue(createMockFile({ embeddingRetryCount: 1 }));
-      mockIncrementEmbeddingRetryCount.mockResolvedValue(2);
-
-      const result = await retryManager.shouldRetry(testUserId, testFileId, 'embedding');
-
-      expect(result.shouldRetry).toBe(true);
-      expect(result.newRetryCount).toBe(2);
-      expect(result.maxRetries).toBe(3); // maxEmbeddingRetries = 3
     });
 
     it('should increment retry count via FileRetryService', async () => {
       mockGetFile.mockResolvedValue(createMockFile());
 
-      await retryManager.shouldRetry(testUserId, testFileId, 'processing');
+      await retryManager.shouldRetry(testUserId, testFileId);
 
-      expect(mockIncrementProcessingRetryCount).toHaveBeenCalledWith(testUserId, testFileId);
+      expect(mockIncrementRetryCount).toHaveBeenCalledWith(testUserId, testFileId);
     });
 
     it('should calculate exponential backoff correctly', async () => {
-      // Use first retry (newCount=1) where shouldRetry is true (1 < 2)
-      mockGetFile.mockResolvedValue(createMockFile({ processingRetryCount: 0 }));
-      mockIncrementProcessingRetryCount.mockResolvedValue(1);
+      // Use first retry (newCount=1) where shouldRetry is true (1 < 3)
+      mockGetFile.mockResolvedValue(createMockFile({ retryCount: 0 }));
+      mockIncrementRetryCount.mockResolvedValue(1);
 
-      const result = await retryManager.shouldRetry(testUserId, testFileId, 'processing');
+      const result = await retryManager.shouldRetry(testUserId, testFileId);
 
       // backoffDelayMs = baseDelay * 2^retryCount = 5000 * 2^0 = 5000 (plus jitter)
-      expect(result.shouldRetry).toBe(true); // 1 < 2 = true
+      expect(result.shouldRetry).toBe(true); // 1 < 3 = true
       expect(result.backoffDelayMs).toBeGreaterThanOrEqual(5000);
       expect(result.backoffDelayMs).toBeLessThanOrEqual(5500); // 10% jitter
     });
@@ -261,7 +243,7 @@ describe('ProcessingRetryManager', () => {
       mockGetFile.mockResolvedValue(null);
 
       await expect(
-        retryManager.shouldRetry(testUserId, testFileId, 'processing')
+        retryManager.shouldRetry(testUserId, testFileId)
       ).rejects.toThrow('File not found');
     });
   });
@@ -284,7 +266,7 @@ describe('ProcessingRetryManager', () => {
 
       await retryManager.executeManualRetry(testUserId, testFileId, 'full');
 
-      expect(mockClearFailedStatus).toHaveBeenCalledWith(testUserId, testFileId, 'full');
+      expect(mockClearFailedStatus).toHaveBeenCalledWith(testUserId, testFileId);
     });
 
     it('should update processing status for scope=full', async () => {
@@ -334,7 +316,7 @@ describe('ProcessingRetryManager', () => {
     it('should store error message', async () => {
       await retryManager.handlePermanentFailure(testUserId, testFileId, 'Processing failed');
 
-      expect(mockSetLastProcessingError).toHaveBeenCalledWith(
+      expect(mockSetLastError).toHaveBeenCalledWith(
         testUserId,
         testFileId,
         'Processing failed'

@@ -18,7 +18,6 @@ import {
   type RetryDecisionResult,
   type ManualRetryResult,
   type RetryScope,
-  type RetryPhase,
   type ParsedFile,
 } from '@bc-agent/shared';
 import { type PipelineStatus, PIPELINE_STATUS } from '@bc-agent/shared';
@@ -86,8 +85,7 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
    */
   async shouldRetry(
     userId: string,
-    fileId: string,
-    phase: RetryPhase
+    fileId: string
   ): Promise<RetryDecisionResult> {
     // Get current file state
     const file = await this.getFileFn(userId, fileId);
@@ -96,14 +94,10 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       throw new Error('File not found or unauthorized');
     }
 
-    const maxRetries = phase === 'processing'
-      ? this.config.retry.maxProcessingRetries
-      : this.config.retry.maxEmbeddingRetries;
+    const maxRetries = this.config.retry.maxPipelineRetries;
 
     // Increment retry count
-    const newCount = phase === 'processing'
-      ? await this.retryService.incrementProcessingRetryCount(userId, fileId)
-      : await this.retryService.incrementEmbeddingRetryCount(userId, fileId);
+    const newCount = await this.retryService.incrementRetryCount(userId, fileId);
 
     const shouldRetry = newCount < maxRetries;
     const backoffDelayMs = shouldRetry
@@ -114,7 +108,6 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       {
         userId,
         fileId,
-        phase,
         newCount,
         maxRetries,
         shouldRetry,
@@ -153,9 +146,8 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       };
     }
 
-    // 2. Validate file is in a retryable state (failed or stuck in processing)
-    const isStuckProcessing = file.readinessState === 'processing';
-    if (file.readinessState !== 'failed' && !isStuckProcessing) {
+    // 2. Validate file is in failed state
+    if (file.readinessState !== 'failed') {
       return {
         success: false,
         file,
@@ -163,10 +155,8 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
       };
     }
 
-    // 3. Clear failed status and reset counters (skip for stuck files — they aren't failed)
-    if (!isStuckProcessing) {
-      await this.retryService.clearFailedStatus(userId, fileId, scope);
-    }
+    // 3. Clear failed status and reset counter
+    await this.retryService.clearFailedStatus(userId, fileId);
 
     // 4. Update status based on scope
     if (scope === 'full') {
@@ -200,14 +190,14 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
   ): Promise<void> {
     this.log.info({ userId, fileId }, 'Handling permanent failure');
 
-    // Get file for retry counts before marking as failed
+    // Get file for retry count before marking as failed
     const file = await this.getFileFn(userId, fileId);
 
     // 1. Mark file as permanently failed
     await this.retryService.markAsPermanentlyFailed(userId, fileId);
 
     // 2. Store error message
-    await this.retryService.setLastProcessingError(userId, fileId, errorMessage);
+    await this.retryService.setLastError(userId, fileId, errorMessage);
 
     // 3. Clean up partial data
     try {
@@ -231,8 +221,7 @@ export class ProcessingRetryManager implements IProcessingRetryManager {
     // Emit permanently_failed event
     this.eventEmitter.emitPermanentlyFailed(ctx, {
       error: errorMessage,
-      processingRetryCount: file?.processingRetryCount ?? 0,
-      embeddingRetryCount: file?.embeddingRetryCount ?? 0,
+      retryCount: file?.retryCount ?? 0,
       canRetryManually: true,
     });
 

@@ -15,32 +15,23 @@
 import type { PipelineStatus } from '@bc-agent/shared';
 
 /**
- * Scope for clearing failed status.
- * - 'full': Clears all retry fields (processing + embedding)
- * - 'embedding_only': Clears only embedding retry fields
- */
-export type ClearFailedScope = 'full' | 'embedding_only';
-
-/**
  * Interface for file retry tracking service.
  *
  * Single Responsibility: Only handles retry-related state mutations.
  * Does NOT handle file CRUD, folder operations, or general processing status updates.
  *
  * Methods:
- * - incrementProcessingRetryCount: Track processing retry attempts
- * - incrementEmbeddingRetryCount: Track embedding retry attempts
- * - setLastProcessingError: Store last processing error message
- * - setLastEmbeddingError: Store last embedding error message
+ * - incrementRetryCount: Track pipeline retry attempts
+ * - setLastError: Store last error message
  * - markAsPermanentlyFailed: Mark file as permanently failed
  * - clearFailedStatus: Reset retry state for manual retry
  * - updatePipelineStatus: Update pipeline status
  */
 export interface IFileRetryService {
   /**
-   * Increment processing retry count.
+   * Increment pipeline retry count.
    *
-   * Called by BullMQ workers when processing fails and will be retried.
+   * Called when a file processing attempt fails and will be retried.
    * Uses OUTPUT INSERTED to return the new count atomically.
    *
    * @param userId - User ID for multi-tenant isolation
@@ -48,23 +39,10 @@ export interface IFileRetryService {
    * @returns New retry count after increment
    * @throws Error if file not found or unauthorized
    */
-  incrementProcessingRetryCount(userId: string, fileId: string): Promise<number>;
+  incrementRetryCount(userId: string, fileId: string): Promise<number>;
 
   /**
-   * Increment embedding retry count.
-   *
-   * Called by BullMQ workers when embedding generation fails and will be retried.
-   * Uses OUTPUT INSERTED to return the new count atomically.
-   *
-   * @param userId - User ID for multi-tenant isolation
-   * @param fileId - File ID to update
-   * @returns New retry count after increment
-   * @throws Error if file not found or unauthorized
-   */
-  incrementEmbeddingRetryCount(userId: string, fileId: string): Promise<number>;
-
-  /**
-   * Set last processing error message.
+   * Set last error message.
    *
    * Stores the error message for debugging and user display.
    * Automatically truncates to 1000 characters (DB column limit).
@@ -74,20 +52,7 @@ export interface IFileRetryService {
    * @param errorMessage - Error message to store
    * @throws Error if file not found or unauthorized
    */
-  setLastProcessingError(userId: string, fileId: string, errorMessage: string): Promise<void>;
-
-  /**
-   * Set last embedding error message.
-   *
-   * Stores the error message for debugging and user display.
-   * Automatically truncates to 1000 characters (DB column limit).
-   *
-   * @param userId - User ID for multi-tenant isolation
-   * @param fileId - File ID to update
-   * @param errorMessage - Error message to store
-   * @throws Error if file not found or unauthorized
-   */
-  setLastEmbeddingError(userId: string, fileId: string, errorMessage: string): Promise<void>;
+  setLastError(userId: string, fileId: string, errorMessage: string): Promise<void>;
 
   /**
    * Mark file as permanently failed.
@@ -104,15 +69,14 @@ export interface IFileRetryService {
   /**
    * Clear failed status to allow retry.
    *
-   * Resets retry counts, error messages, and failed_at timestamp.
+   * Resets retry count, error message, and failed_at timestamp.
    * Called when user manually retries a failed file.
    *
    * @param userId - User ID for multi-tenant isolation
    * @param fileId - File ID to update
-   * @param scope - Which fields to clear ('full' | 'embedding_only')
    * @throws Error if file not found or unauthorized
    */
-  clearFailedStatus(userId: string, fileId: string, scope?: ClearFailedScope): Promise<void>;
+  clearFailedStatus(userId: string, fileId: string): Promise<void>;
 
   /**
    * Update pipeline status.

@@ -236,8 +236,6 @@ export class SyncFileIngestionService {
           content_hash_external: item.eTag ?? null,
           parent_folder_id: parentFolderId,
           pipeline_status: 'queued',
-          processing_retry_count: 0,
-          embedding_retry_count: 0,
           is_favorite: false,
           is_shared: ctx.isShared,
         },

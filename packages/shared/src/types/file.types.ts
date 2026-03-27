@@ -151,11 +151,8 @@ export interface ParsedFile {
   /** Unified readiness state computed from pipeline status */
   readinessState: FileReadinessState;
 
-  /** Number of processing retry attempts */
-  processingRetryCount: number;
-
-  /** Number of embedding retry attempts */
-  embeddingRetryCount: number;
+  /** Number of pipeline retry attempts */
+  retryCount: number;
 
   /** Last error message from processing or embedding failure */
   lastError: string | null;
@@ -525,15 +522,6 @@ export function isAllowedMimeType(mimeType: string): mimeType is AllowedMimeType
 // ============================================
 
 /**
- * Phase of file processing that can be retried
- *
- * Phases:
- * - `processing`: Text extraction, OCR, preview generation
- * - `embedding`: Vector embedding generation for AI Search
- */
-export type RetryPhase = 'processing' | 'embedding';
-
-/**
  * Scope for retry operations
  *
  * Scopes:
@@ -788,8 +776,7 @@ export interface FileReadinessChangedEvent extends BaseFileWebSocketEvent {
  *   fileId: 'file-123',
  *   userId: 'user-456',
  *   error: 'OCR timeout after 30s',
- *   processingRetryCount: 2,
- *   embeddingRetryCount: 0,
+ *   retryCount: 2,
  *   canRetryManually: true,
  *   timestamp: '2026-01-14T10:30:00.000Z',
  * };
@@ -804,11 +791,8 @@ export interface FilePermanentlyFailedEvent extends BaseFileWebSocketEvent {
   /** Error message describing the failure */
   error: string;
 
-  /** Number of processing retries attempted */
-  processingRetryCount: number;
-
-  /** Number of embedding retries attempted */
-  embeddingRetryCount: number;
+  /** Number of pipeline retries attempted */
+  retryCount: number;
 
   /** Whether user can manually retry via API */
   canRetryManually: boolean;

@@ -209,8 +209,7 @@ describe('FileEventEmitter', () => {
 
       emitter.emitPermanentlyFailed(ctx, {
         error: 'OCR timeout after 30s',
-        processingRetryCount: 2,
-        embeddingRetryCount: 0,
+        retryCount: 2,
         canRetryManually: true,
       });
 
@@ -222,8 +221,7 @@ describe('FileEventEmitter', () => {
           fileId: 'file-123',
           userId: 'user-456',
           error: 'OCR timeout after 30s',
-          processingRetryCount: 2,
-          embeddingRetryCount: 0,
+          retryCount: 2,
           canRetryManually: true,
         })
       );
@@ -235,8 +233,7 @@ describe('FileEventEmitter', () => {
 
       emitter.emitPermanentlyFailed(ctx, {
         error: 'Test error',
-        processingRetryCount: 1,
-        embeddingRetryCount: 1,
+        retryCount: 1,
         canRetryManually: true,
       });
 
@@ -254,8 +251,7 @@ describe('FileEventEmitter', () => {
 
       emitter.emitPermanentlyFailed(ctx, {
         error: 'Unsupported file format',
-        processingRetryCount: 0,
-        embeddingRetryCount: 0,
+        retryCount: 0,
         canRetryManually: false,
       });
 
@@ -273,8 +269,7 @@ describe('FileEventEmitter', () => {
 
       emitter.emitPermanentlyFailed(ctx, {
         error: 'Test error',
-        processingRetryCount: 2,
-        embeddingRetryCount: 0,
+        retryCount: 2,
         canRetryManually: true,
       });
 
@@ -287,8 +282,7 @@ describe('FileEventEmitter', () => {
 
       emitter.emitPermanentlyFailed(ctx, {
         error: 'Test error',
-        processingRetryCount: 2,
-        embeddingRetryCount: 0,
+        retryCount: 2,
         canRetryManually: true,
       });
 
@@ -601,8 +595,7 @@ describe('FileEventEmitter', () => {
 
       emitter.emitPermanentlyFailed(ctx, {
         error: 'Max retries exceeded',
-        processingRetryCount: 2,
-        embeddingRetryCount: 0,
+        retryCount: 2,
         canRetryManually: true,
       });
 

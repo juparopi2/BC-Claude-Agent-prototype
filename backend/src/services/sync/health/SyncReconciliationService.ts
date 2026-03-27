@@ -242,9 +242,9 @@ export class SyncReconciliationService {
         deletion_status: null,
         source_type: { in: ['onedrive', 'sharepoint'] },
         OR: [
-          { last_processing_error: { contains: 'Graph API error (404)' } },
-          { last_processing_error: { contains: 'itemNotFound' } },
-          { last_processing_error: { contains: 'resource could not be found' } },
+          { last_error: { contains: 'Graph API error (404)' } },
+          { last_error: { contains: 'itemNotFound' } },
+          { last_error: { contains: 'resource could not be found' } },
         ],
       },
       select: { id: true },
@@ -442,7 +442,7 @@ export class SyncReconciliationService {
           data: {
             pipeline_status: 'queued',
             pipeline_retry_count: 0,
-            last_processing_error: null,
+            last_error: null,
             updated_at: new Date(),
           },
         });

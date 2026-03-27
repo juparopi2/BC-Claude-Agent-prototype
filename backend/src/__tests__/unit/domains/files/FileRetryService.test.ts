@@ -8,10 +8,8 @@
  * Based on: FileService.retry.test.ts (same tests, different service)
  *
  * Methods covered:
- * - incrementProcessingRetryCount()
- * - incrementEmbeddingRetryCount()
- * - setLastProcessingError()
- * - setLastEmbeddingError()
+ * - incrementRetryCount()
+ * - setLastError()
  * - markAsPermanentlyFailed()
  * - clearFailedStatus()
  * - updatePipelineStatus()
@@ -79,30 +77,30 @@ describe('FileRetryService', () => {
     });
   });
 
-  // ========== SUITE 1: incrementProcessingRetryCount ==========
-  describe('incrementProcessingRetryCount()', () => {
-    it('should increment count and return new value via OUTPUT INSERTED', async () => {
+  // ========== SUITE 1: incrementRetryCount ==========
+  describe('incrementRetryCount()', () => {
+    it('should increment count and return new value via OUTPUT INSERTED.pipeline_retry_count', async () => {
       mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ processing_retry_count: 3 }],
+        recordset: [{ pipeline_retry_count: 3 }],
         rowsAffected: [1],
       });
 
-      const result = await retryService.incrementProcessingRetryCount(testUserId, testFileId);
+      const result = await retryService.incrementRetryCount(testUserId, testFileId);
 
       expect(result).toBe(3);
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('OUTPUT INSERTED.processing_retry_count'),
+        expect.stringContaining('OUTPUT INSERTED.pipeline_retry_count'),
         expect.anything()
       );
     });
 
     it('should enforce multi-tenant isolation with user_id filter', async () => {
       mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ processing_retry_count: 1 }],
+        recordset: [{ pipeline_retry_count: 1 }],
         rowsAffected: [1],
       });
 
-      await retryService.incrementProcessingRetryCount(testUserId, testFileId);
+      await retryService.incrementRetryCount(testUserId, testFileId);
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.stringContaining('WHERE id = @id AND user_id = @user_id'),
@@ -120,66 +118,20 @@ describe('FileRetryService', () => {
       });
 
       await expect(
-        retryService.incrementProcessingRetryCount(testUserId, testFileId)
+        retryService.incrementRetryCount(testUserId, testFileId)
       ).rejects.toThrow('File not found or unauthorized');
     });
   });
 
-  // ========== SUITE 2: incrementEmbeddingRetryCount ==========
-  describe('incrementEmbeddingRetryCount()', () => {
-    it('should increment count and return new value via OUTPUT INSERTED', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ embedding_retry_count: 5 }],
-        rowsAffected: [1],
-      });
-
-      const result = await retryService.incrementEmbeddingRetryCount(testUserId, testFileId);
-
-      expect(result).toBe(5);
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('OUTPUT INSERTED.embedding_retry_count'),
-        expect.anything()
-      );
-    });
-
-    it('should enforce multi-tenant isolation with user_id filter', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [{ embedding_retry_count: 1 }],
-        rowsAffected: [1],
-      });
-
-      await retryService.incrementEmbeddingRetryCount(testUserId, testFileId);
-
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE id = @id AND user_id = @user_id'),
-        expect.objectContaining({
-          id: testFileId,
-          user_id: testUserId,
-        })
-      );
-    });
-
-    it('should throw error when file not found (empty recordset)', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({
-        recordset: [],
-        rowsAffected: [0],
-      });
-
-      await expect(
-        retryService.incrementEmbeddingRetryCount(testUserId, testFileId)
-      ).rejects.toThrow('File not found or unauthorized');
-    });
-  });
-
-  // ========== SUITE 3: setLastProcessingError ==========
-  describe('setLastProcessingError()', () => {
-    it('should store error message in database', async () => {
+  // ========== SUITE 2: setLastError ==========
+  describe('setLastError()', () => {
+    it('should store error message in last_error column', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
-      await retryService.setLastProcessingError(testUserId, testFileId, 'OCR extraction failed');
+      await retryService.setLastError(testUserId, testFileId, 'OCR extraction failed');
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('last_processing_error = @error'),
+        expect.stringContaining('last_error = @error'),
         expect.objectContaining({
           error: 'OCR extraction failed',
         })
@@ -190,7 +142,7 @@ describe('FileRetryService', () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
       const longError = 'x'.repeat(1500);
 
-      await retryService.setLastProcessingError(testUserId, testFileId, longError);
+      await retryService.setLastError(testUserId, testFileId, longError);
 
       expect(mockExecuteQuery).toHaveBeenCalledWith(
         expect.anything(),
@@ -204,50 +156,12 @@ describe('FileRetryService', () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
 
       await expect(
-        retryService.setLastProcessingError(testUserId, testFileId, 'Error')
+        retryService.setLastError(testUserId, testFileId, 'Error')
       ).rejects.toThrow('File not found or unauthorized');
     });
   });
 
-  // ========== SUITE 4: setLastEmbeddingError ==========
-  describe('setLastEmbeddingError()', () => {
-    it('should store error message in database', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
-
-      await retryService.setLastEmbeddingError(testUserId, testFileId, 'Embedding API timeout');
-
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.stringContaining('last_embedding_error = @error'),
-        expect.objectContaining({
-          error: 'Embedding API timeout',
-        })
-      );
-    });
-
-    it('should truncate error message to 1000 characters', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
-      const longError = 'y'.repeat(1500);
-
-      await retryService.setLastEmbeddingError(testUserId, testFileId, longError);
-
-      expect(mockExecuteQuery).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          error: expect.stringMatching(/^y{1000}$/),
-        })
-      );
-    });
-
-    it('should throw error when file not found (rowsAffected = 0)', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [0] });
-
-      await expect(
-        retryService.setLastEmbeddingError(testUserId, testFileId, 'Error')
-      ).rejects.toThrow('File not found or unauthorized');
-    });
-  });
-
-  // ========== SUITE 5: markAsPermanentlyFailed ==========
+  // ========== SUITE 3: markAsPermanentlyFailed ==========
   describe('markAsPermanentlyFailed()', () => {
     it('should set failed_at timestamp using GETUTCDATE()', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
@@ -283,42 +197,40 @@ describe('FileRetryService', () => {
     });
   });
 
-  // ========== SUITE 6: clearFailedStatus ==========
+  // ========== SUITE 4: clearFailedStatus ==========
   describe('clearFailedStatus()', () => {
-    it('should clear all retry fields with scope="full"', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
-
-      await retryService.clearFailedStatus(testUserId, testFileId, 'full');
-
-      const query = mockExecuteQuery.mock.calls[0]![0] as string;
-      expect(query).toContain('failed_at = NULL');
-      expect(query).toContain('last_embedding_error = NULL');
-      expect(query).toContain('embedding_retry_count = 0');
-      expect(query).toContain('last_processing_error = NULL');
-      expect(query).toContain('processing_retry_count = 0');
-    });
-
-    it('should clear only embedding fields with scope="embedding_only"', async () => {
-      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
-
-      await retryService.clearFailedStatus(testUserId, testFileId, 'embedding_only');
-
-      const query = mockExecuteQuery.mock.calls[0]![0] as string;
-      expect(query).toContain('failed_at = NULL');
-      expect(query).toContain('last_embedding_error = NULL');
-      expect(query).toContain('embedding_retry_count = 0');
-      expect(query).not.toContain('last_processing_error');
-      expect(query).not.toContain('processing_retry_count');
-    });
-
-    it('should default to scope="full" when scope not provided', async () => {
+    it('should reset pipeline_retry_count to 0', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
       await retryService.clearFailedStatus(testUserId, testFileId);
 
       const query = mockExecuteQuery.mock.calls[0]![0] as string;
-      expect(query).toContain('processing_retry_count = 0');
-      expect(query).toContain('last_processing_error = NULL');
+      expect(query).toContain('pipeline_retry_count = 0');
+    });
+
+    it('should reset all retry fields', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
+
+      await retryService.clearFailedStatus(testUserId, testFileId);
+
+      const query = mockExecuteQuery.mock.calls[0]![0] as string;
+      expect(query).toContain('failed_at = NULL');
+      expect(query).toContain('last_error = NULL');
+      expect(query).toContain('pipeline_retry_count = 0');
+    });
+
+    it('should enforce multi-tenant isolation with user_id filter', async () => {
+      mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
+
+      await retryService.clearFailedStatus(testUserId, testFileId);
+
+      expect(mockExecuteQuery).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE id = @id AND user_id = @user_id'),
+        expect.objectContaining({
+          id: testFileId,
+          user_id: testUserId,
+        })
+      );
     });
 
     it('should throw error when file not found (rowsAffected = 0)', async () => {
@@ -330,7 +242,7 @@ describe('FileRetryService', () => {
     });
   });
 
-  // ========== SUITE 7: updatePipelineStatus ==========
+  // ========== SUITE 5: updatePipelineStatus ==========
   describe('updatePipelineStatus()', () => {
     it('should update status to "pending"', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
@@ -345,7 +257,7 @@ describe('FileRetryService', () => {
       );
     });
 
-    it('should update status to "completed"', async () => {
+    it('should update status to "ready"', async () => {
       mockExecuteQuery.mockResolvedValueOnce({ recordset: [], rowsAffected: [1] });
 
       await retryService.updatePipelineStatus(testUserId, testFileId, 'ready');

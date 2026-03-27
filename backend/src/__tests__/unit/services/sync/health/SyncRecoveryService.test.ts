@@ -106,14 +106,14 @@ function makeScope(overrides?: {
 /** Build a minimal file record as returned by files.findMany */
 function makeFile(
   id: string,
-  overrides?: { pipeline_status?: string; processing_retry_count?: number; name?: string; mime_type?: string },
+  overrides?: { pipeline_status?: string; pipeline_retry_count?: number; name?: string; mime_type?: string },
 ) {
   return {
     id,
     name: overrides?.name ?? 'document.pdf',
     mime_type: overrides?.mime_type ?? 'application/pdf',
     pipeline_status: overrides?.pipeline_status ?? 'failed',
-    processing_retry_count: overrides?.processing_retry_count ?? 0,
+    pipeline_retry_count: overrides?.pipeline_retry_count ?? 0,
   };
 }
 
@@ -283,8 +283,8 @@ describe('SyncRecoveryService', () => {
   describe('retryFailedFiles', () => {
     it('re-enqueues failed files and increments retry count', async () => {
       mockFilesFindMany.mockResolvedValue([
-        makeFile(FILE_ID_1, { processing_retry_count: 1 }),
-        makeFile(FILE_ID_2, { processing_retry_count: 1 }),
+        makeFile(FILE_ID_1, { pipeline_retry_count: 1 }),
+        makeFile(FILE_ID_2, { pipeline_retry_count: 1 }),
       ]);
 
       const result = await service.retryFailedFiles(SCOPE_ID, USER_ID);
@@ -295,7 +295,7 @@ describe('SyncRecoveryService', () => {
           where: { id: FILE_ID_1 },
           data: expect.objectContaining({
             pipeline_status: 'queued',
-            processing_retry_count: 2,
+            pipeline_retry_count: { increment: 1 },
           }),
         }),
       );
@@ -305,10 +305,10 @@ describe('SyncRecoveryService', () => {
     });
 
     it('excludes files at max retries via the query filter', async () => {
-      // Only files with processing_retry_count < 3 are returned by the query.
+      // Only files with pipeline_retry_count < 3 are returned by the query.
       // This test verifies the query is set up correctly and only eligible files are processed.
       mockFilesFindMany.mockResolvedValue([
-        makeFile(FILE_ID_1, { processing_retry_count: 2 }),
+        makeFile(FILE_ID_1, { pipeline_retry_count: 2 }),
       ]);
 
       const result = await service.retryFailedFiles(SCOPE_ID, USER_ID);
@@ -317,7 +317,7 @@ describe('SyncRecoveryService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             pipeline_status: 'failed',
-            processing_retry_count: { lt: 3 },
+            pipeline_retry_count: { lt: 3 },
           }),
         }),
       );
@@ -326,8 +326,8 @@ describe('SyncRecoveryService', () => {
 
     it('handles per-file errors gracefully — first succeeds, second fails', async () => {
       mockFilesFindMany.mockResolvedValue([
-        makeFile(FILE_ID_1, { processing_retry_count: 0 }),
-        makeFile(FILE_ID_2, { processing_retry_count: 0 }),
+        makeFile(FILE_ID_1, { pipeline_retry_count: 0 }),
+        makeFile(FILE_ID_2, { pipeline_retry_count: 0 }),
       ]);
 
       // First update succeeds, second rejects

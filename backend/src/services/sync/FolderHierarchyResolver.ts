@@ -151,8 +151,6 @@ export async function ensureScopeRootFolder(params: EnsureScopeRootParams): Prom
         external_modified_at: null,
         parent_folder_id: null,
         pipeline_status: 'ready',
-        processing_retry_count: 0,
-        embedding_retry_count: 0,
         is_favorite: false,
       },
     });
@@ -277,8 +275,6 @@ export async function upsertFolder(params: UpsertFolderParams): Promise<string> 
         external_modified_at: item.lastModifiedAt ? new Date(item.lastModifiedAt) : null,
         parent_folder_id: parentFolderId,
         pipeline_status: 'ready',
-        processing_retry_count: 0,
-        embedding_retry_count: 0,
         is_favorite: false,
       },
     });

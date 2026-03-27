@@ -120,7 +120,6 @@ export type {
   FolderDuplicateCheckResult,
   CheckFolderDuplicatesResponse,
   // Retry & Cleanup types
-  RetryPhase,
   RetryScope,
   RetryDecisionReason,
   RetryDecisionResult,

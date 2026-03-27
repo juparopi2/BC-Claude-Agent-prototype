@@ -340,8 +340,6 @@ describe('SyncFileIngestionService', () => {
       expect(createData.content_hash_external).toBe('"abc123etag"');
       expect(createData.external_modified_at).toEqual(new Date('2024-06-15T12:30:00Z'));
       expect(createData.file_modified_at).toEqual(new Date('2024-06-15T12:30:00Z'));
-      expect(createData.processing_retry_count).toBe(0);
-      expect(createData.embedding_retry_count).toBe(0);
       expect(createData.is_favorite).toBe(false);
       expect(createData.blob_path).toBeNull();
     });

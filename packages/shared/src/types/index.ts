@@ -147,7 +147,6 @@ export {
 
 export type {
   // Retry & Cleanup types (D25 Sprint 2)
-  RetryPhase,
   RetryScope,
   RetryDecisionReason,
   RetryDecisionResult,

@@ -220,8 +220,6 @@ export class BatchUploadOrchestrator {
               size_bytes: BigInt(0),
               blob_path: '',
               source_type: FILE_SOURCE_TYPE.LOCAL,
-              processing_retry_count: 0,
-              embedding_retry_count: 0,
               is_favorite: false,
               pipeline_status: PIPELINE_STATUS.READY,
               parent_folder_id: parentFolderId,
@@ -266,8 +264,6 @@ export class BatchUploadOrchestrator {
             source_type: FILE_SOURCE_TYPE.LOCAL,
             is_folder: false,
             is_favorite: false,
-            processing_retry_count: 0,
-            embedding_retry_count: 0,
             pipeline_status: PIPELINE_STATUS.REGISTERED,
             parent_folder_id: file.parentTempId
               ? folderIdMap.get(file.parentTempId) ?? targetFolderId

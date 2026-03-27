@@ -340,13 +340,12 @@ export class FileContextPreparer implements IFileContextPreparer {
             parentFolderId: null,
             processingStatus: 'pending',
             readinessState: 'uploading', // Placeholder - will be replaced with actual data
-            processingRetryCount: 0,
+            retryCount: 0,
             processingLastError: null,
             processingLastAttemptAt: null,
             totalChunks: null,
             fileContentHash: null,
             // More required fields
-            embeddingRetryCount: 0,
             lastError: null,
             failedAt: null,
             contentHash: null,

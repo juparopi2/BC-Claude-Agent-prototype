@@ -9,18 +9,18 @@
  *
  * // Low-level retry tracking
  * const retryService = getFileRetryService();
- * await retryService.incrementProcessingRetryCount(userId, fileId);
+ * await retryService.incrementRetryCount(userId, fileId);
  *
  * // High-level retry orchestration
  * const retryManager = getProcessingRetryManager();
- * const decision = await retryManager.shouldRetry(userId, fileId, 'processing');
+ * const decision = await retryManager.shouldRetry(userId, fileId);
  * ```
  *
  * @module domains/files/retry
  */
 
 // Types
-export type { IFileRetryService, ClearFailedScope } from './IFileRetryService';
+export type { IFileRetryService } from './IFileRetryService';
 export type { IProcessingRetryManager } from './IProcessingRetryManager';
 
 // FileRetryService (low-level retry tracking)

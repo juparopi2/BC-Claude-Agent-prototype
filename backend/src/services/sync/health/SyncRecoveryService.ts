@@ -258,7 +258,7 @@ export class SyncRecoveryService {
    * Re-enqueue pipeline processing for failed files in a specific scope.
    *
    * Only files with `pipeline_status = 'failed'` and
-   * `processing_retry_count < 3` are eligible. Files that have already
+   * `pipeline_retry_count < 3` are eligible. Files that have already
    * exhausted their retry budget are silently skipped.
    */
   async retryFailedFiles(scopeId: string, userId: string): Promise<RecoveryResult> {
@@ -282,13 +282,13 @@ export class SyncRecoveryService {
         connection_scope_id: normalizedScopeId,
         user_id: normalizedUserId,
         pipeline_status: 'failed',
-        processing_retry_count: { lt: 3 },
+        pipeline_retry_count: { lt: 3 },
       },
       select: {
         id: true,
         name: true,
         mime_type: true,
-        processing_retry_count: true,
+        pipeline_retry_count: true,
       },
     });
 
@@ -305,7 +305,7 @@ export class SyncRecoveryService {
           where: { id: fileId },
           data: {
             pipeline_status: 'queued',
-            processing_retry_count: file.processing_retry_count + 1,
+            pipeline_retry_count: { increment: 1 },
           },
         });
 
@@ -322,7 +322,7 @@ export class SyncRecoveryService {
         this.logger.info(
           {
             fileId,
-            retryCount: file.processing_retry_count + 1,
+            retryCount: (file.pipeline_retry_count ?? 0) + 1,
           },
           'retryFailedFiles: file re-enqueued',
         );

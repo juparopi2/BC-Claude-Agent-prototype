@@ -101,8 +101,7 @@ export class FileEventEmitter implements IFileEventEmitter {
       fileId: ctx.fileId,
       userId: ctx.userId,
       error: payload.error,
-      processingRetryCount: payload.processingRetryCount,
-      embeddingRetryCount: payload.embeddingRetryCount,
+      retryCount: payload.retryCount,
       canRetryManually: payload.canRetryManually,
       timestamp: new Date().toISOString(),
     });
@@ -110,8 +109,7 @@ export class FileEventEmitter implements IFileEventEmitter {
     this.log.info(
       {
         fileId: ctx.fileId,
-        processingRetryCount: payload.processingRetryCount,
-        embeddingRetryCount: payload.embeddingRetryCount,
+        retryCount: payload.retryCount,
       },
       'Emitted permanently_failed event'
     );

@@ -5,7 +5,7 @@
  * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
  * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Seven drift conditions detected:
+ * Eight drift conditions detected:
  *   1. Files in DB as 'ready' but missing from the search index
  *   2. Documents in search index with no matching DB file (orphaned)
  *   3. Failed files eligible for retry (retry_count < 3)
@@ -13,6 +13,7 @@
  *   5. Ready images missing image_embeddings records
  *   6. External files (OneDrive/SharePoint) that no longer exist (Graph API 404)
  *   7. Broken folder hierarchy (orphaned children, missing scope roots)
+ *   8. Files on disconnected/expired connections (orphaned by disconnection)
  *
  * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
  * On-demand: always repairs (user explicitly requested it).
@@ -284,7 +285,42 @@ export class SyncReconciliationService {
 
     const folderHierarchyIssues = await this.detectFolderHierarchyIssues(userId);
 
-    // ── i. Optionally repair ──────────────────────────────────────────────
+    // ── i. Detect files on disconnected/expired connections ─────────────
+
+    const disconnectedFileRows = await prisma.files.findMany({
+      where: {
+        user_id: userId,
+        deleted_at: null,
+        deletion_status: null,
+        connection_id: { not: null },
+        connections: {
+          status: { in: ['disconnected', 'expired'] },
+        },
+      },
+      select: { id: true },
+    });
+    const disconnectedConnectionFiles = disconnectedFileRows.map((f) => f.id.toUpperCase());
+
+    // Also detect files whose connection was hard-deleted (connection_id references nothing)
+    const orphanedConnectionFiles = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT f.id
+      FROM files f
+      WHERE f.user_id = ${userId}
+        AND f.connection_id IS NOT NULL
+        AND f.deleted_at IS NULL
+        AND f.deletion_status IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM connections c WHERE c.id = f.connection_id
+        )
+    `;
+    for (const f of orphanedConnectionFiles) {
+      const upperId = f.id.toUpperCase();
+      if (!disconnectedConnectionFiles.includes(upperId)) {
+        disconnectedConnectionFiles.push(upperId);
+      }
+    }
+
+    // ── j. Optionally repair ──────────────────────────────────────────────
 
     const shouldRepair = options?.forceRepair || env.SYNC_RECONCILIATION_AUTO_REPAIR;
 
@@ -299,6 +335,7 @@ export class SyncReconciliationService {
         stuckFileRows,
         imagesMissingEmbeddings,
         externalNotFound,
+        disconnectedConnectionFiles,
       );
 
       // Folder hierarchy repair (independent of file-level repairs)
@@ -306,7 +343,7 @@ export class SyncReconciliationService {
     } else {
       repairs = {
         missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
-        imageRequeued: 0, externalNotFoundCleaned: 0,
+        imageRequeued: 0, externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
         folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, errors: 0 },
         errors: 0,
       };
@@ -325,6 +362,7 @@ export class SyncReconciliationService {
       stuckFiles,
       imagesMissingEmbeddings,
       externalNotFound,
+      disconnectedConnectionFiles,
       folderHierarchyIssues,
       repairs,
       dryRun: !shouldRepair,
@@ -347,6 +385,8 @@ export class SyncReconciliationService {
         stuckFilesCount: stuckFiles.length,
         imagesMissingEmbeddingsCount: imagesMissingEmbeddings.length,
         externalNotFoundCount: externalNotFound.length,
+        disconnectedConnectionFiles: undefined,
+        disconnectedConnectionFilesCount: disconnectedConnectionFiles.length,
         orphanedChildrenCount: folderHierarchyIssues.orphanedChildren.length,
         missingScopeRootsCount: folderHierarchyIssues.missingScopeRoots.length,
         scopesToResyncCount: folderHierarchyIssues.scopeIdsToResync.length,
@@ -378,11 +418,12 @@ export class SyncReconciliationService {
     stuckFileRows: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null }>,
     imagesMissingEmbeddings: string[],
     externalNotFound: string[],
+    disconnectedConnectionFiles: string[],
   ): Promise<ReconciliationRepairs> {
     const repairs: ReconciliationRepairs = {
       missingRequeued: 0, orphansDeleted: 0,
       failedRequeued: 0, stuckRequeued: 0, imageRequeued: 0,
-      externalNotFoundCleaned: 0,
+      externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
       folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, errors: 0 },
       errors: 0,
     };
@@ -596,6 +637,42 @@ export class SyncReconciliationService {
             ? { message: err.message, name: err.name }
             : { value: String(err) };
         this.logger.warn({ fileId, error: errorInfo }, 'Failed to soft-delete external-not-found file');
+        repairs.errors++;
+      }
+    }
+
+    // ── Soft-delete files on disconnected/expired connections ────────────
+
+    for (const fileId of disconnectedConnectionFiles) {
+      try {
+        // Delete vector chunks (best-effort)
+        try {
+          const { VectorSearchService } = await import('@/services/search/VectorSearchService');
+          await VectorSearchService.getInstance().deleteChunksForFile(fileId, userId);
+        } catch (vecErr) {
+          const errorInfo =
+            vecErr instanceof Error
+              ? { message: vecErr.message, name: vecErr.name }
+              : { value: String(vecErr) };
+          this.logger.warn({ fileId, error: errorInfo }, 'Failed to delete vector chunks for disconnected-connection file');
+        }
+
+        // Delete file_chunks records
+        await prisma.file_chunks.deleteMany({ where: { file_id: fileId } });
+
+        // Soft-delete — must set BOTH fields per project convention
+        await prisma.files.update({
+          where: { id: fileId },
+          data: { deleted_at: new Date(), deletion_status: 'pending' },
+        });
+
+        repairs.disconnectedConnectionCleaned++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn({ fileId, error: errorInfo }, 'Failed to soft-delete disconnected-connection file');
         repairs.errors++;
       }
     }

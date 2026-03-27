@@ -139,9 +139,9 @@ export class ScopeCleanupService {
       );
     }
 
-    // 6. Delete all files for this scope (FK cascades handle chunks, embeddings, attachments)
-    //    Break self-referential FK first, then delete in batches to avoid EREQINPROG
-    //    from cascade-heavy transactions exceeding the MSSQL adapter timeout.
+    // 6. Delete all files for this scope.
+    //    Pre-delete cascade targets (file_chunks, image_embeddings, message_file_attachments)
+    //    explicitly to avoid heavy CASCADE deletes that exceed the MSSQL request timeout.
     if (fileIds.length > 0) {
       await prisma.$executeRaw`
         UPDATE files SET parent_folder_id = NULL
@@ -150,6 +150,15 @@ export class ScopeCleanupService {
 
       for (let i = 0; i < fileIds.length; i += FILE_DELETION_BATCH_SIZE) {
         const batch = fileIds.slice(i, i + FILE_DELETION_BATCH_SIZE);
+
+        // Delete child records in parallel (different tables, no contention)
+        await Promise.all([
+          prisma.file_chunks.deleteMany({ where: { file_id: { in: batch } } }),
+          prisma.image_embeddings.deleteMany({ where: { file_id: { in: batch } } }),
+          prisma.message_file_attachments.deleteMany({ where: { file_id: { in: batch } } }),
+        ]);
+
+        // Now delete files — lightweight, no cascade targets remain
         await prisma.files.deleteMany({ where: { id: { in: batch } } });
       }
 

@@ -67,7 +67,7 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects seven drift conditions:
+Detects eight drift conditions:
 
 | Drift | Detection | Repair Action |
 |---|---|---|
@@ -78,6 +78,7 @@ Detects seven drift conditions:
 | Images missing embeddings | Ready image files with no `image_embeddings` record | Reset to `'queued'`, re-enqueue |
 | External not found | External files (SP/OD) failed with `Graph API error (404)` | Soft-delete + vector cleanup (file no longer exists in source) |
 | Broken folder hierarchy | Files/folders with `parent_folder_id` referencing non-existent folder, or scope root folders missing from DB | Recreate scope roots via `ensureScopeRootFolder()`, queue full resync (clears delta cursor), reparent local orphans to root |
+| Disconnected connection files | Files with `connection_id` pointing to a `disconnected`/`expired` connection, or a connection that was hard-deleted | Soft-delete + vector cleanup (files are inaccessible, Graph API will fail) |
 
 **Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 
@@ -113,6 +114,18 @@ The reconciliation service verifies that the folder tree in the DB is structural
 **Rate limiting**: Max 5 scopes resynced per reconciliation run. Redis 30-min cooldown per scope (`sync:hierarchy_resync:{scopeId}`) prevents repeated resync.
 
 **Transient orphan guard**: Files belonging to scopes with `sync_status IN ('syncing', 'sync_queued')` are excluded from detection to avoid false positives during active sync.
+
+### Disconnected Connection Cleanup
+
+When a user disconnects a connection (via `DELETE /api/connections/:id/full-disconnect`), `ScopeCleanupService.removeScope()` handles cascade deletion of files, chunks, embeddings, and search docs. However, if files persist after disconnection (e.g., partial cleanup failure, or connection status changed to `disconnected` without triggering full cleanup), the reconciliation service detects and cleans them.
+
+**Detection**: Two-pass query:
+1. Prisma query: files with `connections.status IN ('disconnected', 'expired')`
+2. Raw SQL: files with `connection_id IS NOT NULL` but no matching `connections` row (hard-deleted connection)
+
+**Repair**: Same soft-delete pattern as `external_not_found` — vector cleanup (best-effort) + hard-delete `file_chunks` + soft-delete file (set both `deleted_at` + `deletion_status='pending'`). The `FileDeletionWorker` handles physical cleanup (blob, search index, hard delete) asynchronously.
+
+**Safety**: The unsafe `DELETE /api/connections/:id` endpoint (which bypassed cleanup) has been removed. Only `DELETE /api/connections/:id/full-disconnect` exists now.
 
 ### FileHealthService — Folder Exclusion
 

@@ -374,12 +374,16 @@ describe('SyncReconciliationService', () => {
     });
 
     it('deletes orphaned search documents via deleteChunksForFile', async () => {
-      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown } }) => {
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[]; where?: { pipeline_status?: unknown; connections?: unknown; connection_id?: unknown } }) => {
         if (args.distinct) {
           return Promise.resolve([{ user_id: USER_ID_1 }]);
         }
         // Return empty for failed/stuck/external-not-found queries — only test orphan detection
         if (args.where?.pipeline_status === 'failed' || (args.where?.pipeline_status as { in?: string[] })?.in) {
+          return Promise.resolve([]);
+        }
+        // Return empty for disconnected-connection query
+        if (args.where?.connections || args.where?.connection_id) {
           return Promise.resolve([]);
         }
         // DB only has FILE_ID_1 (ready files batch)
@@ -587,8 +591,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // findMany called: 1 (distinct users) + 2 (batches) + 4 (failed retriable, stuck, external-not-found, ready images) = 7 times
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(7);
+      // findMany called: 1 (distinct users) + 2 (batches) + 5 (failed retriable, stuck, external-not-found, ready images, disconnected-connection) = 8 times
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(8);
 
       // Report should reflect all 502 DB files (500 + 2)
       expect(reports[0].dbReadyFiles).toBe(502);
@@ -607,8 +611,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // 1 (distinct users) + 1 (single batch) + 4 (failed retriable, stuck, external-not-found, ready images) = 6 calls
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(6);
+      // 1 (distinct users) + 1 (single batch) + 5 (failed retriable, stuck, external-not-found, ready images, disconnected-connection) = 7 calls
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(7);
       expect(reports[0].dbReadyFiles).toBe(3);
     });
   });

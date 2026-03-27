@@ -142,28 +142,6 @@ export class ConnectionService {
   }
 
   /**
-   * Delete a connection, verifying ownership first.
-   * Throws if not found or owned by another user.
-   */
-  async deleteConnection(userId: string, connectionId: string): Promise<void> {
-    const normalizedUserId = userId.toUpperCase();
-    const normalizedConnectionId = connectionId.toUpperCase();
-    logger.debug({ userId: normalizedUserId, connectionId: normalizedConnectionId }, 'Deleting connection');
-
-    const repo = getConnectionRepository();
-    const row = await repo.findById(normalizedUserId, normalizedConnectionId);
-
-    if (!row) {
-      throw new ConnectionNotFoundError(normalizedConnectionId);
-    }
-
-    this.assertOwnership(row.user_id, normalizedUserId, normalizedConnectionId);
-
-    await repo.delete(normalizedConnectionId);
-    logger.info({ userId: normalizedUserId, connectionId: normalizedConnectionId }, 'Connection deleted');
-  }
-
-  /**
    * List all scopes for a connection, verifying ownership.
    * Throws if not found or owned by another user.
    */

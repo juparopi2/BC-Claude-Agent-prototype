@@ -8,7 +8,6 @@
  * - GET /api/connections/:id       → get single connection
  * - POST /api/connections          → create connection
  * - PATCH /api/connections/:id     → update connection
- * - DELETE /api/connections/:id    → disconnect/delete
  * - POST /api/connections/:id/refresh → silent token refresh via login session
  * - GET /api/connections/:id/scopes → list scopes
  * - DELETE /api/connections/:id/scopes/:scopeId → delete scope (cascade files)
@@ -305,41 +304,6 @@ router.patch(
           connectionId: req.params.id,
         },
         'Failed to update connection'
-      );
-      next(error);
-    }
-  }
-);
-
-/**
- * DELETE /api/connections/:id
- * Deletes (disconnects) a connection and all its scopes.
- */
-router.delete(
-  '/:id',
-  authenticateMicrosoft,
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const connectionId = parseConnectionId(req, res);
-      if (!connectionId) return;
-
-      const userId = req.userId!;
-      const service = getConnectionService();
-      await service.deleteConnection(userId, connectionId);
-
-      logger.info({ userId: userId.toUpperCase(), connectionId }, 'Connection deleted');
-      res.status(204).end();
-    } catch (error) {
-      if (handleDomainError(error, res)) return;
-
-      logger.error(
-        {
-          error: error instanceof Error
-            ? { message: error.message, stack: error.stack, name: error.name }
-            : { value: String(error) },
-          connectionId: req.params.id,
-        },
-        'Failed to delete connection'
       );
       next(error);
     }

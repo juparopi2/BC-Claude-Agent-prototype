@@ -160,6 +160,7 @@ router.post(
             failedRetriableCount: report.failedRetriable.length,
             stuckFilesCount: report.stuckFiles.length,
             imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+            disconnectedConnectionFilesCount: report.disconnectedConnectionFiles.length,
             folderHierarchy: {
               orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
               missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,

@@ -78,6 +78,7 @@ export interface ReconciliationRepairs {
   stuckRequeued: number;
   imageRequeued: number;
   externalNotFoundCleaned: number;
+  disconnectedConnectionCleaned: number;
   folderHierarchy: FolderHierarchyRepairs;
   errors: number;
 }
@@ -93,6 +94,7 @@ export interface ReconciliationReport {
   stuckFiles: string[];
   imagesMissingEmbeddings: string[];
   externalNotFound: string[];
+  disconnectedConnectionFiles: string[];
   folderHierarchyIssues: FolderHierarchyDetection;
   repairs: ReconciliationRepairs;
   dryRun: boolean;

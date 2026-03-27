@@ -493,7 +493,11 @@ describe('OrphanCleanupService', () => {
         },
       ];
 
-      mockFindMany.mockResolvedValue(oldFailedFiles);
+      // Scope 3 gets the failed files; Scope 4 gets [] so stuck-deletion path is skipped
+      // (avoids triggering the real VectorSearchService import which makes network calls)
+      mockFindMany
+        .mockResolvedValueOnce(oldFailedFiles) // Scope 3: old failures
+        .mockResolvedValueOnce([]);             // Scope 4: stuck deletions
       mockDeleteMany.mockResolvedValue({ count: 1 });
 
       const metrics = await service.run();
@@ -517,7 +521,11 @@ describe('OrphanCleanupService', () => {
         },
       ];
 
-      mockFindMany.mockResolvedValue(oldFailedFiles);
+      // Scope 3 gets the failed files; Scope 4 gets [] so stuck-deletion path is skipped
+      // (avoids triggering the real VectorSearchService import which makes network calls)
+      mockFindMany
+        .mockResolvedValueOnce(oldFailedFiles) // Scope 3: old failures
+        .mockResolvedValueOnce([]);             // Scope 4: stuck deletions
 
       // First file deletion fails in DB
       mockDeleteMany
@@ -545,7 +553,11 @@ describe('OrphanCleanupService', () => {
         },
       ];
 
-      mockFindMany.mockResolvedValue(oldFailedFiles);
+      // Scope 3 gets the failed files; Scope 4 gets [] so stuck-deletion path is skipped
+      // (avoids triggering the real VectorSearchService import which makes network calls)
+      mockFindMany
+        .mockResolvedValueOnce(oldFailedFiles) // Scope 3: old failures
+        .mockResolvedValueOnce([]);             // Scope 4: stuck deletions
       mockDeleteMany.mockResolvedValue({ count: 1 });
 
       await service.run({ failureRetentionDays: 30 });

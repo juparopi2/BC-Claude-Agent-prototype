@@ -15,12 +15,12 @@ async function main() {
       user_id: userId,
       deleted_at: null,
       OR: [
-        { last_processing_error: { contains: '[SIMULATED]' } },
+        { last_error: { contains: '[SIMULATED]' } },
         { pipeline_status: { in: ['failed'] }, pipeline_retry_count: { gte: 3 } },
         { pipeline_status: { in: ['extracting', 'chunking', 'embedding'] } },
       ],
     },
-    select: { id: true, name: true, pipeline_status: true, last_processing_error: true, blob_path: true },
+    select: { id: true, name: true, pipeline_status: true, last_error: true, blob_path: true },
   });
 
   // Also find files with mangled blob_path from blob_missing simulation
@@ -41,7 +41,7 @@ async function main() {
       data: {
         pipeline_status: 'ready',
         pipeline_retry_count: 0,
-        last_processing_error: null,
+        last_error: null,
         updated_at: new Date(),
       },
     });
@@ -55,7 +55,7 @@ async function main() {
       data: {
         pipeline_status: 'ready',
         pipeline_retry_count: 0,
-        last_processing_error: null,
+        last_error: null,
         blob_path: realPath,
         updated_at: new Date(),
       },

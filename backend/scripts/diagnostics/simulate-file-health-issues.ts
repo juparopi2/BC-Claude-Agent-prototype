@@ -63,7 +63,7 @@ interface SavedFile {
   originalDb: {
     pipeline_status: string;
     pipeline_retry_count: number;
-    last_processing_error: string | null;
+    last_error: string | null;
     blob_path: string | null;
     extracted_text_length: number | null;
     updated_at: Date | null;
@@ -333,7 +333,7 @@ async function simulate(): Promise<void> {
     source_type:           true,
     pipeline_status:       true,
     pipeline_retry_count:  true,
-    last_processing_error: true,
+    last_error: true,
     blob_path:             true,
     extracted_text:        true,
     updated_at:            true,
@@ -410,7 +410,7 @@ async function simulate(): Promise<void> {
         originalDb: {
           pipeline_status:       f.pipeline_status,
           pipeline_retry_count:  f.pipeline_retry_count,
-          last_processing_error: f.last_processing_error,
+          last_error: f.last_error,
           blob_path:             f.blob_path,
           extracted_text_length: f.extracted_text != null ? f.extracted_text.length : null,
           updated_at:            f.updated_at,
@@ -429,7 +429,7 @@ async function simulate(): Promise<void> {
         data: {
           pipeline_status:       'failed',
           pipeline_retry_count:  3,
-          last_processing_error: '[SIMULATED] Pipeline failed after 3 retries — text extraction timeout',
+          last_error: '[SIMULATED] Pipeline failed after 3 retries — text extraction timeout',
           extracted_text:        null,
         },
       });
@@ -472,7 +472,7 @@ async function simulate(): Promise<void> {
         originalDb: {
           pipeline_status:       f.pipeline_status,
           pipeline_retry_count:  f.pipeline_retry_count,
-          last_processing_error: f.last_processing_error,
+          last_error: f.last_error,
           blob_path:             f.blob_path,
           extracted_text_length: f.extracted_text != null ? f.extracted_text.length : null,
           updated_at:            f.updated_at,
@@ -491,7 +491,7 @@ async function simulate(): Promise<void> {
         data: {
           pipeline_status:       'failed',
           pipeline_retry_count:  0,
-          last_processing_error: '[SIMULATED] The specified blob does not exist. StorageError: BlobNotFound',
+          last_error: '[SIMULATED] The specified blob does not exist. StorageError: BlobNotFound',
         },
       });
 
@@ -523,7 +523,7 @@ async function simulate(): Promise<void> {
         originalDb: {
           pipeline_status:       f.pipeline_status,
           pipeline_retry_count:  f.pipeline_retry_count,
-          last_processing_error: f.last_processing_error,
+          last_error: f.last_error,
           blob_path:             f.blob_path,
           extracted_text_length: f.extracted_text != null ? f.extracted_text.length : null,
           updated_at:            f.updated_at,
@@ -542,7 +542,7 @@ async function simulate(): Promise<void> {
         data: {
           pipeline_status:       'failed',
           pipeline_retry_count:  1,
-          last_processing_error: '[SIMULATED] Cohere embedding service returned 503 — transient error during embedding generation',
+          last_error: '[SIMULATED] Cohere embedding service returned 503 — transient error during embedding generation',
         },
       });
 
@@ -574,7 +574,7 @@ async function simulate(): Promise<void> {
         originalDb: {
           pipeline_status:       f.pipeline_status,
           pipeline_retry_count:  f.pipeline_retry_count,
-          last_processing_error: f.last_processing_error,
+          last_error: f.last_error,
           blob_path:             f.blob_path,
           extracted_text_length: f.extracted_text != null ? f.extracted_text.length : null,
           updated_at:            f.updated_at,
@@ -638,7 +638,7 @@ async function simulate(): Promise<void> {
           blob_path: true,
           pipeline_status: true,
           pipeline_retry_count: true,
-          last_processing_error: true,
+          last_error: true,
           extracted_text: true,
           updated_at: true,
           deleted_at: true,
@@ -657,7 +657,7 @@ async function simulate(): Promise<void> {
         originalDb: {
           pipeline_status:       rootFolder.pipeline_status,
           pipeline_retry_count:  rootFolder.pipeline_retry_count,
-          last_processing_error: rootFolder.last_processing_error,
+          last_error: rootFolder.last_error,
           blob_path:             rootFolder.blob_path,
           extracted_text_length: rootFolder.extracted_text != null ? rootFolder.extracted_text.length : null,
           updated_at:            rootFolder.updated_at,
@@ -783,7 +783,7 @@ async function revert(): Promise<void> {
           deletion_status: null,
           pipeline_status: entry.originalDb.pipeline_status,
           pipeline_retry_count: entry.originalDb.pipeline_retry_count,
-          last_processing_error: entry.originalDb.last_processing_error,
+          last_error: entry.originalDb.last_error,
         },
       });
       console.log(`  [REVERTED] "${entry.name}" (soft_deleted_scope_root) — un-deleted`);
@@ -817,7 +817,7 @@ async function revert(): Promise<void> {
       data: {
         pipeline_status:       entry.originalDb.pipeline_status,
         pipeline_retry_count:  entry.originalDb.pipeline_retry_count,
-        last_processing_error: entry.originalDb.last_processing_error,
+        last_error: entry.originalDb.last_error,
         blob_path:             entry.originalDb.blob_path,
         updated_at:            entry.originalDb.updated_at,
       },

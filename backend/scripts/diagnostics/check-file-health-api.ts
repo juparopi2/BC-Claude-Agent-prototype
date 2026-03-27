@@ -36,9 +36,7 @@ async function main() {
       source_type: true,
       pipeline_status: true,
       pipeline_retry_count: true,
-      processing_retry_count: true,
-      embedding_retry_count: true,
-      last_processing_error: true,
+      last_error: true,
       blob_path: true,
       parent_folder_id: true,
       connection_scope_id: true,
@@ -52,10 +50,8 @@ async function main() {
     const retryExhausted = f.pipeline_retry_count >= MAX_RETRY_COUNT;
     console.log(`  [${retryExhausted ? 'RETRY_EXHAUSTED' : 'FAILED_RETRIABLE'}] ${f.name}`);
     console.log(`    pipeline_retry_count: ${f.pipeline_retry_count}`);
-    console.log(`    processing_retry_count: ${f.processing_retry_count}`);
-    console.log(`    embedding_retry_count: ${f.embedding_retry_count}`);
     console.log(`    source: ${f.source_type}, blob: ${f.blob_path ? 'SET' : 'NULL'}, external: ${isExternal}`);
-    console.log(`    error: ${f.last_processing_error ?? '(none)'}`);
+    console.log(`    error: ${f.last_error ?? '(none)'}`);
     console.log();
   }
 

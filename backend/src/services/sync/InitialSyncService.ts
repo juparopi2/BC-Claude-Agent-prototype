@@ -147,8 +147,8 @@ export class InitialSyncService {
         }
       } else {
         if (scope.scope_type === 'folder' && scope.scope_resource_id) {
-          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id }, 'Starting folder-scoped delta');
-          page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id);
+          logger.info({ connectionId, scopeId, folderId: scope.scope_resource_id, driveId: effectiveDriveId }, 'Starting folder-scoped delta');
+          page = await getOneDriveService().executeFolderDeltaQuery(connectionId, scope.scope_resource_id, undefined, effectiveDriveId);
         } else {
           logger.info({ connectionId, scopeId }, 'Starting root-scoped delta');
           page = await getOneDriveService().executeDeltaQuery(connectionId);
@@ -237,6 +237,7 @@ export class InitialSyncService {
           microsoftDriveId: effectiveDriveId,
           folderMap: externalToInternalId,
           provider: connection.provider,
+          isShared: !!scope.remote_drive_id,
         });
       }
 
@@ -271,6 +272,7 @@ export class InitialSyncService {
               microsoftDriveId: effectiveDriveId,
               folderMap: externalToInternalId,
               provider: connection.provider,
+              isShared: !!scope.remote_drive_id,
             });
           } catch (folderErr) {
             const errorInfo = folderErr instanceof Error

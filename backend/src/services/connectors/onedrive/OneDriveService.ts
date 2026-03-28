@@ -402,9 +402,10 @@ export class OneDriveService {
   async executeFolderDeltaQuery(
     connectionId: string,
     folderId: string,
-    deltaLink?: string
+    deltaLink?: string,
+    driveId?: string
   ): Promise<DeltaQueryResult> {
-    logger.info({ connectionId, folderId, hasDeltaLink: !!deltaLink }, 'Executing folder-scoped delta query');
+    logger.info({ connectionId, folderId, driveId, hasDeltaLink: !!deltaLink }, 'Executing folder-scoped delta query');
 
     const token = await getGraphTokenManager().getValidToken(connectionId);
 
@@ -414,9 +415,9 @@ export class OneDriveService {
       // deltaLink is an absolute URL — use it directly (already scoped to the folder)
       raw = await getGraphHttpClient().get<Record<string, unknown>>(deltaLink, token, true);
     } else {
-      const { driveId } = await getConnectionDriveInfo(connectionId);
+      const effectiveDriveId = driveId ?? (await getConnectionDriveInfo(connectionId)).driveId;
       raw = await getGraphHttpClient().get<Record<string, unknown>>(
-        `/drives/${driveId}/items/${folderId}/delta`,
+        `/drives/${effectiveDriveId}/items/${folderId}/delta`,
         token
       );
     }

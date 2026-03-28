@@ -663,7 +663,9 @@ describe('InitialSyncService', () => {
 
       expect(mockExecuteFolderDeltaQuery).toHaveBeenCalledWith(
         CONNECTION_ID,
-        FOLDER_RESOURCE_ID
+        FOLDER_RESOURCE_ID,
+        undefined,
+        DRIVE_ID
       );
       expect(mockExecuteDeltaQuery).not.toHaveBeenCalled();
       // PRD-112: 1 scope root folder created via prisma directly

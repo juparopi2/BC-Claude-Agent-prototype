@@ -16,7 +16,6 @@ import {
   setupDatabaseForTests,
   createTestSessionFactory,
   TestSessionFactory,
-  cleanupAllTestData,
   TEST_TIMEOUTS,
 } from '../../helpers';
 import {
@@ -66,7 +65,7 @@ describe('ChatAttachmentService Integration', () => {
       }
     }
 
-    await cleanupAllTestData();
+    await factory.cleanup();
     __resetChatAttachmentService();
     __resetFileUploadService();
   }, TEST_TIMEOUTS.AFTER_ALL);

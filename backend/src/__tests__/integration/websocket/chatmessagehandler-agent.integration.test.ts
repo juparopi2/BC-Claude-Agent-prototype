@@ -20,7 +20,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import {
   createTestSocketClient,
   createTestSessionFactory,
-  cleanupAllTestData,
   createTestSocketIOServer,
   TestSocketClient,
   TestSessionFactory,
@@ -81,7 +80,7 @@ describe('ChatMessageHandler + AgentOrchestrator Integration', () => {
     // Reset AgentOrchestrator singleton to avoid affecting other tests
     __resetAgentOrchestrator();
 
-    await cleanupAllTestData();
+    await factory.cleanup();
     if (client) await client.disconnect();
 
     await serverResult.cleanup();

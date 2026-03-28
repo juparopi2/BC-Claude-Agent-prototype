@@ -515,87 +515,106 @@ export class TestSessionFactory {
     }
 
     // Clean up Redis sessions (if Redis is available)
-    if (redis) {
-      for (const key of this.createdRedisKeys) {
-        await redis.del(key);
-      }
+    if (redis && this.createdRedisKeys.length > 0) {
+      await redis.del(this.createdRedisKeys);
     }
 
-    // Clean up database in correct order (respecting foreign keys)
-    for (const sessionId of this.createdSessions) {
-      // Delete messages FIRST (messages.event_id references message_events.id)
-      await executeQuery(
-        `DELETE FROM messages WHERE session_id = @sessionId`,
-        { sessionId }
-      );
+    // Batch cleanup: use STRING_SPLIT to delete all tracked resources in bulk
+    // This reduces ~128 individual queries to ~12, critical for Azure SQL latency in CI
+    if (this.createdSessions.length > 0) {
+      const sessionIdList = this.createdSessions.join(',');
+      const splitClause = `SELECT value FROM STRING_SPLIT(@ids, ',')`;
 
-      // Delete message_events AFTER messages
-      await executeQuery(
-        `DELETE FROM message_events WHERE session_id = @sessionId`,
-        { sessionId }
-      );
+      // Delete messages + message_events with retry.
+      // BullMQ async persistence may INSERT new messages between our DELETEs,
+      // causing FK_messages_event_id violations on the message_events DELETE.
+      // Retry handles this race condition.
+      let attempts = 3;
+      while (attempts > 0) {
+        try {
+          await executeQuery(
+            `DELETE FROM messages WHERE session_id IN (${splitClause})`,
+            { ids: sessionIdList }
+          );
+          await executeQuery(
+            `DELETE FROM messages WHERE event_id IN (
+              SELECT id FROM message_events WHERE session_id IN (${splitClause})
+            )`,
+            { ids: sessionIdList }
+          );
+          await executeQuery(
+            `DELETE FROM message_events WHERE session_id IN (${splitClause})`,
+            { ids: sessionIdList }
+          );
+          break;
+        } catch (err) {
+          attempts--;
+          if (attempts === 0) throw err;
+          // Wait for in-flight BullMQ workers to finish persisting
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
 
-      // Delete approvals
       await executeQuery(
-        `DELETE FROM approvals WHERE session_id = @sessionId`,
-        { sessionId }
+        `DELETE FROM approvals WHERE session_id IN (${splitClause})`,
+        { ids: sessionIdList }
       );
-
-      // Delete todos
       await executeQuery(
-        `DELETE FROM todos WHERE session_id = @sessionId`,
-        { sessionId }
+        `DELETE FROM todos WHERE session_id IN (${splitClause})`,
+        { ids: sessionIdList }
       );
-
-      // Delete usage events for this session
       await executeQuery(
-        `DELETE FROM usage_events WHERE session_id = @sessionId`,
-        { sessionId }
+        `DELETE FROM usage_events WHERE session_id IN (${splitClause})`,
+        { ids: sessionIdList }
       );
-      
-      // Delete token usage for this session
       await executeQuery(
-        `DELETE FROM token_usage WHERE session_id = @sessionId`,
-        { sessionId }
+        `DELETE FROM token_usage WHERE session_id IN (${splitClause})`,
+        { ids: sessionIdList }
       );
-
-      // Delete session
       await executeQuery(
-        `DELETE FROM sessions WHERE id = @sessionId`,
-        { sessionId }
+        `DELETE FROM sessions WHERE id IN (${splitClause})`,
+        { ids: sessionIdList }
       );
     }
 
     // Clean up users (after sessions due to foreign key)
-    for (const userId of this.createdUsers) {
-      // 1. Delete usage_events FIRST (has FK to both users and sessions)
-      await executeQuery(
-        `DELETE FROM usage_events WHERE user_id = @userId`,
-        { userId }
-      );
+    if (this.createdUsers.length > 0) {
+      const userIdList = this.createdUsers.join(',');
+      const splitClause = `SELECT value FROM STRING_SPLIT(@ids, ',')`;
 
-      // 2. Delete token_usage (has FK to users)
       await executeQuery(
-        `DELETE FROM token_usage WHERE user_id = @userId`,
-        { userId }
+        `DELETE FROM usage_events WHERE user_id IN (${splitClause})`,
+        { ids: userIdList }
       );
-
-      // 3. Delete any remaining sessions for this user
       await executeQuery(
-        `DELETE FROM sessions WHERE user_id = @userId`,
-        { userId }
+        `DELETE FROM token_usage WHERE user_id IN (${splitClause})`,
+        { ids: userIdList }
       );
-
-      // 4. Delete any files for this user (file management)
+      // Clean messages/events for any remaining sessions owned by these users
+      // (handles sessions not explicitly tracked by the factory)
       await executeQuery(
-        `DELETE FROM files WHERE user_id = @userId`,
-        { userId }
+        `DELETE FROM messages WHERE session_id IN (
+          SELECT id FROM sessions WHERE user_id IN (${splitClause})
+        )`,
+        { ids: userIdList }
       );
-
-      // 5. Delete user (after all FKs are cleared)
       await executeQuery(
-        `DELETE FROM users WHERE id = @userId`,
-        { userId }
+        `DELETE FROM message_events WHERE session_id IN (
+          SELECT id FROM sessions WHERE user_id IN (${splitClause})
+        )`,
+        { ids: userIdList }
+      );
+      await executeQuery(
+        `DELETE FROM sessions WHERE user_id IN (${splitClause})`,
+        { ids: userIdList }
+      );
+      await executeQuery(
+        `DELETE FROM files WHERE user_id IN (${splitClause})`,
+        { ids: userIdList }
+      );
+      await executeQuery(
+        `DELETE FROM users WHERE id IN (${splitClause})`,
+        { ids: userIdList }
       );
     }
 

@@ -68,8 +68,8 @@ export const TEST_APPROVAL_TIMEOUT = 5000;
 export const TEST_TIMEOUTS = {
   /** beforeAll hook timeout (ms) */
   BEFORE_ALL: 60000,
-  /** afterAll hook timeout (ms) */
-  AFTER_ALL: 30000,
+  /** afterAll hook timeout (ms) — must accommodate factory.cleanup() per-resource SQL deletes */
+  AFTER_ALL: 60000,
   /** Database initialization timeout (ms) */
   DATABASE_INIT: 90000,
   /** Redis initialization timeout (ms) */

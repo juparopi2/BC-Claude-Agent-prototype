@@ -157,6 +157,14 @@ describe('MessageQueue Integration Tests', () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
+    // Guard: verify test user still exists in DB
+    // Other test files may call cleanupAllTestData() which does a broad
+    // DELETE FROM users WHERE email LIKE '%@bcagent.test', nuking all test users
+    const userCheck = await factory.getUser(testUser.id);
+    if (!userCheck) {
+      testUser = await factory.createTestUser({ prefix: 'msgqueue_' });
+    }
+
     // Create unique session per test (isolation)
     testSession = await factory.createChatSession(testUser.id);
 

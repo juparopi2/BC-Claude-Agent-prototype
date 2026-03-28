@@ -1,7 +1,7 @@
 import { useCallback, memo, useEffect } from 'react';
-import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, PROVIDER_ACCENT_COLOR, PROVIDER_ID } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
-import { Folder, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Folder, ChevronRight, ChevronDown, Loader2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -132,9 +132,16 @@ export const FolderTreeItem = memo(function FolderTreeItem({
                 isExpanded ? 'text-amber-600' : 'text-amber-500'
               )} />
               {folder.sourceType !== FILE_SOURCE_TYPE.LOCAL && sourceUI.accentColor && (
-                <sourceUI.Icon
-                  className="absolute -bottom-0.5 -right-1 size-2.5"
-                />
+                folder.isShared ? (
+                  <Users
+                    className="absolute -bottom-0.5 -right-1 size-2.5"
+                    style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], fill: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], strokeWidth: 2.5 }}
+                  />
+                ) : (
+                  <sourceUI.Icon
+                    className="absolute -bottom-0.5 -right-1 size-2.5"
+                  />
+                )
               )}
             </span>
             <Tooltip>

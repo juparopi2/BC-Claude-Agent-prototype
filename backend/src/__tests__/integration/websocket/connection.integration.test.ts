@@ -13,7 +13,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import {
   createTestSocketClient,
   createTestSessionFactory,
-  cleanupAllTestData,
   createTestSocketIOServer,
   TestSocketClient,
   TestSessionFactory,
@@ -43,7 +42,7 @@ describe('WebSocket Connection Integration', () => {
 
   afterAll(async () => {
     // Cleanup test data
-    await cleanupAllTestData();
+    await factory.cleanup();
 
     // Close connections
     if (client) {

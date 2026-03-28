@@ -520,7 +520,11 @@ export class OneDriveService {
     const raw = await getGraphHttpClient().get<Record<string, unknown>>(path, token);
 
     const rawItems = Array.isArray(raw.value) ? (raw.value as Record<string, unknown>[]) : [];
-    const items = rawItems.map(mapDriveItem);
+    const items = rawItems.map((rawItem) => ({
+      ...mapDriveItem(rawItem),
+      remoteDriveId: driveId,
+      isShared: true,
+    }));
 
     // Extract nextPageToken from @odata.nextLink if present
     let nextPageToken: string | null = null;

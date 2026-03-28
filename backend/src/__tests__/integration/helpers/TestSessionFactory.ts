@@ -523,45 +523,56 @@ export class TestSessionFactory {
     // This reduces ~128 individual queries to ~12, critical for Azure SQL latency in CI
     if (this.createdSessions.length > 0) {
       const sessionIdList = this.createdSessions.join(',');
+      const splitClause = `SELECT value FROM STRING_SPLIT(@ids, ',')`;
 
-      // Delete in correct FK order (messages before message_events, etc.)
-      // Step 1: Delete messages by session_id
+      // Delete messages + message_events with retry.
+      // BullMQ async persistence may INSERT new messages between our DELETEs,
+      // causing FK_messages_event_id violations on the message_events DELETE.
+      // Retry handles this race condition.
+      let attempts = 3;
+      while (attempts > 0) {
+        try {
+          await executeQuery(
+            `DELETE FROM messages WHERE session_id IN (${splitClause})`,
+            { ids: sessionIdList }
+          );
+          await executeQuery(
+            `DELETE FROM messages WHERE event_id IN (
+              SELECT id FROM message_events WHERE session_id IN (${splitClause})
+            )`,
+            { ids: sessionIdList }
+          );
+          await executeQuery(
+            `DELETE FROM message_events WHERE session_id IN (${splitClause})`,
+            { ids: sessionIdList }
+          );
+          break;
+        } catch (err) {
+          attempts--;
+          if (attempts === 0) throw err;
+          // Wait for in-flight BullMQ workers to finish persisting
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
       await executeQuery(
-        `DELETE FROM messages WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM approvals WHERE session_id IN (${splitClause})`,
         { ids: sessionIdList }
       );
-      // Step 2: Delete messages that reference message_events via event_id (FK safety)
-      // Some messages may have event_id pointing to message_events in our sessions
-      // but not be matched by session_id alone
       await executeQuery(
-        `DELETE FROM messages WHERE event_id IN (
-          SELECT id FROM message_events WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))
-        )`,
-        { ids: sessionIdList }
-      );
-      // Step 3: Now safe to delete message_events
-      await executeQuery(
-        `DELETE FROM message_events WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM todos WHERE session_id IN (${splitClause})`,
         { ids: sessionIdList }
       );
       await executeQuery(
-        `DELETE FROM approvals WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM usage_events WHERE session_id IN (${splitClause})`,
         { ids: sessionIdList }
       );
       await executeQuery(
-        `DELETE FROM todos WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM token_usage WHERE session_id IN (${splitClause})`,
         { ids: sessionIdList }
       );
       await executeQuery(
-        `DELETE FROM usage_events WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
-        { ids: sessionIdList }
-      );
-      await executeQuery(
-        `DELETE FROM token_usage WHERE session_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
-        { ids: sessionIdList }
-      );
-      await executeQuery(
-        `DELETE FROM sessions WHERE id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM sessions WHERE id IN (${splitClause})`,
         { ids: sessionIdList }
       );
     }
@@ -569,25 +580,40 @@ export class TestSessionFactory {
     // Clean up users (after sessions due to foreign key)
     if (this.createdUsers.length > 0) {
       const userIdList = this.createdUsers.join(',');
+      const splitClause = `SELECT value FROM STRING_SPLIT(@ids, ',')`;
 
       await executeQuery(
-        `DELETE FROM usage_events WHERE user_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM usage_events WHERE user_id IN (${splitClause})`,
         { ids: userIdList }
       );
       await executeQuery(
-        `DELETE FROM token_usage WHERE user_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM token_usage WHERE user_id IN (${splitClause})`,
+        { ids: userIdList }
+      );
+      // Clean messages/events for any remaining sessions owned by these users
+      // (handles sessions not explicitly tracked by the factory)
+      await executeQuery(
+        `DELETE FROM messages WHERE session_id IN (
+          SELECT id FROM sessions WHERE user_id IN (${splitClause})
+        )`,
         { ids: userIdList }
       );
       await executeQuery(
-        `DELETE FROM sessions WHERE user_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM message_events WHERE session_id IN (
+          SELECT id FROM sessions WHERE user_id IN (${splitClause})
+        )`,
         { ids: userIdList }
       );
       await executeQuery(
-        `DELETE FROM files WHERE user_id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM sessions WHERE user_id IN (${splitClause})`,
         { ids: userIdList }
       );
       await executeQuery(
-        `DELETE FROM users WHERE id IN (SELECT value FROM STRING_SPLIT(@ids, ','))`,
+        `DELETE FROM files WHERE user_id IN (${splitClause})`,
+        { ids: userIdList }
+      );
+      await executeQuery(
+        `DELETE FROM users WHERE id IN (${splitClause})`,
         { ids: userIdList }
       );
     }

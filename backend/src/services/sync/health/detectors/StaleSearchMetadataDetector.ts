@@ -37,6 +37,7 @@ export class StaleSearchMetadataDetector implements DriftDetector<DetectedFileRo
         user_id: userId,
         pipeline_status: 'ready',
         deleted_at: null,
+        deletion_status: null,
         is_folder: false,
       },
       select: {

@@ -51,7 +51,7 @@ export class SearchIndexComparator {
 
     while (true) {
       const batch = await prisma.files.findMany({
-        where: { user_id: userId, pipeline_status: 'ready', deleted_at: null },
+        where: { user_id: userId, pipeline_status: 'ready', deleted_at: null, is_folder: false },
         select: { id: true },
         skip,
         take: DB_BATCH_SIZE,

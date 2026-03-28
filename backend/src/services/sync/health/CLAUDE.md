@@ -139,9 +139,27 @@ Detects eleven drift conditions:
 | Disconnected connection files | Files with `connection_id` pointing to a `disconnected`/`expired` connection, or a connection that was hard-deleted | Soft-delete + vector cleanup (files are inaccessible, Graph API will fail) |
 | Ready without chunks | `pipeline_status='ready'` AND `file_chunks` count = 0 (non-image files only) | Reset to `'queued'`, re-enqueue — pipeline will re-extract, chunk, and index |
 | Stale search metadata | AI Search `sourceType`/`parentFolderId` differs from DB `source_type`/`parent_folder_id` | Reset to `'queued'`, re-enqueue — pipeline reads fresh metadata from `FileRepository.getFileWithScopeMetadata()` |
-| Stuck deletions | `deletion_status='pending'` AND `deleted_at` > 1h ago | **Hierarchical truth**: if connection connected → RESURRECT (clear deletion, re-queue); if connection dead → HARD-DELETE directly |
+| Stuck deletions | Two-path: (1) `deletion_status='pending'` on connected+synced scopes → **immediate** (no threshold); (2) all other `deletion_status='pending'` → after 1h | **Hierarchical truth**: if connection connected → RESURRECT (clear deletion, re-queue); if connection dead → HARD-DELETE directly |
 
 **Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Cron checks all users with non-deleted files (not just ready). On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
+
+### Stuck Deletion Two-Path Strategy
+
+The StuckDeletionDetector uses a two-path OR query to handle disconnect/reconnect race conditions:
+
+1. **Fast path** (no time threshold) — files with `deletion_status='pending'` on scopes where `connection.status='connected'` AND `sync_status NOT IN ('error')`. These were soft-deleted during a disconnect/reconnect race but the scope is now active. The delta cursor won't re-deliver unchanged files, so without this path they'd remain stuck indefinitely.
+
+2. **Slow path** (1-hour threshold) — all other stuck deletions (disconnected, expired, no scope, or error scopes). The 1-hour delay gives the `FileDeletionWorker` time to complete legitimate cleanup.
+
+The StuckDeletionRepairer applies **hierarchical truth**: resurrect if connection is `'connected'`, hard-delete otherwise.
+
+### Defensive Guards (Cross-Detector)
+
+All detectors that query for active/ready files include these defensive guards:
+
+- **`deletion_status: null`** — prevents re-queueing files that are marked for deletion. Applied in: StuckPipelineDetector, FailedRetriableDetector, ImageEmbeddingDetector, ReadyWithoutChunksDetector, StaleSearchMetadataDetector.
+- **`is_folder: false`** — excludes folders from search-based comparisons (folders have `pipeline_status='ready'` but no search docs by design). Applied in: SearchIndexComparator (affects MissingFromSearch + OrphanedInSearch), ReadyWithoutChunksDetector, StaleSearchMetadataDetector.
+- **Transient sync guard** — excludes files in scopes with `sync_status IN ('syncing', 'sync_queued')` to avoid false positives during active sync. Applied in: StuckPipelineDetector, FailedRetriableDetector, FolderHierarchyDetector (orphan detection).
 
 ### External File Deletion Detection
 

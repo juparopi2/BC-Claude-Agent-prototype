@@ -786,9 +786,10 @@ describe('OneDriveService', () => {
         MOCK_TOKEN
       );
       expect(result.items).toHaveLength(1);
-      // Items are mapped with regular mapDriveItem — no shared metadata
+      // Items carry remote drive context for correct scope creation
       expect(result.items[0]?.id).toBe('CHILD-FILE-001');
-      expect(result.items[0]?.isShared).toBeUndefined();
+      expect(result.items[0]?.isShared).toBe(true);
+      expect(result.items[0]?.remoteDriveId).toBe('DRIVE-123');
       expect(result.nextPageToken).toBeNull();
     });
 

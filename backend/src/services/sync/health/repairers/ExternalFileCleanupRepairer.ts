@@ -71,10 +71,21 @@ export class ExternalFileCleanupRepairer {
 
         // Step 3 — Soft-delete the file row
         // MUST set BOTH fields — cleanup queries check deletion_status, not deleted_at
-        await prisma.files.update({
-          where: { id: fileId },
+        // Optimistic concurrency guard: deletion_status: null ensures we only update
+        // files that have not already been soft-deleted between detection and repair.
+        // If count is 0, the file was already deleted — skip silently.
+        const result = await prisma.files.updateMany({
+          where: { id: fileId, deletion_status: null },
           data: { deleted_at: new Date(), deletion_status: 'pending' },
         });
+
+        if (result.count === 0) {
+          this.logger.debug(
+            { fileId, userId },
+            'File already soft-deleted before repair — skipping',
+          );
+          continue;
+        }
 
         cleaned++;
       } catch (err) {

@@ -24,6 +24,7 @@ export class ImageEmbeddingDetector implements DriftDetector<string> {
         user_id: userId,
         pipeline_status: 'ready',
         deleted_at: null,
+        deletion_status: null,
         mime_type: { startsWith: 'image/' },
       },
       select: { id: true },

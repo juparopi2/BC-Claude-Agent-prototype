@@ -29,6 +29,7 @@ export class ReadyWithoutChunksDetector implements DriftDetector<DetectedFileRow
         user_id: userId,
         pipeline_status: 'ready',
         deleted_at: null,
+        deletion_status: null,
         is_folder: false,
         NOT: { mime_type: { startsWith: 'image/' } },
       },

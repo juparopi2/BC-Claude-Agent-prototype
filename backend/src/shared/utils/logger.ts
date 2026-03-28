@@ -151,6 +151,15 @@ const SEVERITY_MAP: Record<string, string> = {
   fatal: 'Critical',
 };
 
+/** Keys to exclude from App Insights custom dimensions (Pino internals, large HTTP objects) */
+const APP_INSIGHTS_SKIP_KEYS = new Set([
+  'req', 'res', 'request', 'response',
+  'pid', 'hostname', 'time', 'level', 'msg', 'v',
+]);
+
+/** Maximum length for a single custom dimension value */
+const APP_INSIGHTS_MAX_VALUE_LENGTH = 8192;
+
 /**
  * Send log entry to Application Insights as a trace
  */
@@ -166,15 +175,29 @@ function trackToAppInsights(
 
   const properties: Record<string, string> = {};
 
-  // Extract custom dimensions for filtering/searching in App Insights
-  if (context.userId) properties.userId = String(context.userId);
-  if (context.sessionId) properties.sessionId = String(context.sessionId);
-  if (context.service) properties.service = String(context.service);
-  if (context.jobId) properties.jobId = String(context.jobId);
-  if (context.fileId) properties.fileId = String(context.fileId);
-  if (context.correlationId)
-    properties.correlationId = String(context.correlationId);
-  if (context.requestId) properties.requestId = String(context.requestId);
+  for (const [key, value] of Object.entries(context)) {
+    if (APP_INSIGHTS_SKIP_KEYS.has(key)) continue;
+    if (value == null || typeof value === 'function' || typeof value === 'symbol') continue;
+
+    let strValue: string;
+    if (typeof value === 'string') {
+      strValue = value;
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      strValue = String(value);
+    } else {
+      try {
+        strValue = JSON.stringify(value);
+      } catch {
+        strValue = String(value);
+      }
+    }
+
+    if (strValue.length > APP_INSIGHTS_MAX_VALUE_LENGTH) {
+      strValue = strValue.slice(0, APP_INSIGHTS_MAX_VALUE_LENGTH) + '...[truncated]';
+    }
+
+    properties[key] = strValue;
+  }
 
   client.trackTrace({
     message: msg,

@@ -27,12 +27,30 @@ export class StuckPipelineDetector implements DriftDetector<DetectedFileRow> {
   async detect(userId: string): Promise<DetectionResult<DetectedFileRow>> {
     const stuckThreshold = new Date(Date.now() - STUCK_THRESHOLD_MS);
 
+    // Pre-fetch scope IDs that are actively syncing for this user.
+    // The files model has no Prisma relation to connection_scopes, so we resolve
+    // the scope IDs in a separate query and use `{ notIn: [...] }` below.
+    const syncingScopes = await prisma.connection_scopes.findMany({
+      where: {
+        connections: { user_id: userId },
+        sync_status: { in: ['syncing', 'sync_queued'] },
+      },
+      select: { id: true },
+    });
+    const syncingScopeIds = syncingScopes.map((s) => s.id);
+
     const rows = await prisma.files.findMany({
       where: {
         user_id: userId,
         pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
         updated_at: { lt: stuckThreshold },
         deleted_at: null,
+        deletion_status: null,
+        // Transient sync guard: exclude files in actively-syncing scopes.
+        // NULL scope IDs (local files) pass through since notIn doesn't match NULL.
+        ...(syncingScopeIds.length > 0
+          ? { OR: [{ connection_scope_id: null }, { connection_scope_id: { notIn: syncingScopeIds } }] }
+          : {}),
       },
       select: { id: true, name: true, mime_type: true, connection_scope_id: true },
     });

@@ -84,11 +84,15 @@ vi.mock('@/infrastructure/database/prisma', () => ({
 // Queue
 const mockAddFileProcessingFlow = vi.hoisted(() => vi.fn());
 const mockAddInitialSyncJob = vi.hoisted(() => vi.fn());
+const mockRemoveExistingPipelineJobs = vi.hoisted(() => vi.fn());
+const mockVerifyPipelineJobExists = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/queue', () => ({
   getMessageQueue: vi.fn(() => ({
     addFileProcessingFlow: mockAddFileProcessingFlow,
     addInitialSyncJob: mockAddInitialSyncJob,
+    removeExistingPipelineJobs: mockRemoveExistingPipelineJobs,
+    verifyPipelineJobExists: mockVerifyPipelineJobExists,
   })),
 }));
 
@@ -181,6 +185,8 @@ beforeEach(() => {
   mockFilesUpdate.mockResolvedValue({});
   mockFilesUpdateMany.mockResolvedValue({ count: 1 });
   mockAddFileProcessingFlow.mockResolvedValue(undefined);
+  mockRemoveExistingPipelineJobs.mockResolvedValue(undefined);
+  mockVerifyPipelineJobExists.mockResolvedValue(true);
   mockGetUniqueFileIds.mockResolvedValue([]);
   mockDeleteChunksForFile.mockResolvedValue(undefined);
   mockImageEmbeddingsFindMany.mockResolvedValue([]);

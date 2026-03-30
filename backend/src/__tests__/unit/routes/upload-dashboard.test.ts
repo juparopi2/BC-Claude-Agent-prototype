@@ -67,6 +67,8 @@ vi.mock('@/infrastructure/database/prisma', () => ({
 const mockMessageQueue = {
   getQueueStats: vi.fn(),
   addFileProcessingFlow: vi.fn(),
+  removeExistingPipelineJobs: vi.fn(),
+  verifyPipelineJobExists: vi.fn(),
 };
 
 vi.mock('@/infrastructure/queue/MessageQueue', () => ({

@@ -10,19 +10,65 @@
  *   npx tsx scripts/flush-redis-bullmq.ts --dry-run    # Preview what will be deleted
  *   npx tsx scripts/flush-redis-bullmq.ts              # Execute deletion
  *   npx tsx scripts/flush-redis-bullmq.ts --all        # Delete ALL Redis keys (nuclear option)
+ *   npx tsx scripts/flush-redis-bullmq.ts --env prod   # Connect to production Redis
  */
 
 import 'dotenv/config';
 import Redis from 'ioredis';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
-const REDIS_PORT = parseInt(process.env.REDIS_PORT || '6379', 10);
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD || undefined;
-const QUEUE_PREFIX = process.env.QUEUE_NAME_PREFIX || 'bcagent';
+/**
+ * BullMQ default Redis key prefix is 'bull'.
+ * The app's QUEUE_NAME_PREFIX is for queue NAME prefixing (e.g. 'local--file-extract'),
+ * NOT for the Redis key prefix. Scripts must use 'bull' to match production queues.
+ */
+const BULLMQ_PREFIX = 'bull';
+
+// ============================================================================
+// Redis Connection
+// ============================================================================
+
+/**
+ * Parse Azure Redis connection string format:
+ * hostname:port,password=xxx,ssl=True,abortConnect=False
+ */
+function parseRedisConnectionString(connStr: string): {
+  host: string; port: number; password: string; tls: boolean;
+} {
+  const parts = connStr.split(',');
+  const [hostPort] = parts;
+  const [host, portStr] = hostPort.split(':');
+  const passwordPart = parts.find(p => p.startsWith('password='));
+  const password = passwordPart ? passwordPart.split('=').slice(1).join('=') : '';
+  const sslPart = parts.find(p => p.toLowerCase().startsWith('ssl='));
+  const tls = sslPart ? sslPart.split('=')[1].toLowerCase() === 'true' : false;
+
+  return { host, port: parseInt(portStr) || 6380, password, tls };
+}
+
+function buildRedisConfig(): { host: string; port: number; password?: string; tls?: Record<string, never> } {
+  const connStr = process.env.REDIS_CONNECTION_STRING;
+  if (connStr) {
+    const parsed = parseRedisConnectionString(connStr);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+      tls: parsed.tls ? {} : undefined,
+    };
+  }
+
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6380'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
+  };
+}
 
 // ============================================================================
 // Types
@@ -50,13 +96,15 @@ Usage:
   npx tsx scripts/flush-redis-bullmq.ts [options]
 
 Options:
-  --dry-run    Show what would be deleted without actually deleting
-  --all        Delete ALL Redis keys (nuclear option - use carefully!)
+  --dry-run          Show what would be deleted without actually deleting
+  --all              Delete ALL Redis keys (nuclear option - use carefully!)
+  --env dev|prod     Connect to remote environment via Azure Key Vault
 
 Examples:
   npx tsx scripts/flush-redis-bullmq.ts --dry-run
   npx tsx scripts/flush-redis-bullmq.ts
   npx tsx scripts/flush-redis-bullmq.ts --all
+  npx tsx scripts/flush-redis-bullmq.ts --env prod --dry-run
 `);
     process.exit(0);
   }
@@ -139,19 +187,25 @@ async function flushPattern(
 // ============================================================================
 
 async function main() {
+  // Resolve remote environment if --env flag is set
+  const targetEnv = getTargetEnv();
+  if (targetEnv) {
+    await resolveEnvironment(targetEnv, { redis: true });
+  }
+
+  const REDIS_CONFIG = buildRedisConfig();
   const { dryRun, deleteAll } = parseArgs();
 
   console.log('=== FLUSH REDIS BULLMQ DATA ===\n');
   console.log(`Mode: ${dryRun ? 'DRY RUN (no actual deletions)' : 'LIVE'}`);
-  console.log(`Redis: ${REDIS_HOST}:${REDIS_PORT}`);
-  console.log(`Queue prefix: ${QUEUE_PREFIX}\n`);
+  console.log(`Redis: ${REDIS_CONFIG.host}:${REDIS_CONFIG.port}`);
+  console.log(`BullMQ prefix: ${BULLMQ_PREFIX}`);
+  if (targetEnv) console.log(`Environment: ${targetEnv}`);
+  console.log('');
 
   // Connect to Redis
   const redis = new Redis({
-    host: REDIS_HOST,
-    port: REDIS_PORT,
-    password: REDIS_PASSWORD,
-    tls: REDIS_PORT === 6380 ? {} : undefined,
+    ...REDIS_CONFIG,
     maxRetriesPerRequest: 3,
     retryStrategy: (times) => Math.min(times * 100, 3000),
   });
@@ -167,12 +221,7 @@ async function main() {
     ? ['*'] // Nuclear option
     : [
         // BullMQ queue data (main pattern)
-        'bull:*',
-
-        // BullMQ with queue prefix
-        `bull:${QUEUE_PREFIX}:*`,
-        `bull:${QUEUE_PREFIX}--*`,
-        `${QUEUE_PREFIX}:*`,
+        `${BULLMQ_PREFIX}:*`,
 
         // Embedding cache/state
         'embedding:*',

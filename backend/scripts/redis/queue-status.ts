@@ -10,30 +10,34 @@
  * Also absorbs functionality from check-failed-jobs.ts (use --verbose for detailed error view).
  *
  * Usage:
- *   npx tsx scripts/queue-status.ts
- *   npx tsx scripts/queue-status.ts --verbose
- *   npx tsx scripts/queue-status.ts --queue file-processing
- *   npx tsx scripts/queue-status.ts --show-failed 20 --verbose
+ *   npx tsx scripts/redis/queue-status.ts
+ *   npx tsx scripts/redis/queue-status.ts --verbose
+ *   npx tsx scripts/redis/queue-status.ts --queue file-extract
+ *   npx tsx scripts/redis/queue-status.ts --show-failed 20 --verbose
+ *   npx tsx scripts/redis/queue-status.ts --env prod
  */
 
 import 'dotenv/config';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
+import { hasFlag, getFlag, getNumericFlag } from '../_shared/args';
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const REDIS_CONFIG = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6380'),
-  password: process.env.REDIS_PASSWORD || undefined,
-  tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
-};
+/**
+ * BullMQ default Redis key prefix is 'bull'.
+ * The app's QUEUE_NAME_PREFIX is for queue NAME prefixing (e.g. 'local--file-extract'),
+ * NOT for the Redis key prefix. Scripts must use 'bull' to match production queues.
+ */
+const BULLMQ_PREFIX = 'bull';
 
-const QUEUE_PREFIX = process.env.QUEUE_NAME_PREFIX || 'bcagent';
-
-// All queue names in the system
+/**
+ * Queue names from QueueName enum in queue.constants.ts.
+ * Must stay in sync with the application code.
+ */
 const ALL_QUEUE_NAMES = [
   // Core queues
   'message-persistence',
@@ -41,9 +45,7 @@ const ALL_QUEUE_NAMES = [
   'event-processing',
   'usage-aggregation',
   'citation-persistence',
-  'file-cleanup',
   'file-deletion',
-  'file-bulk-upload',
   // File pipeline queues (BullMQ Flows)
   'file-extract',
   'file-chunk',
@@ -52,9 +54,53 @@ const ALL_QUEUE_NAMES = [
   // External sync queues (PRD-108)
   'external-file-sync',
   'subscription-mgmt',
-  // Maintenance
-  'file-maintenance',
+  // Maintenance & DLQ
+  'maintenance',
+  'dead-letter-queue',
 ];
+
+// ============================================================================
+// Redis Connection
+// ============================================================================
+
+/**
+ * Parse Azure Redis connection string format:
+ * hostname:port,password=xxx,ssl=True,abortConnect=False
+ */
+function parseRedisConnectionString(connStr: string): {
+  host: string; port: number; password: string; tls: boolean;
+} {
+  const parts = connStr.split(',');
+  const [hostPort] = parts;
+  const [host, portStr] = hostPort.split(':');
+  const passwordPart = parts.find(p => p.startsWith('password='));
+  const password = passwordPart ? passwordPart.split('=').slice(1).join('=') : '';
+  const sslPart = parts.find(p => p.toLowerCase().startsWith('ssl='));
+  const tls = sslPart ? sslPart.split('=')[1].toLowerCase() === 'true' : false;
+
+  return { host, port: parseInt(portStr) || 6380, password, tls };
+}
+
+function buildRedisConfig(): { host: string; port: number; password?: string; tls?: Record<string, never> } {
+  // Priority: REDIS_CONNECTION_STRING (from env-resolver) > individual vars > defaults
+  const connStr = process.env.REDIS_CONNECTION_STRING;
+  if (connStr) {
+    const parsed = parseRedisConnectionString(connStr);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+      tls: parsed.tls ? {} : undefined,
+    };
+  }
+
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6380'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
+  };
+}
 
 // ============================================================================
 // Types
@@ -105,38 +151,32 @@ interface Args {
 }
 
 function parseArgs(): Args {
-  const args = process.argv.slice(2);
-
-  if (args.includes('--help') || args.includes('-h')) {
+  if (hasFlag('--help') || hasFlag('-h')) {
     console.log(`
 Queue Status Script
 
 Usage:
-  npx tsx scripts/queue-status.ts [options]
+  npx tsx scripts/redis/queue-status.ts [options]
 
 Options:
   --verbose            Show detailed information including job data
   --queue <name>       Only show status for specific queue
   --show-failed <n>    Show up to N failed jobs per queue (default: 5)
+  --env dev|prod       Connect to remote environment via Azure Key Vault
 
 Examples:
-  npx tsx scripts/queue-status.ts
-  npx tsx scripts/queue-status.ts --verbose
-  npx tsx scripts/queue-status.ts --queue file-processing
-  npx tsx scripts/queue-status.ts --show-failed 10
+  npx tsx scripts/redis/queue-status.ts
+  npx tsx scripts/redis/queue-status.ts --verbose --env prod
+  npx tsx scripts/redis/queue-status.ts --queue file-extract
+  npx tsx scripts/redis/queue-status.ts --show-failed 10
 `);
     process.exit(0);
   }
 
-  const queueIndex = args.indexOf('--queue');
-  const showFailedIndex = args.indexOf('--show-failed');
-
   return {
-    verbose: args.includes('--verbose'),
-    queue: queueIndex !== -1 && args[queueIndex + 1] ? args[queueIndex + 1] : null,
-    showFailed: showFailedIndex !== -1 && args[showFailedIndex + 1]
-      ? parseInt(args[showFailedIndex + 1]) || 5
-      : 5,
+    verbose: hasFlag('--verbose'),
+    queue: getFlag('--queue'),
+    showFailed: getNumericFlag('--show-failed') ?? 5,
   };
 }
 
@@ -164,7 +204,7 @@ async function getRedisInfo(connection: IORedis): Promise<RedisInfo> {
 }
 
 async function getQueueKeyCount(connection: IORedis, queueName: string): Promise<number> {
-  const pattern = `${QUEUE_PREFIX}:${queueName}:*`;
+  const pattern = `${BULLMQ_PREFIX}:${queueName}:*`;
   const keys = await connection.keys(pattern);
   return keys.length;
 }
@@ -178,7 +218,7 @@ async function getQueueStatus(
   queueName: string,
   showFailedCount: number
 ): Promise<QueueStatus> {
-  const queue = new Queue(queueName, { connection, prefix: QUEUE_PREFIX });
+  const queue = new Queue(queueName, { connection, prefix: BULLMQ_PREFIX });
 
   try {
     // Get job counts
@@ -368,14 +408,22 @@ function truncate(str: string, maxLen: number): string {
 // ============================================================================
 
 async function main() {
+  // Resolve remote environment if --env flag is set
+  const targetEnv = getTargetEnv();
+  if (targetEnv) {
+    await resolveEnvironment(targetEnv, { redis: true });
+  }
+
   const args = parseArgs();
+  const redisConfig = buildRedisConfig();
 
   console.log('=== BULLMQ QUEUE STATUS ===\n');
-  console.log(`Redis: ${REDIS_CONFIG.host}:${REDIS_CONFIG.port}`);
-  console.log(`Queue prefix: ${QUEUE_PREFIX}`);
+  console.log(`Redis: ${redisConfig.host}:${redisConfig.port}`);
+  console.log(`BullMQ prefix: ${BULLMQ_PREFIX}`);
+  if (targetEnv) console.log(`Environment: ${targetEnv}`);
 
   const connection = new IORedis({
-    ...REDIS_CONFIG,
+    ...redisConfig,
     maxRetriesPerRequest: null,
     lazyConnect: true,
   });

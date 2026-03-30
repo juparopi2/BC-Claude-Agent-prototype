@@ -19,6 +19,7 @@ import { createChildLogger } from '@/shared/utils/logger';
 import { PIPELINE_STATUS, SYNC_WS_EVENTS } from '@bc-agent/shared';
 import type { PipelineStatus, ProcessingProgressPayload, ProcessingCompletedPayload } from '@bc-agent/shared';
 import type { ILoggerMinimal } from '../IMessageQueueDependencies';
+import { isValidUuidString } from '@/infrastructure/database/database-helpers';
 
 const DEFAULT_LOGGER = createChildLogger({ service: 'FilePipelineCompleteWorker' });
 
@@ -62,14 +63,16 @@ export class FilePipelineCompleteWorker {
 
       // 2. Increment processed_count on upload_batches (skip for external sync files with no batch)
       const { prisma } = await import('@/infrastructure/database/prisma');
-      if (batchId) {
-        await prisma.$executeRaw`
-          UPDATE upload_batches
-          SET processed_count = processed_count + 1,
-              updated_at = GETUTCDATE()
-          WHERE id = ${batchId}
-            AND user_id = ${userId}
-        `;
+      if (isValidUuidString(batchId)) {
+        await prisma.upload_batches.updateMany({
+          where: { id: batchId, user_id: userId },
+          data: {
+            processed_count: { increment: 1 },
+            updated_at: new Date(),
+          },
+        });
+      } else if (batchId) {
+        jobLogger.warn({ batchId }, 'Skipping upload_batches update — batchId is not a valid UUID');
       }
 
       // PRD-117: Scope-aware processing tracking
@@ -81,12 +84,16 @@ export class FilePipelineCompleteWorker {
       if (fileRecord?.connection_scope_id) {
         const scopeId = fileRecord.connection_scope_id;
         const isSuccess = finalStatus === PIPELINE_STATUS.READY;
-        const incrementCol = isSuccess ? 'processing_completed' : 'processing_failed';
 
-        await prisma.$executeRawUnsafe(
-          `UPDATE connection_scopes SET ${incrementCol} = ${incrementCol} + 1, updated_at = GETUTCDATE() WHERE id = @P1`,
-          scopeId
-        );
+        await prisma.connection_scopes.updateMany({
+          where: { id: scopeId },
+          data: {
+            ...(isSuccess
+              ? { processing_completed: { increment: 1 } }
+              : { processing_failed: { increment: 1 } }),
+            updated_at: new Date(),
+          },
+        });
 
         // Read scope counters to check completion
         const scope = await prisma.connection_scopes.findFirst({
@@ -118,7 +125,7 @@ export class FilePipelineCompleteWorker {
       }
 
       // 3. Read batch progress (only for upload batches, not external sync)
-      if (batchId) {
+      if (isValidUuidString(batchId)) {
         const batch = await prisma.upload_batches.findFirst({
           where: { id: batchId, user_id: userId },
           select: { total_files: true, confirmed_count: true, processed_count: true },

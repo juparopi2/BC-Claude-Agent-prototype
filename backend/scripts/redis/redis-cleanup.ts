@@ -10,16 +10,19 @@
  *   npx tsx scripts/redis-cleanup.ts                  # Clean file queues
  *   npx tsx scripts/redis-cleanup.ts --all            # Clean all queues
  *   npx tsx scripts/redis-cleanup.ts --flush-history  # Nuclear: delete ALL BullMQ data + caches
+ *   npx tsx scripts/redis-cleanup.ts --env prod       # Connect to production Redis
  *
  * Options:
  *   --dry-run         Show what would be deleted without actually deleting
  *   --stats           Show memory stats only
  *   --all             Clean all queues (default: only file-related queues)
  *   --flush-history   Delete ALL BullMQ data, embedding cache, rate limiters, etc.
+ *   --env dev|prod    Connect to remote environment via Azure Key Vault
  */
 
 import Redis from 'ioredis';
 import { config } from 'dotenv';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // Load environment variables
 config();
@@ -35,8 +38,12 @@ interface QueueStats {
   memoryBytes: number;
 }
 
-// Queue names (with optional prefix)
-const QUEUE_PREFIX = process.env.QUEUE_NAME_PREFIX || 'local';
+/**
+ * BullMQ default Redis key prefix is 'bull'.
+ * The app's QUEUE_NAME_PREFIX is for queue NAME prefixing (e.g. 'local--file-extract'),
+ * NOT for the Redis key prefix. Scripts must use 'bull' to match production queues.
+ */
+const BULLMQ_PREFIX = 'bull';
 const FILE_QUEUES = [
   'file-processing',
   'file-chunking',
@@ -91,49 +98,46 @@ Examples:
   };
 }
 
-function getRedisConfig(): { host: string; port: number; password?: string; tls?: object } {
-  const connectionString = process.env.REDIS_CONNECTION_STRING;
+/**
+ * Parse Azure Redis connection string format:
+ * hostname:port,password=xxx,ssl=True,abortConnect=False
+ */
+function parseRedisConnectionString(connStr: string): {
+  host: string; port: number; password: string; tls: boolean;
+} {
+  const parts = connStr.split(',');
+  const [hostPort] = parts;
+  const [host, portStr] = hostPort.split(':');
+  const passwordPart = parts.find(p => p.startsWith('password='));
+  const password = passwordPart ? passwordPart.split('=').slice(1).join('=') : '';
+  const sslPart = parts.find(p => p.toLowerCase().startsWith('ssl='));
+  const tls = sslPart ? sslPart.split('=')[1].toLowerCase() === 'true' : false;
 
-  if (connectionString) {
-    // Parse Azure Redis connection string
-    const parts = connectionString.split(',');
-    const hostPort = parts[0]!.trim();
-    const [host, portStr] = hostPort.includes(':')
-      ? hostPort.split(':')
-      : [hostPort, '6380'];
+  return { host, port: parseInt(portStr) || 6380, password, tls };
+}
 
-    let password = '';
-    for (const part of parts.slice(1)) {
-      const trimmed = part.trim();
-      if (trimmed.toLowerCase().startsWith('password=')) {
-        password = trimmed.substring(9);
-        break;
-      }
-    }
-
-    const port = parseInt(portStr ?? '6380', 10);
+function buildRedisConfig(): { host: string; port: number; password?: string; tls?: Record<string, never> } {
+  const connStr = process.env.REDIS_CONNECTION_STRING;
+  if (connStr) {
+    const parsed = parseRedisConnectionString(connStr);
     return {
-      host: host!,
-      port,
-      password: password || undefined,
-      ...(port === 6380 ? { tls: {} } : {}),
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+      tls: parsed.tls ? {} : undefined,
     };
   }
 
-  // Fall back to individual params
-  const port = parseInt(process.env.REDIS_PORT || '6379', 10);
   return {
     host: process.env.REDIS_HOST || 'localhost',
-    port,
+    port: parseInt(process.env.REDIS_PORT || '6380'),
     password: process.env.REDIS_PASSWORD || undefined,
-    // Azure Redis uses TLS on port 6380
-    ...(port === 6380 ? { tls: {} } : {}),
+    tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
   };
 }
 
 async function getQueueStats(redis: Redis, queueName: string): Promise<QueueStats> {
-  const fullName = QUEUE_PREFIX ? `${QUEUE_PREFIX}--${queueName}` : queueName;
-  const keyPattern = `bull:${fullName}:*`;
+  const keyPattern = `${BULLMQ_PREFIX}:${queueName}:*`;
 
   // Get all keys for this queue
   const keys = await redis.keys(keyPattern);
@@ -163,7 +167,7 @@ async function getQueueStats(redis: Redis, queueName: string): Promise<QueueStat
   }
 
   return {
-    name: fullName,
+    name: queueName,
     waiting,
     active,
     completed,
@@ -175,13 +179,12 @@ async function getQueueStats(redis: Redis, queueName: string): Promise<QueueStat
 }
 
 async function cleanQueue(redis: Redis, queueName: string, dryRun: boolean): Promise<number> {
-  const fullName = QUEUE_PREFIX ? `${QUEUE_PREFIX}--${queueName}` : queueName;
-  const keyPattern = `bull:${fullName}:*`;
+  const keyPattern = `${BULLMQ_PREFIX}:${queueName}:*`;
 
   const keys = await redis.keys(keyPattern);
 
   if (dryRun) {
-    console.log(`  [DRY RUN] Would delete ${keys.length} keys for queue: ${fullName}`);
+    console.log(`  [DRY RUN] Would delete ${keys.length} keys for queue: ${queueName}`);
     return keys.length;
   }
 
@@ -192,7 +195,7 @@ async function cleanQueue(redis: Redis, queueName: string, dryRun: boolean): Pro
       const batch = keys.slice(i, i + batchSize);
       await redis.del(...batch);
     }
-    console.log(`  Deleted ${keys.length} keys for queue: ${fullName}`);
+    console.log(`  Deleted ${keys.length} keys for queue: ${queueName}`);
   }
 
   return keys.length;
@@ -206,6 +209,13 @@ function formatBytes(bytes: number): string {
 }
 
 async function main() {
+  // Resolve remote environment if --env flag is set
+  const targetEnv = getTargetEnv();
+  if (targetEnv) {
+    await resolveEnvironment(targetEnv, { redis: true });
+  }
+
+  const REDIS_CONFIG = buildRedisConfig();
   const { dryRun, statsOnly, allQueues, flushHistory } = parseArgs();
   const queues = allQueues || flushHistory ? ALL_QUEUES : FILE_QUEUES;
 
@@ -215,14 +225,14 @@ async function main() {
   const mode = statsOnly ? 'Stats Only' : dryRun ? 'Dry Run' : flushHistory ? 'FLUSH HISTORY (nuclear)' : 'LIVE CLEANUP';
   console.log(`Mode: ${mode}`);
   console.log(`Queues: ${allQueues || flushHistory ? 'All' : 'File-related only'}`);
-  console.log(`Queue prefix: ${QUEUE_PREFIX || '(none)'}`);
+  console.log(`BullMQ prefix: ${BULLMQ_PREFIX}`);
+  if (targetEnv) console.log(`Environment: ${targetEnv}`);
   console.log('');
 
-  const config = getRedisConfig();
-  console.log(`Connecting to Redis: ${config.host}:${config.port}`);
+  console.log(`Connecting to Redis: ${REDIS_CONFIG.host}:${REDIS_CONFIG.port}`);
 
   const redis = new Redis({
-    ...config,
+    ...REDIS_CONFIG,
     maxRetriesPerRequest: null, // Required for long operations
     lazyConnect: true,
     connectTimeout: 30000,

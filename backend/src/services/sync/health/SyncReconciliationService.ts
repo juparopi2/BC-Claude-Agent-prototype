@@ -53,6 +53,7 @@ import { StuckDeletionRepairer } from './repairers/StuckDeletionRepairer';
 import { IsSharedRepairer } from './repairers/IsSharedRepairer';
 import { ScopeIntegrityDetector } from './detectors/ScopeIntegrityDetector';
 import { ScopeIntegrityRepairer } from './repairers/ScopeIntegrityRepairer';
+import { StaleSyncRepairer } from './repairers/StaleSyncRepairer';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -326,6 +327,9 @@ export class SyncReconciliationService {
       // Repair scope integrity issues (triggered last — scope-level resync)
       const scopeIntegrityRepairs = await new ScopeIntegrityRepairer().repair(normalizedId, scopeIntegrityIssues);
 
+      // Proactively trigger delta sync for scopes that haven't synced in 48h
+      const staleSyncRepairs = await new StaleSyncRepairer().repair(normalizedId);
+
       // Aggregate all errors
       const totalErrors =
         missingResult.errors +
@@ -340,7 +344,8 @@ export class SyncReconciliationService {
         staleMetadataRepairResult.errors +
         stuckDeletionRepairs.errors +
         isSharedRepairResult.errors +
-        scopeIntegrityRepairs.errors;
+        scopeIntegrityRepairs.errors +
+        staleSyncRepairs.errors;
 
       repairs = {
         missingRequeued: missingResult.missingRequeued,
@@ -357,6 +362,7 @@ export class SyncReconciliationService {
         stuckDeletions: stuckDeletionRepairs,
         isSharedCorrected: isSharedRepairResult.corrected,
         scopeIntegrity: scopeIntegrityRepairs,
+        staleSyncRepairs,
         errors: totalErrors,
       };
     } else {
@@ -370,6 +376,7 @@ export class SyncReconciliationService {
         stuckDeletions: { resurrected: 0, hardDeleted: 0, errors: 0 },
         isSharedCorrected: 0,
         scopeIntegrity: { resyncsTriggered: 0, scopesSkippedCooldown: 0, scopesSkippedCap: 0, errors: 0 },
+        staleSyncRepairs: { deltaSyncsTriggered: 0, scopesSkippedCooldown: 0, scopesSkippedSyncing: 0, errors: 0 },
         errors: 0,
       };
     }

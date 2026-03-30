@@ -41,6 +41,7 @@ export interface ScopeFileStats {
   failed: number;
   processing: number;
   queued: number;
+  stuck: number;
 }
 
 export interface ScopeHealthReport {
@@ -78,6 +79,13 @@ export interface StuckDeletionRepairs {
   errors: number;
 }
 
+export interface StaleSyncRepairs {
+  deltaSyncsTriggered: number;
+  scopesSkippedCooldown: number;
+  scopesSkippedSyncing: number;
+  errors: number;
+}
+
 export interface ReconciliationRepairs {
   missingRequeued: number;
   orphansDeleted: number;
@@ -93,6 +101,7 @@ export interface ReconciliationRepairs {
   stuckDeletions: StuckDeletionRepairs;
   isSharedCorrected: number;
   scopeIntegrity: ScopeIntegrityRepairs;
+  staleSyncRepairs: StaleSyncRepairs;
   errors: number;
 }
 

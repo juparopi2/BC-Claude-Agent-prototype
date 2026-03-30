@@ -37,6 +37,9 @@ const DEFAULT_STUCK_THRESHOLD_MS = 600_000; // 10 minutes
 const DEFAULT_STUCK_QUEUED_THRESHOLD_MS = 3_600_000; // 1 hour
 const STALE_SYNC_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
 const HIGH_FAILURE_RATE_THRESHOLD = 0.5; // 50%
+/** Files stuck in intermediate pipeline states for > 30 min are counted as degraded */
+const STUCK_PIPELINE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+const STUCK_PIPELINE_STATUSES = ['queued', 'extracting', 'chunking', 'embedding'] as const;
 const MAX_BACKOFF_ATTEMPTS = 5;
 /** Delay in ms before each retry attempt (index = attemptCount - 1) */
 const BACKOFF_SCHEDULE_MS = [
@@ -349,13 +352,14 @@ export class SyncHealthCheckService {
       });
     }
 
-    // 4. High failure rate: > 50% of files in failed state
-    if (fileStats.total > 0 && fileStats.failed / fileStats.total > HIGH_FAILURE_RATE_THRESHOLD) {
-      const rate = Math.round((fileStats.failed / fileStats.total) * 100);
+    // 4. High failure rate: > 50% of files in failed or stuck state
+    const problematicFiles = fileStats.failed + fileStats.stuck;
+    if (fileStats.total > 0 && problematicFiles / fileStats.total > HIGH_FAILURE_RATE_THRESHOLD) {
+      const rate = Math.round((problematicFiles / fileStats.total) * 100);
       issues.push({
         type: 'high_failure_rate',
         severity: 'error',
-        message: `${rate}% of files (${fileStats.failed}/${fileStats.total}) have failed pipeline status`,
+        message: `${rate}% of files (${problematicFiles}/${fileStats.total}) have failed or stuck pipeline status (failed: ${fileStats.failed}, stuck: ${fileStats.stuck})`,
         detectedAt: now,
       });
     }
@@ -395,13 +399,29 @@ export class SyncHealthCheckService {
 
   /**
    * Aggregate file counts by pipeline_status for a scope.
+   *
+   * Also counts files stuck in intermediate pipeline states (queued, extracting,
+   * chunking, embedding) with updated_at older than 30 minutes. These are
+   * included in the `stuck` field and factored into the high_failure_rate check.
    */
   private async getFileStats(scopeId: string): Promise<ScopeFileStats> {
-    const counts = await prisma.files.groupBy({
-      by: ['pipeline_status'],
-      where: { connection_scope_id: scopeId, deleted_at: null },
-      _count: true,
-    });
+    const stuckCutoff = new Date(Date.now() - STUCK_PIPELINE_THRESHOLD_MS);
+
+    const [counts, stuckCount] = await Promise.all([
+      prisma.files.groupBy({
+        by: ['pipeline_status'],
+        where: { connection_scope_id: scopeId, deleted_at: null },
+        _count: true,
+      }),
+      prisma.files.count({
+        where: {
+          connection_scope_id: scopeId,
+          deleted_at: null,
+          pipeline_status: { in: [...STUCK_PIPELINE_STATUSES] },
+          updated_at: { lt: stuckCutoff },
+        },
+      }),
+    ]);
 
     const stats: ScopeFileStats = {
       total: 0,
@@ -409,6 +429,7 @@ export class SyncHealthCheckService {
       failed: 0,
       processing: 0,
       queued: 0,
+      stuck: stuckCount,
     };
 
     for (const row of counts) {

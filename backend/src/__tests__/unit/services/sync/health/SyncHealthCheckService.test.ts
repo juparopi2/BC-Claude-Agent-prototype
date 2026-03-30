@@ -30,6 +30,7 @@ vi.mock('@/shared/utils/logger', () => ({
 // prisma mocks
 const mockScopesFindMany = vi.hoisted(() => vi.fn());
 const mockFilesGroupBy = vi.hoisted(() => vi.fn());
+const mockFilesCount = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
@@ -38,6 +39,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     },
     files: {
       groupBy: mockFilesGroupBy,
+      count: mockFilesCount,
     },
   },
 }));
@@ -176,6 +178,7 @@ beforeEach(() => {
   // Safe defaults
   mockScopesFindMany.mockResolvedValue([]);
   mockFilesGroupBy.mockResolvedValue(emptyFileStats);
+  mockFilesCount.mockResolvedValue(0); // default: no stuck files
 
   // Redis defaults: first attempt, no prior timestamp
   mockRedisIncr.mockResolvedValue(1);
@@ -795,6 +798,139 @@ describe('SyncHealthCheckService', () => {
 
       const staleIssues = report.scopes[0].issues.filter((i) => i.type === 'stale_sync');
       expect(staleIssues).toHaveLength(0);
+    });
+  });
+
+  // ==========================================================================
+  // getFileStats() — stuck field and high_failure_rate with stuck files
+  // ==========================================================================
+
+  describe('getFileStats() — stuck pipeline files', () => {
+    it('populates the stuck field from the count query', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // 5 ready files, 2 stuck files in intermediate states
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 5 },
+      ]);
+      mockFilesCount.mockResolvedValue(2);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].fileStats.stuck).toBe(2);
+    });
+
+    it('returns stuck = 0 when no files are stuck', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 10 },
+      ]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].fileStats.stuck).toBe(0);
+    });
+  });
+
+  describe('inspectScope() — high_failure_rate includes stuck files', () => {
+    it('triggers high_failure_rate when failed + stuck exceeds 50% threshold', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // Total = 10 files: 4 failed (40%) + 2 stuck (20%) = 60% > 50% threshold
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 4 },
+        { pipeline_status: 'failed', _count: 4 },
+        { pipeline_status: 'queued', _count: 2 },
+      ]);
+      mockFilesCount.mockResolvedValue(2); // 2 stuck
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].healthStatus).toBe('unhealthy');
+      expect(report.scopes[0].issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'high_failure_rate', severity: 'error' }),
+        ]),
+      );
+    });
+
+    it('does not trigger high_failure_rate when only failed files are below threshold', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // Total = 10: 4 failed (40%), 0 stuck — below 50% threshold
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 6 },
+        { pipeline_status: 'failed', _count: 4 },
+      ]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      const hrIssues = report.scopes[0].issues.filter((i) => i.type === 'high_failure_rate');
+      expect(hrIssues).toHaveLength(0);
+    });
+
+    it('triggers high_failure_rate when only stuck files push the rate over threshold', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // Total = 10: 0 failed, 6 stuck (60%) — stuck alone exceeds 50%
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 4 },
+        { pipeline_status: 'queued', _count: 6 },
+      ]);
+      mockFilesCount.mockResolvedValue(6); // all 6 queued files are stuck
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].healthStatus).toBe('unhealthy');
+      expect(report.scopes[0].issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'high_failure_rate', severity: 'error' }),
+        ]),
+      );
+    });
+
+    it('does not trigger high_failure_rate when failed + stuck are both zero', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 10 },
+      ]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      const hrIssues = report.scopes[0].issues.filter((i) => i.type === 'high_failure_rate');
+      expect(hrIssues).toHaveLength(0);
+    });
+
+    it('does not trigger high_failure_rate when scope has no files at all', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // total = 0 — division guard prevents false positive
+      mockFilesGroupBy.mockResolvedValue([]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      const hrIssues = report.scopes[0].issues.filter((i) => i.type === 'high_failure_rate');
+      expect(hrIssues).toHaveLength(0);
     });
   });
 });

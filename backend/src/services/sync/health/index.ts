@@ -27,6 +27,7 @@ export type {
   ScopeIntegrityReason,
   ScopeIntegrityRow,
   ScopeIntegrityRepairs,
+  StaleSyncRepairs,
 } from './types';
 export {
   ReconciliationInProgressError,
@@ -61,4 +62,5 @@ export {
   ExternalFileCleanupRepairer,
   FolderHierarchyRepairer,
   ScopeIntegrityRepairer,
+  StaleSyncRepairer,
 } from './repairers';

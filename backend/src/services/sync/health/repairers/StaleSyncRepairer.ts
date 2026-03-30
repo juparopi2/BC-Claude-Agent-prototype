@@ -120,7 +120,7 @@ export class StaleSyncRepairer {
           scopeId: scope.id,
           connectionId: scope.connection_id,
           userId,
-          triggerType: 'delta',
+          triggerType: 'polling',
         });
 
         // Set cooldown — fail-open on Redis errors

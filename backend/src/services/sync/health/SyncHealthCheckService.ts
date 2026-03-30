@@ -560,9 +560,11 @@ export class SyncHealthCheckService {
     const reports: ConnectionHealthReport[] = [];
 
     for (const [connectionId, scopes] of byConnection) {
+      if (scopes.length === 0) continue;
+
       // All scopes under a connection share the same userId, provider, and connectionStatus
-      // (safe to read from the first entry)
-      const first = scopes[0];
+      // (safe to read from the first entry — guaranteed non-empty by the grouping above)
+      const first = scopes[0]!;
 
       let healthyScopes = 0;
       let degradedScopes = 0;

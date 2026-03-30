@@ -151,6 +151,10 @@ export interface SyncHealthReportPayload {
       healthyScopes: number;
       degradedScopes: number;
       unhealthyScopes: number;
+      totalConnections?: number;
+      healthyConnections?: number;
+      degradedConnections?: number;
+      unhealthyConnections?: number;
     };
     scopes: Array<{
       scopeId: string;

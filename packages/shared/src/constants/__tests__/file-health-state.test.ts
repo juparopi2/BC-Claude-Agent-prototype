@@ -174,7 +174,7 @@ describe('HEALTHY_FILE_STATES matrix', () => {
   });
 
   it('all entries have expectedPipelineStatus = ready', () => {
-    for (const [key, state] of Object.entries(HEALTHY_FILE_STATES)) {
+    for (const [, state] of Object.entries(HEALTHY_FILE_STATES)) {
       expect(state.expectedPipelineStatus).toBe('ready');
     }
   });
@@ -306,6 +306,21 @@ describe('getFileHealthKey()', () => {
     expect(getFileHealthKey({ sourceType: 'local', mimeType: 'inode/directory', isFolder: true })).toBe('folder');
     expect(getFileHealthKey({ sourceType: 'onedrive', mimeType: 'inode/directory', isFolder: true })).toBe('folder');
     expect(getFileHealthKey({ sourceType: 'sharepoint', mimeType: 'inode/directory', isFolder: true })).toBe('folder');
+  });
+});
+
+describe('getExpectedHealthState()', () => {
+  it('returns the correct state entry for a given file descriptor', () => {
+    const state = getExpectedHealthState({ sourceType: 'sharepoint', mimeType: 'application/pdf', isFolder: false });
+    expect(state.expectChunks).toBe('one_or_more');
+    expect(state.expectSearchDocs).toBe('one_or_more');
+    expect(state.expectImageEmbedding).toBe(false);
+  });
+
+  it('returns folder expectations for folder files', () => {
+    const state = getExpectedHealthState({ sourceType: 'onedrive', mimeType: 'inode/directory', isFolder: true });
+    expect(state.expectChunks).toBe('none');
+    expect(state.expectImageEmbedding).toBe(false);
   });
 });
 

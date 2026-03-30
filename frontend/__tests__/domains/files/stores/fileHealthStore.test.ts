@@ -52,7 +52,7 @@ describe('fileHealthStore', () => {
   describe('setIssues()', () => {
     it('replaces issues and summary, sets lastFetchedAt', () => {
       const issues = [
-        { fileId: 'F1', issueType: 'failed_retriable' as const, fileName: 'test.pdf', mimeType: 'application/pdf', sourceType: 'local' as const, error: null, detectedAt: new Date().toISOString(), scopeId: null, connectionId: null },
+        { fileId: 'F1', issueType: 'failed_retriable' as const, fileName: 'test.pdf', mimeType: 'application/pdf', sourceType: 'local', pipelineStatus: 'failed', retryCount: 1, lastError: null, blobExists: true, parentFolderId: null, scopeId: null, updatedAt: new Date().toISOString() },
       ];
       const summary = {
         externalNotFound: 0,
@@ -75,8 +75,8 @@ describe('fileHealthStore', () => {
   describe('removeIssue()', () => {
     it('removes issue by fileId and recalculates summary', () => {
       const issues = [
-        { fileId: 'F1', issueType: 'failed_retriable' as const, fileName: 'a.pdf', mimeType: 'application/pdf', sourceType: 'local' as const, error: null, detectedAt: new Date().toISOString(), scopeId: null, connectionId: null },
-        { fileId: 'F2', issueType: 'stuck_processing' as const, fileName: 'b.pdf', mimeType: 'application/pdf', sourceType: 'local' as const, error: null, detectedAt: new Date().toISOString(), scopeId: null, connectionId: null },
+        { fileId: 'F1', issueType: 'failed_retriable' as const, fileName: 'a.pdf', mimeType: 'application/pdf', sourceType: 'local', pipelineStatus: 'failed', retryCount: 1, lastError: null, blobExists: true, parentFolderId: null, scopeId: null, updatedAt: new Date().toISOString() },
+        { fileId: 'F2', issueType: 'stuck_processing' as const, fileName: 'b.pdf', mimeType: 'application/pdf', sourceType: 'local', pipelineStatus: 'processing', retryCount: 0, lastError: null, blobExists: true, parentFolderId: null, scopeId: null, updatedAt: new Date().toISOString() },
       ];
       const summary = { externalNotFound: 0, retryExhausted: 0, blobMissing: 0, failedRetriable: 1, stuckProcessing: 1, total: 2 };
 

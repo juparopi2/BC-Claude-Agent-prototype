@@ -57,8 +57,12 @@ import { IsSharedRepairer } from './repairers/IsSharedRepairer';
 // ──────────────────────────────────────────────────────────────────────────────
 
 const MAX_USERS_PER_RUN = 50;
-const COOLDOWN_SECONDS = 300; // 5 minutes
-const COOLDOWN_KEY_PREFIX = 'sync:reconcile_cooldown:';
+const MANUAL_COOLDOWN_SECONDS = 300; // 5 minutes
+const LOGIN_COOLDOWN_SECONDS = 60;   // 1 minute
+const COOLDOWN_KEY_PREFIX_MANUAL = 'sync:reconcile_cooldown:manual:';
+const COOLDOWN_KEY_PREFIX_LOGIN = 'sync:reconcile_cooldown:login:';
+
+export type ReconciliationTrigger = 'login' | 'manual';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Service
@@ -129,24 +133,28 @@ export class SyncReconciliationService {
    * On-demand reconciliation for a single user.
    *
    * Enforces:
-   *   - Redis cooldown (5 min between calls per user)
+   *   - Redis cooldown (login: 60s, manual: 300s — independent keys)
    *   - In-memory concurrency guard (one active reconciliation per user)
    *   - Always repairs (bypasses SYNC_RECONCILIATION_AUTO_REPAIR)
    *
    * @throws ReconciliationCooldownError if called within cooldown period
    * @throws ReconciliationInProgressError if reconciliation is already active for this user
    */
-  async reconcileUserOnDemand(userId: string): Promise<ReconciliationReport> {
+  async reconcileUserOnDemand(
+    userId: string,
+    options?: { trigger?: ReconciliationTrigger },
+  ): Promise<ReconciliationReport> {
     const normalizedId = userId.toUpperCase();
+    const trigger = options?.trigger ?? 'manual';
 
-    // ── Check Redis cooldown ──────────────────────────────────────────────
-    await this.checkCooldown(normalizedId);
+    // ── Check Redis cooldown (trigger-specific) ──────────────────────────
+    await this.checkCooldown(normalizedId, trigger);
 
     // ── Run reconciliation (with forceRepair) ─────────────────────────────
     const report = await this.reconcileUser(userId, { forceRepair: true });
 
     // ── Set cooldown on success ───────────────────────────────────────────
-    await this.setCooldown(normalizedId);
+    await this.setCooldown(normalizedId, trigger);
 
     return report;
   }
@@ -396,13 +404,16 @@ export class SyncReconciliationService {
   /**
    * Check if user is within cooldown period. Throws if cooldown is active.
    * Fails open: if Redis is unavailable, allow the call through.
+   * Login and manual triggers use independent Redis keys.
    */
-  private async checkCooldown(normalizedUserId: string): Promise<void> {
+  private async checkCooldown(normalizedUserId: string, trigger: ReconciliationTrigger): Promise<void> {
     const client = getRedisClient();
     if (!client) return; // Fail open
 
+    const prefix = trigger === 'login' ? COOLDOWN_KEY_PREFIX_LOGIN : COOLDOWN_KEY_PREFIX_MANUAL;
+
     try {
-      const key = `${COOLDOWN_KEY_PREFIX}${normalizedUserId}`;
+      const key = `${prefix}${normalizedUserId}`;
       const ttl = await client.ttl(key);
 
       if (ttl > 0) {
@@ -418,14 +429,18 @@ export class SyncReconciliationService {
   /**
    * Set cooldown after successful reconciliation.
    * Best-effort: Redis failure does not fail the reconciliation.
+   * Login: 60s, Manual: 300s — independent keys.
    */
-  private async setCooldown(normalizedUserId: string): Promise<void> {
+  private async setCooldown(normalizedUserId: string, trigger: ReconciliationTrigger): Promise<void> {
     const client = getRedisClient();
     if (!client) return;
 
+    const prefix = trigger === 'login' ? COOLDOWN_KEY_PREFIX_LOGIN : COOLDOWN_KEY_PREFIX_MANUAL;
+    const ttl = trigger === 'login' ? LOGIN_COOLDOWN_SECONDS : MANUAL_COOLDOWN_SECONDS;
+
     try {
-      const key = `${COOLDOWN_KEY_PREFIX}${normalizedUserId}`;
-      await client.set(key, '1', { EX: COOLDOWN_SECONDS });
+      const key = `${prefix}${normalizedUserId}`;
+      await client.set(key, '1', { EX: ttl });
     } catch (err) {
       this.logger.warn({ error: err instanceof Error ? err.message : String(err) }, 'Failed to set reconciliation cooldown');
     }

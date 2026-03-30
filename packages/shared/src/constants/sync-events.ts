@@ -24,6 +24,7 @@ export const SYNC_WS_EVENTS = {
   PROCESSING_COMPLETED: 'processing:completed',
   SYNC_HEALTH_REPORT: 'sync:health_report',
   SYNC_RECOVERY_COMPLETED: 'sync:recovery_completed',
+  SYNC_RECONCILIATION_STARTED: 'sync:reconciliation_started',
   SYNC_RECONCILIATION_COMPLETED: 'sync:reconciliation_completed',
 } as const;
 

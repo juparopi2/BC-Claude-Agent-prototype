@@ -1321,36 +1321,66 @@ function configureSocketIO(): void {
       // PRD-300: Fire-and-forget reconciliation on login/reconnect
       // Respects 5-min Redis cooldown — safe for rapid reconnects
       (async () => {
+        const { SYNC_WS_EVENTS } = await import('@bc-agent/shared');
+        const { getSocketIO: getIO, isSocketServiceInitialized } = await import('@/services/websocket/SocketService');
+
+        const emitCompleted = (report?: {
+          dryRun: boolean;
+          dbReadyFiles: number;
+          searchIndexedFiles: number;
+          missingFromSearch: unknown[];
+          orphanedInSearch: unknown[];
+          failedRetriable: unknown[];
+          stuckFiles: unknown[];
+          imagesMissingEmbeddings: unknown[];
+          folderHierarchyIssues: {
+            orphanedChildren: unknown[];
+            missingScopeRoots: unknown[];
+            scopeIdsToResync: unknown[];
+          };
+          repairs: unknown;
+        }) => {
+          if (!isSocketServiceInitialized()) return;
+          getIO().to(userRoom).emit(SYNC_WS_EVENTS.SYNC_RECONCILIATION_COMPLETED, {
+            userId: authenticatedUserId,
+            triggeredBy: 'login',
+            report: report
+              ? {
+                  dryRun: report.dryRun,
+                  dbReadyFiles: report.dbReadyFiles,
+                  searchIndexedFiles: report.searchIndexedFiles,
+                  missingFromSearchCount: report.missingFromSearch.length,
+                  orphanedInSearchCount: report.orphanedInSearch.length,
+                  failedRetriableCount: report.failedRetriable.length,
+                  stuckFilesCount: report.stuckFiles.length,
+                  imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+                  folderHierarchy: {
+                    orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
+                    missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
+                    scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
+                  },
+                  repairs: report.repairs,
+                }
+              : null,
+          });
+        };
+
         try {
           const { getSyncReconciliationService } = await import('@/services/sync/health');
-          const service = getSyncReconciliationService();
-          const report = await service.reconcileUserOnDemand(authenticatedUserId);
 
-          // Emit result to user room (same transform as sync-health.routes.ts)
-          const { SYNC_WS_EVENTS } = await import('@bc-agent/shared');
-          const { getSocketIO: getIO, isSocketServiceInitialized } = await import('@/services/websocket/SocketService');
+          // Emit STARTED before reconciliation so the frontend can show progress.
+          // COMPLETED is always emitted (success or failure) to reset isReconciling.
           if (isSocketServiceInitialized()) {
-            getIO().to(userRoom).emit(SYNC_WS_EVENTS.SYNC_RECONCILIATION_COMPLETED, {
+            getIO().to(userRoom).emit(SYNC_WS_EVENTS.SYNC_RECONCILIATION_STARTED, {
               userId: authenticatedUserId,
               triggeredBy: 'login',
-              report: {
-                dryRun: report.dryRun,
-                dbReadyFiles: report.dbReadyFiles,
-                searchIndexedFiles: report.searchIndexedFiles,
-                missingFromSearchCount: report.missingFromSearch.length,
-                orphanedInSearchCount: report.orphanedInSearch.length,
-                failedRetriableCount: report.failedRetriable.length,
-                stuckFilesCount: report.stuckFiles.length,
-                imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
-                folderHierarchy: {
-                  orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
-                  missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
-                  scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
-                },
-                repairs: report.repairs,
-              },
             });
           }
+
+          const service = getSyncReconciliationService();
+          const report = await service.reconcileUserOnDemand(authenticatedUserId, { trigger: 'login' });
+
+          emitCompleted(report);
 
           logger.info({
             userId: authenticatedUserId,
@@ -1359,11 +1389,73 @@ function configureSocketIO(): void {
             scopeRootsRecreated: report.repairs.folderHierarchy.scopeRootsRecreated,
           }, '[Socket.IO] Login reconciliation completed');
         } catch (err) {
-          // Silently ignore cooldown/in-progress — expected for rapid reconnects
           const msg = err instanceof Error ? err.message : String(err);
+          // Always emit COMPLETED to reset frontend isReconciling state
+          emitCompleted();
           if (msg.includes('cooldown') || msg.includes('in progress')) return;
           logger.warn({ error: msg, userId: authenticatedUserId },
             '[Socket.IO] Login reconciliation failed (non-blocking)');
+        }
+
+        // ── Phase 5: Delta sync for stale scopes on login ──────────────────
+        try {
+          const { prisma: db } = await import('@/infrastructure/database/prisma');
+          const { getRedisClient: getRedis } = await import('@/infrastructure/redis/redis-client');
+          const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
+
+          const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+          const MAX_SCOPES_PER_LOGIN = 5;
+          const LOGIN_DELTA_COOLDOWN_SECONDS = 900; // 15 minutes
+
+          const staleScopes = await db.connection_scopes.findMany({
+            where: {
+              connections: {
+                user_id: authenticatedUserId,
+                status: 'connected',
+              },
+              sync_status: { in: ['synced', 'idle'] },
+              last_sync_at: { lt: new Date(Date.now() - STALE_THRESHOLD_MS) },
+            },
+            select: { id: true, connection_id: true, last_sync_at: true },
+            orderBy: { last_sync_at: 'asc' },
+            take: MAX_SCOPES_PER_LOGIN,
+          });
+
+          if (staleScopes.length > 0) {
+            const redis = getRedis();
+            const mq = getMessageQueue();
+
+            for (const scope of staleScopes) {
+              const cooldownKey = `sync:login_delta:${scope.id.toUpperCase()}`;
+
+              // Skip if on cooldown
+              if (redis) {
+                const ttl = await redis.ttl(cooldownKey);
+                if (ttl > 0) continue;
+              }
+
+              await mq.addExternalFileSyncJob({
+                scopeId: scope.id,
+                connectionId: scope.connection_id,
+                userId: authenticatedUserId,
+                triggerType: 'polling',
+              });
+
+              // Set cooldown
+              if (redis) {
+                await redis.set(cooldownKey, '1', { EX: LOGIN_DELTA_COOLDOWN_SECONDS });
+              }
+            }
+
+            logger.info({
+              userId: authenticatedUserId,
+              staleScopesFound: staleScopes.length,
+            }, '[Socket.IO] Login delta sync enqueued for stale scopes');
+          }
+        } catch (err) {
+          // Fire-and-forget — never block login
+          logger.warn({ error: err instanceof Error ? err.message : String(err), userId: authenticatedUserId },
+            '[Socket.IO] Login delta sync failed (non-blocking)');
         }
       })();
     });

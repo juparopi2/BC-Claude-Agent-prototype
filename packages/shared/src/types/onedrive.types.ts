@@ -174,10 +174,15 @@ export interface SyncRecoveryCompletedPayload {
   };
 }
 
+export interface SyncReconciliationStartedPayload {
+  userId: string;
+  triggeredBy: 'login' | 'manual';
+}
+
 export interface SyncReconciliationCompletedPayload {
   userId: string;
   triggeredBy: 'login' | 'manual' | 'cron';
-  report: {
+  report: null | {
     dryRun: boolean;
     dbReadyFiles: number;
     searchIndexedFiles: number;
@@ -228,4 +233,5 @@ export type SyncWebSocketEvent =
   | { type: 'processing:completed' } & ProcessingCompletedPayload
   | { type: 'sync:health_report' } & SyncHealthReportPayload
   | { type: 'sync:recovery_completed' } & SyncRecoveryCompletedPayload
+  | { type: 'sync:reconciliation_started' } & SyncReconciliationStartedPayload
   | { type: 'sync:reconciliation_completed' } & SyncReconciliationCompletedPayload;

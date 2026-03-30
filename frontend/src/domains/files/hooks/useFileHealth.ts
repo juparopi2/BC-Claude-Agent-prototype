@@ -9,7 +9,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useFileHealthStore } from '../stores/fileHealthStore';
+import { useFileHealthStore, type FileHealthState } from '../stores/fileHealthStore';
 import { useFileProcessingStore } from '../stores/fileProcessingStore';
 import { useFileListStore } from '../stores/fileListStore';
 import { useFolderNavigation } from './useFolderNavigation';
@@ -95,10 +95,24 @@ export function useFileHealth(): UseFileHealthReturn {
     }
   }, []);
 
-  // Initial fetch on mount
+  // Gate: defer initial fetch while reconciliation is in progress (PRD-300 proactive health)
+  const isReconciling = useFileHealthStore((s: FileHealthState) => s.isReconciling);
+
+  // Initial fetch on mount — skip if reconciliation is running
   useEffect(() => {
-    void fetchHealthIssues();
-  }, [fetchHealthIssues]);
+    if (!isReconciling) {
+      void fetchHealthIssues();
+    }
+  }, [fetchHealthIssues, isReconciling]);
+
+  // Safety net: auto-reset isReconciling after 60s to prevent stuck state
+  useEffect(() => {
+    if (!isReconciling) return;
+    const timer = setTimeout(() => {
+      useFileHealthStore.getState().setReconciling(false);
+    }, 60_000);
+    return () => clearTimeout(timer);
+  }, [isReconciling]);
 
   // -----------------------------------------------------------------------
   // Retry single file

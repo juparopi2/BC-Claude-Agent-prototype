@@ -21,6 +21,8 @@ export interface FileHealthState {
   isLoading: boolean;
   error: string | null;
   lastFetchedAt: number | null;
+  /** True while a backend reconciliation is in progress (login or manual). */
+  isReconciling: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,6 +38,7 @@ export interface FileHealthActions {
 
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setReconciling: (value: boolean) => void;
   reset: () => void;
 }
 
@@ -49,6 +52,7 @@ const INITIAL_STATE: FileHealthState = {
   isLoading: false,
   error: null,
   lastFetchedAt: null,
+  isReconciling: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -84,6 +88,7 @@ export const useFileHealthStore = create<FileHealthState & FileHealthActions>()(
 
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
+  setReconciling: (value) => set({ isReconciling: value }),
   reset: () => set(INITIAL_STATE),
 }));
 

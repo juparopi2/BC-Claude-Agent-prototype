@@ -12,6 +12,7 @@ import { getSocketClient } from '@/src/infrastructure/socket/SocketClient';
 import { useSyncStatusStore, selectHasActiveOperations } from '../stores/syncStatusStore';
 import { useIntegrationListStore } from '../stores/integrationListStore';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
+import { useFileHealthStore } from '@/src/domains/files/stores/fileHealthStore';
 import { useFiles } from '@/src/domains/files';
 import { SYNC_WS_EVENTS, PROVIDER_DISPLAY_NAME, CONNECTIONS_API, type SyncWebSocketEvent } from '@bc-agent/shared';
 import { toast } from 'sonner';
@@ -236,7 +237,17 @@ export function useSyncEvents(): void {
         // PRD-300: Recovery completed — future UI will surface this
         break;
 
+      case SYNC_WS_EVENTS.SYNC_RECONCILIATION_STARTED as 'sync:reconciliation_started':
+        useFileHealthStore.getState().setReconciling(true);
+        break;
+
       case SYNC_WS_EVENTS.SYNC_RECONCILIATION_COMPLETED as 'sync:reconciliation_completed': {
+        // Always reset isReconciling — even if report is null (error/cooldown path)
+        useFileHealthStore.getState().setReconciling(false);
+
+        // report is null when reconciliation failed (cooldown, in-progress, or error)
+        if (!event.report) break;
+
         const totalIssues =
           event.report.missingFromSearchCount +
           event.report.orphanedInSearchCount +

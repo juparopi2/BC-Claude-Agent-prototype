@@ -623,8 +623,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // findMany called: 1 (distinct users) + 2 (batches) + 8 (failed retriable, stuck, external-not-found, ready images, disconnected-connection, ready-without-chunks, stale-metadata, stuck-deletion) = 11 times
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(11);
+      // findMany called: 1 (distinct users) + 2 (batches) + 9 (failed retriable, stuck, external-not-found, ready images, disconnected-connection, ready-without-chunks, stale-metadata, stuck-deletion, is-shared-misclassification) = 12 times
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(12);
 
       // Report should reflect all 502 DB files (500 + 2)
       expect(reports[0].dbReadyFiles).toBe(502);
@@ -643,8 +643,8 @@ describe('SyncReconciliationService', () => {
 
       const reports = await service.run();
 
-      // 1 (distinct users) + 1 (single batch) + 8 (failed retriable, stuck, external-not-found, ready images, disconnected-connection, ready-without-chunks, stale-metadata, stuck-deletion) = 10 calls
-      expect(mockFilesFindMany).toHaveBeenCalledTimes(10);
+      // 1 (distinct users) + 1 (single batch) + 9 (failed retriable, stuck, external-not-found, ready images, disconnected-connection, ready-without-chunks, stale-metadata, stuck-deletion, is-shared-misclassification) = 11 calls
+      expect(mockFilesFindMany).toHaveBeenCalledTimes(11);
       expect(reports[0].dbReadyFiles).toBe(3);
     });
   });

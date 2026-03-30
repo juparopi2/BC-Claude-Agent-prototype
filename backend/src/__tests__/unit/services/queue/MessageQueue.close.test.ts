@@ -340,8 +340,10 @@ describe('MessageQueue.close()', () => {
       });
 
       // Wait for ready (need to advance timers for 'once' callback)
+      // Use advanceTimersByTimeAsync instead of runAllTimersAsync to avoid
+      // infinite loop from WorkerRegistry heartbeat setIntervals
       const readyPromise = messageQueue.waitForReady();
-      await vi.runAllTimersAsync();
+      await vi.advanceTimersByTimeAsync(1);
       await readyPromise;
 
       // Act: Start close() (non-blocking)
@@ -366,8 +368,9 @@ describe('MessageQueue.close()', () => {
       await Promise.resolve();
       expect(mockQueue.close).toHaveBeenCalled();
 
-      // Fast-forward all remaining timers to complete close()
-      await vi.runAllTimersAsync();
+      // Fast-forward remaining time to complete close() (avoid runAllTimersAsync
+      // which infinite-loops on WorkerRegistry heartbeat setIntervals)
+      await vi.advanceTimersByTimeAsync(500);
 
       // Wait for close to complete
       await closePromise;

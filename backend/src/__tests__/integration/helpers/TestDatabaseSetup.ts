@@ -327,3 +327,33 @@ export function setupFullIntegrationTest(options: {
 export function isCI(): boolean {
   return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
 }
+
+/**
+ * Execute a SQL query with automatic retry on deadlock (SQL Server error 1205).
+ *
+ * SQL Server deadlocks can occur when concurrent connections (e.g., Prisma pool
+ * and mssql pool) compete for locks on the same tables. The standard recovery
+ * strategy is to retry the transaction after a short backoff.
+ *
+ * Use this in test cleanup (afterEach) where DELETE operations can collide with
+ * Prisma transactions from the next test's beforeEach/setup.
+ */
+export async function executeQueryWithDeadlockRetry<T = unknown>(
+  query: string,
+  params?: Record<string, string | number | boolean | null | undefined>,
+  maxRetries = 3,
+): Promise<import('mssql').IResult<T>> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await executeQuery<T>(query, params);
+    } catch (error: unknown) {
+      const isDeadlock =
+        error instanceof Error && error.message.includes('deadlock');
+      if (!isDeadlock || attempt === maxRetries) throw error;
+      // Exponential backoff: 100ms, 200ms, 400ms
+      await new Promise((r) => setTimeout(r, 100 * Math.pow(2, attempt - 1)));
+    }
+  }
+  // Unreachable, but TypeScript requires it
+  throw new Error('executeQueryWithDeadlockRetry: exhausted retries');
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { setupDatabaseForTests } from '../helpers';
+import { setupDatabaseForTests, executeQueryWithDeadlockRetry } from '../helpers';
 import { PipelineTestHelper, createPipelineTestHelper } from '../helpers/PipelineTestHelper';
 import { PIPELINE_STATUS, BATCH_STATUS } from '@bc-agent/shared';
 import type { CreateBatchRequest } from '@bc-agent/shared';
@@ -115,11 +115,13 @@ describe('BatchUploadOrchestrator — Integration (PRD-03)', () => {
   afterEach(async () => {
     // Aggressively clean ALL data for both test users (not just helper-tracked)
     // The orchestrator creates files/batches that the helper doesn't track
+    // Uses deadlock retry because cleanup DELETEs (mssql pool) can collide with
+    // Prisma transactions from the next test's setup
     for (const userId of [TEST_USER_A, TEST_USER_B]) {
       if (!userId) continue;
-      await executeQuery('DELETE FROM file_chunks WHERE file_id IN (SELECT id FROM files WHERE user_id = @userId)', { userId });
-      await executeQuery('DELETE FROM files WHERE user_id = @userId', { userId });
-      await executeQuery('DELETE FROM upload_batches WHERE user_id = @userId', { userId });
+      await executeQueryWithDeadlockRetry('DELETE FROM file_chunks WHERE file_id IN (SELECT id FROM files WHERE user_id = @userId)', { userId });
+      await executeQueryWithDeadlockRetry('DELETE FROM files WHERE user_id = @userId', { userId });
+      await executeQueryWithDeadlockRetry('DELETE FROM upload_batches WHERE user_id = @userId', { userId });
     }
     // Now safely delete users (no FK dependencies)
     await helper.cleanup();

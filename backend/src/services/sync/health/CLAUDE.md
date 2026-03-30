@@ -1,4 +1,4 @@
-# Sync Health & Recovery (PRD-300 + PRD-304)
+# Sync Health & Recovery (PRD-300 + PRD-304 + sync-health-v2 Phase 4)
 
 ## Purpose
 
@@ -6,11 +6,17 @@ Automated health monitoring and recovery for the file synchronization pipeline. 
 
 ## Architecture
 
+### Hierarchical Health Model (Phase 4 — sync-health-v2)
+
+`SyncHealthReport` now includes a `connections` array alongside the flat `scopes` array. Each `ConnectionHealthReport` aggregates the health of all scopes under a connection using **worst-of-children** logic: if any scope is `unhealthy`, the connection is `unhealthy`; else if any is `degraded`, the connection is `degraded`; else `healthy`. The `summary` block on `SyncHealthReport` now also carries `totalConnections`, `healthyConnections`, `degradedConnections`, and `unhealthyConnections` counters.
+
+`ScopeHealthReport` now includes `provider` and `connectionStatus` fields (populated from the Prisma connection row) so that `buildConnectionReports()` can reconstruct connection-level data from scope reports alone.
+
 ### Services (3 Stateless Singletons)
 
 | Service | Schedule | Responsibility |
 |---|---|---|
-| `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
+| `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports with hierarchical connection data. Also serves `GET /api/sync/health`. |
 | `SyncReconciliationService` | Every 15 minutes (cron) + on-demand per-user | **Orchestrator**: runs 11 detectors → 5 repairers. Cron checks all users with non-deleted files; respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
@@ -216,7 +222,7 @@ When a user disconnects a connection (via `DELETE /api/connections/:id/full-disc
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/sync/health` | `authenticateMicrosoft` | Per-user health report (all scopes) |
+| `GET` | `/api/sync/health` | `authenticateMicrosoft` | Per-user health report (all scopes + connection-level aggregation). Returns `SyncHealthReport` which includes `connections[]` and full `summary` with connection counters. |
 | `POST` | `/api/sync/health/recover` | `authenticateMicrosoft` | Manual recovery trigger |
 | `POST` | `/api/sync/health/reconcile` | `authenticateMicrosoft` | On-demand per-user reconciliation (diagnose + repair) |
 
@@ -260,7 +266,7 @@ Multi-tenant isolation: `scopeId` ownership validated against `req.userId`.
 
 | Event | Emitted By | Payload |
 |---|---|---|
-| `sync:health_report` | `SyncHealthCheckService.run()` | Per-user health report after each 15-min check |
+| `sync:health_report` | `SyncHealthCheckService.run()` | Per-user health report after each 15-min check. Includes `connections[]` (Phase 4: hierarchical health). |
 | `sync:recovery_completed` | POST `/recover` endpoint | Recovery action result |
 | `sync:reconciliation_completed` | POST `/reconcile` endpoint | Reconciliation report summary (counts + repairs) |
 

@@ -48,6 +48,8 @@ export interface ScopeHealthReport {
   scopeId: string;
   connectionId: string;
   userId: string;
+  provider: string;
+  connectionStatus: string;
   scopeName: string;
   syncStatus: string;
   healthStatus: SyncHealthStatus;
@@ -55,6 +57,21 @@ export interface ScopeHealthReport {
   fileStats: ScopeFileStats;
   lastSyncedAt: Date | null;
   checkedAt: Date;
+}
+
+export interface ConnectionHealthReport {
+  connectionId: string;
+  userId: string;
+  provider: string;
+  connectionStatus: string;
+  healthStatus: SyncHealthStatus; // worst-of-children
+  scopes: ScopeHealthReport[];
+  summary: {
+    totalScopes: number;
+    healthyScopes: number;
+    degradedScopes: number;
+    unhealthyScopes: number;
+  };
 }
 
 export interface SyncHealthReport {
@@ -65,8 +82,13 @@ export interface SyncHealthReport {
     healthyScopes: number;
     degradedScopes: number;
     unhealthyScopes: number;
+    totalConnections: number;
+    healthyConnections: number;
+    degradedConnections: number;
+    unhealthyConnections: number;
   };
   scopes: ScopeHealthReport[];
+  connections: ConnectionHealthReport[];
 }
 
 // ============================================================================

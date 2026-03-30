@@ -161,6 +161,29 @@ export interface SyncHealthReportPayload {
       issues: Array<{ type: string; severity: string; message: string }>;
       lastSyncedAt: string | null;
     }>;
+    /** Hierarchical connection-level health aggregated from scope reports (worst-of-children). Added in Phase 4 (sync-health-v2). */
+    connections?: Array<{
+      connectionId: string;
+      userId: string;
+      provider: string;
+      connectionStatus: string;
+      healthStatus: string;
+      summary: {
+        totalScopes: number;
+        healthyScopes: number;
+        degradedScopes: number;
+        unhealthyScopes: number;
+      };
+      scopes: Array<{
+        scopeId: string;
+        connectionId: string;
+        scopeName: string;
+        syncStatus: string;
+        healthStatus: string;
+        issues: Array<{ type: string; severity: string; message: string }>;
+        lastSyncedAt: string | null;
+      }>;
+    }>;
   };
 }
 

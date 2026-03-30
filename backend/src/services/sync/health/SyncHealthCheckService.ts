@@ -24,6 +24,7 @@ import type {
   SyncHealthCheckMetrics,
   SyncHealthReport,
   ScopeHealthReport,
+  ConnectionHealthReport,
   ScopeIssue,
   ScopeFileStats,
   SyncHealthStatus,
@@ -65,6 +66,7 @@ type ScopeWithConnection = {
     id: string;
     user_id: string;
     status: string;
+    provider: string;
   };
 };
 
@@ -116,7 +118,7 @@ export class SyncHealthCheckService {
     const scopes = await prisma.connection_scopes.findMany({
       where: { sync_status: { not: undefined } }, // fetch all
       include: {
-        connections: { select: { id: true, user_id: true, status: true } },
+        connections: { select: { id: true, user_id: true, status: true, provider: true } },
       },
     });
 
@@ -219,6 +221,27 @@ export class SyncHealthCheckService {
                 })),
                 lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
               })),
+              connections: report.connections.map((c) => ({
+                connectionId: c.connectionId,
+                userId: c.userId,
+                provider: c.provider,
+                connectionStatus: c.connectionStatus,
+                healthStatus: c.healthStatus,
+                summary: c.summary,
+                scopes: c.scopes.map((s) => ({
+                  scopeId: s.scopeId,
+                  connectionId: s.connectionId,
+                  scopeName: s.scopeName,
+                  syncStatus: s.syncStatus,
+                  healthStatus: s.healthStatus,
+                  issues: s.issues.map((i) => ({
+                    type: i.type,
+                    severity: i.severity,
+                    message: i.message,
+                  })),
+                  lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
+                })),
+              })),
             },
           });
       }
@@ -263,7 +286,7 @@ export class SyncHealthCheckService {
         connections: { user_id: normalizedUserId },
       },
       include: {
-        connections: { select: { id: true, user_id: true, status: true } },
+        connections: { select: { id: true, user_id: true, status: true, provider: true } },
       },
     });
 
@@ -383,6 +406,8 @@ export class SyncHealthCheckService {
       scopeId,
       connectionId,
       userId,
+      provider: scope.connections.provider,
+      connectionStatus: scope.connections.status,
       scopeName: scope.scope_display_name ?? scopeId,
       syncStatus: scope.sync_status,
       healthStatus,
@@ -485,6 +510,18 @@ export class SyncHealthCheckService {
       overallStatus = 'healthy';
     }
 
+    const connections = this.buildConnectionReports(scopeReports);
+
+    let healthyConnections = 0;
+    let degradedConnections = 0;
+    let unhealthyConnections = 0;
+
+    for (const c of connections) {
+      if (c.healthStatus === 'healthy') healthyConnections++;
+      else if (c.healthStatus === 'degraded') degradedConnections++;
+      else unhealthyConnections++;
+    }
+
     return {
       timestamp: new Date(),
       overallStatus,
@@ -493,9 +530,77 @@ export class SyncHealthCheckService {
         healthyScopes,
         degradedScopes,
         unhealthyScopes,
+        totalConnections: connections.length,
+        healthyConnections,
+        degradedConnections,
+        unhealthyConnections,
       },
       scopes: scopeReports,
+      connections,
     };
+  }
+
+  /**
+   * Group scope health reports by connectionId and compute connection-level
+   * health using worst-of-children: unhealthy > degraded > healthy.
+   */
+  buildConnectionReports(scopeReports: ScopeHealthReport[]): ConnectionHealthReport[] {
+    // Group scopes by connectionId — each ScopeHealthReport already carries connectionId
+    const byConnection = new Map<string, ScopeHealthReport[]>();
+
+    for (const scope of scopeReports) {
+      const existing = byConnection.get(scope.connectionId);
+      if (existing) {
+        existing.push(scope);
+      } else {
+        byConnection.set(scope.connectionId, [scope]);
+      }
+    }
+
+    const reports: ConnectionHealthReport[] = [];
+
+    for (const [connectionId, scopes] of byConnection) {
+      // All scopes under a connection share the same userId, provider, and connectionStatus
+      // (safe to read from the first entry)
+      const first = scopes[0];
+
+      let healthyScopes = 0;
+      let degradedScopes = 0;
+      let unhealthyScopes = 0;
+
+      for (const s of scopes) {
+        if (s.healthStatus === 'healthy') healthyScopes++;
+        else if (s.healthStatus === 'degraded') degradedScopes++;
+        else unhealthyScopes++;
+      }
+
+      // Worst-of-children: unhealthy > degraded > healthy
+      let healthStatus: SyncHealthStatus;
+      if (unhealthyScopes > 0) {
+        healthStatus = 'unhealthy';
+      } else if (degradedScopes > 0) {
+        healthStatus = 'degraded';
+      } else {
+        healthStatus = 'healthy';
+      }
+
+      reports.push({
+        connectionId,
+        userId: first.userId,
+        provider: first.provider,
+        connectionStatus: first.connectionStatus,
+        healthStatus,
+        scopes,
+        summary: {
+          totalScopes: scopes.length,
+          healthyScopes,
+          degradedScopes,
+          unhealthyScopes,
+        },
+      });
+    }
+
+    return reports;
   }
 
   // ──────────────────────────────────────────────────────────────────────────

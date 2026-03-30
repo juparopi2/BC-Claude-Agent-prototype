@@ -38,7 +38,7 @@ health/
     StaleSearchMetadataDetector.ts — AI Search metadata mismatch vs DB
     StuckDeletionDetector.ts    — Files stuck in deletion_status='pending' > 1h
   repairers/
-    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images, no-chunks, stale-metadata)
+    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images, no-chunks, stale-metadata) + adjust scope counters (PRD-305)
     StuckDeletionRepairer.ts    — Hierarchical truth: resurrect or hard-delete stuck deletions
     OrphanCleanupRepairer.ts    — Delete orphaned search docs
     ExternalFileCleanupRepairer.ts — Soft-delete 404 + disconnected files
@@ -229,6 +229,18 @@ On-demand file health reconciliation for the authenticated user. Diagnoses 6 dri
 - **WebSocket**: Emits `sync:reconciliation_completed` to `user:{userId}` on completion
 
 **Optimistic concurrency**: All repair DB updates use `updateMany` with expected `pipeline_status` in WHERE clause. If a worker transitions the file between detection and repair, the update is a no-op (count=0) and enqueue is skipped.
+
+### Scope Counter Adjustments (PRD-305)
+
+When `FileRequeueRepairer` re-enqueues files, `adjustScopeCounters()` decrements the appropriate `connection_scopes` counter to prevent double-counting when `FilePipelineCompleteWorker` re-processes the files:
+
+| Requeue method | Counter decremented |
+|---|---|
+| `requeueFailedRetriable` | `processing_failed` -N |
+| `requeueMissingFromSearch`, `requeueImagesMissing...`, `requeueReadyWithoutChunks`, `requeueStaleMetadata` | `processing_completed` -N |
+| `requeueStuckFiles` | None (status reset only) |
+
+Uses `CASE WHEN col >= N THEN col - N ELSE 0 END` guards to prevent negatives. All set `processing_status = 'processing'`.
 
 ### POST Actions
 

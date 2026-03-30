@@ -6,12 +6,13 @@
  * Floating panel at bottom-right showing active/completed sync operations.
  * Supports collapsed (badge) and expanded (card) views.
  * Shows per-operation processing progress with file counts (PRD-305).
- * Auto-dismisses completed operations after 5 seconds.
+ * Auto-dismisses completed operations after 5 seconds (unless files failed).
+ * Failed files show a collapsible error recovery section with retry (PRD-305 B.4).
  *
  * @module components/connections/SyncProgressPanel
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   useSyncStatusStore,
@@ -20,10 +21,21 @@ import {
   selectOperationProgress,
   type OperationProgress,
 } from '@/src/domains/integrations/stores/syncStatusStore';
+import { useSyncRetry } from '@/src/domains/integrations/hooks/useSyncRetry';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, ChevronDown, X, Check, AlertTriangle, Info } from 'lucide-react';
+import {
+  RefreshCw,
+  ChevronDown,
+  ChevronRight,
+  X,
+  Check,
+  AlertTriangle,
+  Info,
+  RotateCcw,
+  Loader2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const AUTO_DISMISS_DELAY_MS = 5000;
@@ -41,10 +53,14 @@ export function SyncProgressPanel() {
   // Track auto-dismiss timers per operation key
   const autoDismissTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Auto-dismiss completed operations after delay
+  // Auto-dismiss completed operations after delay — skip if there are failed files
   useEffect(() => {
     for (const op of operations) {
       if (op.status === 'complete' && !op.dismissed) {
+        // Check if this operation has failures — if so, persist until manual dismiss
+        const progress = selectOperationProgress(useSyncStatusStore.getState(), op.scopeIds);
+        if (progress.failed > 0) continue;
+
         if (!autoDismissTimers.current.has(op.operationKey)) {
           const timer = setTimeout(() => {
             dismissOperation(op.operationKey);
@@ -217,6 +233,130 @@ function SyncOperationCard({ providerName, scopeIds, status, onRemove }: SyncOpe
           <p className="text-xs text-muted-foreground leading-relaxed">
             Files are being indexed for search. Your Knowledge Base will update as each file completes.
           </p>
+        </div>
+      )}
+
+      {/* PRD-305 B.4: Error recovery collapsible */}
+      {hasFailures && (phase === 'complete' || status === 'complete') && (
+        <SyncFailedFilesSection scopeIds={scopeIds} failedCount={failed} />
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// SyncFailedFilesSection — error recovery collapsible
+// ============================================
+
+interface SyncFailedFilesSectionProps {
+  scopeIds: string[];
+  failedCount: number;
+}
+
+function SyncFailedFilesSection({ scopeIds, failedCount }: SyncFailedFilesSectionProps) {
+  const [expanded, setExpanded] = useState(false);
+  const hasFetched = useRef(false);
+  const { failedFiles, isLoading, retryingIds, fetchFailedFiles, retryFile, retryAll } =
+    useSyncRetry(scopeIds);
+
+  const handleToggle = useCallback(() => {
+    setExpanded((prev) => {
+      const next = !prev;
+      // Lazy-fetch on first expand
+      if (next && !hasFetched.current) {
+        hasFetched.current = true;
+        fetchFailedFiles();
+      }
+      return next;
+    });
+  }, [fetchFailedFiles]);
+
+  return (
+    <div className="border-t pt-2 mt-1">
+      {/* Collapsible header */}
+      <button
+        type="button"
+        className="flex items-center gap-2 w-full text-left text-xs"
+        onClick={handleToggle}
+      >
+        {expanded ? (
+          <ChevronDown className="size-3 text-amber-500 shrink-0" />
+        ) : (
+          <ChevronRight className="size-3 text-amber-500 shrink-0" />
+        )}
+        <AlertTriangle className="size-3 text-amber-500 shrink-0" />
+        <span className="text-amber-600 dark:text-amber-400 font-medium">
+          {failedCount} file{failedCount !== 1 ? 's' : ''} failed
+        </span>
+        <span className="flex-1" />
+        {expanded && failedFiles.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 px-2 text-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              retryAll();
+            }}
+          >
+            <RotateCcw className="size-3 mr-1" />
+            Retry All
+          </Button>
+        )}
+      </button>
+
+      {/* Expanded file list */}
+      {expanded && (
+        <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+          {isLoading && (
+            <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Loading failed files...
+            </div>
+          )}
+
+          {!isLoading && failedFiles.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">
+              No failed files found. They may have been retried already.
+            </p>
+          )}
+
+          {failedFiles.map((file) => {
+            const isRetrying = retryingIds.has(file.fileId);
+            return (
+              <div
+                key={file.fileId}
+                className="flex items-center gap-2 rounded-md bg-muted/30 px-2 py-1.5"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate" title={file.fileName}>
+                    {file.fileName}
+                  </p>
+                  {file.lastError && (
+                    <p
+                      className="text-[10px] text-muted-foreground truncate"
+                      title={file.lastError}
+                    >
+                      {file.lastError}
+                    </p>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-5 shrink-0"
+                  disabled={isRetrying}
+                  onClick={() => retryFile(file.fileId)}
+                >
+                  {isRetrying ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="size-3" />
+                  )}
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

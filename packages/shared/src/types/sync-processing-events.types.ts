@@ -8,6 +8,12 @@
  * @module @bc-agent/shared/types
  */
 
+export interface ProcessingStartedPayload {
+  connectionId: string;
+  scopeId: string;
+  total: number;
+}
+
 export interface ProcessingProgressPayload {
   connectionId: string;
   scopeId: string;

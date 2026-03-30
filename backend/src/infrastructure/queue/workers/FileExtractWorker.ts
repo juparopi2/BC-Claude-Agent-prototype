@@ -79,6 +79,9 @@ export class FileExtractWorker {
       return; // Another worker or retry already claimed it
     }
 
+    // PRD-305: Emit processing:started on first file in scope (atomic via Redis SETNX)
+    await this.tryEmitProcessingStarted(batchId, userId, jobLogger);
+
     try {
       // 2. Delegate to existing FileProcessingService (skip V1 enqueue)
       const { getFileProcessingService } = await import(
@@ -189,6 +192,52 @@ export class FileExtractWorker {
     );
     const retryManager = getProcessingRetryManager();
     await retryManager.handlePermanentFailure(userId, fileId, errorMessage);
+  }
+
+  /**
+   * PRD-305: Emit processing:started when the first file in a scope begins extraction.
+   * Uses Redis SETNX for atomicity — only the first worker wins.
+   * Non-fatal: progress will still flow via processing:progress events.
+   */
+  private async tryEmitProcessingStarted(
+    batchId: string,
+    userId: string,
+    jobLogger: ILoggerMinimal,
+  ): Promise<void> {
+    try {
+      const { getRedisClient } = await import('@/infrastructure/redis/redis-client');
+      const redis = getRedisClient();
+      if (!redis) return;
+
+      const key = `sync:processing_started:${batchId}`;
+      const result = await redis.set(key, '1', { EX: 3600, NX: true });
+
+      if (result !== 'OK') return; // Another worker already emitted for this scope
+
+      // Verify batchId is a scope (sync files), not an upload batch
+      const { prisma } = await import('@/infrastructure/database/prisma');
+      const scope = await prisma.connection_scopes.findFirst({
+        where: { id: batchId },
+        select: { processing_total: true, connection_id: true },
+      });
+
+      if (!scope) return; // batchId is not a scope — skip (upload file)
+
+      const { getSyncProgressEmitter } = await import('@/services/sync/SyncProgressEmitter');
+      getSyncProgressEmitter().emitProcessingStarted(userId, {
+        connectionId: scope.connection_id,
+        scopeId: batchId,
+        total: scope.processing_total ?? 0,
+      });
+
+      jobLogger.info({ scopeId: batchId }, 'Emitted processing:started for scope');
+    } catch (err) {
+      // Non-fatal — don't break extraction if the event fails
+      const errorInfo = err instanceof Error
+        ? { message: err.message, name: err.name }
+        : { value: String(err) };
+      jobLogger.warn({ error: errorInfo }, 'Failed to emit processing:started (non-fatal)');
+    }
   }
 
   private async addToDLQ(

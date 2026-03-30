@@ -40,6 +40,79 @@ export class FileRequeueRepairer {
   private readonly logger = createChildLogger({ service: 'FileRequeueRepairer' });
 
   /**
+   * PRD-305: Adjust connection_scopes processing counters after re-enqueue.
+   *
+   * When files are re-queued, FilePipelineCompleteWorker will re-increment
+   * processing_completed or processing_failed. To avoid double-counting,
+   * we decrement the relevant counter for the files being re-processed.
+   *
+   * Uses CASE WHEN guards to prevent negative values.
+   */
+  private async adjustScopeCounters(
+    scopeCounts: Map<string, number>,
+    adjustment: 'decrement_failed' | 'decrement_completed' | 'status_only',
+  ): Promise<void> {
+    if (scopeCounts.size === 0) return;
+
+    const { prisma } = await import('@/infrastructure/database/prisma');
+
+    for (const [scopeId, count] of scopeCounts) {
+      if (!scopeId) continue;
+      try {
+        if (adjustment === 'decrement_failed') {
+          await prisma.$executeRawUnsafe(
+            `UPDATE connection_scopes
+             SET processing_failed = CASE WHEN processing_failed >= @P1 THEN processing_failed - @P1 ELSE 0 END,
+                 processing_status = 'processing',
+                 updated_at = GETUTCDATE()
+             WHERE id = @P2`,
+            count,
+            scopeId,
+          );
+        } else if (adjustment === 'decrement_completed') {
+          await prisma.$executeRawUnsafe(
+            `UPDATE connection_scopes
+             SET processing_completed = CASE WHEN processing_completed >= @P1 THEN processing_completed - @P1 ELSE 0 END,
+                 processing_status = 'processing',
+                 updated_at = GETUTCDATE()
+             WHERE id = @P2`,
+            count,
+            scopeId,
+          );
+        } else {
+          // status_only: just reset processing_status for stuck files
+          await prisma.$executeRawUnsafe(
+            `UPDATE connection_scopes
+             SET processing_status = 'processing',
+                 updated_at = GETUTCDATE()
+             WHERE id = @P1`,
+            scopeId,
+          );
+        }
+
+        this.logger.debug({ scopeId, count, adjustment }, 'Adjusted scope counters after requeue');
+      } catch (err) {
+        const errorInfo = err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+        this.logger.warn(
+          { scopeId, count, adjustment, error: errorInfo },
+          'Failed to adjust scope counters after requeue',
+        );
+      }
+    }
+  }
+
+  /** Accumulate per-scope count from a file's connection_scope_id. */
+  private accumulateScopeCount(
+    scopeCounts: Map<string, number>,
+    scopeId: string | null | undefined,
+  ): void {
+    if (!scopeId) return;
+    scopeCounts.set(scopeId, (scopeCounts.get(scopeId) ?? 0) + 1);
+  }
+
+  /**
    * Re-queue files that are 'ready' in DB but absent from the AI Search index.
    *
    * @param userId  - Owning user (for audit logging; actual ownership is on file row)
@@ -52,6 +125,7 @@ export class FileRequeueRepairer {
   ): Promise<{ missingRequeued: number; errors: number }> {
     let missingRequeued = 0;
     let errors = 0;
+    const scopeCounts = new Map<string, number>();
 
     const { prisma } = await import('@/infrastructure/database/prisma');
     const { getMessageQueue } = await import('@/infrastructure/queue');
@@ -87,6 +161,7 @@ export class FileRequeueRepairer {
           fileName: file.name,
         });
 
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         missingRequeued++;
       } catch (err) {
         const errorInfo =
@@ -100,6 +175,9 @@ export class FileRequeueRepairer {
         errors++;
       }
     }
+
+    // PRD-305: These were 'ready' files (counted as completed) — decrement to avoid double-counting
+    await this.adjustScopeCounters(scopeCounts, 'decrement_completed');
 
     return { missingRequeued, errors };
   }
@@ -119,6 +197,7 @@ export class FileRequeueRepairer {
   ): Promise<{ failedRequeued: number; errors: number }> {
     let failedRequeued = 0;
     let errors = 0;
+    const scopeCounts = new Map<string, number>();
 
     const { prisma } = await import('@/infrastructure/database/prisma');
     const { getMessageQueue } = await import('@/infrastructure/queue');
@@ -146,6 +225,7 @@ export class FileRequeueRepairer {
           fileName: file.name,
         });
 
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         failedRequeued++;
       } catch (err) {
         const errorInfo =
@@ -159,6 +239,9 @@ export class FileRequeueRepairer {
         errors++;
       }
     }
+
+    // PRD-305: These were 'failed' files — decrement failed counter to avoid double-counting
+    await this.adjustScopeCounters(scopeCounts, 'decrement_failed');
 
     return { failedRequeued, errors };
   }
@@ -176,6 +259,7 @@ export class FileRequeueRepairer {
   ): Promise<{ stuckRequeued: number; errors: number }> {
     let stuckRequeued = 0;
     let errors = 0;
+    const scopeCounts = new Map<string, number>();
 
     const { prisma } = await import('@/infrastructure/database/prisma');
     const { getMessageQueue } = await import('@/infrastructure/queue');
@@ -204,6 +288,7 @@ export class FileRequeueRepairer {
           fileName: file.name,
         });
 
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         stuckRequeued++;
       } catch (err) {
         const errorInfo =
@@ -217,6 +302,9 @@ export class FileRequeueRepairer {
         errors++;
       }
     }
+
+    // PRD-305: Stuck files were already in processing_total but never finished — just reset status
+    await this.adjustScopeCounters(scopeCounts, 'status_only');
 
     return { stuckRequeued, errors };
   }
@@ -234,6 +322,7 @@ export class FileRequeueRepairer {
   ): Promise<{ imageRequeued: number; errors: number }> {
     let imageRequeued = 0;
     let errors = 0;
+    const scopeCounts = new Map<string, number>();
 
     const { prisma } = await import('@/infrastructure/database/prisma');
     const { getMessageQueue } = await import('@/infrastructure/queue');
@@ -262,6 +351,7 @@ export class FileRequeueRepairer {
           fileName: file.name,
         });
 
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         imageRequeued++;
       } catch (err) {
         const errorInfo =
@@ -275,6 +365,9 @@ export class FileRequeueRepairer {
         errors++;
       }
     }
+
+    // PRD-305: These were 'ready' images (counted as completed) — decrement to avoid double-counting
+    await this.adjustScopeCounters(scopeCounts, 'decrement_completed');
 
     return { imageRequeued, errors };
   }
@@ -296,6 +389,7 @@ export class FileRequeueRepairer {
   ): Promise<{ readyWithoutChunksRequeued: number; errors: number }> {
     let readyWithoutChunksRequeued = 0;
     let errors = 0;
+    const scopeCounts = new Map<string, number>();
 
     const { prisma } = await import('@/infrastructure/database/prisma');
     const { getMessageQueue } = await import('@/infrastructure/queue');
@@ -318,6 +412,7 @@ export class FileRequeueRepairer {
           fileName: file.name,
         });
 
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         readyWithoutChunksRequeued++;
       } catch (err) {
         const errorInfo =
@@ -331,6 +426,9 @@ export class FileRequeueRepairer {
         errors++;
       }
     }
+
+    // PRD-305: These were 'ready' files (counted as completed) — decrement to avoid double-counting
+    await this.adjustScopeCounters(scopeCounts, 'decrement_completed');
 
     return { readyWithoutChunksRequeued, errors };
   }
@@ -351,6 +449,7 @@ export class FileRequeueRepairer {
   ): Promise<{ staleMetadataRequeued: number; errors: number }> {
     let staleMetadataRequeued = 0;
     let errors = 0;
+    const scopeCounts = new Map<string, number>();
 
     const { prisma } = await import('@/infrastructure/database/prisma');
     const { getMessageQueue } = await import('@/infrastructure/queue');
@@ -373,6 +472,7 @@ export class FileRequeueRepairer {
           fileName: file.name,
         });
 
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         staleMetadataRequeued++;
       } catch (err) {
         const errorInfo =
@@ -386,6 +486,9 @@ export class FileRequeueRepairer {
         errors++;
       }
     }
+
+    // PRD-305: These were 'ready' files (counted as completed) — decrement to avoid double-counting
+    await this.adjustScopeCounters(scopeCounts, 'decrement_completed');
 
     return { staleMetadataRequeued, errors };
   }

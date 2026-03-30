@@ -26,7 +26,8 @@ Real-time sync operation tracking.
 | Hook | Purpose |
 |---|---|
 | `useIntegrations` | Fetch connections on mount |
-| `useSyncEvents` | WebSocket listener for sync/processing/file events |
+| `useSyncEvents` | WebSocket listener for sync/processing/file events (incl. `processing:started` PRD-305) |
+| `useSyncRetry` | PRD-305: Fetch failed files from health API, retry via `/api/files/{id}/retry-processing` |
 | `useAuthHealth` | Auth token health polling |
 | `useConnectionHealth` | Connection status polling |
 | `useSyncOperation` | Individual operation lifecycle tracking |
@@ -38,6 +39,7 @@ Real-time sync operation tracking.
 | `sync:progress` | Update activeSyncs with progress % |
 | `sync:completed` | Transition to 'processing' if processingTotal > 0 |
 | `sync:error` | Mark sync as failed |
+| `processing:started` | PRD-305: Prime store with total so panel shows "Processing 0/N" immediately |
 | `processing:progress` | Update processing count |
 | `processing:completed` | Transition to 'idle' |
 | `file_added` / `file_updated` / `file_removed` | Update file stores |
@@ -54,13 +56,18 @@ Real-time sync operation tracking.
 6. InitialSync dispatched to BullMQ
 ```
 
-## Sync Status Two-Phase
+## Sync Status Three-Phase (PRD-305)
 
 ```
 sync:completed (processingTotal > 0)
     → status = 'processing'
+        → processing:started (first file enters extraction)
+            → SyncProgressPanel shows "Processing 0/N files..."
+        → processing:progress (each file completes)
+            → SyncProgressPanel shows "Processing X/N files..."
         → processing:completed
             → status = 'idle'
+            → If failed > 0: SyncFailedFilesSection shows retry UI
 ```
 
 If `processingTotal === 0` at sync completion, status goes directly to 'idle'.
@@ -78,6 +85,7 @@ If `processingTotal === 0` at sync completion, status goes directly to 'idle'.
 | `stores/integrationListStore.ts` | Connection list + wizard state |
 | `stores/syncStatusStore.ts` | Sync operation tracking |
 | `hooks/useSyncEvents.ts` | WebSocket event listener |
+| `hooks/useSyncRetry.ts` | PRD-305: Failed file retry for SyncProgressPanel |
 | `hooks/useIntegrations.ts` | Connection fetching |
 | `components/ConnectionCard.tsx` | Connection display + actions |
 | `components/ConnectionWizard.tsx` | Multi-step connection setup |

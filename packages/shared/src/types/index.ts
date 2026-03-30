@@ -403,8 +403,9 @@ export type {
   SyncRecoveryCompletedPayload,
 } from './onedrive.types';
 
-// Sync Processing Event types (PRD-117)
+// Sync Processing Event types (PRD-117, PRD-305)
 export type {
+  ProcessingStartedPayload,
   ProcessingProgressPayload,
   ProcessingCompletedPayload,
 } from './sync-processing-events.types';

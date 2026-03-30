@@ -129,6 +129,15 @@ export function useSyncEvents(): void {
         setSyncStatusRef.current(event.scopeId, 'syncing', event.percentage);
         break;
 
+      case SYNC_WS_EVENTS.PROCESSING_STARTED as 'processing:started':
+        // PRD-305: Prime store so SyncProgressPanel transitions from "Discovering..." to "Processing 0/N"
+        setProcessingProgressRef.current(event.scopeId, {
+          total: event.total,
+          completed: 0,
+          failed: 0,
+        });
+        break;
+
       case SYNC_WS_EVENTS.PROCESSING_PROGRESS as 'processing:progress':
         setProcessingProgressRef.current(event.scopeId, {
           total: event.total,

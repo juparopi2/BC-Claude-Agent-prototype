@@ -1,6 +1,6 @@
 # PRD-305: Sync Processing Progress Visibility
 
-**Status**: In Progress (Phase 1 implemented)
+**Status**: In Progress (Phase 1 + Phase 2 implemented — remaining: Redis investigation, Redis upgrade, per-file PipelineStatusBadge list)
 **Created**: 2026-03-29
 **Priority**: High (blocking user confidence in sync reliability)
 
@@ -198,8 +198,8 @@ Pattern repeating every ~10 minutes:
 
 #### A.4 Remaining (Future)
 
-- [ ] Add dedicated health endpoint: `GET /api/queue/health` returning per-queue job counts
-- [ ] Add worker heartbeat logging at `warn` level to avoid 50% sampling loss
+- [x] Add dedicated health endpoint: `GET /api/queue/health` returning per-queue job counts
+- [x] Add worker heartbeat logging at `warn` level to avoid 50% sampling loss
 - [ ] Investigate Redis connection churn (15.4M connections in 12 days)
 - [ ] Consider upgrading Redis from 6.0 to 6.2+ (BullMQ recommendation)
 
@@ -211,8 +211,8 @@ Pattern repeating every ~10 minutes:
 
 The backend already emits `processing:progress` and `processing:completed` via `FilePipelineCompleteWorker.emitScopeProgress()`. Once Workstream A fixes the workers, these events will flow.
 
-- [ ] Verify `SyncProgressEmitter.emitProcessingProgress()` is called during reconciliation repair requeue (currently only called by FilePipelineCompleteWorker)
-- [ ] Add `processing:started` event when first file in a scope begins extraction (new event)
+- [x] Fixed `FileRequeueRepairer` scope counter adjustments so `FilePipelineCompleteWorker` emits correct progress after reconciliation requeue
+- [x] Add `processing:started` event when first file in a scope begins extraction (new event via Redis SETNX in FileExtractWorker)
 
 #### B.2 Frontend: Enhance SyncProgressPanel
 
@@ -228,7 +228,7 @@ Currently `SyncProgressPanel` only shows `op.status` (syncing/complete/error) an
 - [x] Shows phase transitions: "Discovering..." → "Processing X/Y files..." → "X files ready"
 - [x] Shows failed count with amber warning: "(N failed)"
 - [x] Info banner during processing: "Files are being indexed for search. Your Knowledge Base will update as each file completes."
-- [ ] Add retry button for failed files (future — needs bulk retry API integration)
+- [x] Add retry button for failed files via `SyncFailedFilesSection` collapsible with `useSyncRetry` hook
 - [ ] Add expandable file list showing per-file `PipelineStatusBadge` (future)
 
 #### B.3 Frontend: Processing Notification Toast Flow
@@ -257,9 +257,9 @@ When files fail processing, show a collapsible notification (like the reconcilia
 └─────────────────────────────────────────┘
 ```
 
-- [ ] Reuse `FileHealthNotification` component pattern from reconciliation
-- [ ] Call `POST /api/files/{fileId}/retry` for each failed file
-- [ ] Aggregate retry results and show summary toast
+- [x] `SyncFailedFilesSection` sub-component reuses FileHealthWarning pattern (collapsible error list with per-file retry)
+- [x] Calls `POST /api/files/{fileId}/retry-processing` for each failed file via `useSyncRetry` hook
+- [x] Aggregates retry results and shows summary toast (success/warning/error)
 
 ---
 

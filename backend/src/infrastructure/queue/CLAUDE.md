@@ -223,9 +223,17 @@ The `FILE_MAINTENANCE` queue (`concurrency=1`) routes jobs to service singletons
 
 All jobs use dynamic `import()` inside switch cases (lazy loading). Registration happens in `ScheduledJobManager.initializeMaintenanceJobs()`.
 
+## Queue Health Endpoint (PRD-305)
+
+`GET /api/queue/health` (in `routes/queue-health.routes.ts`) returns per-queue job counts for all `QueueName` values. Uses `MessageQueue.getQueueStats()`. Individual queue failures are isolated via `Promise.allSettled`.
+
+## Worker Heartbeats (PRD-305)
+
+`WorkerRegistry` starts a 2-minute `setInterval` heartbeat for each registered worker, logging at `warn` level to survive App Insights 50% sampling. Timers are cleaned up in `closeAll()`.
+
 ## Related Documentation
 
 - Main CLAUDE.md: Section 3.1 (Message Processing)
 - File processing pipeline: `domains/files/CLAUDE.md`
 - Sync health: `../../services/sync/health/CLAUDE.md` — PRD-300 health check + reconciliation
-- WebSocket events: `@bc-agent/shared` FILE_WS_EVENTS
+- WebSocket events: `@bc-agent/shared` FILE_WS_EVENTS, SYNC_WS_EVENTS

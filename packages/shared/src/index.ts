@@ -310,7 +310,8 @@ export type {
   SyncHealthReportPayload,
   SyncRecoveryCompletedPayload,
 
-  // Sync Processing Event types (PRD-117)
+  // Sync Processing Event types (PRD-117, PRD-305)
+  ProcessingStartedPayload,
   ProcessingProgressPayload,
   ProcessingCompletedPayload,
 

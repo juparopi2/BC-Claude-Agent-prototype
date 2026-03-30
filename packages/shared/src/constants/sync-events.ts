@@ -19,6 +19,7 @@ export const SYNC_WS_EVENTS = {
   SUBSCRIPTION_ERROR: 'connection:subscription_error',
   CONNECTION_EXPIRED: 'connection:expired',
   CONNECTION_DISCONNECTED: 'connection:disconnected',
+  PROCESSING_STARTED: 'processing:started',
   PROCESSING_PROGRESS: 'processing:progress',
   PROCESSING_COMPLETED: 'processing:completed',
   SYNC_HEALTH_REPORT: 'sync:health_report',

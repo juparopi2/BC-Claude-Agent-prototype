@@ -9,7 +9,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { SYNC_WS_EVENTS } from '@bc-agent/shared';
-import type { ProcessingProgressPayload, ProcessingCompletedPayload } from '@bc-agent/shared';
+import type { ProcessingStartedPayload, ProcessingProgressPayload, ProcessingCompletedPayload } from '@bc-agent/shared';
 import { getSocketIO, isSocketServiceInitialized } from '@/services/websocket/SocketService';
 
 const logger = createChildLogger({ service: 'SyncProgressEmitter' });
@@ -37,6 +37,10 @@ export class SyncProgressEmitter {
     data: { connectionId: string; scopeId: string; totalFiles: number; processingTotal?: number }
   ): void {
     this.emit(userId, SYNC_WS_EVENTS.SYNC_COMPLETED, data);
+  }
+
+  emitProcessingStarted(userId: string, payload: ProcessingStartedPayload): void {
+    this.emit(userId, SYNC_WS_EVENTS.PROCESSING_STARTED, payload);
   }
 
   emitProcessingProgress(userId: string, payload: ProcessingProgressPayload): void {

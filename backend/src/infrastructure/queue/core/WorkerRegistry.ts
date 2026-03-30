@@ -38,8 +38,12 @@ export interface WorkerConfig {
 /**
  * WorkerRegistry - BullMQ worker management
  */
+/** Heartbeat interval: 2 minutes. With 50% App Insights sampling, P(miss all in 15min) = (0.5)^7 ≈ 0.8%. */
+const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000;
+
 export class WorkerRegistry {
   private readonly workers: Map<QueueName, Worker> = new Map();
+  private readonly heartbeatTimers: Map<QueueName, NodeJS.Timeout> = new Map();
   private readonly log: ILoggerMinimal;
   private readonly redisConfig: RedisOptions;
   private readonly getQueueName: (name: QueueName) => string;
@@ -79,6 +83,18 @@ export class WorkerRegistry {
     this.setupWorkerEventHandlers(worker, name, lockConfig);
 
     this.workers.set(name, worker);
+
+    // PRD-305: Heartbeat at warn level so App Insights 50% sampling retains worker traces
+    const timer = setInterval(() => {
+      this.log.warn({
+        queueName: name,
+        isRunning: !worker.closing,
+        heartbeat: true,
+      }, `Worker heartbeat: ${name}`);
+    }, HEARTBEAT_INTERVAL_MS);
+    timer.unref(); // Don't prevent process exit
+    this.heartbeatTimers.set(name, timer);
+
     this.log.info(`Worker registered: ${name}`, {
       concurrency: resolvedConcurrency,
       lockDuration: lockConfig.lockDuration,
@@ -244,6 +260,12 @@ export class WorkerRegistry {
    * 2. Waits for ALL active jobs to complete or fail
    */
   async closeAll(): Promise<Error[]> {
+    // Clear heartbeat timers before closing workers
+    for (const timer of this.heartbeatTimers.values()) {
+      clearInterval(timer);
+    }
+    this.heartbeatTimers.clear();
+
     const errors: Error[] = [];
 
     for (const [name, worker] of this.workers.entries()) {

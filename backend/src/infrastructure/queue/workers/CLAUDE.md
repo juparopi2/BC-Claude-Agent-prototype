@@ -8,7 +8,7 @@ BullMQ job processors for the file processing pipeline, external sync, and sched
 
 | Worker | Concurrency | Purpose |
 |---|---|---|
-| `FileExtractWorker` | 8 | Text extraction via `FileProcessingService`. First stage of processing flow. |
+| `FileExtractWorker` | 8 | Text extraction via `FileProcessingService`. First stage of processing flow. Emits `processing:started` on first file in scope (PRD-305, atomic via Redis SETNX). |
 | `FileChunkWorker` | 5 | Text chunking via `FileChunkingService`. Second stage. |
 | `FileEmbedWorker` | 5 | Embedding generation (Cohere) + Azure AI Search indexing. Third stage. Emits `readiness_changed` on success. |
 | `FilePipelineCompleteWorker` | 10 | Final stage. Increments `processed_count`/`processing_completed`/`processing_failed` counters. Emits scope-level `SYNC_WS_EVENTS.PROCESSING_PROGRESS` and `PROCESSING_COMPLETED` when all files are done. |
@@ -71,6 +71,14 @@ When a non-404 error propagates after all BullMQ retry attempts:
 ## Worker Event Handling
 
 `WorkerRegistry.setupWorkerEventHandlers()` attaches `error`, `failed`, and `stalled` listeners to every registered worker. Stalled jobs are automatically retried up to `MAX_STALLED_COUNT` (from `LOCK_CONFIG`).
+
+## Worker Heartbeat (PRD-305)
+
+`WorkerRegistry` starts a heartbeat timer for each registered worker that logs at `warn` level every 2 minutes. This ensures worker traces survive App Insights 50% sampling. Timers use `.unref()` (don't prevent process exit) and are cleared in `closeAll()`.
+
+## Processing Start Signal (PRD-305)
+
+`FileExtractWorker.tryEmitProcessingStarted()` uses Redis SETNX to emit `SYNC_WS_EVENTS.PROCESSING_STARTED` exactly once per scope when the first file enters extraction. Key: `sync:processing_started:{scopeId}` with 1h TTL. Non-fatal — extraction continues if emission fails. Only fires for sync files (where `batchId` matches a `connection_scopes` row).
 
 ## MaintenanceWorker Job Routing
 

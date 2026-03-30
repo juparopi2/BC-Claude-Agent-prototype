@@ -266,11 +266,14 @@ export class FileRequeueRepairer {
 
     for (const file of files) {
       try {
-        // Optimistic: only reset if still in an intermediate state
+        // Optimistic: only reset if still in an intermediate state AND retries not exhausted.
+        // Files with pipeline_retry_count >= 3 should be permanently failed by
+        // StuckFileRecoveryService, not re-enqueued indefinitely.
         const result = await prisma.files.updateMany({
           where: {
             id: file.id,
             pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
+            pipeline_retry_count: { lt: 3 },
           },
           data: {
             pipeline_status: 'queued',
@@ -278,7 +281,7 @@ export class FileRequeueRepairer {
           },
         });
 
-        if (result.count === 0) continue; // File already reached 'ready' or 'failed' — skip
+        if (result.count === 0) continue; // File already reached 'ready'/'failed', or retries exhausted — skip
 
         await getMessageQueue().addFileProcessingFlow({
           fileId: file.id,

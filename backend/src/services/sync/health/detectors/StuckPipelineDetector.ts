@@ -46,6 +46,10 @@ export class StuckPipelineDetector implements DriftDetector<DetectedFileRow> {
         updated_at: { lt: stuckThreshold },
         deleted_at: null,
         deletion_status: null,
+        // Skip files that already exhausted retries — StuckFileRecoveryService
+        // will permanently fail them. Without this guard, requeueStuckFiles()
+        // re-enqueues them indefinitely since it doesn't check retry_count.
+        pipeline_retry_count: { lt: 3 },
         // Transient sync guard: exclude files in actively-syncing scopes.
         // NULL scope IDs (local files) pass through since notIn doesn't match NULL.
         ...(syncingScopeIds.length > 0

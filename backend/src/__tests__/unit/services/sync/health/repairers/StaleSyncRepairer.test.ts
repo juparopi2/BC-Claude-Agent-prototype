@@ -151,7 +151,7 @@ describe('StaleSyncRepairer', () => {
       scopeId: SCOPE_ID_1,
       connectionId: CONN_ID_1,
       userId: USER_ID,
-      triggerType: 'delta',
+      triggerType: 'polling',
     });
   });
 

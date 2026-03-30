@@ -306,7 +306,16 @@ export async function createTestSocketIOServer(
 
   // 9. Create cleanup function
   const cleanup = async (): Promise<void> => {
-    return new Promise((resolve) => {
+    // Force-disconnect all lingering sockets before closing the server.
+    // Without this, io.close() waits for clients to disconnect gracefully,
+    // which can hang the afterAll hook past its timeout.
+    try {
+      io.disconnectSockets(true);
+    } catch {
+      // Ignore — sockets may already be gone
+    }
+
+    const closePromise = new Promise<void>((resolve) => {
       io.close(() => {
         httpServer.close(async () => {
           try {
@@ -318,6 +327,16 @@ export async function createTestSocketIOServer(
         });
       });
     });
+
+    // Ensure cleanup never hangs longer than 10 seconds
+    const timeout = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        try { redisClient.disconnect(); } catch { /* best-effort */ }
+        resolve();
+      }, 10_000);
+    });
+
+    await Promise.race([closePromise, timeout]);
   };
 
   return {

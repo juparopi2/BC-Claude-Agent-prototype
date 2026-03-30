@@ -270,13 +270,14 @@ router.post('/stuck/:fileId/retry', async (req, res) => {
       return;
     }
 
-    // Create new processing flow
+    // Create new processing flow (remove old jobs first to avoid BullMQ dedup)
     const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
     const mq = getMessageQueue();
+    await mq.removeExistingPipelineJobs(fileId);
     await mq.addFileProcessingFlow({
       fileId,
       userId,
-      batchId: (file.batch_id ?? '').toUpperCase(),
+      batchId: file.batch_id?.toUpperCase() ?? '',
       mimeType: file.mime_type,
       blobPath: file.blob_path ?? undefined,
       fileName: file.name,
@@ -343,10 +344,11 @@ router.post('/stuck/retry-all', async (req, res) => {
 
         const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
         const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
         await mq.addFileProcessingFlow({
           fileId: file.id,
           userId: file.user_id,
-          batchId: (fileDetails.batch_id ?? '').toUpperCase(),
+          batchId: fileDetails.batch_id?.toUpperCase() ?? '',
           mimeType: fileDetails.mime_type,
           blobPath: fileDetails.blob_path ?? undefined,
           fileName: fileDetails.name,

@@ -86,3 +86,6 @@ azurite-debug.log
 # MCP Config
 .mcp.json
 
+
+.atl/
+

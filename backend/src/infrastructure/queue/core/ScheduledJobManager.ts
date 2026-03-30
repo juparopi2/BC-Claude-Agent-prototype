@@ -170,12 +170,12 @@ export class ScheduledJobManager {
         }
       );
 
-      // Sync reconciliation (every hour — 24x/day)
+      // Sync reconciliation (every 15 minutes)
       await queue.add(
         JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
         { type: JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION },
         {
-          repeat: { pattern: CRON_PATTERNS.HOURLY },
+          repeat: { pattern: CRON_PATTERNS.EVERY_15_MIN },
           jobId: JOB_NAMES.FILE_MAINTENANCE.SYNC_RECONCILIATION,
         }
       );

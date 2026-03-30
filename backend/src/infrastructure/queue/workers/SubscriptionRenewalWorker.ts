@@ -83,9 +83,10 @@ export class SubscriptionRenewalWorker {
 
   private async pollDelta(): Promise<void> {
     const { prisma } = await import('@/infrastructure/database/prisma');
+    const { env } = await import('@/infrastructure/config');
 
     // Find scopes that haven't synced recently and are idle
-    const staleThreshold = new Date(Date.now() - 30 * 60 * 1000); // 30 minutes ago
+    const staleThreshold = new Date(Date.now() - env.SYNC_POLLING_INTERVAL_MINUTES * 60 * 1000);
     const staleScopeRows = await prisma.connection_scopes.findMany({
       where: {
         sync_status: { in: ['synced', 'idle'] },

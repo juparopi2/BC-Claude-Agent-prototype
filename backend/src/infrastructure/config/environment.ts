@@ -154,7 +154,7 @@ const envSchema = z.object({
   SUBSCRIPTION_MAX_DURATION_DAYS: z.string().default('29').transform(Number).pipe(z.number().min(1).max(30)),
 
   // Sync Reconciliation (PRD-300)
-  SYNC_RECONCILIATION_AUTO_REPAIR: z.string().default('false').transform((v) => v === 'true'),
+  SYNC_RECONCILIATION_AUTO_REPAIR: z.string().default('true').transform((v) => v === 'true'),
 });
 
 /**

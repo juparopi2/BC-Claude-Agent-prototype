@@ -11,7 +11,7 @@ Automated health monitoring and recovery for the file synchronization pipeline. 
 | Service | Schedule | Responsibility |
 |---|---|---|
 | `SyncHealthCheckService` | Every 15 min (cron) | Inspect all scopes, detect stuck/error states, delegate recovery, emit WS health reports. Also serves `GET /api/sync/health`. |
-| `SyncReconciliationService` | Every hour (cron, 24x/day) + on-demand per-user | **Orchestrator**: runs 11 detectors → 5 repairers. Cron checks all users with non-deleted files; respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
+| `SyncReconciliationService` | Every 15 minutes (cron) + on-demand per-user | **Orchestrator**: runs 11 detectors → 5 repairers. Cron checks all users with non-deleted files; respects `SYNC_RECONCILIATION_AUTO_REPAIR`; on-demand always repairs. Auto-triggered on Socket.IO `user:join` (login/refresh). |
 | `SyncRecoveryService` | On-demand | Atomic recovery actions: reset stuck scopes, retry error scopes, re-enqueue failed files. Consumed by health check, reconciliation, and manual API. |
 
 ### Detector/Repairer Pattern (PRD-304)
@@ -79,7 +79,7 @@ ScheduledJobManager.initializeMaintenanceJobs()
   ├── orphan-cleanup            (daily 03:00)  — existing
   ├── batch-timeout             (every hour)   — existing
   ├── sync-health-check         (every 15 min) — PRD-300
-  └── sync-reconciliation       (daily 04:00)  — PRD-300
+  └── sync-reconciliation       (every 15 min) — PRD-300
 
 MaintenanceWorker.process(job)
   switch (job.name) → dynamic import → service.run()
@@ -142,7 +142,7 @@ Detects twelve drift conditions:
 | Stuck deletions | Two-path: (1) `deletion_status='pending'` on connected+synced scopes → **immediate** (no threshold); (2) all other `deletion_status='pending'` → after 1h | **Hierarchical truth**: if connection connected → RESURRECT (clear deletion, re-queue); if connection dead → HARD-DELETE directly |
 | is_shared misclassification | SharePoint files/folders with `is_shared=true` (should always be false — `remote_drive_id` on SP scopes is library drive ID, not sharing indicator) | Set `is_shared=false` (metadata-only correction, no file reprocessing) |
 
-**Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Cron checks all users with non-deleted files (not just ready). On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
+**Cron: auto-repair by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=false` to disable mutations (dry-run). Cron checks all users with non-deleted files (not just ready). On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 
 ### Stuck Deletion Two-Path Strategy
 
@@ -269,7 +269,7 @@ Both emitted to `user:{userId}` rooms via `getSocketIO()`.
 | Variable | Default | Description |
 |---|---|---|
 | `SYNC_HEALTH_STUCK_THRESHOLD_MS` | `600000` (10 min) | How long a scope must be stuck before reset |
-| `SYNC_RECONCILIATION_AUTO_REPAIR` | `'false'` | Enable auto-repair during reconciliation |
+| `SYNC_RECONCILIATION_AUTO_REPAIR` | `'true'` | Enable auto-repair during reconciliation |
 
 ## Error Handling
 

@@ -106,7 +106,7 @@ vi.mock('@/services/sync/FolderHierarchyResolver', () => ({
 }));
 
 // env — mock the module so SYNC_RECONCILIATION_AUTO_REPAIR is controllable per-test
-const mockEnv = vi.hoisted(() => ({ SYNC_RECONCILIATION_AUTO_REPAIR: false as boolean }));
+const mockEnv = vi.hoisted(() => ({ SYNC_RECONCILIATION_AUTO_REPAIR: true as boolean }));
 
 vi.mock('@/infrastructure/config/environment', () => ({
   get env() {
@@ -165,8 +165,8 @@ function makeFileRecord(fileId: string, overrides?: { name?: string; mime_type?:
 beforeEach(() => {
   vi.clearAllMocks();
 
-  // Reset env to safe default (dry-run) before each test
-  mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = false;
+  // Reset env to safe default (auto-repair) before each test
+  mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = true;
 
   // Safe defaults — operations succeed, return empty results
   mockFilesFindMany.mockResolvedValue([]);
@@ -191,7 +191,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // Reset env mock to avoid test pollution
-  mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = false;
+  mockEnv.SYNC_RECONCILIATION_AUTO_REPAIR = true;
 });
 
 // ============================================================================
@@ -735,7 +735,7 @@ describe('SyncReconciliationService', () => {
         userId: USER_ID_1,
         dbReadyFiles: 2,
         searchIndexedFiles: 1,
-        dryRun: true,
+        dryRun: false,
         repairs: { missingRequeued: 0, orphansDeleted: 0, errors: 0 },
       });
 

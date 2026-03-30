@@ -12,26 +12,54 @@
  * - Embedding memory leaks (raw field detection)
  *
  * Usage:
- *   npx tsx scripts/diagnose-redis.ts
- *   npx tsx scripts/diagnose-redis.ts --memory-analysis
- *   npx tsx scripts/diagnose-redis.ts --connection-test
+ *   npx tsx scripts/redis/diagnose-redis.ts
+ *   npx tsx scripts/redis/diagnose-redis.ts --memory-analysis
+ *   npx tsx scripts/redis/diagnose-redis.ts --connection-test
+ *   npx tsx scripts/redis/diagnose-redis.ts --env prod
  */
 
 import 'dotenv/config';
 import IORedis from 'ioredis';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const REDIS_CONFIG = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6380'),
-  password: process.env.REDIS_PASSWORD || undefined,
-  tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
-};
+/** BullMQ default Redis key prefix */
+const BULLMQ_PREFIX = 'bull';
 
-const QUEUE_PREFIX = process.env.QUEUE_NAME_PREFIX || 'bcagent';
+function parseRedisConnectionString(connStr: string): {
+  host: string; port: number; password: string; tls: boolean;
+} {
+  const parts = connStr.split(',');
+  const [hostPort] = parts;
+  const [host, portStr] = hostPort.split(':');
+  const passwordPart = parts.find(p => p.startsWith('password='));
+  const password = passwordPart ? passwordPart.split('=').slice(1).join('=') : '';
+  const sslPart = parts.find(p => p.toLowerCase().startsWith('ssl='));
+  const tls = sslPart ? sslPart.split('=')[1].toLowerCase() === 'true' : false;
+  return { host, port: parseInt(portStr) || 6380, password, tls };
+}
+
+function buildRedisConfig(): { host: string; port: number; password?: string; tls?: Record<string, never> } {
+  const connStr = process.env.REDIS_CONNECTION_STRING;
+  if (connStr) {
+    const parsed = parseRedisConnectionString(connStr);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+      tls: parsed.tls ? {} : undefined,
+    };
+  }
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6380'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
+  };
+}
 
 // Azure Redis tier limits
 const AZURE_REDIS_TIERS = {
@@ -200,15 +228,15 @@ async function getRedisMetrics(connection: IORedis): Promise<RedisMetrics> {
 async function analyzeKeys(connection: IORedis): Promise<KeyAnalysis[]> {
   const analysis: KeyAnalysis[] = [];
   const patterns = [
-    `${QUEUE_PREFIX}:*:id`,
-    `${QUEUE_PREFIX}:*:wait`,
-    `${QUEUE_PREFIX}:*:active`,
-    `${QUEUE_PREFIX}:*:completed`,
-    `${QUEUE_PREFIX}:*:failed`,
-    `${QUEUE_PREFIX}:*:delayed`,
-    `${QUEUE_PREFIX}:*:stalled`,
-    `${QUEUE_PREFIX}:*:meta`,
-    `${QUEUE_PREFIX}:*:events`,
+    `${BULLMQ_PREFIX}:*:id`,
+    `${BULLMQ_PREFIX}:*:wait`,
+    `${BULLMQ_PREFIX}:*:active`,
+    `${BULLMQ_PREFIX}:*:completed`,
+    `${BULLMQ_PREFIX}:*:failed`,
+    `${BULLMQ_PREFIX}:*:delayed`,
+    `${BULLMQ_PREFIX}:*:stalled`,
+    `${BULLMQ_PREFIX}:*:meta`,
+    `${BULLMQ_PREFIX}:*:events`,
     `bull:*:lock:*`,
     `queue:ratelimit:*`,
   ];
@@ -331,7 +359,7 @@ async function analyzeBullMQLocks(connection: IORedis): Promise<{
   activeLocks: number;
   staleLocks: string[];
 }> {
-  const lockPattern = `${QUEUE_PREFIX}:*:lock:*`;
+  const lockPattern = `${BULLMQ_PREFIX}:*:lock:*`;
   const lockKeys = await connection.keys(lockPattern);
 
   const staleLocks: string[] = [];
@@ -360,7 +388,7 @@ async function analyzeBullMQLocks(connection: IORedis): Promise<{
 // Connection Test
 // ============================================================================
 
-async function testConnectionPooling(): Promise<void> {
+async function testConnectionPooling(redisConfig: ReturnType<typeof buildRedisConfig>): Promise<void> {
   console.log('\n=== CONNECTION POOLING TEST ===\n');
 
   const connections: IORedis[] = [];
@@ -371,7 +399,7 @@ async function testConnectionPooling(): Promise<void> {
   try {
     for (let i = 0; i < MAX_TEST_CONNECTIONS; i++) {
       const conn = new IORedis({
-        ...REDIS_CONFIG,
+        ...redisConfig,
         maxRetriesPerRequest: null,
         lazyConnect: true,
       });
@@ -618,12 +646,20 @@ function printDiagnostics(result: DiagnosticResult, lockInfo: { activeLocks: num
 // ============================================================================
 
 async function main() {
+  // Resolve remote environment if --env flag is set
+  const targetEnv = getTargetEnv();
+  if (targetEnv) {
+    await resolveEnvironment(targetEnv, { redis: true });
+  }
+
   const args = parseArgs();
+  const REDIS_CONFIG = buildRedisConfig();
 
   console.log('=== REDIS DIAGNOSTICS ===\n');
   console.log(`Host: ${REDIS_CONFIG.host}:${REDIS_CONFIG.port}`);
   console.log(`TLS: ${REDIS_CONFIG.tls ? 'enabled' : 'disabled'}`);
-  console.log(`Queue prefix: ${QUEUE_PREFIX}`);
+  console.log(`BullMQ prefix: ${BULLMQ_PREFIX}`);
+  if (targetEnv) console.log(`Environment: ${targetEnv}`);
 
   const connection = new IORedis({
     ...REDIS_CONFIG,
@@ -668,7 +704,7 @@ async function main() {
 
     // Connection test if requested
     if (args.connectionTest) {
-      await testConnectionPooling();
+      await testConnectionPooling(REDIS_CONFIG);
     }
 
     // Exit with appropriate code

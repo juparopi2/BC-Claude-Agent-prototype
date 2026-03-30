@@ -270,6 +270,9 @@ export function createRedisClient(profile: RedisProfile = getDefaultProfile()): 
     lazyConnect: false, // Connect immediately
     // TLS for Azure Redis (port 6380)
     ...(redisPort === 6380 ? { tls: {} } : {}),
+    // TCP keepalive prevents Azure Redis from killing idle connections (10 min default timeout).
+    // Sends probes every 30s so blocking connections (BZPOPMIN) aren't considered idle.
+    keepAlive: 30000,
   };
 
   // Merge with profile configuration

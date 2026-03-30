@@ -81,6 +81,8 @@ export class RedisConnectionManager {
       enableReadyCheck: true,
       // TLS for Azure Redis Cache (port 6380)
       tls: redisConfig.port === 6380 ? { rejectUnauthorized: true } : undefined,
+      // TCP keepalive prevents Azure Redis idle timeout (10 min) from killing blocking connections
+      keepAlive: 30000,
       // Reconnection strategy
       reconnectOnError: (err) => {
         const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
@@ -207,6 +209,7 @@ export class RedisConnectionManager {
       password: options.password,
       maxRetriesPerRequest: null,
       enableReadyCheck: true,
+      keepAlive: 30000,
       tls: options.tls ? {
         rejectUnauthorized: typeof options.tls === 'object' ? options.tls.rejectUnauthorized : true,
       } : undefined,

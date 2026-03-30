@@ -27,10 +27,10 @@ import { PIPELINE_STATUS } from '@bc-agent/shared';
 // Hoisted mocks - available before module evaluation
 const {
   mockGetPipelineStatus,
-  mockExecuteRaw,
-  mockExecuteRawUnsafe,
+  mockUploadBatchesUpdateMany,
   mockUploadBatchesFindFirst,
   mockFilesFindFirst,
+  mockConnectionScopesUpdateMany,
   mockConnectionScopesFindFirst,
   mockConnectionScopesUpdate,
   mockLogger,
@@ -51,10 +51,10 @@ const {
 
   return {
     mockGetPipelineStatus: vi.fn(),
-    mockExecuteRaw: vi.fn(),
-    mockExecuteRawUnsafe: vi.fn(),
+    mockUploadBatchesUpdateMany: vi.fn(),
     mockUploadBatchesFindFirst: vi.fn(),
     mockFilesFindFirst: vi.fn(),
+    mockConnectionScopesUpdateMany: vi.fn(),
     mockConnectionScopesFindFirst: vi.fn(),
     mockConnectionScopesUpdate: vi.fn(),
     mockLogger: mockLoggerInstance,
@@ -75,15 +75,15 @@ vi.mock('@/services/files/repository/FileRepository', () => ({
 
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
-    $executeRaw: mockExecuteRaw,
-    $executeRawUnsafe: mockExecuteRawUnsafe,
     upload_batches: {
+      updateMany: mockUploadBatchesUpdateMany,
       findFirst: mockUploadBatchesFindFirst,
     },
     files: {
       findFirst: mockFilesFindFirst,
     },
     connection_scopes: {
+      updateMany: mockConnectionScopesUpdateMany,
       findFirst: mockConnectionScopesFindFirst,
       update: mockConnectionScopesUpdate,
     },
@@ -104,9 +104,10 @@ import type { PipelineCompleteJobData } from '@/infrastructure/queue/workers/Fil
 describe('FilePipelineCompleteWorker', () => {
   let worker: FilePipelineCompleteWorker;
 
-  const TEST_FILE_ID = 'FILE-A1B2C3D4-E5F6-7890-1234-567890ABCDEF';
-  const TEST_BATCH_ID = 'BATCH-11111111-2222-3333-4444-555555555555';
-  const TEST_USER_ID = 'USER-99999999-8888-7777-6666-555555555555';
+  // Valid RFC 4122 UUIDs (version 4, variant [89ab])
+  const TEST_FILE_ID = 'A1B2C3D4-E5F6-4890-A234-567890ABCDEF';
+  const TEST_BATCH_ID = '11111111-2222-4333-8444-555555555555';
+  const TEST_USER_ID = '99999999-8888-4777-A666-555555555555';
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -154,12 +155,14 @@ describe('FilePipelineCompleteWorker', () => {
     // Verify getPipelineStatus called
     expect(mockGetPipelineStatus).toHaveBeenCalledWith(TEST_FILE_ID, TEST_USER_ID);
 
-    // Verify processed_count increment (tagged template)
-    expect(mockExecuteRaw).toHaveBeenCalledWith(
-      expect.any(Array), // Tagged template strings array
-      TEST_BATCH_ID,
-      TEST_USER_ID,
-    );
+    // Verify processed_count increment via Prisma updateMany
+    expect(mockUploadBatchesUpdateMany).toHaveBeenCalledWith({
+      where: { id: TEST_BATCH_ID, user_id: TEST_USER_ID },
+      data: {
+        processed_count: { increment: 1 },
+        updated_at: expect.any(Date),
+      },
+    });
 
     // Verify batch progress query
     expect(mockUploadBatchesFindFirst).toHaveBeenCalledWith({
@@ -246,12 +249,14 @@ describe('FilePipelineCompleteWorker', () => {
       'File final status',
     );
 
-    // Verify counter still incremented (tagged template)
-    expect(mockExecuteRaw).toHaveBeenCalledWith(
-      expect.any(Array), // Tagged template strings array
-      TEST_BATCH_ID,
-      TEST_USER_ID,
-    );
+    // Verify counter still incremented via Prisma updateMany
+    expect(mockUploadBatchesUpdateMany).toHaveBeenCalledWith({
+      where: { id: TEST_BATCH_ID, user_id: TEST_USER_ID },
+      data: {
+        processed_count: { increment: 1 },
+        updated_at: expect.any(Date),
+      },
+    });
 
     // Verify batch event emitted with failed status
     expect(mockLogger.info).toHaveBeenCalledWith(
@@ -289,13 +294,56 @@ describe('FilePipelineCompleteWorker', () => {
     );
   });
 
+  it('should skip upload_batches update and warn when batchId is not a valid UUID', async () => {
+    const jobData: PipelineCompleteJobData = {
+      fileId: TEST_FILE_ID,
+      batchId: 'not-a-uuid',
+      userId: TEST_USER_ID,
+    };
+
+    const job = createMockJob(jobData);
+    mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+
+    await worker.process(job);
+
+    // Should NOT call updateMany on upload_batches
+    expect(mockUploadBatchesUpdateMany).not.toHaveBeenCalled();
+
+    // Should warn about invalid batchId
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ batchId: 'not-a-uuid' }),
+      'Skipping upload_batches update — batchId is not a valid UUID',
+    );
+
+    // Should still log external sync path
+    expect(mockLogger.info).toHaveBeenCalledWith('External sync file — batch tracking skipped');
+  });
+
+  it('should skip batch tracking entirely when batchId is empty string', async () => {
+    const jobData: PipelineCompleteJobData = {
+      fileId: TEST_FILE_ID,
+      batchId: '',
+      userId: TEST_USER_ID,
+    };
+
+    const job = createMockJob(jobData);
+    mockGetPipelineStatus.mockResolvedValue(PIPELINE_STATUS.READY);
+
+    await worker.process(job);
+
+    expect(mockUploadBatchesUpdateMany).not.toHaveBeenCalled();
+    expect(mockUploadBatchesFindFirst).not.toHaveBeenCalled();
+    expect(mockLogger.warn).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith('External sync file — batch tracking skipped');
+  });
+
   // ==========================================================================
   // PRD-117: Scope-aware processing tracking
   // ==========================================================================
 
   describe('PRD-117 — scope-aware processing tracking', () => {
-    const TEST_SCOPE_ID = 'SCOP-AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE';
-    const TEST_CONN_ID = 'CONN-11111111-2222-3333-4444-555566667777';
+    const TEST_SCOPE_ID = 'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE';
+    const TEST_CONN_ID = '11111111-2222-4333-8444-555566667777';
 
     function createSyncJob() {
       return createMockJob({ fileId: TEST_FILE_ID, batchId: TEST_BATCH_ID, userId: TEST_USER_ID });
@@ -325,10 +373,13 @@ describe('FilePipelineCompleteWorker', () => {
 
       await worker.process(createSyncJob());
 
-      expect(mockExecuteRawUnsafe).toHaveBeenCalledWith(
-        expect.stringContaining('processing_completed'),
-        TEST_SCOPE_ID
-      );
+      expect(mockConnectionScopesUpdateMany).toHaveBeenCalledWith({
+        where: { id: TEST_SCOPE_ID },
+        data: {
+          processing_completed: { increment: 1 },
+          updated_at: expect.any(Date),
+        },
+      });
     });
 
     it('should increment processing_failed for failed sync files', async () => {
@@ -342,10 +393,13 @@ describe('FilePipelineCompleteWorker', () => {
 
       await worker.process(createSyncJob());
 
-      expect(mockExecuteRawUnsafe).toHaveBeenCalledWith(
-        expect.stringContaining('processing_failed'),
-        TEST_SCOPE_ID
-      );
+      expect(mockConnectionScopesUpdateMany).toHaveBeenCalledWith({
+        where: { id: TEST_SCOPE_ID },
+        data: {
+          processing_failed: { increment: 1 },
+          updated_at: expect.any(Date),
+        },
+      });
     });
 
     it('should not touch scope counters for upload files (no connection_scope_id)', async () => {
@@ -355,8 +409,8 @@ describe('FilePipelineCompleteWorker', () => {
 
       await worker.process(createSyncJob());
 
-      // Should NOT call $executeRawUnsafe for scope tracking
-      expect(mockExecuteRawUnsafe).not.toHaveBeenCalled();
+      // Should NOT call updateMany for scope tracking
+      expect(mockConnectionScopesUpdateMany).not.toHaveBeenCalled();
       expect(mockConnectionScopesFindFirst).not.toHaveBeenCalled();
     });
 

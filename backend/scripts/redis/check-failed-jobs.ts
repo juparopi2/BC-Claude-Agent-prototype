@@ -6,15 +6,52 @@
 import 'dotenv/config';
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
-const REDIS_CONFIG = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6380'),
-  password: process.env.REDIS_PASSWORD || undefined,
-  tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
-};
+/**
+ * BullMQ default Redis key prefix is 'bull'.
+ * The app's QUEUE_NAME_PREFIX is for queue NAME prefixing (e.g. 'local--file-extract'),
+ * NOT for the Redis key prefix. Scripts must use 'bull' to match production queues.
+ */
+const BULLMQ_PREFIX = 'bull';
 
-const QUEUE_PREFIX = process.env.QUEUE_PREFIX || 'bcagent';
+/**
+ * Parse Azure Redis connection string format:
+ * hostname:port,password=xxx,ssl=True,abortConnect=False
+ */
+function parseRedisConnectionString(connStr: string): {
+  host: string; port: number; password: string; tls: boolean;
+} {
+  const parts = connStr.split(',');
+  const [hostPort] = parts;
+  const [host, portStr] = hostPort.split(':');
+  const passwordPart = parts.find(p => p.startsWith('password='));
+  const password = passwordPart ? passwordPart.split('=').slice(1).join('=') : '';
+  const sslPart = parts.find(p => p.toLowerCase().startsWith('ssl='));
+  const tls = sslPart ? sslPart.split('=')[1].toLowerCase() === 'true' : false;
+
+  return { host, port: parseInt(portStr) || 6380, password, tls };
+}
+
+function buildRedisConfig(): { host: string; port: number; password?: string; tls?: Record<string, never> } {
+  const connStr = process.env.REDIS_CONNECTION_STRING;
+  if (connStr) {
+    const parsed = parseRedisConnectionString(connStr);
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      password: parsed.password || undefined,
+      tls: parsed.tls ? {} : undefined,
+    };
+  }
+
+  return {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6380'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    tls: process.env.REDIS_PORT === '6380' ? {} : undefined,
+  };
+}
 
 const QUEUE_NAMES = [
   'file-processing',
@@ -23,9 +60,19 @@ const QUEUE_NAMES = [
 ];
 
 async function main() {
+  // Resolve remote environment if --env flag is set
+  const targetEnv = getTargetEnv();
+  if (targetEnv) {
+    await resolveEnvironment(targetEnv, { redis: true });
+  }
+
+  const REDIS_CONFIG = buildRedisConfig();
+
   console.log('=== CHECKING FAILED JOBS IN BULLMQ ===\n');
   console.log(`Redis: ${REDIS_CONFIG.host}:${REDIS_CONFIG.port}`);
-  console.log(`Queue prefix: ${QUEUE_PREFIX}\n`);
+  console.log(`BullMQ prefix: ${BULLMQ_PREFIX}`);
+  if (targetEnv) console.log(`Environment: ${targetEnv}`);
+  console.log('');
 
   const connection = new IORedis({
     ...REDIS_CONFIG,
@@ -33,10 +80,9 @@ async function main() {
   });
 
   for (const queueName of QUEUE_NAMES) {
-    const fullName = `${QUEUE_PREFIX}:${queueName}`;
-    console.log(`\n--- Queue: ${fullName} ---\n`);
+    console.log(`\n--- Queue: ${queueName} ---\n`);
 
-    const queue = new Queue(queueName, { connection, prefix: QUEUE_PREFIX });
+    const queue = new Queue(queueName, { connection, prefix: BULLMQ_PREFIX });
 
     // Get failed jobs
     const failedJobs = await queue.getFailed(0, 20);

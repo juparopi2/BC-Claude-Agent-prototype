@@ -187,6 +187,10 @@ export class DeltaSyncService {
       // Step 5b: Build folder hierarchy map for parent resolution
       const folderMap = await buildFolderMap(connectionId, connection.provider);
 
+      // is_shared: Only true for OneDrive "Shared with me" items. SharePoint scopes
+      // always have remote_drive_id (the library drive ID) which is NOT a sharing indicator.
+      const isShared = connection.provider !== 'sharepoint' && !!scope.remote_drive_id;
+
       if (scope.scope_type === 'folder' && scope.scope_resource_id) {
         await ensureScopeRootFolder({
           connectionId,
@@ -197,7 +201,7 @@ export class DeltaSyncService {
           microsoftDriveId: effectiveDriveId,
           folderMap,
           provider: connection.provider,
-          isShared: !!scope.remote_drive_id,
+          isShared,
         });
       }
 
@@ -421,7 +425,7 @@ export class DeltaSyncService {
             microsoftDriveId: effectiveDriveId,
             folderMap,
             provider: connection.provider,
-            isShared: !!scope.remote_drive_id,
+            isShared,
           });
         } catch (folderErr) {
           const errorInfo =

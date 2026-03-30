@@ -74,7 +74,9 @@ export class FolderHierarchyRepairer {
           microsoftDriveId: effectiveDriveId,
           folderMap,
           provider: missing.provider,
-          isShared: !!missing.remoteDriveId,
+          // is_shared: Only true for OneDrive "Shared with me" items. SharePoint scopes
+          // always have remote_drive_id (the library drive ID) which is NOT a sharing indicator.
+          isShared: missing.provider !== 'sharepoint' && !!missing.remoteDriveId,
         });
 
         repairs.scopeRootsRecreated++;

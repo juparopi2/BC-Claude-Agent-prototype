@@ -227,6 +227,10 @@ export class InitialSyncService {
       // PRD-112: Create the scope root folder itself (if folder-type scope).
       // The scope folder is filtered from delta results (it IS the scope, not a child),
       // but it must exist in the files table so children can reference it as parent.
+      // is_shared: Only true for OneDrive "Shared with me" items. SharePoint scopes
+      // always have remote_drive_id (the library drive ID) which is NOT a sharing indicator.
+      const isShared = connection.provider !== 'sharepoint' && !!scope.remote_drive_id;
+
       if (scope.scope_type === 'folder' && scope.scope_resource_id) {
         await ensureScopeRootFolder({
           connectionId,
@@ -237,7 +241,7 @@ export class InitialSyncService {
           microsoftDriveId: effectiveDriveId,
           folderMap: externalToInternalId,
           provider: connection.provider,
-          isShared: !!scope.remote_drive_id,
+          isShared,
         });
       }
 
@@ -272,7 +276,7 @@ export class InitialSyncService {
               microsoftDriveId: effectiveDriveId,
               folderMap: externalToInternalId,
               provider: connection.provider,
-              isShared: !!scope.remote_drive_id,
+              isShared,
             });
           } catch (folderErr) {
             const errorInfo = folderErr instanceof Error
@@ -298,7 +302,7 @@ export class InitialSyncService {
         userId,
         effectiveDriveId,
         provider: connection.provider,
-        isShared: !!scope.remote_drive_id,
+        isShared,
         folderMap: externalToInternalId,
       };
 
@@ -495,7 +499,7 @@ export class InitialSyncService {
             content_hash_external: item.eTag ?? null,
             pipeline_status: 'queued',
             is_favorite: false,
-            is_shared: !!scope.remote_drive_id,
+            is_shared: connection.provider !== 'sharepoint' && !!scope.remote_drive_id,
           },
         });
 

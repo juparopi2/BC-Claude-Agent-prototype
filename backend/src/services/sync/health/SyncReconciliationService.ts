@@ -5,7 +5,7 @@
  * optionally repair drift. Runs hourly (24x/day) via MaintenanceWorker cron,
  * and on-demand per-user via POST /api/sync/health/reconcile.
  *
- * Eleven drift conditions detected:
+ * Twelve drift conditions detected:
  *   1. Files in DB as 'ready' but missing from the search index
  *   2. Documents in search index with no matching DB file (orphaned)
  *   3. Failed files eligible for retry (retry_count < 3)
@@ -17,6 +17,7 @@
  *   9. Ready non-image files with zero file_chunks records
  *  10. Ready files with stale metadata in the search index (sourceType/parentFolderId mismatch)
  *  11. Stuck deletion files (deletion_status='pending' > 1h — resurrect or hard-delete)
+ *  12. SharePoint files with is_shared=true (should always be false — metadata correction)
  *
  * Cron: respects SYNC_RECONCILIATION_AUTO_REPAIR env var (dry-run by default).
  * On-demand: always repairs (user explicitly requested it).
@@ -43,11 +44,13 @@ import { DisconnectedFilesDetector } from './detectors/DisconnectedFilesDetector
 import { ReadyWithoutChunksDetector } from './detectors/ReadyWithoutChunksDetector';
 import { StaleSearchMetadataDetector } from './detectors/StaleSearchMetadataDetector';
 import { StuckDeletionDetector } from './detectors/StuckDeletionDetector';
+import { IsSharedMisclassificationDetector } from './detectors/IsSharedMisclassificationDetector';
 import { FileRequeueRepairer } from './repairers/FileRequeueRepairer';
 import { OrphanCleanupRepairer } from './repairers/OrphanCleanupRepairer';
 import { ExternalFileCleanupRepairer } from './repairers/ExternalFileCleanupRepairer';
 import { FolderHierarchyRepairer } from './repairers/FolderHierarchyRepairer';
 import { StuckDeletionRepairer } from './repairers/StuckDeletionRepairer';
+import { IsSharedRepairer } from './repairers/IsSharedRepairer';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -233,6 +236,10 @@ export class SyncReconciliationService {
     const stuckDeletionRows = stuckDeletionResult.items;
     const stuckDeletionFiles = stuckDeletionRows.map((f) => f.id);
 
+    // 11. SharePoint files with is_shared=true (should always be false)
+    const isSharedMisclassifiedResult = await new IsSharedMisclassificationDetector().detect(normalizedId);
+    const isSharedMisclassified = isSharedMisclassifiedResult.items;
+
     // ── Repair phase ──────────────────────────────────────────────────────
 
     let repairs: ReconciliationRepairs;
@@ -277,6 +284,9 @@ export class SyncReconciliationService {
       const stuckDeletionRepairer = new StuckDeletionRepairer();
       const stuckDeletionRepairs = await stuckDeletionRepairer.repair(normalizedId, stuckDeletionRows);
 
+      // Correct is_shared on SharePoint items
+      const isSharedRepairResult = await new IsSharedRepairer().repair(normalizedId, isSharedMisclassified);
+
       // Aggregate all errors
       const totalErrors =
         missingResult.errors +
@@ -288,7 +298,8 @@ export class SyncReconciliationService {
         disconnectedCleanResult.errors +
         readyWithoutChunksRepairResult.errors +
         staleMetadataRepairResult.errors +
-        stuckDeletionRepairs.errors;
+        stuckDeletionRepairs.errors +
+        isSharedRepairResult.errors;
 
       repairs = {
         missingRequeued: missingResult.missingRequeued,
@@ -302,6 +313,7 @@ export class SyncReconciliationService {
         readyWithoutChunksRequeued: readyWithoutChunksRepairResult.readyWithoutChunksRequeued,
         staleMetadataRequeued: staleMetadataRepairResult.staleMetadataRequeued,
         stuckDeletions: stuckDeletionRepairs,
+        isSharedCorrected: isSharedRepairResult.corrected,
         errors: totalErrors,
       };
     } else {
@@ -312,6 +324,7 @@ export class SyncReconciliationService {
         readyWithoutChunksRequeued: 0,
         staleMetadataRequeued: 0,
         stuckDeletions: { resurrected: 0, hardDeleted: 0, errors: 0 },
+        isSharedCorrected: 0,
         errors: 0,
       };
     }
@@ -334,6 +347,7 @@ export class SyncReconciliationService {
       readyWithoutChunks,
       staleSearchMetadata,
       stuckDeletionFiles,
+      isSharedMisclassified,
       repairs,
       dryRun: !shouldRepair,
     };
@@ -352,6 +366,7 @@ export class SyncReconciliationService {
         readyWithoutChunks: undefined,
         staleSearchMetadata: undefined,
         stuckDeletionFiles: undefined,
+        isSharedMisclassified: undefined,
         missingCount: comparison.missingFromSearch.length,
         orphanedCount: comparison.orphanedInSearch.length,
         failedRetriableCount: failedRetriable.length,
@@ -366,6 +381,7 @@ export class SyncReconciliationService {
         readyWithoutChunksCount: readyWithoutChunks.length,
         staleSearchMetadataCount: staleSearchMetadata.length,
         stuckDeletionFilesCount: stuckDeletionFiles.length,
+        isSharedMisclassifiedCount: isSharedMisclassified.length,
       },
       'Reconciliation report for user',
     );

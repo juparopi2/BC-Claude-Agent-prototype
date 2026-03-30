@@ -132,7 +132,7 @@ export const FolderTreeItem = memo(function FolderTreeItem({
                 isExpanded ? 'text-amber-600' : 'text-amber-500'
               )} />
               {folder.sourceType !== FILE_SOURCE_TYPE.LOCAL && sourceUI.accentColor && (
-                folder.isShared ? (
+                folder.sourceType === FILE_SOURCE_TYPE.ONEDRIVE && folder.isShared ? (
                   <Users
                     className="absolute -bottom-0.5 -right-1 size-2.5"
                     style={{ color: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], fill: PROVIDER_ACCENT_COLOR[PROVIDER_ID.ONEDRIVE], strokeWidth: 2.5 }}

@@ -90,6 +90,7 @@ export interface ReconciliationRepairs {
   readyWithoutChunksRequeued: number;
   staleMetadataRequeued: number;
   stuckDeletions: StuckDeletionRepairs;
+  isSharedCorrected: number;
   errors: number;
 }
 
@@ -109,6 +110,7 @@ export interface ReconciliationReport {
   readyWithoutChunks: string[];
   staleSearchMetadata: string[];
   stuckDeletionFiles: string[];
+  isSharedMisclassified: string[];
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }

@@ -125,7 +125,7 @@ Error scopes are not retried infinitely. Two Redis keys per scope:
 
 ## DB-to-Search Reconciliation
 
-Detects eleven drift conditions:
+Detects twelve drift conditions:
 
 | Drift | Detection | Repair Action |
 |---|---|---|
@@ -140,6 +140,7 @@ Detects eleven drift conditions:
 | Ready without chunks | `pipeline_status='ready'` AND `file_chunks` count = 0 (non-image files only) | Reset to `'queued'`, re-enqueue — pipeline will re-extract, chunk, and index |
 | Stale search metadata | AI Search `sourceType`/`parentFolderId` differs from DB `source_type`/`parent_folder_id` | Reset to `'queued'`, re-enqueue — pipeline reads fresh metadata from `FileRepository.getFileWithScopeMetadata()` |
 | Stuck deletions | Two-path: (1) `deletion_status='pending'` on connected+synced scopes → **immediate** (no threshold); (2) all other `deletion_status='pending'` → after 1h | **Hierarchical truth**: if connection connected → RESURRECT (clear deletion, re-queue); if connection dead → HARD-DELETE directly |
+| is_shared misclassification | SharePoint files/folders with `is_shared=true` (should always be false — `remote_drive_id` on SP scopes is library drive ID, not sharing indicator) | Set `is_shared=false` (metadata-only correction, no file reprocessing) |
 
 **Cron: dry-run by default**. Set `SYNC_RECONCILIATION_AUTO_REPAIR=true` to enable mutations. Cron checks all users with non-deleted files (not just ready). On-demand always repairs. Processes max 50 users per cron run, paginates DB queries in batches of 500.
 

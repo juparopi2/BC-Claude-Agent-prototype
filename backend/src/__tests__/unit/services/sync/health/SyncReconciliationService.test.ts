@@ -782,13 +782,13 @@ describe('SyncReconciliationService', () => {
         .rejects.toThrow(ReconciliationCooldownError);
     });
 
-    it('sets Redis cooldown after successful reconciliation', async () => {
+    it('sets Redis cooldown after successful reconciliation (manual default)', async () => {
       mockRedisTtl.mockResolvedValue(-2); // No cooldown
 
       await service.reconcileUserOnDemand(USER_ID_1);
 
       expect(mockRedisSet).toHaveBeenCalledWith(
-        expect.stringContaining(USER_ID_1.toUpperCase()),
+        `sync:reconcile_cooldown:manual:${USER_ID_1.toUpperCase()}`,
         '1',
         { EX: 300 },
       );
@@ -839,6 +839,76 @@ describe('SyncReconciliationService', () => {
 
       expect(r1.userId).toBe(USER_ID_1);
       expect(r2.userId).toBe(USER_ID_2);
+    });
+
+    // ── Trigger-based cooldown (Phase 4) ─────────────────────────────────
+
+    it('uses login prefix and 60s TTL when trigger is login', async () => {
+      mockRedisTtl.mockResolvedValue(-2);
+
+      await service.reconcileUserOnDemand(USER_ID_1, { trigger: 'login' });
+
+      // Check cooldown was checked with login prefix
+      expect(mockRedisTtl).toHaveBeenCalledWith(
+        `sync:reconcile_cooldown:login:${USER_ID_1.toUpperCase()}`,
+      );
+      // Set cooldown with 60s TTL
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        `sync:reconcile_cooldown:login:${USER_ID_1.toUpperCase()}`,
+        '1',
+        { EX: 60 },
+      );
+    });
+
+    it('uses manual prefix and 300s TTL when trigger is manual', async () => {
+      mockRedisTtl.mockResolvedValue(-2);
+
+      await service.reconcileUserOnDemand(USER_ID_1, { trigger: 'manual' });
+
+      expect(mockRedisTtl).toHaveBeenCalledWith(
+        `sync:reconcile_cooldown:manual:${USER_ID_1.toUpperCase()}`,
+      );
+      expect(mockRedisSet).toHaveBeenCalledWith(
+        `sync:reconcile_cooldown:manual:${USER_ID_1.toUpperCase()}`,
+        '1',
+        { EX: 300 },
+      );
+    });
+
+    it('defaults to manual trigger when no trigger specified', async () => {
+      mockRedisTtl.mockResolvedValue(-2);
+
+      await service.reconcileUserOnDemand(USER_ID_1);
+
+      expect(mockRedisTtl).toHaveBeenCalledWith(
+        `sync:reconcile_cooldown:manual:${USER_ID_1.toUpperCase()}`,
+      );
+    });
+
+    it('login and manual cooldowns are independent — login does not block manual', async () => {
+      // Login cooldown active (TTL > 0 for login key)
+      mockRedisTtl.mockImplementation((key: string) => {
+        if (key.includes('login:')) return Promise.resolve(45); // Login on cooldown
+        return Promise.resolve(-2); // Manual not on cooldown
+      });
+
+      // Manual should succeed even though login is on cooldown
+      const report = await service.reconcileUserOnDemand(USER_ID_1, { trigger: 'manual' });
+      expect(report).toBeDefined();
+      expect(report.userId).toBe(USER_ID_1);
+    });
+
+    it('login and manual cooldowns are independent — manual does not block login', async () => {
+      // Manual cooldown active (TTL > 0 for manual key)
+      mockRedisTtl.mockImplementation((key: string) => {
+        if (key.includes('manual:')) return Promise.resolve(250); // Manual on cooldown
+        return Promise.resolve(-2); // Login not on cooldown
+      });
+
+      // Login should succeed even though manual is on cooldown
+      const report = await service.reconcileUserOnDemand(USER_ID_1, { trigger: 'login' });
+      expect(report).toBeDefined();
+      expect(report.userId).toBe(USER_ID_1);
     });
   });
 

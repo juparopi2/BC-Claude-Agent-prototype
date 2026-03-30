@@ -56,6 +56,7 @@ vi.mock('@/services/sync/SubscriptionManager', () => ({
 vi.mock('@/infrastructure/config', () => ({
   env: {
     SUBSCRIPTION_RENEWAL_BUFFER_HOURS: 2,
+    SYNC_POLLING_INTERVAL_MINUTES: 30,
   },
 }));
 

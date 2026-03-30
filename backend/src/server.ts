@@ -1399,59 +1399,8 @@ function configureSocketIO(): void {
 
         // ── Phase 5: Delta sync for stale scopes on login ──────────────────
         try {
-          const { prisma: db } = await import('@/infrastructure/database/prisma');
-          const { getRedisClient: getRedis } = await import('@/infrastructure/redis/redis-client');
-          const { getMessageQueue } = await import('@/infrastructure/queue/MessageQueue');
-
-          const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
-          const MAX_SCOPES_PER_LOGIN = 5;
-          const LOGIN_DELTA_COOLDOWN_SECONDS = 900; // 15 minutes
-
-          const staleScopes = await db.connection_scopes.findMany({
-            where: {
-              connections: {
-                user_id: authenticatedUserId,
-                status: 'connected',
-              },
-              sync_status: { in: ['synced', 'idle'] },
-              last_sync_at: { lt: new Date(Date.now() - STALE_THRESHOLD_MS) },
-            },
-            select: { id: true, connection_id: true, last_sync_at: true },
-            orderBy: { last_sync_at: 'asc' },
-            take: MAX_SCOPES_PER_LOGIN,
-          });
-
-          if (staleScopes.length > 0) {
-            const redis = getRedis();
-            const mq = getMessageQueue();
-
-            for (const scope of staleScopes) {
-              const cooldownKey = `sync:login_delta:${scope.id.toUpperCase()}`;
-
-              // Skip if on cooldown
-              if (redis) {
-                const ttl = await redis.ttl(cooldownKey);
-                if (ttl > 0) continue;
-              }
-
-              await mq.addExternalFileSyncJob({
-                scopeId: scope.id,
-                connectionId: scope.connection_id,
-                userId: authenticatedUserId,
-                triggerType: 'polling',
-              });
-
-              // Set cooldown
-              if (redis) {
-                await redis.set(cooldownKey, '1', { EX: LOGIN_DELTA_COOLDOWN_SECONDS });
-              }
-            }
-
-            logger.info({
-              userId: authenticatedUserId,
-              staleScopesFound: staleScopes.length,
-            }, '[Socket.IO] Login delta sync enqueued for stale scopes');
-          }
+          const { syncStaleScopes } = await import('@/services/sync/health/LoginDeltaSyncService');
+          await syncStaleScopes(authenticatedUserId);
         } catch (err) {
           // Fire-and-forget — never block login
           logger.warn({ error: err instanceof Error ? err.message : String(err), userId: authenticatedUserId },

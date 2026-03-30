@@ -218,3 +218,60 @@ export function selectVisibleOperations(state: SyncStatusState): SyncOperation[]
 export function selectHasActiveOperations(state: SyncStatusState): boolean {
   return Array.from(state.operations.values()).some((op) => op.status === 'syncing');
 }
+
+/**
+ * PRD-305: Aggregate processing progress for all scopes in an operation.
+ * Returns total/completed/failed/percentage across the operation's scopes.
+ */
+export interface OperationProgress {
+  total: number;
+  completed: number;
+  failed: number;
+  percentage: number;
+  phase: 'discovering' | 'processing' | 'complete' | 'error';
+}
+
+export function selectOperationProgress(
+  state: SyncStatusState,
+  scopeIds: string[],
+): OperationProgress {
+  let total = 0;
+  let completed = 0;
+  let failed = 0;
+  let hasProcessing = false;
+  let hasSyncing = false;
+  let hasError = false;
+
+  for (const id of scopeIds) {
+    const entry = state.activeSyncs[id];
+    if (!entry) continue;
+    total += entry.processingTotal;
+    completed += entry.processingCompleted;
+    failed += entry.processingFailed;
+    if (entry.status === 'processing') hasProcessing = true;
+    if (entry.status === 'syncing') hasSyncing = true;
+    if (entry.status === 'error') hasError = true;
+  }
+
+  const done = completed + failed;
+  const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  const phase: OperationProgress['phase'] = hasError
+    ? 'error'
+    : hasSyncing
+      ? 'discovering'
+      : hasProcessing || (total > 0 && done < total)
+        ? 'processing'
+        : 'complete';
+
+  return { total, completed, failed, percentage, phase };
+}
+
+/**
+ * PRD-305: Returns true if any scope is actively processing files.
+ */
+export function selectHasActiveProcessing(state: SyncStatusState): boolean {
+  return Object.values(state.activeSyncs).some(
+    (s) => s.status === 'processing' || (s.status === 'syncing' && s.processingTotal > 0),
+  );
+}

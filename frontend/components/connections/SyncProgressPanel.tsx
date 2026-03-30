@@ -1,11 +1,12 @@
 'use client';
 
 /**
- * SyncProgressPanel (PRD-116)
+ * SyncProgressPanel (PRD-116, PRD-305)
  *
  * Floating panel at bottom-right showing active/completed sync operations.
  * Supports collapsed (badge) and expanded (card) views.
- * Auto-dismisses completed operations after 3 seconds.
+ * Shows per-operation processing progress with file counts (PRD-305).
+ * Auto-dismisses completed operations after 5 seconds.
  *
  * @module components/connections/SyncProgressPanel
  */
@@ -16,13 +17,16 @@ import {
   useSyncStatusStore,
   selectVisibleOperations,
   selectHasActiveOperations,
+  selectOperationProgress,
+  type OperationProgress,
 } from '@/src/domains/integrations/stores/syncStatusStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, ChevronDown, X, Check, AlertTriangle } from 'lucide-react';
+import { RefreshCw, ChevronDown, X, Check, AlertTriangle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const AUTO_DISMISS_DELAY_MS = 3000;
+const AUTO_DISMISS_DELAY_MS = 5000;
 
 export function SyncProgressPanel() {
   const operations = useSyncStatusStore(useShallow(selectVisibleOperations));
@@ -37,7 +41,7 @@ export function SyncProgressPanel() {
   // Track auto-dismiss timers per operation key
   const autoDismissTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Auto-dismiss completed operations after 3 seconds
+  // Auto-dismiss completed operations after delay
   useEffect(() => {
     for (const op of operations) {
       if (op.status === 'complete' && !op.dismissed) {
@@ -115,39 +119,138 @@ export function SyncProgressPanel() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="px-4 pb-4 space-y-3 max-h-64 overflow-y-auto">
+        <CardContent className="px-4 pb-4 space-y-3 max-h-80 overflow-y-auto">
           {operations.map((op) => (
-            <div key={op.operationKey} className="flex items-center gap-3 text-sm">
-              {op.status === 'syncing' && (
-                <RefreshCw className="size-4 text-blue-500 animate-spin shrink-0" />
-              )}
-              {op.status === 'complete' && (
-                <Check className="size-4 text-green-500 shrink-0" />
-              )}
-              {op.status === 'error' && (
-                <AlertTriangle className="size-4 text-red-500 shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="truncate font-medium">{op.providerName}</p>
-                <p className="text-xs text-muted-foreground">
-                  {op.scopeIds.length} scope{op.scopeIds.length !== 1 ? 's' : ''}
-                  {op.status === 'syncing' && ' syncing...'}
-                  {op.status === 'complete' && ' synced'}
-                  {op.status === 'error' && ' failed'}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 shrink-0"
-                onClick={() => removeOperation(op.operationKey)}
-              >
-                <X className="size-3" />
-              </Button>
-            </div>
+            <SyncOperationCard
+              key={op.operationKey}
+              operationKey={op.operationKey}
+              providerName={op.providerName}
+              scopeIds={op.scopeIds}
+              status={op.status}
+              onRemove={() => removeOperation(op.operationKey)}
+            />
           ))}
         </CardContent>
       </Card>
     </div>
   );
+}
+
+// ============================================
+// SyncOperationCard — per-operation sub-component
+// ============================================
+
+interface SyncOperationCardProps {
+  operationKey: string;
+  providerName: string;
+  scopeIds: string[];
+  status: 'syncing' | 'complete' | 'error';
+  onRemove: () => void;
+}
+
+function SyncOperationCard({ providerName, scopeIds, status, onRemove }: SyncOperationCardProps) {
+  const progress: OperationProgress = useSyncStatusStore((state) =>
+    selectOperationProgress(state, scopeIds),
+  );
+
+  const { total, completed, failed, percentage, phase } = progress;
+
+  const phaseLabel = getPhaseLabel(status, phase, total, completed, failed);
+  const isActive = status === 'syncing';
+  const hasFailures = failed > 0;
+
+  return (
+    <div className="border rounded-lg p-3 space-y-2">
+      {/* Header row */}
+      <div className="flex items-center gap-3">
+        {/* Status icon */}
+        {isActive && (
+          <RefreshCw className="size-4 text-blue-500 animate-spin shrink-0" />
+        )}
+        {status === 'complete' && !hasFailures && (
+          <Check className="size-4 text-green-500 shrink-0" />
+        )}
+        {status === 'complete' && hasFailures && (
+          <AlertTriangle className="size-4 text-amber-500 shrink-0" />
+        )}
+        {status === 'error' && (
+          <AlertTriangle className="size-4 text-red-500 shrink-0" />
+        )}
+
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <p className="truncate text-sm font-medium">{providerName}</p>
+          <p className="text-xs text-muted-foreground">{phaseLabel}</p>
+        </div>
+
+        {/* Dismiss */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          onClick={onRemove}
+        >
+          <X className="size-3" />
+        </Button>
+      </div>
+
+      {/* Progress bar — shown during processing phase */}
+      {total > 0 && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Processing</span>
+            <span>
+              {completed + failed}/{total}
+              {hasFailures && (
+                <span className="text-amber-500 ml-1">({failed} failed)</span>
+              )}
+            </span>
+          </div>
+          <Progress value={percentage} className="h-1.5" />
+        </div>
+      )}
+
+      {/* Info banner during active processing */}
+      {isActive && total > 0 && phase === 'processing' && (
+        <div className="flex items-start gap-2 rounded-md bg-muted/50 p-2">
+          <Info className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Files are being indexed for search. Your Knowledge Base will update as each file completes.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================
+// Helpers
+// ============================================
+
+function getPhaseLabel(
+  opStatus: 'syncing' | 'complete' | 'error',
+  phase: OperationProgress['phase'],
+  total: number,
+  completed: number,
+  failed: number,
+): string {
+  if (opStatus === 'error') return 'Sync failed';
+  if (opStatus === 'complete') {
+    if (failed > 0) return `${completed} ready, ${failed} failed`;
+    return total > 0 ? `${completed} files ready` : 'Sync complete';
+  }
+
+  // Active operation
+  switch (phase) {
+    case 'discovering':
+      return 'Discovering files...';
+    case 'processing':
+      return `Processing ${completed + failed}/${total} files...`;
+    case 'complete':
+      return failed > 0 ? `${completed} ready, ${failed} failed` : `${completed} files ready`;
+    case 'error':
+      return 'Sync error';
+    default:
+      return 'Syncing...';
+  }
 }

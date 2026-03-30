@@ -1,6 +1,6 @@
 # PRD-305: Sync Processing Progress Visibility
 
-**Status**: Draft
+**Status**: In Progress (Phase 1 implemented)
 **Created**: 2026-03-29
 **Priority**: High (blocking user confidence in sync reliability)
 
@@ -179,25 +179,29 @@ Pattern repeating every ~10 minutes:
 
 **Goal**: Ensure BullMQ file pipeline workers actually process enqueued flows.
 
-#### A.1 Diagnose Worker Health
+#### A.1 Fix Redis Eviction Policy (DONE 2026-03-29)
 
-- [ ] Add dedicated health endpoint: `GET /api/queue/health` returning per-queue job counts (waiting, active, failed)
-- [ ] Add worker heartbeat logging: each worker logs a heartbeat every 5 minutes with its Redis connection status
-- [ ] Add `isProcessing` check on Flow-based workers at startup
-- [ ] Log `Worker registered` and `Worker connection ready` events at `warn` level to avoid sampling
+- [x] Fixed prod Redis `maxmemory-policy` from `volatile-lru` to `noeviction` via `az redis update`
+- [x] Updated Bicep template (`infrastructure/bicep/modules/data.bicep`) to include `redisConfiguration.maxmemory-policy: noeviction`
+- [x] Restarted backend container to re-register workers
 
-#### A.2 Fix Redis Connection Recovery for Workers
+#### A.2 Fix FilePipelineCompleteWorker Empty batchId (DONE 2026-03-29)
 
-- [ ] Investigate whether BullMQ Workers using shared `redisConfig` (not shared connection) properly reconnect after TLS socket close
-- [ ] Add explicit `autoResubscribe: true` and `enableOfflineQueue: true` to worker Redis configs
-- [ ] Add worker-level `error` event logging that includes connection state
-- [ ] Consider using `connection: duplicatedConnection` pattern to ensure each worker has an independent, properly configured connection
+- [x] Added `if (batchId)` guard before `upload_batches` SQL update (line 65)
+- [x] Added `if (batchId)` guard before batch progress read and event emission (line 120)
+- [x] External sync files (batchId = scopeId) now skip batch tracking gracefully
 
-#### A.3 Add Queue Depth Alerting
+#### A.3 Fix queue-status.ts Wrong Queue Names (DONE 2026-03-29)
 
-- [ ] Emit `queue:backlog_warning` WebSocket event when any queue has >50 waiting jobs for >10 minutes
-- [ ] SyncHealthCheckService should include queue depth in health reports
-- [ ] Frontend toast when queue backlog detected: "File processing delayed — X files waiting"
+- [x] Changed `v2-file-extract` → `file-extract`, etc. in `scripts/redis/queue-status.ts`
+- [x] Added `file-maintenance` queue to the list
+
+#### A.4 Remaining (Future)
+
+- [ ] Add dedicated health endpoint: `GET /api/queue/health` returning per-queue job counts
+- [ ] Add worker heartbeat logging at `warn` level to avoid 50% sampling loss
+- [ ] Investigate Redis connection churn (15.4M connections in 12 days)
+- [ ] Consider upgrading Redis from 6.0 to 6.2+ (BullMQ recommendation)
 
 ### Workstream B: Processing Progress UI (Feature)
 
@@ -216,11 +220,16 @@ Currently `SyncProgressPanel` only shows `op.status` (syncing/complete/error) an
 
 **Reference pattern**: `BatchUploadProgressPanel.tsx` — shows dual progress bars (upload % + processing %), per-file status badges, expandable file list.
 
-- [ ] Read `activeSyncs[scopeId]` from `syncStatusStore` in `SyncProgressPanel`
-- [ ] Show processing progress: `"Processing: 3/15 files (20%)"` with progress bar
-- [ ] Show phase transitions: `"Discovering files..."` → `"Processing for search..."` → `"Complete"`
-- [ ] Show failed file count with retry button: `"2 files failed"` → click → calls bulk retry API
-- [ ] Add expandable file list showing per-file `PipelineStatusBadge` (reuse from upload system)
+- [x] Added `selectOperationProgress()` selector to `syncStatusStore` — aggregates per-scope progress into operation-level totals
+- [x] Added `OperationProgress` interface: `{ total, completed, failed, percentage, phase }`
+- [x] Added `selectHasActiveProcessing()` selector
+- [x] Rewrote `SyncProgressPanel` as `SyncProgressPanel` + `SyncOperationCard` sub-component
+- [x] Shows progress bar with `Processing X/Y files` count
+- [x] Shows phase transitions: "Discovering..." → "Processing X/Y files..." → "X files ready"
+- [x] Shows failed count with amber warning: "(N failed)"
+- [x] Info banner during processing: "Files are being indexed for search. Your Knowledge Base will update as each file completes."
+- [ ] Add retry button for failed files (future — needs bulk retry API integration)
+- [ ] Add expandable file list showing per-file `PipelineStatusBadge` (future)
 
 #### B.3 Frontend: Processing Notification Toast Flow
 

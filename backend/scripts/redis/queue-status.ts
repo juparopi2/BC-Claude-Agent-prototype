@@ -35,26 +35,25 @@ const QUEUE_PREFIX = process.env.QUEUE_NAME_PREFIX || 'bcagent';
 
 // All queue names in the system
 const ALL_QUEUE_NAMES = [
-  // V1 queues
+  // Core queues
   'message-persistence',
   'tool-execution',
   'event-processing',
   'usage-aggregation',
-  'file-processing',
-  'file-chunking',
-  'embedding-generation',
   'citation-persistence',
   'file-cleanup',
   'file-deletion',
   'file-bulk-upload',
-  // V2 pipeline queues (BullMQ Flows)
-  'v2-file-extract',
-  'v2-file-chunk',
-  'v2-file-embed',
-  'v2-file-pipeline-complete',
+  // File pipeline queues (BullMQ Flows)
+  'file-extract',
+  'file-chunk',
+  'file-embed',
+  'file-pipeline-complete',
   // External sync queues (PRD-108)
   'external-file-sync',
   'subscription-mgmt',
+  // Maintenance
+  'file-maintenance',
 ];
 
 // ============================================================================

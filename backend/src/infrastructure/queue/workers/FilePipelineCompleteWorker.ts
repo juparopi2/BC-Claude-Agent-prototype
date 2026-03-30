@@ -60,15 +60,17 @@ export class FilePipelineCompleteWorker {
 
       jobLogger.info({ finalStatus }, 'File final status');
 
-      // 2. Increment processed_count on upload_batches
+      // 2. Increment processed_count on upload_batches (skip for external sync files with no batch)
       const { prisma } = await import('@/infrastructure/database/prisma');
-      await prisma.$executeRaw`
-        UPDATE upload_batches
-        SET processed_count = processed_count + 1,
-            updated_at = GETUTCDATE()
-        WHERE id = ${batchId}
-          AND user_id = ${userId}
-      `;
+      if (batchId) {
+        await prisma.$executeRaw`
+          UPDATE upload_batches
+          SET processed_count = processed_count + 1,
+              updated_at = GETUTCDATE()
+          WHERE id = ${batchId}
+            AND user_id = ${userId}
+        `;
+      }
 
       // PRD-117: Scope-aware processing tracking
       const fileRecord = await prisma.files.findFirst({
@@ -115,27 +117,31 @@ export class FilePipelineCompleteWorker {
         }
       }
 
-      // 3. Read batch progress
-      const batch = await prisma.upload_batches.findFirst({
-        where: { id: batchId, user_id: userId },
-        select: { total_files: true, confirmed_count: true, processed_count: true },
-      });
+      // 3. Read batch progress (only for upload batches, not external sync)
+      if (batchId) {
+        const batch = await prisma.upload_batches.findFirst({
+          where: { id: batchId, user_id: userId },
+          select: { total_files: true, confirmed_count: true, processed_count: true },
+        });
 
-      const totalFiles = batch?.total_files ?? 0;
-      const processedCount = batch?.processed_count ?? 0;
-      const isComplete = processedCount >= totalFiles;
+        const totalFiles = batch?.total_files ?? 0;
+        const processedCount = batch?.processed_count ?? 0;
+        const isComplete = processedCount >= totalFiles;
 
-      jobLogger.info(
-        { totalFiles, processedCount, isComplete },
-        'Batch progress updated',
-      );
+        jobLogger.info(
+          { totalFiles, processedCount, isComplete },
+          'Batch progress updated',
+        );
 
-      // 4. Emit WebSocket events (fire-and-forget)
-      this.emitBatchEvents(
-        fileId, batchId, userId,
-        finalStatus ?? PIPELINE_STATUS.FAILED,
-        totalFiles, processedCount, isComplete,
-      );
+        // 4. Emit WebSocket events (fire-and-forget)
+        this.emitBatchEvents(
+          fileId, batchId, userId,
+          finalStatus ?? PIPELINE_STATUS.FAILED,
+          totalFiles, processedCount, isComplete,
+        );
+      } else {
+        jobLogger.info('External sync file — batch tracking skipped');
+      }
 
       jobLogger.info('Pipeline-complete finished');
     } catch (error) {

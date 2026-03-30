@@ -129,6 +129,9 @@ resource redisCache 'Microsoft.Cache/redis@2023-08-01' = {
     }
     enableNonSslPort: false
     minimumTlsVersion: '1.2'
+    redisConfiguration: {
+      'maxmemory-policy': 'noeviction'
+    }
   }
 }
 

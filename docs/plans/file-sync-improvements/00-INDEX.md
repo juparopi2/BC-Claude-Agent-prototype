@@ -17,6 +17,7 @@ Systematic improvements to the SharePoint/OneDrive file synchronization system. 
 | 302 | [PRD-302: Smart Scope Reassignment](./PRD-302-smart-scope-reassignment.md) | Draft | M | Preserve files when changing sync scope hierarchy |
 | 303 | [PRD-303: Multi-Tenant Sharing](./PRD-303-multi-tenant-sharing.md) | Draft | S (prep) / XL (full) | Feasibility assessment + Phase 1 embedding copy |
 | 304 | [PRD-304: Health Modular Refactor](./PRD-304-health-refactor.md) | Implemented | M | Detector/Repairer pattern, healthy state definitions, soft-delete fixes, auto-reconciliation on login |
+| 305 | [PRD-305: Sync Processing Progress](../sync-processing-progress/PRD-305-sync-processing-progress-visibility.md) | Draft | M | Processing progress UI, silent worker failure fix, queue health visibility |
 
 ## Implementation Order
 

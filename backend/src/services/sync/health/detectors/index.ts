@@ -31,3 +31,4 @@ export { ReadyWithoutChunksDetector } from './ReadyWithoutChunksDetector';
 export { StaleSearchMetadataDetector } from './StaleSearchMetadataDetector';
 export { StuckDeletionDetector } from './StuckDeletionDetector';
 export { IsSharedMisclassificationDetector } from './IsSharedMisclassificationDetector';
+export { ScopeIntegrityDetector } from './ScopeIntegrityDetector';

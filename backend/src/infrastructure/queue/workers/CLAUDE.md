@@ -84,7 +84,6 @@ When a non-404 error propagates after all BullMQ retry attempts:
 
 | `job.name` | Service |
 |---|---|
-| `stuck-file-recovery` | `StuckFileRecoveryService` |
 | `orphan-cleanup` | `OrphanCleanupService` |
 | `batch-timeout` | `BatchTimeoutService` |
 | `sync-health-check` | `SyncHealthCheckService` (PRD-300) |

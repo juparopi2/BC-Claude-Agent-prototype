@@ -8,6 +8,8 @@
  *   4. Local files (connection_scope_id=null) are eligible
  *   5. Empty result returns { items: [], count: 0 }
  *   6. Returned IDs are normalised to UPPERCASE
+ *   7. Returns ALL stuck files regardless of pipeline_retry_count (no count filter)
+ *   8. pipeline_retry_count is included in returned rows
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -60,6 +62,7 @@ function makeFileRow(overrides?: {
   name?: string;
   mime_type?: string;
   connection_scope_id?: string | null;
+  pipeline_retry_count?: number;
 }) {
   return {
     id: overrides?.id ?? FILE_ID_1,
@@ -69,6 +72,7 @@ function makeFileRow(overrides?: {
       overrides !== undefined && 'connection_scope_id' in overrides
         ? overrides.connection_scope_id
         : SCOPE_ID,
+    pipeline_retry_count: overrides?.pipeline_retry_count ?? 0,
   };
 }
 
@@ -185,5 +189,41 @@ describe('StuckPipelineDetector', () => {
     expect(whereClause.pipeline_status).toEqual({
       in: expect.arrayContaining(['queued', 'extracting', 'chunking', 'embedding']),
     });
+  });
+
+  it('does NOT filter by pipeline_retry_count — returns ALL stuck files regardless of count', async () => {
+    await new StuckPipelineDetector().detect(USER_ID);
+
+    const whereClause = mockFilesFindMany.mock.calls[0][0].where;
+    // pipeline_retry_count must NOT appear in the WHERE clause
+    expect(whereClause).not.toHaveProperty('pipeline_retry_count');
+  });
+
+  it('includes pipeline_retry_count in selected fields', async () => {
+    await new StuckPipelineDetector().detect(USER_ID);
+
+    const selectClause = mockFilesFindMany.mock.calls[0][0].select;
+    expect(selectClause).toHaveProperty('pipeline_retry_count', true);
+  });
+
+  it('returns pipeline_retry_count in result items', async () => {
+    const stuckFile = makeFileRow({ id: FILE_ID_1, pipeline_retry_count: 5 });
+    mockFilesFindMany.mockResolvedValue([stuckFile]);
+
+    const result = await new StuckPipelineDetector().detect(USER_ID);
+
+    expect(result.items[0].pipeline_retry_count).toBe(5);
+  });
+
+  it('returns files with pipeline_retry_count >= 3 (exhausted retries)', async () => {
+    const exhaustedFile = makeFileRow({ id: FILE_ID_1, pipeline_retry_count: 3 });
+    const exhaustedFile2 = makeFileRow({ id: FILE_ID_2, pipeline_retry_count: 10 });
+    mockFilesFindMany.mockResolvedValue([exhaustedFile, exhaustedFile2]);
+
+    const result = await new StuckPipelineDetector().detect(USER_ID);
+
+    expect(result.count).toBe(2);
+    expect(result.items[0].pipeline_retry_count).toBe(3);
+    expect(result.items[1].pipeline_retry_count).toBe(10);
   });
 });

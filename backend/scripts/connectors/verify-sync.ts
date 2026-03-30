@@ -26,6 +26,7 @@ import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { createSearchClient } from '../_shared/azure';
 import { getFlag, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ============================================================================
 // Help
@@ -49,6 +50,7 @@ ${BOLD}Flags:${RESET}
   --health                  Compact summary (~20 lines). Overrides --section.
   --deep                    Enhanced cross-system checks (integrity, vectors, error patterns).
   --errors                  Focus output on problems — skip healthy items.
+  --env dev|prod            Target environment (overrides .env).
   --help, -h                Show this help message.
 
 ${BOLD}Sections:${RESET}
@@ -144,6 +146,9 @@ async function main(): Promise<void> {
     console.error(`${RED}ERROR: --section must be one of: sql, blob, search, pipeline${RESET}`);
     process.exit(1);
   }
+
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
 
   const prisma = createPrisma();
 

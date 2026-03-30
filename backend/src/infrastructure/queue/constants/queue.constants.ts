@@ -53,7 +53,6 @@ export const JOB_NAMES = {
   FILE_PIPELINE_COMPLETE: 'pipeline-complete',
   DLQ: 'dead-letter',
   FILE_MAINTENANCE: {
-    STUCK_FILE_RECOVERY: 'stuck-file-recovery',
     ORPHAN_CLEANUP: 'orphan-cleanup',
     BATCH_TIMEOUT: 'batch-timeout',
     SYNC_HEALTH_CHECK: 'sync-health-check',

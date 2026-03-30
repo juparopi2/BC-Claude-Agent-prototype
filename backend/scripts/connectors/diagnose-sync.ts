@@ -16,6 +16,7 @@
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { getFlag, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const RED = '\x1b[31m';
@@ -44,6 +45,7 @@ ${BOLD}Flags:${RESET}
   --health                   Compact DB-only summary (~20 lines)
   --source-type onedrive|sharepoint
                              Filter file analysis by source type
+  --env dev|prod             Target environment (uses Azure Key Vault)
   --help, -h                 Show this help message
 `);
 }
@@ -86,6 +88,10 @@ interface ConnectionRow {
 
 // ─── Main ────────────────────────────────────────────────────────
 async function main(): Promise<void> {
+  // Resolve remote environment if --env is passed
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   const userId = getFlag('--userId')?.toUpperCase() ?? null;
   const connectionId = getFlag('--connectionId')?.toUpperCase() ?? null;
   const scopeId = getFlag('--scopeId')?.toUpperCase() ?? null;

@@ -18,6 +18,7 @@ import 'dotenv/config';
 import { Prisma } from '@prisma/client';
 import { createPrisma } from '../_shared/prisma';
 import { getFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ─── ANSI Colors ────────────────────────────────────────────────────────────
 const RED    = '\x1b[31m';
@@ -141,6 +142,9 @@ function truncate(s: string | null | undefined, len = 36): string {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 async function main(): Promise<void> {
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   // Resolve scope IDs from --scopeIds flag or fall back to defaults
   const flagValue = getFlag('--scopeIds');
   const scopeIds: string[] = flagValue

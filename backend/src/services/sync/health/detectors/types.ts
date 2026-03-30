@@ -14,6 +14,11 @@ export interface DetectedFileRow {
   connection_scope_id: string | null;
 }
 
+/** File row returned by StuckPipelineDetector — extends base with retry count */
+export interface StuckPipelineFileRow extends DetectedFileRow {
+  pipeline_retry_count: number;
+}
+
 /** File row returned by StuckDeletionDetector — extends base with connection context */
 export interface StuckDeletionFileRow extends DetectedFileRow {
   connection_id: string | null;

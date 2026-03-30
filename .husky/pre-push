@@ -106,10 +106,19 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
+# Full type-check (shared + backend + frontend, catches test file errors that builds miss)
+echo ""
+echo "🔎 Running full type-check..."
+cd .. && npm run verify:types
+if [ $? -ne 0 ]; then
+  echo "❌ Type-check failed. Push aborted."
+  exit 1
+fi
+
 # Frontend build
 echo ""
 echo "🏗️  Building frontend..."
-npm run build
+cd frontend && npm run build
 if [ $? -ne 0 ]; then
   echo "❌ Frontend build failed. Push aborted."
   exit 1

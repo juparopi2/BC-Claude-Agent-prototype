@@ -51,6 +51,9 @@ import { ExternalFileCleanupRepairer } from './repairers/ExternalFileCleanupRepa
 import { FolderHierarchyRepairer } from './repairers/FolderHierarchyRepairer';
 import { StuckDeletionRepairer } from './repairers/StuckDeletionRepairer';
 import { IsSharedRepairer } from './repairers/IsSharedRepairer';
+import { ScopeIntegrityDetector } from './detectors/ScopeIntegrityDetector';
+import { ScopeIntegrityRepairer } from './repairers/ScopeIntegrityRepairer';
+import { StaleSyncRepairer } from './repairers/StaleSyncRepairer';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -89,18 +92,37 @@ export class SyncReconciliationService {
   async run(): Promise<ReconciliationReport[]> {
     this.logger.info({ maxUsers: MAX_USERS_PER_RUN }, 'SyncReconciliationService: starting run');
 
-    const users = await prisma.files.findMany({
-      where: { deleted_at: null },
-      distinct: ['user_id'],
-      select: { user_id: true },
-      take: MAX_USERS_PER_RUN,
-    });
+    // Discover users from two sources and merge into a deduplicated set:
+    //   1. Users with non-deleted files (existing file-level drift conditions)
+    //   2. Users with connected connections (catches scopes with 0 files — scope integrity)
+    const [fileUsers, connectionUsers] = await Promise.all([
+      prisma.files.findMany({
+        where: { deleted_at: null },
+        distinct: ['user_id'],
+        select: { user_id: true },
+      }),
+      prisma.connections.findMany({
+        where: { status: 'connected' },
+        select: { user_id: true },
+      }),
+    ]);
+
+    const userIdSet = new Set<string>();
+    for (const { user_id } of fileUsers) {
+      userIdSet.add(user_id.toUpperCase());
+    }
+    for (const { user_id } of connectionUsers) {
+      userIdSet.add(user_id.toUpperCase());
+    }
+
+    // Cap to MAX_USERS_PER_RUN — take first N from the merged set
+    const users = [...userIdSet].slice(0, MAX_USERS_PER_RUN);
 
     this.logger.info({ userCount: users.length }, 'SyncReconciliationService: users to reconcile');
 
     const reports: ReconciliationReport[] = [];
 
-    for (const { user_id: userId } of users) {
+    for (const userId of users) {
       try {
         const report = await this.reconcileUser(userId);
         reports.push(report);
@@ -200,6 +222,10 @@ export class SyncReconciliationService {
 
     // ── Detection phase ───────────────────────────────────────────────────
 
+    // 0. Scope integrity (count divergence, stuck processing)
+    const scopeIntegrityResult = await new ScopeIntegrityDetector().detect(normalizedId);
+    const scopeIntegrityIssues = scopeIntegrityResult.items;
+
     // a/b/c. DB vs Search index comparison (missing + orphaned)
     const comparator = new SearchIndexComparator();
     const comparison = await comparator.compare(normalizedId);
@@ -209,9 +235,11 @@ export class SyncReconciliationService {
     const failedRetriableRows = failedRetriableResult.items;
     const failedRetriable = failedRetriableRows.map((f) => f.id);
 
-    // e. Stuck pipeline files
+    // e. Stuck pipeline files — partition into retriable and retry-exhausted
     const stuckPipelineResult = await new StuckPipelineDetector().detect(normalizedId);
     const stuckFileRows = stuckPipelineResult.items;
+    const retriableStuckRows = stuckFileRows.filter((f) => f.pipeline_retry_count < 3);
+    const exhaustedStuckRows = stuckFileRows.filter((f) => f.pipeline_retry_count >= 3);
     const stuckFiles = stuckFileRows.map((f) => f.id);
 
     // f. External files that no longer exist (Graph API 404)
@@ -267,8 +295,9 @@ export class SyncReconciliationService {
       // Re-enqueue failed files eligible for retry
       const failedResult = await requeuer.requeueFailedRetriable(normalizedId, failedRetriableRows);
 
-      // Re-enqueue stuck pipeline files
-      const stuckResult = await requeuer.requeueStuckFiles(normalizedId, stuckFileRows);
+      // Re-enqueue retriable stuck pipeline files; permanently fail exhausted ones
+      const stuckResult = await requeuer.requeueStuckFiles(normalizedId, retriableStuckRows);
+      const exhaustedResult = await requeuer.permanentlyFailExhaustedFiles(normalizedId, exhaustedStuckRows);
 
       // Re-enqueue ready images missing embeddings
       const imageResult = await requeuer.requeueImagesMissingEmbeddings(normalizedId, imagesMissingEmbeddings);
@@ -295,25 +324,35 @@ export class SyncReconciliationService {
       // Correct is_shared on SharePoint items
       const isSharedRepairResult = await new IsSharedRepairer().repair(normalizedId, isSharedMisclassified);
 
+      // Repair scope integrity issues (triggered last — scope-level resync)
+      const scopeIntegrityRepairs = await new ScopeIntegrityRepairer().repair(normalizedId, scopeIntegrityIssues);
+
+      // Proactively trigger delta sync for scopes that haven't synced in 48h
+      const staleSyncRepairs = await new StaleSyncRepairer().repair(normalizedId);
+
       // Aggregate all errors
       const totalErrors =
         missingResult.errors +
         orphanResult.errors +
         failedResult.errors +
         stuckResult.errors +
+        exhaustedResult.errors +
         imageResult.errors +
         externalResult.errors +
         disconnectedCleanResult.errors +
         readyWithoutChunksRepairResult.errors +
         staleMetadataRepairResult.errors +
         stuckDeletionRepairs.errors +
-        isSharedRepairResult.errors;
+        isSharedRepairResult.errors +
+        scopeIntegrityRepairs.errors +
+        staleSyncRepairs.errors;
 
       repairs = {
         missingRequeued: missingResult.missingRequeued,
         orphansDeleted: orphanResult.orphansDeleted,
         failedRequeued: failedResult.failedRequeued,
         stuckRequeued: stuckResult.stuckRequeued,
+        permanentlyFailed: exhaustedResult.permanentlyFailed,
         imageRequeued: imageResult.imageRequeued,
         externalNotFoundCleaned: externalResult.cleaned,
         disconnectedConnectionCleaned: disconnectedCleanResult.cleaned,
@@ -322,17 +361,22 @@ export class SyncReconciliationService {
         staleMetadataRequeued: staleMetadataRepairResult.staleMetadataRequeued,
         stuckDeletions: stuckDeletionRepairs,
         isSharedCorrected: isSharedRepairResult.corrected,
+        scopeIntegrity: scopeIntegrityRepairs,
+        staleSyncRepairs,
         errors: totalErrors,
       };
     } else {
       repairs = {
         missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
+        permanentlyFailed: 0,
         imageRequeued: 0, externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
         folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, foldersRestored: 0, errors: 0 },
         readyWithoutChunksRequeued: 0,
         staleMetadataRequeued: 0,
         stuckDeletions: { resurrected: 0, hardDeleted: 0, errors: 0 },
         isSharedCorrected: 0,
+        scopeIntegrity: { resyncsTriggered: 0, scopesSkippedCooldown: 0, scopesSkippedCap: 0, errors: 0 },
+        staleSyncRepairs: { deltaSyncsTriggered: 0, scopesSkippedCooldown: 0, scopesSkippedSyncing: 0, errors: 0 },
         errors: 0,
       };
     }
@@ -356,6 +400,7 @@ export class SyncReconciliationService {
       staleSearchMetadata,
       stuckDeletionFiles,
       isSharedMisclassified,
+      scopeIntegrityIssues,
       repairs,
       dryRun: !shouldRepair,
     };

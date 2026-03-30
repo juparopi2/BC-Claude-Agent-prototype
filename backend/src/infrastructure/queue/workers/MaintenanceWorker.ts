@@ -4,7 +4,6 @@
  * Processes the FILE_MAINTENANCE queue. Routes jobs to the appropriate
  * maintenance service based on job name:
  *
- * - stuck-file-recovery    → StuckFileRecoveryService
  * - orphan-cleanup         → OrphanCleanupService
  * - batch-timeout          → BatchTimeoutService
  * - sync-health-check      → SyncHealthCheckService  (PRD-300)
@@ -40,16 +39,6 @@ export class MaintenanceWorker {
     const jobName = job.name;
 
     switch (jobName) {
-      case JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY: {
-        const { getStuckFileRecoveryService } = await import(
-          '@/domains/files/recovery/StuckFileRecoveryService'
-        );
-        const service = getStuckFileRecoveryService();
-        const metrics = await service.run();
-        jobLog.info({ metrics }, 'Stuck file recovery completed');
-        break;
-      }
-
       case JOB_NAMES.FILE_MAINTENANCE.ORPHAN_CLEANUP: {
         const { getOrphanCleanupService } = await import(
           '@/domains/files/cleanup/OrphanCleanupService'

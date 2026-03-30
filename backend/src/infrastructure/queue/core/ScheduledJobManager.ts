@@ -113,12 +113,13 @@ export class ScheduledJobManager {
   }
 
   /**
-   * Initialize maintenance scheduled jobs (PRD-05)
+   * Initialize maintenance scheduled jobs (PRD-05, PRD-304)
    *
    * Replaces the legacy FileCleanupWorker scheduled jobs.
    * OrphanCleanupService covers cleanup of failed files, orphaned chunks,
-   * and orphaned search documents. StuckFileRecoveryService handles
-   * recovery of stuck pipeline files.
+   * and orphaned search documents. Stuck file detection and recovery is
+   * handled by SyncReconciliationService via StuckPipelineDetector +
+   * FileRequeueRepairer (retriable) and permanentlyFailExhaustedFiles (exhausted).
    */
   private async initializeMaintenanceJobs(): Promise<void> {
     const queue = this.getQueue(QueueName.FILE_MAINTENANCE);
@@ -129,16 +130,6 @@ export class ScheduledJobManager {
 
     try {
       await this.removeExistingRepeatableJobs(queue);
-
-      // Stuck file recovery (every 15 minutes)
-      await queue.add(
-        JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY,
-        { type: JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY },
-        {
-          repeat: { pattern: CRON_PATTERNS.EVERY_15_MIN },
-          jobId: JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY,
-        }
-      );
 
       // Orphan cleanup (daily at 03:00 UTC)
       await queue.add(
@@ -180,9 +171,8 @@ export class ScheduledJobManager {
         }
       );
 
-      this.log.info('Scheduled maintenance jobs initialized (PRD-05, PRD-300)', {
+      this.log.info('Scheduled maintenance jobs initialized (PRD-05, PRD-300, PRD-304)', {
         jobs: [
-          JOB_NAMES.FILE_MAINTENANCE.STUCK_FILE_RECOVERY,
           JOB_NAMES.FILE_MAINTENANCE.ORPHAN_CLEANUP,
           JOB_NAMES.FILE_MAINTENANCE.BATCH_TIMEOUT,
           JOB_NAMES.FILE_MAINTENANCE.SYNC_HEALTH_CHECK,

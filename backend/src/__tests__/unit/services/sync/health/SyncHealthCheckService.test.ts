@@ -30,6 +30,7 @@ vi.mock('@/shared/utils/logger', () => ({
 // prisma mocks
 const mockScopesFindMany = vi.hoisted(() => vi.fn());
 const mockFilesGroupBy = vi.hoisted(() => vi.fn());
+const mockFilesCount = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
@@ -38,6 +39,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
     },
     files: {
       groupBy: mockFilesGroupBy,
+      count: mockFilesCount,
     },
   },
 }));
@@ -132,6 +134,7 @@ function makeScope(overrides?: {
   connectionStatus?: string;
   userId?: string;
   connectionId?: string;
+  provider?: string;
 }) {
   return {
     id: overrides?.id ?? SCOPE_ID_1,
@@ -143,6 +146,7 @@ function makeScope(overrides?: {
       id: overrides?.connectionId ?? CONNECTION_ID,
       user_id: overrides?.userId ?? USER_ID,
       status: overrides?.connectionStatus ?? 'connected',
+      provider: overrides?.provider ?? 'onedrive',
     },
   };
 }
@@ -176,6 +180,7 @@ beforeEach(() => {
   // Safe defaults
   mockScopesFindMany.mockResolvedValue([]);
   mockFilesGroupBy.mockResolvedValue(emptyFileStats);
+  mockFilesCount.mockResolvedValue(0); // default: no stuck files
 
   // Redis defaults: first attempt, no prior timestamp
   mockRedisIncr.mockResolvedValue(1);
@@ -795,6 +800,365 @@ describe('SyncHealthCheckService', () => {
 
       const staleIssues = report.scopes[0].issues.filter((i) => i.type === 'stale_sync');
       expect(staleIssues).toHaveLength(0);
+    });
+  });
+
+  // ==========================================================================
+  // getFileStats() — stuck field and high_failure_rate with stuck files
+  // ==========================================================================
+
+  describe('getFileStats() — stuck pipeline files', () => {
+    it('populates the stuck field from the count query', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // 5 ready files, 2 stuck files in intermediate states
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 5 },
+      ]);
+      mockFilesCount.mockResolvedValue(2);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].fileStats.stuck).toBe(2);
+    });
+
+    it('returns stuck = 0 when no files are stuck', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 10 },
+      ]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].fileStats.stuck).toBe(0);
+    });
+  });
+
+  describe('inspectScope() — high_failure_rate includes stuck files', () => {
+    it('triggers high_failure_rate when failed + stuck exceeds 50% threshold', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // Total = 10 files: 4 failed (40%) + 2 stuck (20%) = 60% > 50% threshold
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 4 },
+        { pipeline_status: 'failed', _count: 4 },
+        { pipeline_status: 'queued', _count: 2 },
+      ]);
+      mockFilesCount.mockResolvedValue(2); // 2 stuck
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].healthStatus).toBe('unhealthy');
+      expect(report.scopes[0].issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'high_failure_rate', severity: 'error' }),
+        ]),
+      );
+    });
+
+    it('does not trigger high_failure_rate when only failed files are below threshold', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // Total = 10: 4 failed (40%), 0 stuck — below 50% threshold
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 6 },
+        { pipeline_status: 'failed', _count: 4 },
+      ]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      const hrIssues = report.scopes[0].issues.filter((i) => i.type === 'high_failure_rate');
+      expect(hrIssues).toHaveLength(0);
+    });
+
+    it('triggers high_failure_rate when only stuck files push the rate over threshold', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // Total = 10: 0 failed, 6 stuck (60%) — stuck alone exceeds 50%
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 4 },
+        { pipeline_status: 'queued', _count: 6 },
+      ]);
+      mockFilesCount.mockResolvedValue(6); // all 6 queued files are stuck
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.scopes[0].healthStatus).toBe('unhealthy');
+      expect(report.scopes[0].issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'high_failure_rate', severity: 'error' }),
+        ]),
+      );
+    });
+
+    it('does not trigger high_failure_rate when failed + stuck are both zero', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      mockFilesGroupBy.mockResolvedValue([
+        { pipeline_status: 'ready', _count: 10 },
+      ]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      const hrIssues = report.scopes[0].issues.filter((i) => i.type === 'high_failure_rate');
+      expect(hrIssues).toHaveLength(0);
+    });
+
+    it('does not trigger high_failure_rate when scope has no files at all', async () => {
+      const scope = makeScope({ sync_status: 'synced', last_sync_at: new Date() });
+      mockScopesFindMany.mockResolvedValue([scope]);
+
+      // total = 0 — division guard prevents false positive
+      mockFilesGroupBy.mockResolvedValue([]);
+      mockFilesCount.mockResolvedValue(0);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      const hrIssues = report.scopes[0].issues.filter((i) => i.type === 'high_failure_rate');
+      expect(hrIssues).toHaveLength(0);
+    });
+  });
+
+  // ==========================================================================
+  // buildConnectionReports() — hierarchical health aggregation
+  // ==========================================================================
+
+  describe('buildConnectionReports()', () => {
+    /** Build a minimal ScopeHealthReport for testing buildConnectionReports */
+    function makeScopeReport(overrides?: {
+      scopeId?: string;
+      connectionId?: string;
+      userId?: string;
+      provider?: string;
+      connectionStatus?: string;
+      healthStatus?: 'healthy' | 'degraded' | 'unhealthy';
+    }) {
+      return {
+        scopeId: overrides?.scopeId ?? SCOPE_ID_1,
+        connectionId: overrides?.connectionId ?? CONNECTION_ID,
+        userId: overrides?.userId ?? USER_ID,
+        provider: overrides?.provider ?? 'onedrive',
+        connectionStatus: overrides?.connectionStatus ?? 'connected',
+        scopeName: 'Test Scope',
+        syncStatus: 'synced',
+        healthStatus: overrides?.healthStatus ?? 'healthy',
+        issues: [],
+        fileStats: { total: 0, ready: 0, failed: 0, processing: 0, queued: 0, stuck: 0 },
+        lastSyncedAt: new Date(),
+        checkedAt: new Date(),
+      };
+    }
+
+    it('returns empty array when no scope reports are provided', () => {
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([]);
+      expect(result).toHaveLength(0);
+    });
+
+    it('groups multiple scopes under the same connection into one ConnectionHealthReport', () => {
+      const CONNECTION_ID_A = 'CONN-AAAAAAAA-0000-0000-0000-000000000001';
+      const SCOPE_ID_A1 = 'SCOP-AAAAAAAA-0000-0000-0000-000000000001';
+      const SCOPE_ID_A2 = 'SCOP-AAAAAAAA-0000-0000-0000-000000000002';
+
+      const scope1 = makeScopeReport({ scopeId: SCOPE_ID_A1, connectionId: CONNECTION_ID_A });
+      const scope2 = makeScopeReport({ scopeId: SCOPE_ID_A2, connectionId: CONNECTION_ID_A });
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([scope1, scope2]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].connectionId).toBe(CONNECTION_ID_A);
+      expect(result[0].scopes).toHaveLength(2);
+      expect(result[0].summary.totalScopes).toBe(2);
+    });
+
+    it('applies worst-of-children: healthy + unhealthy = unhealthy connection', () => {
+      const CONNECTION_ID_A = 'CONN-AAAAAAAA-0000-0000-0000-000000000002';
+      const SCOPE_ID_A1 = 'SCOP-BBBBBBBB-0000-0000-0000-000000000001';
+      const SCOPE_ID_A2 = 'SCOP-BBBBBBBB-0000-0000-0000-000000000002';
+
+      const healthyScope = makeScopeReport({
+        scopeId: SCOPE_ID_A1,
+        connectionId: CONNECTION_ID_A,
+        healthStatus: 'healthy',
+      });
+      const unhealthyScope = makeScopeReport({
+        scopeId: SCOPE_ID_A2,
+        connectionId: CONNECTION_ID_A,
+        healthStatus: 'unhealthy',
+      });
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([healthyScope, unhealthyScope]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].healthStatus).toBe('unhealthy');
+      expect(result[0].summary.healthyScopes).toBe(1);
+      expect(result[0].summary.unhealthyScopes).toBe(1);
+      expect(result[0].summary.degradedScopes).toBe(0);
+    });
+
+    it('applies worst-of-children: healthy + degraded = degraded connection', () => {
+      const CONNECTION_ID_A = 'CONN-CCCCCCCC-0000-0000-0000-000000000001';
+      const SCOPE_ID_A1 = 'SCOP-CCCCCCCC-0000-0000-0000-000000000001';
+      const SCOPE_ID_A2 = 'SCOP-CCCCCCCC-0000-0000-0000-000000000002';
+
+      const healthyScope = makeScopeReport({
+        scopeId: SCOPE_ID_A1,
+        connectionId: CONNECTION_ID_A,
+        healthStatus: 'healthy',
+      });
+      const degradedScope = makeScopeReport({
+        scopeId: SCOPE_ID_A2,
+        connectionId: CONNECTION_ID_A,
+        healthStatus: 'degraded',
+      });
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([healthyScope, degradedScope]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].healthStatus).toBe('degraded');
+    });
+
+    it('handles two distinct connections independently', () => {
+      const CONNECTION_ID_A = 'CONN-DDDDDDDD-0000-0000-0000-000000000001';
+      const CONNECTION_ID_B = 'CONN-DDDDDDDD-0000-0000-0000-000000000002';
+      const SCOPE_ID_A = 'SCOP-DDDDDDDD-0000-0000-0000-000000000001';
+      const SCOPE_ID_B = 'SCOP-DDDDDDDD-0000-0000-0000-000000000002';
+
+      const scopeA = makeScopeReport({
+        scopeId: SCOPE_ID_A,
+        connectionId: CONNECTION_ID_A,
+        healthStatus: 'healthy',
+        provider: 'onedrive',
+      });
+      const scopeB = makeScopeReport({
+        scopeId: SCOPE_ID_B,
+        connectionId: CONNECTION_ID_B,
+        healthStatus: 'unhealthy',
+        provider: 'sharepoint',
+      });
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([scopeA, scopeB]);
+
+      expect(result).toHaveLength(2);
+
+      const connA = result.find((c) => c.connectionId === CONNECTION_ID_A);
+      const connB = result.find((c) => c.connectionId === CONNECTION_ID_B);
+
+      expect(connA).toBeDefined();
+      expect(connA!.healthStatus).toBe('healthy');
+      expect(connA!.provider).toBe('onedrive');
+
+      expect(connB).toBeDefined();
+      expect(connB!.healthStatus).toBe('unhealthy');
+      expect(connB!.provider).toBe('sharepoint');
+    });
+
+    it('returns healthy connection when all scopes are healthy', () => {
+      const CONNECTION_ID_A = 'CONN-EEEEEEEE-0000-0000-0000-000000000001';
+      const SCOPE_ID_A1 = 'SCOP-EEEEEEEE-0000-0000-0000-000000000001';
+      const SCOPE_ID_A2 = 'SCOP-EEEEEEEE-0000-0000-0000-000000000002';
+
+      const scope1 = makeScopeReport({ scopeId: SCOPE_ID_A1, connectionId: CONNECTION_ID_A, healthStatus: 'healthy' });
+      const scope2 = makeScopeReport({ scopeId: SCOPE_ID_A2, connectionId: CONNECTION_ID_A, healthStatus: 'healthy' });
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([scope1, scope2]);
+
+      expect(result[0].healthStatus).toBe('healthy');
+      expect(result[0].summary.healthyScopes).toBe(2);
+      expect(result[0].summary.degradedScopes).toBe(0);
+      expect(result[0].summary.unhealthyScopes).toBe(0);
+    });
+
+    it('propagates provider and connectionStatus from scope data', () => {
+      const CONNECTION_ID_A = 'CONN-FFFFFFFF-0000-0000-0000-000000000001';
+      const scope = makeScopeReport({
+        scopeId: SCOPE_ID_1,
+        connectionId: CONNECTION_ID_A,
+        provider: 'sharepoint',
+        connectionStatus: 'expired',
+      });
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const result = service.buildConnectionReports([scope]);
+
+      expect(result[0].provider).toBe('sharepoint');
+      expect(result[0].connectionStatus).toBe('expired');
+      expect(result[0].userId).toBe(USER_ID);
+    });
+  });
+
+  // ==========================================================================
+  // buildReport() — connection summary counts
+  // ==========================================================================
+
+  describe('getHealthForUser() — connection-level aggregation', () => {
+    it('includes connections in the report', async () => {
+      const scope = makeScope({
+        sync_status: 'synced',
+        last_sync_at: new Date(),
+        connectionId: CONNECTION_ID,
+        provider: 'onedrive',
+      });
+
+      mockScopesFindMany.mockResolvedValue([scope]);
+      mockFilesGroupBy.mockResolvedValue([{ pipeline_status: 'ready', _count: 5 }]);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.connections).toHaveLength(1);
+      expect(report.connections[0].connectionId).toBe(CONNECTION_ID);
+      expect(report.connections[0].provider).toBe('onedrive');
+    });
+
+    it('includes connection summary counters in the report summary', async () => {
+      const scope = makeScope({
+        sync_status: 'synced',
+        last_sync_at: new Date(),
+      });
+
+      mockScopesFindMany.mockResolvedValue([scope]);
+      mockFilesGroupBy.mockResolvedValue([{ pipeline_status: 'ready', _count: 5 }]);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.summary.totalConnections).toBe(1);
+      expect(report.summary.healthyConnections).toBe(1);
+      expect(report.summary.degradedConnections).toBe(0);
+      expect(report.summary.unhealthyConnections).toBe(0);
+    });
+
+    it('returns empty connections array when user has no scopes', async () => {
+      mockScopesFindMany.mockResolvedValue([]);
+
+      const service = new SyncHealthCheckService({ stuckThresholdMs: 500 });
+      const report = await service.getHealthForUser(USER_ID);
+
+      expect(report.connections).toHaveLength(0);
+      expect(report.summary.totalConnections).toBe(0);
     });
   });
 });

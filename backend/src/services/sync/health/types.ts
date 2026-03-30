@@ -41,12 +41,15 @@ export interface ScopeFileStats {
   failed: number;
   processing: number;
   queued: number;
+  stuck: number;
 }
 
 export interface ScopeHealthReport {
   scopeId: string;
   connectionId: string;
   userId: string;
+  provider: string;
+  connectionStatus: string;
   scopeName: string;
   syncStatus: string;
   healthStatus: SyncHealthStatus;
@@ -54,6 +57,21 @@ export interface ScopeHealthReport {
   fileStats: ScopeFileStats;
   lastSyncedAt: Date | null;
   checkedAt: Date;
+}
+
+export interface ConnectionHealthReport {
+  connectionId: string;
+  userId: string;
+  provider: string;
+  connectionStatus: string;
+  healthStatus: SyncHealthStatus; // worst-of-children
+  scopes: ScopeHealthReport[];
+  summary: {
+    totalScopes: number;
+    healthyScopes: number;
+    degradedScopes: number;
+    unhealthyScopes: number;
+  };
 }
 
 export interface SyncHealthReport {
@@ -64,8 +82,13 @@ export interface SyncHealthReport {
     healthyScopes: number;
     degradedScopes: number;
     unhealthyScopes: number;
+    totalConnections: number;
+    healthyConnections: number;
+    degradedConnections: number;
+    unhealthyConnections: number;
   };
   scopes: ScopeHealthReport[];
+  connections: ConnectionHealthReport[];
 }
 
 // ============================================================================
@@ -78,11 +101,19 @@ export interface StuckDeletionRepairs {
   errors: number;
 }
 
+export interface StaleSyncRepairs {
+  deltaSyncsTriggered: number;
+  scopesSkippedCooldown: number;
+  scopesSkippedSyncing: number;
+  errors: number;
+}
+
 export interface ReconciliationRepairs {
   missingRequeued: number;
   orphansDeleted: number;
   failedRequeued: number;
   stuckRequeued: number;
+  permanentlyFailed: number;
   imageRequeued: number;
   externalNotFoundCleaned: number;
   disconnectedConnectionCleaned: number;
@@ -91,6 +122,8 @@ export interface ReconciliationRepairs {
   staleMetadataRequeued: number;
   stuckDeletions: StuckDeletionRepairs;
   isSharedCorrected: number;
+  scopeIntegrity: ScopeIntegrityRepairs;
+  staleSyncRepairs: StaleSyncRepairs;
   errors: number;
 }
 
@@ -111,6 +144,7 @@ export interface ReconciliationReport {
   staleSearchMetadata: string[];
   stuckDeletionFiles: string[];
   isSharedMisclassified: string[];
+  scopeIntegrityIssues: ScopeIntegrityRow[];
   repairs: ReconciliationRepairs;
   dryRun: boolean;
 }
@@ -150,6 +184,33 @@ export class ReconciliationCooldownError extends Error {
     this.name = 'ReconciliationCooldownError';
     this.retryAfterSeconds = retryAfterSeconds;
   }
+}
+
+// ============================================================================
+// Scope Integrity (Layer 5)
+// ============================================================================
+
+/** Reason a scope was flagged by ScopeIntegrityDetector */
+export type ScopeIntegrityReason = 'zero_files' | 'count_mismatch' | 'processing_stuck';
+
+/** Row returned by ScopeIntegrityDetector.detect() */
+export interface ScopeIntegrityRow {
+  scopeId: string;
+  connectionId: string;
+  reason: ScopeIntegrityReason;
+  scopeName: string | null;
+  syncStatus: string;
+  itemCount: number;
+  actualFileCount: number;
+  processingStatus: string | null;
+}
+
+/** Repair counts for scope integrity issues */
+export interface ScopeIntegrityRepairs {
+  resyncsTriggered: number;
+  scopesSkippedCooldown: number;
+  scopesSkippedCap: number;
+  errors: number;
 }
 
 // ============================================================================

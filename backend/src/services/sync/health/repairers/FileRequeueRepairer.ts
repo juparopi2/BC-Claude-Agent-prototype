@@ -50,7 +50,7 @@ export class FileRequeueRepairer {
    */
   private async adjustScopeCounters(
     scopeCounts: Map<string, number>,
-    adjustment: 'decrement_failed' | 'decrement_completed' | 'status_only',
+    adjustment: 'decrement_failed' | 'decrement_completed' | 'status_only' | 'increment_failed',
   ): Promise<void> {
     if (scopeCounts.size === 0) return;
 
@@ -74,6 +74,17 @@ export class FileRequeueRepairer {
             `UPDATE connection_scopes
              SET processing_completed = CASE WHEN processing_completed >= @P1 THEN processing_completed - @P1 ELSE 0 END,
                  processing_status = 'processing',
+                 updated_at = GETUTCDATE()
+             WHERE id = @P2`,
+            count,
+            scopeId,
+          );
+        } else if (adjustment === 'increment_failed') {
+          // Permanently failed stuck files: increment processing_failed since they never
+          // reached a terminal state — FilePipelineCompleteWorker will not run for them.
+          await prisma.$executeRawUnsafe(
+            `UPDATE connection_scopes
+             SET processing_failed = processing_failed + @P1,
                  updated_at = GETUTCDATE()
              WHERE id = @P2`,
             count,
@@ -266,11 +277,14 @@ export class FileRequeueRepairer {
 
     for (const file of files) {
       try {
-        // Optimistic: only reset if still in an intermediate state
+        // Optimistic: only reset if still in an intermediate state AND retries not exhausted.
+        // Files with pipeline_retry_count >= 3 are handled by permanentlyFailExhaustedFiles()
+        // and should never reach this method — the guard is a safety net for race conditions.
         const result = await prisma.files.updateMany({
           where: {
             id: file.id,
             pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
+            pipeline_retry_count: { lt: 3 },
           },
           data: {
             pipeline_status: 'queued',
@@ -278,7 +292,7 @@ export class FileRequeueRepairer {
           },
         });
 
-        if (result.count === 0) continue; // File already reached 'ready' or 'failed' — skip
+        if (result.count === 0) continue; // File already reached 'ready'/'failed', or retries exhausted — skip
 
         await getMessageQueue().addFileProcessingFlow({
           fileId: file.id,
@@ -491,5 +505,74 @@ export class FileRequeueRepairer {
     await this.adjustScopeCounters(scopeCounts, 'decrement_completed');
 
     return { staleMetadataRequeued, errors };
+  }
+
+  /**
+   * Permanently fail files stuck in an intermediate pipeline state whose retry
+   * count has reached or exceeded the maximum (>= 3).
+   *
+   * These files were detected by StuckPipelineDetector but partitioned out of
+   * the normal requeue path because retrying them further is futile.
+   *
+   * Uses optimistic concurrency: updateMany WHERE includes both expected
+   * pipeline_status and pipeline_retry_count >= 3. If a worker already
+   * transitioned the file, count=0 and we skip without error.
+   *
+   * @param userId - Owning user (for logging)
+   * @param files  - File rows with pipeline_retry_count >= 3
+   * @returns Count of permanently failed files and error count
+   */
+  async permanentlyFailExhaustedFiles(
+    userId: string,
+    files: Array<{ id: string; name: string; mime_type: string; connection_scope_id: string | null; pipeline_retry_count: number }>,
+  ): Promise<{ permanentlyFailed: number; errors: number }> {
+    let permanentlyFailed = 0;
+    let errors = 0;
+    const scopeCounts = new Map<string, number>();
+
+    const { prisma } = await import('@/infrastructure/database/prisma');
+
+    for (const file of files) {
+      try {
+        const result = await prisma.files.updateMany({
+          where: {
+            id: file.id,
+            pipeline_status: { in: ['queued', 'extracting', 'chunking', 'embedding'] },
+            pipeline_retry_count: { gte: 3 },
+          },
+          data: {
+            pipeline_status: 'failed',
+            last_error: 'Permanently failed: max retries exhausted',
+            updated_at: new Date(),
+          },
+        });
+
+        if (result.count === 0) continue; // Already transitioned — skip
+
+        this.logger.warn(
+          { fileId: file.id, userId, pipeline_retry_count: file.pipeline_retry_count },
+          'File permanently failed (max retries exhausted)',
+        );
+
+        this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
+        permanentlyFailed++;
+      } catch (err) {
+        const errorInfo =
+          err instanceof Error
+            ? { message: err.message, name: err.name }
+            : { value: String(err) };
+        this.logger.warn(
+          { fileId: file.id, userId, error: errorInfo },
+          'Failed to permanently fail exhausted file',
+        );
+        errors++;
+      }
+    }
+
+    // Increment processing_failed counter on scopes — these files never ran
+    // FilePipelineCompleteWorker so their failure wasn't counted yet.
+    await this.adjustScopeCounters(scopeCounts, 'increment_failed');
+
+    return { permanentlyFailed, errors };
   }
 }

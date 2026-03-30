@@ -48,7 +48,7 @@ vi.mock('@/infrastructure/queue', () => ({
   })),
 }));
 
-// Also mock for dynamic import path used by DLQService and StuckFileRecoveryService
+// Also mock for dynamic import path used by DLQService
 vi.mock('@/infrastructure/queue/MessageQueue', () => ({
   getMessageQueue: vi.fn(() => ({
     addFileProcessingFlow: mockAddFileProcessingFlow,
@@ -59,7 +59,6 @@ vi.mock('@/infrastructure/queue/MessageQueue', () => ({
 import { BatchUploadOrchestrator } from '@/services/files/batch/BatchUploadOrchestrator';
 import { FileRepository } from '@/services/files/repository/FileRepository';
 import { FileAlreadyConfirmedError } from '@/services/files/batch/errors';
-import { StuckFileRecoveryService } from '@/domains/files/recovery/StuckFileRecoveryService';
 
 describe('Pipeline Regression — Original Bug Scenarios', () => {
   setupDatabaseForTests();
@@ -328,105 +327,6 @@ describe('Pipeline Regression — Original Bug Scenarios', () => {
 
       // Flow should be enqueued exactly once
       expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('BUG: Server crash during processing → recovery', () => {
-    // StuckFileRecoveryService.run() operates globally (no userId filter) by design.
-    // Clear stale stuck files from previous test runs to avoid polluting count assertions.
-    beforeEach(async () => {
-      await executeQuery(
-        `UPDATE files SET pipeline_status = @targetStatus
-         WHERE pipeline_status IN ('queued', 'extracting', 'chunking', 'embedding')
-         AND updated_at < DATEADD(MINUTE, -15, GETDATE())`,
-        { targetStatus: PIPELINE_STATUS.FAILED }
-      );
-    });
-
-    it('Stuck file in extracting recovered by StuckFileRecoveryService', { timeout: 15000 }, async () => {
-      const file = await helper.createFileWithPipelineStatus(userId, {
-        pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-        pipelineRetryCount: 0,
-      });
-
-      // Set updated_at to 20 minutes ago
-      await helper.setFileUpdatedAt(file.id, new Date(Date.now() - 20 * 60 * 1000));
-
-      const service = new StuckFileRecoveryService();
-      const result = await service.run(15 * 60 * 1000, 3); // 15 min threshold, max 3 retries
-
-      // Service operates globally — may find residual stuck files from other processes.
-      // Verify our file was recovered (at least 1 re-enqueued), not exact global count.
-      expect(result.reEnqueued).toBeGreaterThanOrEqual(1);
-
-      // Verify file is now queued
-      const fileResult = await executeQuery<{ pipeline_status: string }>(
-        `SELECT pipeline_status FROM files WHERE id = @fileId`,
-        { fileId: file.id }
-      );
-      expect(fileResult.recordset[0].pipeline_status).toBe(PIPELINE_STATUS.QUEUED);
-    });
-
-    it('Files stuck in multiple states all recovered', { timeout: 15000 }, async () => {
-      const file1 = await helper.createFileWithPipelineStatus(userId, {
-        pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-        pipelineRetryCount: 0,
-      });
-      const file2 = await helper.createFileWithPipelineStatus(userId, {
-        pipelineStatus: PIPELINE_STATUS.CHUNKING,
-        pipelineRetryCount: 1,
-      });
-      const file3 = await helper.createFileWithPipelineStatus(userId, {
-        pipelineStatus: PIPELINE_STATUS.EMBEDDING,
-        pipelineRetryCount: 0,
-      });
-
-      // Set all updated_at to 20 minutes ago
-      const oldDate = new Date(Date.now() - 20 * 60 * 1000);
-      await helper.setFileUpdatedAt(file1.id, oldDate);
-      await helper.setFileUpdatedAt(file2.id, oldDate);
-      await helper.setFileUpdatedAt(file3.id, oldDate);
-
-      const service = new StuckFileRecoveryService();
-      const result = await service.run(15 * 60 * 1000, 3);
-
-      // Service operates globally — may find more stuck files than our 3.
-      // Verify at least our 3 were found and recovered.
-      expect(result.totalStuck).toBeGreaterThanOrEqual(3);
-      expect(result.reEnqueued).toBeGreaterThanOrEqual(3);
-
-      // Verify OUR specific files are all queued (the definitive check)
-      const fileResults = await executeQuery<{ id: string; pipeline_status: string }>(
-        `SELECT id, pipeline_status FROM files WHERE id IN (@file1, @file2, @file3)`,
-        { file1: file1.id, file2: file2.id, file3: file3.id }
-      );
-
-      expect(fileResults.recordset).toHaveLength(3);
-      fileResults.recordset.forEach(row => {
-        expect(row.pipeline_status).toBe(PIPELINE_STATUS.QUEUED);
-      });
-    });
-
-    it('Max retries exceeded → permanently failed (not infinite loop)', { timeout: 15000 }, async () => {
-      const file = await helper.createFileWithPipelineStatus(userId, {
-        pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-        pipelineRetryCount: 3, // Already at max
-      });
-
-      // Set updated_at to 20 minutes ago
-      await helper.setFileUpdatedAt(file.id, new Date(Date.now() - 20 * 60 * 1000));
-
-      const service = new StuckFileRecoveryService();
-      const result = await service.run(15 * 60 * 1000, 3); // Max 3 retries
-
-      expect(result.permanentlyFailed).toBe(1);
-
-      // Verify file is failed (not stuck in infinite retry loop)
-      const fileResult = await executeQuery<{ pipeline_status: string }>(
-        `SELECT pipeline_status FROM files WHERE id = @fileId`,
-        { fileId: file.id }
-      );
-      expect(fileResult.recordset[0].pipeline_status).toBe(PIPELINE_STATUS.FAILED);
     });
   });
 

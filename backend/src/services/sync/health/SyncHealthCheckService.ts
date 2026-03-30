@@ -24,6 +24,7 @@ import type {
   SyncHealthCheckMetrics,
   SyncHealthReport,
   ScopeHealthReport,
+  ConnectionHealthReport,
   ScopeIssue,
   ScopeFileStats,
   SyncHealthStatus,
@@ -37,6 +38,9 @@ const DEFAULT_STUCK_THRESHOLD_MS = 600_000; // 10 minutes
 const DEFAULT_STUCK_QUEUED_THRESHOLD_MS = 3_600_000; // 1 hour
 const STALE_SYNC_THRESHOLD_MS = 48 * 60 * 60 * 1000; // 48 hours
 const HIGH_FAILURE_RATE_THRESHOLD = 0.5; // 50%
+/** Files stuck in intermediate pipeline states for > 30 min are counted as degraded */
+const STUCK_PIPELINE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+const STUCK_PIPELINE_STATUSES = ['queued', 'extracting', 'chunking', 'embedding'] as const;
 const MAX_BACKOFF_ATTEMPTS = 5;
 /** Delay in ms before each retry attempt (index = attemptCount - 1) */
 const BACKOFF_SCHEDULE_MS = [
@@ -62,6 +66,7 @@ type ScopeWithConnection = {
     id: string;
     user_id: string;
     status: string;
+    provider: string;
   };
 };
 
@@ -113,7 +118,7 @@ export class SyncHealthCheckService {
     const scopes = await prisma.connection_scopes.findMany({
       where: { sync_status: { not: undefined } }, // fetch all
       include: {
-        connections: { select: { id: true, user_id: true, status: true } },
+        connections: { select: { id: true, user_id: true, status: true, provider: true } },
       },
     });
 
@@ -216,6 +221,27 @@ export class SyncHealthCheckService {
                 })),
                 lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
               })),
+              connections: report.connections.map((c) => ({
+                connectionId: c.connectionId,
+                userId: c.userId,
+                provider: c.provider,
+                connectionStatus: c.connectionStatus,
+                healthStatus: c.healthStatus,
+                summary: c.summary,
+                scopes: c.scopes.map((s) => ({
+                  scopeId: s.scopeId,
+                  connectionId: s.connectionId,
+                  scopeName: s.scopeName,
+                  syncStatus: s.syncStatus,
+                  healthStatus: s.healthStatus,
+                  issues: s.issues.map((i) => ({
+                    type: i.type,
+                    severity: i.severity,
+                    message: i.message,
+                  })),
+                  lastSyncedAt: s.lastSyncedAt?.toISOString() ?? null,
+                })),
+              })),
             },
           });
       }
@@ -260,7 +286,7 @@ export class SyncHealthCheckService {
         connections: { user_id: normalizedUserId },
       },
       include: {
-        connections: { select: { id: true, user_id: true, status: true } },
+        connections: { select: { id: true, user_id: true, status: true, provider: true } },
       },
     });
 
@@ -349,13 +375,14 @@ export class SyncHealthCheckService {
       });
     }
 
-    // 4. High failure rate: > 50% of files in failed state
-    if (fileStats.total > 0 && fileStats.failed / fileStats.total > HIGH_FAILURE_RATE_THRESHOLD) {
-      const rate = Math.round((fileStats.failed / fileStats.total) * 100);
+    // 4. High failure rate: > 50% of files in failed or stuck state
+    const problematicFiles = fileStats.failed + fileStats.stuck;
+    if (fileStats.total > 0 && problematicFiles / fileStats.total > HIGH_FAILURE_RATE_THRESHOLD) {
+      const rate = Math.round((problematicFiles / fileStats.total) * 100);
       issues.push({
         type: 'high_failure_rate',
         severity: 'error',
-        message: `${rate}% of files (${fileStats.failed}/${fileStats.total}) have failed pipeline status`,
+        message: `${rate}% of files (${problematicFiles}/${fileStats.total}) have failed or stuck pipeline status (failed: ${fileStats.failed}, stuck: ${fileStats.stuck})`,
         detectedAt: now,
       });
     }
@@ -379,6 +406,8 @@ export class SyncHealthCheckService {
       scopeId,
       connectionId,
       userId,
+      provider: scope.connections.provider,
+      connectionStatus: scope.connections.status,
       scopeName: scope.scope_display_name ?? scopeId,
       syncStatus: scope.sync_status,
       healthStatus,
@@ -395,13 +424,29 @@ export class SyncHealthCheckService {
 
   /**
    * Aggregate file counts by pipeline_status for a scope.
+   *
+   * Also counts files stuck in intermediate pipeline states (queued, extracting,
+   * chunking, embedding) with updated_at older than 30 minutes. These are
+   * included in the `stuck` field and factored into the high_failure_rate check.
    */
   private async getFileStats(scopeId: string): Promise<ScopeFileStats> {
-    const counts = await prisma.files.groupBy({
-      by: ['pipeline_status'],
-      where: { connection_scope_id: scopeId, deleted_at: null },
-      _count: true,
-    });
+    const stuckCutoff = new Date(Date.now() - STUCK_PIPELINE_THRESHOLD_MS);
+
+    const [counts, stuckCount] = await Promise.all([
+      prisma.files.groupBy({
+        by: ['pipeline_status'],
+        where: { connection_scope_id: scopeId, deleted_at: null },
+        _count: true,
+      }),
+      prisma.files.count({
+        where: {
+          connection_scope_id: scopeId,
+          deleted_at: null,
+          pipeline_status: { in: [...STUCK_PIPELINE_STATUSES] },
+          updated_at: { lt: stuckCutoff },
+        },
+      }),
+    ]);
 
     const stats: ScopeFileStats = {
       total: 0,
@@ -409,6 +454,7 @@ export class SyncHealthCheckService {
       failed: 0,
       processing: 0,
       queued: 0,
+      stuck: stuckCount,
     };
 
     for (const row of counts) {
@@ -464,6 +510,18 @@ export class SyncHealthCheckService {
       overallStatus = 'healthy';
     }
 
+    const connections = this.buildConnectionReports(scopeReports);
+
+    let healthyConnections = 0;
+    let degradedConnections = 0;
+    let unhealthyConnections = 0;
+
+    for (const c of connections) {
+      if (c.healthStatus === 'healthy') healthyConnections++;
+      else if (c.healthStatus === 'degraded') degradedConnections++;
+      else unhealthyConnections++;
+    }
+
     return {
       timestamp: new Date(),
       overallStatus,
@@ -472,9 +530,79 @@ export class SyncHealthCheckService {
         healthyScopes,
         degradedScopes,
         unhealthyScopes,
+        totalConnections: connections.length,
+        healthyConnections,
+        degradedConnections,
+        unhealthyConnections,
       },
       scopes: scopeReports,
+      connections,
     };
+  }
+
+  /**
+   * Group scope health reports by connectionId and compute connection-level
+   * health using worst-of-children: unhealthy > degraded > healthy.
+   */
+  buildConnectionReports(scopeReports: ScopeHealthReport[]): ConnectionHealthReport[] {
+    // Group scopes by connectionId — each ScopeHealthReport already carries connectionId
+    const byConnection = new Map<string, ScopeHealthReport[]>();
+
+    for (const scope of scopeReports) {
+      const existing = byConnection.get(scope.connectionId);
+      if (existing) {
+        existing.push(scope);
+      } else {
+        byConnection.set(scope.connectionId, [scope]);
+      }
+    }
+
+    const reports: ConnectionHealthReport[] = [];
+
+    for (const [connectionId, scopes] of byConnection) {
+      if (scopes.length === 0) continue;
+
+      // All scopes under a connection share the same userId, provider, and connectionStatus
+      // (safe to read from the first entry — guaranteed non-empty by the grouping above)
+      const first = scopes[0]!;
+
+      let healthyScopes = 0;
+      let degradedScopes = 0;
+      let unhealthyScopes = 0;
+
+      for (const s of scopes) {
+        if (s.healthStatus === 'healthy') healthyScopes++;
+        else if (s.healthStatus === 'degraded') degradedScopes++;
+        else unhealthyScopes++;
+      }
+
+      // Worst-of-children: unhealthy > degraded > healthy
+      let healthStatus: SyncHealthStatus;
+      if (unhealthyScopes > 0) {
+        healthStatus = 'unhealthy';
+      } else if (degradedScopes > 0) {
+        healthStatus = 'degraded';
+      } else {
+        healthStatus = 'healthy';
+      }
+
+      reports.push({
+        connectionId,
+        userId: first.userId,
+        provider: first.provider,
+        connectionStatus: first.connectionStatus,
+        healthStatus,
+        scopes,
+        summary: {
+          totalScopes: scopes.length,
+          healthyScopes,
+          degradedScopes,
+          unhealthyScopes,
+        },
+      });
+    }
+
+    return reports;
   }
 
   // ──────────────────────────────────────────────────────────────────────────

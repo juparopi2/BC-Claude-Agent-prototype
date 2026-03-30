@@ -464,11 +464,28 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Activate new revisions
+        run: |
+          # With revision-mode=multiple and 0% traffic, Azure may leave
+          # new revisions in "Stopped" state. Explicitly activate them
+          # so they start provisioning before the health check polls.
+          echo "Activating backend revision: ${{ needs.deploy-containers.outputs.backend-new-revision }}"
+          az containerapp revision activate \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --revision "${{ needs.deploy-containers.outputs.backend-new-revision }}" || true
+
+          echo "Activating frontend revision: ${{ needs.deploy-containers.outputs.frontend-new-revision }}"
+          az containerapp revision activate \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --revision "${{ needs.deploy-containers.outputs.frontend-new-revision }}" || true
+
       - name: Wait for revisions to provision
         run: |
           echo "Waiting for new revisions to start..."
-          MAX_WAIT=120
-          INTERVAL=10
+          MAX_WAIT=300
+          INTERVAL=15
           ELAPSED=0
 
           while [ $ELAPSED -lt $MAX_WAIT ]; do
@@ -495,6 +512,22 @@ jobs:
               echo "A revision has failed to start"
               echo "Backend: $BACKEND_STATE, Frontend: $FRONTEND_STATE"
               exit 1
+            fi
+
+            # If still Stopped after activation, try activating again
+            if [ "$BACKEND_STATE" = "Stopped" ] && [ $ELAPSED -ge 60 ]; then
+              echo "Backend still Stopped — re-activating..."
+              az containerapp revision activate \
+                --name ${{ vars.BACKEND_APP_NAME }} \
+                --resource-group ${{ vars.RESOURCE_GROUP }} \
+                --revision "${{ needs.deploy-containers.outputs.backend-new-revision }}" 2>/dev/null || true
+            fi
+            if [ "$FRONTEND_STATE" = "Stopped" ] && [ $ELAPSED -ge 60 ]; then
+              echo "Frontend still Stopped — re-activating..."
+              az containerapp revision activate \
+                --name ${{ vars.FRONTEND_APP_NAME }} \
+                --resource-group ${{ vars.RESOURCE_GROUP }} \
+                --revision "${{ needs.deploy-containers.outputs.frontend-new-revision }}" 2>/dev/null || true
             fi
 
             sleep $INTERVAL

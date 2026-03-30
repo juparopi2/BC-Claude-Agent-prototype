@@ -166,7 +166,10 @@ router.post(
               missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
               scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
             },
-            repairs: report.repairs,
+            repairs: {
+              ...report.repairs,
+              scopeIntegrityResynced: report.repairs.scopeIntegrity.resyncsTriggered,
+            },
           },
         });
       }
@@ -182,12 +185,16 @@ router.post(
           failedRetriableCount: report.failedRetriable.length,
           stuckFilesCount: report.stuckFiles.length,
           imagesMissingEmbeddingsCount: report.imagesMissingEmbeddings.length,
+          scopeIntegrityIssuesCount: report.scopeIntegrityIssues.length,
           folderHierarchy: {
             orphanedChildrenCount: report.folderHierarchyIssues.orphanedChildren.length,
             missingScopeRootsCount: report.folderHierarchyIssues.missingScopeRoots.length,
             scopesToResyncCount: report.folderHierarchyIssues.scopeIdsToResync.length,
           },
-          repairs: report.repairs,
+          repairs: {
+            ...report.repairs,
+            scopeIntegrityResynced: report.repairs.scopeIntegrity.resyncsTriggered,
+          },
         },
       });
     } catch (error) {

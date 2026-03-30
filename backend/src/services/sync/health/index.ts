@@ -24,6 +24,9 @@ export type {
   SyncHealthCheckMetrics,
   FolderHierarchyDetection,
   FolderHierarchyRepairs,
+  ScopeIntegrityReason,
+  ScopeIntegrityRow,
+  ScopeIntegrityRepairs,
 } from './types';
 export {
   ReconciliationInProgressError,
@@ -41,6 +44,7 @@ export {
   ImageEmbeddingDetector,
   FolderHierarchyDetector,
   DisconnectedFilesDetector,
+  ScopeIntegrityDetector,
 } from './detectors';
 export type {
   DetectedFileRow,
@@ -56,4 +60,5 @@ export {
   OrphanCleanupRepairer,
   ExternalFileCleanupRepairer,
   FolderHierarchyRepairer,
+  ScopeIntegrityRepairer,
 } from './repairers';

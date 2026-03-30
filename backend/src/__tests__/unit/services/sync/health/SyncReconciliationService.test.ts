@@ -44,6 +44,9 @@ const mockConnectionScopesFindMany = vi.hoisted(() => vi.fn());
 const mockConnectionScopesUpdate = vi.hoisted(() => vi.fn());
 const mockConnectionScopesFindUnique = vi.hoisted(() => vi.fn());
 
+// connections table (user discovery union)
+const mockConnectionsFindMany = vi.hoisted(() => vi.fn());
+
 // Raw SQL queries (folder hierarchy detection)
 const mockQueryRaw = vi.hoisted(() => vi.fn());
 
@@ -56,6 +59,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
       update: mockFilesUpdate,
       updateMany: mockFilesUpdateMany,
       deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      count: vi.fn().mockResolvedValue(0),
     },
     image_embeddings: {
       findMany: mockImageEmbeddingsFindMany,
@@ -69,6 +73,9 @@ vi.mock('@/infrastructure/database/prisma', () => ({
       findMany: mockConnectionScopesFindMany,
       findUnique: mockConnectionScopesFindUnique,
       update: mockConnectionScopesUpdate,
+    },
+    connections: {
+      findMany: mockConnectionsFindMany,
     },
     $queryRaw: mockQueryRaw,
   },
@@ -185,6 +192,7 @@ beforeEach(() => {
   mockQueryRaw.mockResolvedValue([]); // No orphaned children by default
   mockConnectionScopesFindMany.mockResolvedValue([]); // No scopes by default
   mockConnectionScopesFindUnique.mockResolvedValue(null);
+  mockConnectionsFindMany.mockResolvedValue([]); // No connections by default (user discovery union)
   mockConnectionScopesUpdate.mockResolvedValue({});
   mockAddInitialSyncJob.mockResolvedValue('job-id');
 });
@@ -559,29 +567,35 @@ describe('SyncReconciliationService', () => {
   // ==========================================================================
 
   describe('run() — MAX_USERS_PER_RUN limit', () => {
-    it('passes take: 50 to the distinct users query', async () => {
-      // Return no users — we only care about the query args
-      mockFilesFindMany.mockResolvedValue([]);
-
+    it('queries files with distinct user_id and connections with status=connected', async () => {
       await service.run();
 
+      // files.findMany called with distinct to discover users from file records
       expect(mockFilesFindMany).toHaveBeenCalledWith(
         expect.objectContaining({
           distinct: ['user_id'],
-          take: 50,
+          where: { deleted_at: null },
+        }),
+      );
+
+      // connections.findMany called to discover users with connected connections
+      expect(mockConnectionsFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: 'connected' },
+          select: { user_id: true },
         }),
       );
     });
 
-    it('processes only the users returned (respects take: 50 implicitly via DB)', async () => {
-      // Simulate DB returning exactly 2 users (fewer than 50 — validates the limit flows through)
+    it('processes users from both files and connections (union)', async () => {
+      // USER_ID_1 has files only; USER_ID_2 has a connection only
       mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
         if (args.distinct) {
-          return Promise.resolve([{ user_id: USER_ID_1 }, { user_id: USER_ID_2 }]);
+          return Promise.resolve([{ user_id: USER_ID_1 }]);
         }
         return Promise.resolve([]);
       });
-
+      mockConnectionsFindMany.mockResolvedValue([{ user_id: USER_ID_2 }]);
       mockGetUniqueFileIds.mockResolvedValue([]);
 
       const reports = await service.run();
@@ -589,6 +603,46 @@ describe('SyncReconciliationService', () => {
       expect(reports).toHaveLength(2);
       expect(reports.map((r) => r.userId)).toContain(USER_ID_1);
       expect(reports.map((r) => r.userId)).toContain(USER_ID_2);
+    });
+
+    it('deduplicates users that appear in both sources', async () => {
+      // USER_ID_1 appears in both files AND connections
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+        if (args.distinct) {
+          return Promise.resolve([{ user_id: USER_ID_1 }]);
+        }
+        return Promise.resolve([]);
+      });
+      mockConnectionsFindMany.mockResolvedValue([{ user_id: USER_ID_1 }]);
+      mockGetUniqueFileIds.mockResolvedValue([]);
+
+      const reports = await service.run();
+
+      // Should only process USER_ID_1 once
+      expect(reports).toHaveLength(1);
+      expect(reports[0].userId).toBe(USER_ID_1);
+    });
+
+    it('caps at 50 users from the merged set', async () => {
+      // Return 30 users from files + 30 from connections (10 overlap = 50 unique)
+      const fileUserIds = Array.from({ length: 30 }, (_, i) =>
+        ({ user_id: `USER-FILE-${String(i).padStart(4, '0')}-AAAA-BBBB-CCCC-DDDDDDDDDDDD` }),
+      );
+      const connUserIds = Array.from({ length: 30 }, (_, i) =>
+        ({ user_id: `USER-CONN-${String(i).padStart(4, '0')}-AAAA-BBBB-CCCC-DDDDDDDDDDDD` }),
+      );
+
+      mockFilesFindMany.mockImplementation((args: { distinct?: string[] }) => {
+        if (args.distinct) return Promise.resolve(fileUserIds);
+        return Promise.resolve([]);
+      });
+      mockConnectionsFindMany.mockResolvedValue(connUserIds);
+      mockGetUniqueFileIds.mockResolvedValue([]);
+
+      const reports = await service.run();
+
+      // 30 file users + 30 conn users = 60 unique → capped at 50
+      expect(reports).toHaveLength(50);
     });
   });
 

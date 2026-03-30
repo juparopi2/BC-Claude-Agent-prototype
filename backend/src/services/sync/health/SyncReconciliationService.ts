@@ -51,6 +51,8 @@ import { ExternalFileCleanupRepairer } from './repairers/ExternalFileCleanupRepa
 import { FolderHierarchyRepairer } from './repairers/FolderHierarchyRepairer';
 import { StuckDeletionRepairer } from './repairers/StuckDeletionRepairer';
 import { IsSharedRepairer } from './repairers/IsSharedRepairer';
+import { ScopeIntegrityDetector } from './detectors/ScopeIntegrityDetector';
+import { ScopeIntegrityRepairer } from './repairers/ScopeIntegrityRepairer';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -89,18 +91,37 @@ export class SyncReconciliationService {
   async run(): Promise<ReconciliationReport[]> {
     this.logger.info({ maxUsers: MAX_USERS_PER_RUN }, 'SyncReconciliationService: starting run');
 
-    const users = await prisma.files.findMany({
-      where: { deleted_at: null },
-      distinct: ['user_id'],
-      select: { user_id: true },
-      take: MAX_USERS_PER_RUN,
-    });
+    // Discover users from two sources and merge into a deduplicated set:
+    //   1. Users with non-deleted files (existing file-level drift conditions)
+    //   2. Users with connected connections (catches scopes with 0 files — scope integrity)
+    const [fileUsers, connectionUsers] = await Promise.all([
+      prisma.files.findMany({
+        where: { deleted_at: null },
+        distinct: ['user_id'],
+        select: { user_id: true },
+      }),
+      prisma.connections.findMany({
+        where: { status: 'connected' },
+        select: { user_id: true },
+      }),
+    ]);
+
+    const userIdSet = new Set<string>();
+    for (const { user_id } of fileUsers) {
+      userIdSet.add(user_id.toUpperCase());
+    }
+    for (const { user_id } of connectionUsers) {
+      userIdSet.add(user_id.toUpperCase());
+    }
+
+    // Cap to MAX_USERS_PER_RUN — take first N from the merged set
+    const users = [...userIdSet].slice(0, MAX_USERS_PER_RUN);
 
     this.logger.info({ userCount: users.length }, 'SyncReconciliationService: users to reconcile');
 
     const reports: ReconciliationReport[] = [];
 
-    for (const { user_id: userId } of users) {
+    for (const userId of users) {
       try {
         const report = await this.reconcileUser(userId);
         reports.push(report);
@@ -200,6 +221,10 @@ export class SyncReconciliationService {
 
     // ── Detection phase ───────────────────────────────────────────────────
 
+    // 0. Scope integrity (count divergence, stuck processing)
+    const scopeIntegrityResult = await new ScopeIntegrityDetector().detect(normalizedId);
+    const scopeIntegrityIssues = scopeIntegrityResult.items;
+
     // a/b/c. DB vs Search index comparison (missing + orphaned)
     const comparator = new SearchIndexComparator();
     const comparison = await comparator.compare(normalizedId);
@@ -295,6 +320,9 @@ export class SyncReconciliationService {
       // Correct is_shared on SharePoint items
       const isSharedRepairResult = await new IsSharedRepairer().repair(normalizedId, isSharedMisclassified);
 
+      // Repair scope integrity issues (triggered last — scope-level resync)
+      const scopeIntegrityRepairs = await new ScopeIntegrityRepairer().repair(normalizedId, scopeIntegrityIssues);
+
       // Aggregate all errors
       const totalErrors =
         missingResult.errors +
@@ -307,7 +335,8 @@ export class SyncReconciliationService {
         readyWithoutChunksRepairResult.errors +
         staleMetadataRepairResult.errors +
         stuckDeletionRepairs.errors +
-        isSharedRepairResult.errors;
+        isSharedRepairResult.errors +
+        scopeIntegrityRepairs.errors;
 
       repairs = {
         missingRequeued: missingResult.missingRequeued,
@@ -322,6 +351,7 @@ export class SyncReconciliationService {
         staleMetadataRequeued: staleMetadataRepairResult.staleMetadataRequeued,
         stuckDeletions: stuckDeletionRepairs,
         isSharedCorrected: isSharedRepairResult.corrected,
+        scopeIntegrity: scopeIntegrityRepairs,
         errors: totalErrors,
       };
     } else {
@@ -333,6 +363,7 @@ export class SyncReconciliationService {
         staleMetadataRequeued: 0,
         stuckDeletions: { resurrected: 0, hardDeleted: 0, errors: 0 },
         isSharedCorrected: 0,
+        scopeIntegrity: { resyncsTriggered: 0, scopesSkippedCooldown: 0, scopesSkippedCap: 0, errors: 0 },
         errors: 0,
       };
     }
@@ -356,6 +387,7 @@ export class SyncReconciliationService {
       staleSearchMetadata,
       stuckDeletionFiles,
       isSharedMisclassified,
+      scopeIntegrityIssues,
       repairs,
       dryRun: !shouldRepair,
     };

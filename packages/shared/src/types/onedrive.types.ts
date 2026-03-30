@@ -212,6 +212,7 @@ export interface SyncReconciliationCompletedPayload {
         localFilesReparented: number;
         errors: number;
       };
+      scopeIntegrityResynced?: number;
       errors: number;
     };
   };

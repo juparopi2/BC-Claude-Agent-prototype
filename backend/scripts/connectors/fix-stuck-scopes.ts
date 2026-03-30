@@ -16,6 +16,7 @@
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { getFlag, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const RED = '\x1b[31m';
@@ -42,6 +43,7 @@ ${BOLD}Flags:${RESET}
   --dry-run             Preview stuck scopes without making changes
   --fix                 Reset stuck scopes to 'error' status
   --reset-to-idle       Reset to 'idle' instead of 'error' (for re-sync)
+  --env dev|prod        Target environment (overrides .env)
   --help, -h            Show this help message
 
 ${BOLD}What counts as "stuck":${RESET}
@@ -58,6 +60,9 @@ if (hasFlag('--help') || hasFlag('-h')) {
 const STUCK_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
 
 async function main(): Promise<void> {
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   const userId = getFlag('--userId')?.toUpperCase() ?? null;
   const connectionId = getFlag('--connectionId')?.toUpperCase() ?? null;
   const dryRun = hasFlag('--dry-run');

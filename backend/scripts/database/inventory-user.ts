@@ -17,6 +17,7 @@
 import { createPrisma } from '../_shared/prisma';
 import { createBlobContainerClient, createSearchClient } from '../_shared/azure';
 import { getPositionalArg, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const CYAN = '\x1b[36m';
@@ -34,6 +35,9 @@ interface ChunkDocument {
 }
 
 async function main() {
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   const search = getPositionalArg();
   const showAll = hasFlag('--all');
   const showExternal = hasFlag('--external');

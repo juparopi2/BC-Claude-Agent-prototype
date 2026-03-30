@@ -61,7 +61,7 @@ export function Header({
         </Button>
 
         <div className="flex items-center gap-2">
-          <ThemeLogo variant="full" width={70} />
+          <ThemeLogo variant="full" width={140} height={40} />
           <Badge variant="secondary">Prototype</Badge>
         </div>
       </div>

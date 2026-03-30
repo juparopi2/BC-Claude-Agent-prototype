@@ -12,6 +12,7 @@
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { getPositionalArg, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ============================================================================
 // Types
@@ -49,12 +50,13 @@ function parseArgs(): { searchTerm: string; exactMatch: boolean; showFiles: bool
 Find User Script
 
 Usage:
-  npx tsx scripts/database/find-user.ts "<search term>" [--exact] [--files]
+  npx tsx scripts/database/find-user.ts "<search term>" [--exact] [--files] [--env dev|prod]
 
 Arguments:
   <search term>  Name or email to search for (partial match by default)
   --exact        Use exact match instead of partial match
   --files        Show detailed file statistics (processing, embeddings, stuck deletions)
+  --env          Target environment: dev or prod (uses Azure Key Vault for credentials)
 
 Examples:
   npx tsx scripts/database/find-user.ts "Juan Pablo"
@@ -199,7 +201,12 @@ function formatFileDetails(details: FileDetails): string {
 async function main() {
   const { searchTerm, exactMatch, showFiles } = parseArgs();
 
+  // Resolve remote environment if --env is passed
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   console.log('=== FIND USER ===\n');
+  if (targetEnv) console.log(`Environment: ${targetEnv.toUpperCase()}`);
   console.log(`Search term: "${searchTerm}"`);
   console.log(`Match type: ${exactMatch ? 'exact' : 'partial'}`);
   if (showFiles) {

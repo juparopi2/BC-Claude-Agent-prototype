@@ -24,6 +24,7 @@
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { getFlag, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const RED = '\x1b[31m';
@@ -51,6 +52,7 @@ ${BOLD}Flags:${RESET}
   --fix               Show what would be corrected (dry-run by default)
   --dry-run           Preview fixes without applying (default with --fix)
   --confirm           Apply fixes to database
+  --env dev|prod      Target environment (overrides .env)
   --help, -h          Show this help message
 
 ${BOLD}What It Checks:${RESET}
@@ -109,6 +111,9 @@ interface Finding {
 
 // ─── Main ───────────────────────────────────────────────────────
 async function main(): Promise<void> {
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   const userIdOrName = getFlag('--userId');
   const verbose = hasFlag('--verbose');
   const fix = hasFlag('--fix');

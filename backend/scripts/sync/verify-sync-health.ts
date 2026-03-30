@@ -17,12 +17,14 @@
  *   npx tsx scripts/sync/verify-sync-health.ts --fix
  *   npx tsx scripts/sync/verify-sync-health.ts --strict
  *   npx tsx scripts/sync/verify-sync-health.ts --fix --strict
+ *   npx tsx scripts/sync/verify-sync-health.ts --env dev|prod
  */
 
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { createSearchClient } from '../_shared/azure';
 import { hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ============================================================================
 // ANSI color helpers
@@ -656,6 +658,9 @@ async function buildReport(prisma: ReturnType<typeof createPrisma>, fix: boolean
 // ============================================================================
 
 async function main(): Promise<void> {
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
+
   const jsonOutput = hasFlag('--json');
   const fix = hasFlag('--fix');
   const strict = hasFlag('--strict');

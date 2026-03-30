@@ -109,7 +109,7 @@ export function MainLayout({
       <div className="border-b bg-background">
         {header || (
           <div className="h-14 flex items-center justify-between px-4">
-            <div className="font-semibold text-lg">BC Agent</div>
+            <div className="font-semibold text-lg">MyWorkMate</div>
             <div className="flex gap-2">
               <button
                 onClick={handleToggleLeft}

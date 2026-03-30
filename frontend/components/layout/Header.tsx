@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuthStore, selectUserDisplayName, selectUserInitials } from '@/src/domains/auth';
 import { SettingsModal } from '@/components/settings';
+import { ThemeLogo } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 export interface HeaderProps {
@@ -60,7 +61,7 @@ export function Header({
         </Button>
 
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold">MyWorkMate</h1>
+          <ThemeLogo variant="full" width={70} />
           <Badge variant="secondary">Prototype</Badge>
         </div>
       </div>

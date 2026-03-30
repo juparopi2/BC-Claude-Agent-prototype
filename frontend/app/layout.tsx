@@ -21,6 +21,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "MyWorkMate - Your AI Business Assistant",
   description: "Connect and automate your business operations across multiple platforms including Business Central, SharePoint, OneDrive, and more",
+  icons: {
+    icon: [
+      {
+        url: '/branding/favicon-light.png',
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        url: '/branding/favicon-dark.png',
+        media: '(prefers-color-scheme: dark)',
+      },
+    ],
+  },
 };
 
 export default async function RootLayout({

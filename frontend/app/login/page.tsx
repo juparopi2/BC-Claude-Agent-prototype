@@ -6,6 +6,7 @@ import { useAuthStore } from '@/src/domains/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, AlertTriangle, WifiOff, ShieldAlert } from 'lucide-react';
+import { ThemeLogo } from '@/components/icons';
 
 /**
  * Alert info for different auth failure scenarios
@@ -75,8 +76,11 @@ export default function LoginPage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-muted/40">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+        <CardHeader className="text-center space-y-4">
+          <div className="flex justify-center">
+            <ThemeLogo variant="icon" width={48} height={48} />
+          </div>
+          <CardTitle className="text-2xl font-bold">Welcome to MyWorkMate</CardTitle>
           <CardDescription>
             Sign in to your account to continue
           </CardDescription>

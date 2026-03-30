@@ -1,10 +1,13 @@
 /**
  * RecoveryAndCleanup.integration.test.ts
  *
- * Integration tests for PRD-05 file recovery, batch timeout, and orphan cleanup services.
+ * Integration tests for PRD-05 batch timeout and orphan cleanup services.
+ *
+ * Note (PRD-304 Phase 2): StuckFileRecoveryService has been removed. Stuck file
+ * detection and recovery is now handled by SyncReconciliationService via
+ * StuckPipelineDetector + FileRequeueRepairer.
  *
  * Tests:
- * - StuckFileRecoveryService: detects stuck files, re-enqueues or permanently fails them
  * - BatchTimeoutService: expires batches past expires_at, deletes unconfirmed files
  * - OrphanCleanupService: cleans abandoned uploads and old failures
  *
@@ -59,7 +62,6 @@ vi.mock('@/infrastructure/queue/MessageQueue', () => ({
 }));
 
 // Import services AFTER mocks
-import { StuckFileRecoveryService } from '@/domains/files/recovery/StuckFileRecoveryService';
 import { BatchTimeoutService } from '@/domains/files/cleanup/BatchTimeoutService';
 import { OrphanCleanupService } from '@/domains/files/cleanup/OrphanCleanupService';
 
@@ -79,174 +81,6 @@ describe('Recovery and Cleanup Integration (PRD-05)', () => {
 
   afterEach(async () => {
     await helper.cleanup();
-  });
-
-  describe('StuckFileRecoveryService', () => {
-    it(
-      'should detect files stuck in extracting >15min',
-      async () => {
-        // Create file stuck at 'extracting' with updated_at = 20min ago
-        const stuckFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-        });
-        await helper.setFileUpdatedAt(stuckFile.id, new Date(Date.now() - 20 * 60 * 1000));
-
-        // Create fresh file at 'extracting' (just now)
-        const freshFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-        });
-
-        const service = new StuckFileRecoveryService();
-        const metrics = await service.run(15 * 60 * 1000, 3);
-
-        // Only the old one should be detected
-        expect(metrics.totalStuck).toBe(1);
-        expect(metrics.reEnqueued).toBe(1);
-        expect(metrics.permanentlyFailed).toBe(0);
-
-        // Verify fresh file is still extracting
-        const freshStatus = await helper.getFileStatus(freshFile.id);
-        expect(freshStatus).toBe(PIPELINE_STATUS.EXTRACTING);
-      },
-      15000
-    );
-
-    it(
-      'should re-enqueue files with retry_count < 3',
-      async () => {
-        // Create stuck extracting file with pipeline_retry_count=0
-        const stuckFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-          pipelineRetryCount: 0,
-        });
-        await helper.setFileUpdatedAt(stuckFile.id, new Date(Date.now() - 20 * 60 * 1000));
-
-        const service = new StuckFileRecoveryService();
-        const metrics = await service.run(15 * 60 * 1000, 3);
-
-        expect(metrics.reEnqueued).toBe(1);
-        expect(metrics.permanentlyFailed).toBe(0);
-
-        // Verify file is now at 'queued' status, pipeline_retry_count=1
-        const file = await helper.getFile(stuckFile.id);
-        expect(file?.pipeline_status).toBe(PIPELINE_STATUS.QUEUED);
-        expect(file?.pipeline_retry_count).toBe(1);
-
-        // Verify mockAddFileProcessingFlow was called (case-insensitive check)
-        expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(1);
-        const callArgs = mockAddFileProcessingFlow.mock.calls[0][0];
-        expect(callArgs.fileId.toUpperCase()).toBe(stuckFile.id);
-        expect(callArgs.userId.toUpperCase()).toBe(userId);
-      },
-      15000
-    );
-
-    it(
-      'should permanently fail files with retry_count >= 3',
-      async () => {
-        // Create stuck extracting file with pipeline_retry_count=3
-        const stuckFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-          pipelineRetryCount: 3,
-        });
-        await helper.setFileUpdatedAt(stuckFile.id, new Date(Date.now() - 20 * 60 * 1000));
-
-        const service = new StuckFileRecoveryService();
-        const metrics = await service.run(15 * 60 * 1000, 3);
-
-        expect(metrics.permanentlyFailed).toBe(1);
-        expect(metrics.reEnqueued).toBe(0);
-
-        // Verify file is now at 'failed' status
-        const status = await helper.getFileStatus(stuckFile.id);
-        expect(status).toBe(PIPELINE_STATUS.FAILED);
-
-        // Verify mockAddFileProcessingFlow was NOT called
-        expect(mockAddFileProcessingFlow).not.toHaveBeenCalled();
-      },
-      15000
-    );
-
-    it(
-      'should return accurate metrics',
-      async () => {
-        // Create 2 stuck files: one recoverable (retry_count=1), one max retries (retry_count=3)
-        const recoverableFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-          pipelineRetryCount: 1,
-        });
-        await helper.setFileUpdatedAt(
-          recoverableFile.id,
-          new Date(Date.now() - 20 * 60 * 1000)
-        );
-
-        const maxRetriesFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.EXTRACTING,
-          pipelineRetryCount: 3,
-        });
-        await helper.setFileUpdatedAt(maxRetriesFile.id, new Date(Date.now() - 20 * 60 * 1000));
-
-        const service = new StuckFileRecoveryService();
-        const metrics = await service.run(15 * 60 * 1000, 3);
-
-        expect(metrics.totalStuck).toBe(2);
-        expect(metrics.reEnqueued).toBe(1);
-        expect(metrics.permanentlyFailed).toBe(1);
-
-        // Verify byStatus breakdown
-        expect(metrics.byStatus).toEqual(
-          expect.objectContaining({
-            extracting: 2,
-          })
-        );
-      },
-      15000
-    );
-
-    it(
-      'should handle no stuck files gracefully',
-      async () => {
-        // No files in DB
-        const service = new StuckFileRecoveryService();
-        const metrics = await service.run(15 * 60 * 1000, 3);
-
-        expect(metrics.totalStuck).toBe(0);
-        expect(metrics.reEnqueued).toBe(0);
-        expect(metrics.permanentlyFailed).toBe(0);
-      },
-      15000
-    );
-
-    it(
-      'should not touch terminal states (ready, failed)',
-      async () => {
-        // Create 'ready' file with old updated_at
-        const readyFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.READY,
-        });
-        await helper.setFileUpdatedAt(readyFile.id, new Date(Date.now() - 20 * 60 * 1000));
-
-        // Create 'failed' file with old updated_at
-        const failedFile = await helper.createFileWithPipelineStatus(userId, {
-          pipelineStatus: PIPELINE_STATUS.FAILED,
-        });
-        await helper.setFileUpdatedAt(failedFile.id, new Date(Date.now() - 20 * 60 * 1000));
-
-        const service = new StuckFileRecoveryService();
-        const metrics = await service.run(15 * 60 * 1000, 3);
-
-        // Neither should be detected
-        expect(metrics.totalStuck).toBe(0);
-
-        // Verify files are unchanged
-        const readyStatus = await helper.getFileStatus(readyFile.id);
-        expect(readyStatus).toBe(PIPELINE_STATUS.READY);
-
-        const failedStatus = await helper.getFileStatus(failedFile.id);
-        expect(failedStatus).toBe(PIPELINE_STATUS.FAILED);
-      },
-      15000
-    );
   });
 
   describe('BatchTimeoutService', () => {

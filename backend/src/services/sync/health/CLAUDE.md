@@ -38,7 +38,7 @@ health/
     StaleSearchMetadataDetector.ts — AI Search metadata mismatch vs DB
     StuckDeletionDetector.ts    — Files stuck in deletion_status='pending' > 1h
   repairers/
-    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images, no-chunks, stale-metadata) + adjust scope counters (PRD-305)
+    FileRequeueRepairer.ts      — Re-enqueue files (missing, failed, stuck, images, no-chunks, stale-metadata) + permanently fail exhausted stuck files + adjust scope counters (PRD-305)
     StuckDeletionRepairer.ts    — Hierarchical truth: resurrect or hard-delete stuck deletions
     OrphanCleanupRepairer.ts    — Delete orphaned search docs
     ExternalFileCleanupRepairer.ts — Soft-delete 404 + disconnected files
@@ -75,15 +75,16 @@ All three run via the existing `FILE_MAINTENANCE` BullMQ queue (`concurrency=1`,
 
 ```
 ScheduledJobManager.initializeMaintenanceJobs()
-  ├── stuck-file-recovery       (every 15 min) — existing
   ├── orphan-cleanup            (daily 03:00)  — existing
   ├── batch-timeout             (every hour)   — existing
   ├── sync-health-check         (every 15 min) — PRD-300
-  └── sync-reconciliation       (every 15 min) — PRD-300
+  └── sync-reconciliation       (every 15 min) — PRD-300 + PRD-304
 
 MaintenanceWorker.process(job)
   switch (job.name) → dynamic import → service.run()
 ```
+
+> **Note (PRD-304 Phase 2)**: `stuck-file-recovery` cron (previously routed to `StuckFileRecoveryService`) has been removed. Stuck file detection and recovery is now fully handled by `SyncReconciliationService` via `StuckPipelineDetector` → `FileRequeueRepairer.requeueStuckFiles()` (retry_count < 3) and `FileRequeueRepairer.permanentlyFailExhaustedFiles()` (retry_count >= 3).
 
 ## Health Classification
 
@@ -240,6 +241,7 @@ When `FileRequeueRepairer` re-enqueues files, `adjustScopeCounters()` decrements
 | `requeueFailedRetriable` | `processing_failed` -N |
 | `requeueMissingFromSearch`, `requeueImagesMissing...`, `requeueReadyWithoutChunks`, `requeueStaleMetadata` | `processing_completed` -N |
 | `requeueStuckFiles` | None (status reset only) |
+| `permanentlyFailExhaustedFiles` | `processing_failed` +N (increment — file never reached terminal state) |
 
 Uses `CASE WHEN col >= N THEN col - N ELSE 0 END` guards to prevent negatives. All set `processing_status = 'processing'`.
 

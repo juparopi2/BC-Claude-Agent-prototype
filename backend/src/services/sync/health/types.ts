@@ -83,6 +83,7 @@ export interface ReconciliationRepairs {
   orphansDeleted: number;
   failedRequeued: number;
   stuckRequeued: number;
+  permanentlyFailed: number;
   imageRequeued: number;
   externalNotFoundCleaned: number;
   disconnectedConnectionCleaned: number;

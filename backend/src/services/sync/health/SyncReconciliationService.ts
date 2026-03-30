@@ -234,9 +234,11 @@ export class SyncReconciliationService {
     const failedRetriableRows = failedRetriableResult.items;
     const failedRetriable = failedRetriableRows.map((f) => f.id);
 
-    // e. Stuck pipeline files
+    // e. Stuck pipeline files — partition into retriable and retry-exhausted
     const stuckPipelineResult = await new StuckPipelineDetector().detect(normalizedId);
     const stuckFileRows = stuckPipelineResult.items;
+    const retriableStuckRows = stuckFileRows.filter((f) => f.pipeline_retry_count < 3);
+    const exhaustedStuckRows = stuckFileRows.filter((f) => f.pipeline_retry_count >= 3);
     const stuckFiles = stuckFileRows.map((f) => f.id);
 
     // f. External files that no longer exist (Graph API 404)
@@ -292,8 +294,9 @@ export class SyncReconciliationService {
       // Re-enqueue failed files eligible for retry
       const failedResult = await requeuer.requeueFailedRetriable(normalizedId, failedRetriableRows);
 
-      // Re-enqueue stuck pipeline files
-      const stuckResult = await requeuer.requeueStuckFiles(normalizedId, stuckFileRows);
+      // Re-enqueue retriable stuck pipeline files; permanently fail exhausted ones
+      const stuckResult = await requeuer.requeueStuckFiles(normalizedId, retriableStuckRows);
+      const exhaustedResult = await requeuer.permanentlyFailExhaustedFiles(normalizedId, exhaustedStuckRows);
 
       // Re-enqueue ready images missing embeddings
       const imageResult = await requeuer.requeueImagesMissingEmbeddings(normalizedId, imagesMissingEmbeddings);
@@ -329,6 +332,7 @@ export class SyncReconciliationService {
         orphanResult.errors +
         failedResult.errors +
         stuckResult.errors +
+        exhaustedResult.errors +
         imageResult.errors +
         externalResult.errors +
         disconnectedCleanResult.errors +
@@ -343,6 +347,7 @@ export class SyncReconciliationService {
         orphansDeleted: orphanResult.orphansDeleted,
         failedRequeued: failedResult.failedRequeued,
         stuckRequeued: stuckResult.stuckRequeued,
+        permanentlyFailed: exhaustedResult.permanentlyFailed,
         imageRequeued: imageResult.imageRequeued,
         externalNotFoundCleaned: externalResult.cleaned,
         disconnectedConnectionCleaned: disconnectedCleanResult.cleaned,
@@ -357,6 +362,7 @@ export class SyncReconciliationService {
     } else {
       repairs = {
         missingRequeued: 0, orphansDeleted: 0, failedRequeued: 0, stuckRequeued: 0,
+        permanentlyFailed: 0,
         imageRequeued: 0, externalNotFoundCleaned: 0, disconnectedConnectionCleaned: 0,
         folderHierarchy: { scopeRootsRecreated: 0, scopesResynced: 0, scopesSkippedDisconnected: 0, localFilesReparented: 0, foldersRestored: 0, errors: 0 },
         readyWithoutChunksRequeued: 0,

@@ -215,11 +215,10 @@ The `FILE_MAINTENANCE` queue (`concurrency=1`) routes jobs to service singletons
 
 | Job Name | Cron | Service |
 |---|---|---|
-| `stuck-file-recovery` | Every 15 min | `StuckFileRecoveryService` |
 | `orphan-cleanup` | Daily 03:00 UTC | `OrphanCleanupService` |
 | `batch-timeout` | Every hour | `BatchTimeoutService` |
 | `sync-health-check` | Every 15 min | `SyncHealthCheckService` (PRD-300) |
-| `sync-reconciliation` | Every 15 min | `SyncReconciliationService` (PRD-300) |
+| `sync-reconciliation` | Every 15 min | `SyncReconciliationService` (PRD-300 + PRD-304) |
 
 All jobs use dynamic `import()` inside switch cases (lazy loading). Registration happens in `ScheduledJobManager.initializeMaintenanceJobs()`.
 

@@ -7,7 +7,7 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { prisma } from '@/infrastructure/database/prisma';
-import type { DriftDetector, DetectionResult, DetectedFileRow } from './types';
+import type { DriftDetector, DetectionResult, StuckPipelineFileRow } from './types';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -19,12 +19,12 @@ const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 // Detector
 // ──────────────────────────────────────────────────────────────────────────────
 
-export class StuckPipelineDetector implements DriftDetector<DetectedFileRow> {
+export class StuckPipelineDetector implements DriftDetector<StuckPipelineFileRow> {
   readonly name = 'StuckPipelineDetector';
 
   private readonly logger = createChildLogger({ service: 'StuckPipelineDetector' });
 
-  async detect(userId: string): Promise<DetectionResult<DetectedFileRow>> {
+  async detect(userId: string): Promise<DetectionResult<StuckPipelineFileRow>> {
     const stuckThreshold = new Date(Date.now() - STUCK_THRESHOLD_MS);
 
     // Pre-fetch scope IDs that are actively syncing for this user.
@@ -46,25 +46,22 @@ export class StuckPipelineDetector implements DriftDetector<DetectedFileRow> {
         updated_at: { lt: stuckThreshold },
         deleted_at: null,
         deletion_status: null,
-        // Skip files that already exhausted retries — StuckFileRecoveryService
-        // will permanently fail them. Without this guard, requeueStuckFiles()
-        // re-enqueues them indefinitely since it doesn't check retry_count.
-        pipeline_retry_count: { lt: 3 },
         // Transient sync guard: exclude files in actively-syncing scopes.
         // NULL scope IDs (local files) pass through since notIn doesn't match NULL.
         ...(syncingScopeIds.length > 0
           ? { OR: [{ connection_scope_id: null }, { connection_scope_id: { notIn: syncingScopeIds } }] }
           : {}),
       },
-      select: { id: true, name: true, mime_type: true, connection_scope_id: true },
+      select: { id: true, name: true, mime_type: true, connection_scope_id: true, pipeline_retry_count: true },
     });
 
     // Normalise IDs to UPPERCASE — preserve full row for repair use
-    const items: DetectedFileRow[] = rows.map((f) => ({
+    const items: StuckPipelineFileRow[] = rows.map((f) => ({
       id: f.id.toUpperCase(),
       name: f.name,
       mime_type: f.mime_type,
       connection_scope_id: f.connection_scope_id,
+      pipeline_retry_count: f.pipeline_retry_count,
     }));
 
     this.logger.debug(

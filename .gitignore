@@ -82,3 +82,7 @@ azurite-debug.log
 
 #Claude
 .claude/
+
+# MCP Config
+.mcp.json
+

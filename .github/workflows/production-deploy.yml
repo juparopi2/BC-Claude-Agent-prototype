@@ -640,24 +640,40 @@ jobs:
             --revision-weight \
               ${{ needs.deploy-containers.outputs.frontend-new-revision }}=100
 
-      - name: Deactivate old revisions
-        if: needs.deploy-containers.outputs.backend-old-revision != ''
+      - name: Deactivate ALL old revisions
         run: |
-          # Deactivate old backend revision
-          if [ -n "${{ needs.deploy-containers.outputs.backend-old-revision }}" ]; then
+          # Deactivate ALL backend revisions except the new active one.
+          # Previous logic only deactivated the immediate predecessor, leaving
+          # older revisions as zombies that consume Redis connections (31 per
+          # revision). With Azure Redis C0 limit of 256 connections, 4+ running
+          # revisions exhaust the pool and prevent new revisions from starting.
+          BACKEND_NEW="${{ needs.deploy-containers.outputs.backend-new-revision }}"
+          OLD_BACKEND_REVS=$(az containerapp revision list \
+            --name ${{ vars.BACKEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --query "[?name != '$BACKEND_NEW' && properties.active == \`true\`].name" -o tsv)
+
+          for REV in $OLD_BACKEND_REVS; do
+            echo "Deactivating backend revision: $REV"
             az containerapp revision deactivate \
               --name ${{ vars.BACKEND_APP_NAME }} \
               --resource-group ${{ vars.RESOURCE_GROUP }} \
-              --revision "${{ needs.deploy-containers.outputs.backend-old-revision }}" || true
-          fi
+              --revision "$REV" || true
+          done
 
-          # Deactivate old frontend revision
-          if [ -n "${{ needs.deploy-containers.outputs.frontend-old-revision }}" ]; then
+          FRONTEND_NEW="${{ needs.deploy-containers.outputs.frontend-new-revision }}"
+          OLD_FRONTEND_REVS=$(az containerapp revision list \
+            --name ${{ vars.FRONTEND_APP_NAME }} \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --query "[?name != '$FRONTEND_NEW' && properties.active == \`true\`].name" -o tsv)
+
+          for REV in $OLD_FRONTEND_REVS; do
+            echo "Deactivating frontend revision: $REV"
             az containerapp revision deactivate \
               --name ${{ vars.FRONTEND_APP_NAME }} \
               --resource-group ${{ vars.RESOURCE_GROUP }} \
-              --revision "${{ needs.deploy-containers.outputs.frontend-old-revision }}" || true
-          fi
+              --revision "$REV" || true
+          done
 
       - name: Deployment Summary
         run: |

@@ -95,6 +95,14 @@ import { executeQuery } from '@/infrastructure/database/database';
 import { getEventStore } from '@/services/events/EventStore';
 import { logger } from '@/shared/utils/logger';
 
+/** Race a promise against a timeout; resolves undefined if the timeout fires first. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return Promise.race([
+    promise,
+    new Promise<undefined>((r) => setTimeout(() => r(undefined), ms)),
+  ]);
+}
+
 describe('MessageQueue Integration Tests', () => {
   // Initialize DB + Redis REAL infrastructure with extended timeout
   setupDatabaseForTests({ timeout: 60000 });
@@ -124,11 +132,12 @@ describe('MessageQueue Integration Tests', () => {
 
   afterAll(async () => {
     // 1. Reset singleton first (closes internal connections)
+    // Use timeout to prevent BullMQ close from hanging with Azure Redis
     try {
-      await __resetMessageQueue();
+      await withTimeout(__resetMessageQueue(), 10000);
     } catch { /* ignore */ }
 
-    // 2. Wait for BullMQ cleanup (increased due to sequential close delays)
+    // 2. Wait for BullMQ cleanup
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // 3. Clean up Redis keys
@@ -143,7 +152,7 @@ describe('MessageQueue Integration Tests', () => {
     } catch { /* ignore */ }
 
     // 5. Close Redis connection LAST
-    try { await redis.quit(); } catch { /* ignore */ }
+    try { await withTimeout(redis.quit(), 5000); } catch { /* ignore */ }
   }, 60000);
 
   beforeEach(async () => {
@@ -151,8 +160,9 @@ describe('MessageQueue Integration Tests', () => {
 
     // Reset singleton for fresh instance with DI
     // Only reset if instance exists to avoid unnecessary operations
+    // Use timeout to prevent BullMQ close from hanging with Azure Redis
     if (hasMessageQueueInstance()) {
-      await __resetMessageQueue();
+      await withTimeout(__resetMessageQueue(), 10000);
       // Wait for Azure Redis to fully release connections before creating new ones
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
@@ -174,20 +184,20 @@ describe('MessageQueue Integration Tests', () => {
 
   afterEach(async () => {
     // Close MessageQueue instance and injected Redis connection
+    // Use timeouts to prevent BullMQ close from hanging with Azure Redis in CI
     try {
       // 1. Close MessageQueue first (doesn't close injected Redis)
       if (messageQueue) {
-        await messageQueue.close();
+        await withTimeout(messageQueue.close(), 10000);
         messageQueue = undefined as any;
       }
 
       // 2. Wait for BullMQ internal connections to fully close
-      // Increased delay for Azure Redis connection release
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // 3. Close injected Redis explicitly
       if (injectedRedis) {
-        await injectedRedis.quit();
+        await withTimeout(injectedRedis.quit(), 5000);
         injectedRedis = undefined;
       }
 

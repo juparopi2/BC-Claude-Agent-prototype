@@ -163,8 +163,10 @@ describe('MessageQueue Integration Tests', () => {
     // Use timeout to prevent BullMQ close from hanging with Azure Redis
     if (hasMessageQueueInstance()) {
       await withTimeout(__resetMessageQueue(), 10000);
-      // Wait for Azure Redis to fully release connections before creating new ones
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for Azure Redis 6.0.14 to fully release connections before creating new ones.
+      // 1s was insufficient — BullMQ internal connections (workers, FlowProducer) may take
+      // longer to close on Azure Redis, causing "Connection is closed" in the next test.
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
     // Guard: verify test user still exists in DB
@@ -270,6 +272,10 @@ describe('MessageQueue Integration Tests', () => {
       messageQueue = result.queue;
       injectedRedis = result.injectedRedis;
       await messageQueue.waitForReady();
+
+      // Guard: verify injected Redis is alive before test action
+      // (avoids flake when previous test's close races with this test's init)
+      await injectedRedis.ping();
 
       const job: MessagePersistenceJob = {
         sessionId: testSession.id,  // Real session ID

@@ -1,13 +1,10 @@
 /**
- * FileRequeueRepairer Unit Tests (PRD-304 Phase 2)
+ * FileRequeueRepairer Unit Tests (PRD-304 Phase 2 + pipeline-requeue-dedup-fix)
  *
- * Validates permanentlyFailExhaustedFiles():
- *   1. Updates pipeline_status to 'failed' for each exhausted file
- *   2. Skips files that have already transitioned (count=0 — optimistic concurrency)
- *   3. Increments processing_failed scope counter via adjustScopeCounters('increment_failed')
- *   4. Isolates per-file errors — one failure does not abort the rest
- *   5. Files with null connection_scope_id do not cause scope counter updates
- *   6. Returns correct permanentlyFailed and errors counts
+ * Validates:
+ *   - permanentlyFailExhaustedFiles(): terminal transition, optimistic concurrency, scope counters
+ *   - Requeue methods (requeueStuckFiles, requeueFailedRetriable, requeueMissingFromSearch, etc.):
+ *     Remove-Before-Enqueue pattern, verify-after-enqueue, error counting
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -26,13 +23,29 @@ vi.mock('@/shared/utils/logger', () => ({
 }));
 
 const mockFilesUpdateMany = vi.hoisted(() => vi.fn());
+const mockFilesFindUnique = vi.hoisted(() => vi.fn());
 const mockExecuteRawUnsafe = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
-    files: { updateMany: mockFilesUpdateMany },
+    files: {
+      updateMany: mockFilesUpdateMany,
+      findUnique: mockFilesFindUnique,
+    },
     $executeRawUnsafe: mockExecuteRawUnsafe,
   },
+}));
+
+const mockRemoveExistingPipelineJobs = vi.hoisted(() => vi.fn());
+const mockAddFileProcessingFlow = vi.hoisted(() => vi.fn());
+const mockVerifyPipelineJobExists = vi.hoisted(() => vi.fn());
+
+vi.mock('@/infrastructure/queue', () => ({
+  getMessageQueue: vi.fn(() => ({
+    removeExistingPipelineJobs: mockRemoveExistingPipelineJobs,
+    addFileProcessingFlow: mockAddFileProcessingFlow,
+    verifyPipelineJobExists: mockVerifyPipelineJobExists,
+  })),
 }));
 
 // ============================================================================
@@ -85,6 +98,12 @@ beforeEach(() => {
   mockFilesUpdateMany.mockResolvedValue({ count: 1 });
   // Default: raw SQL succeeds
   mockExecuteRawUnsafe.mockResolvedValue(undefined);
+  // Default: pipeline job operations succeed
+  mockRemoveExistingPipelineJobs.mockResolvedValue(undefined);
+  mockAddFileProcessingFlow.mockResolvedValue(undefined);
+  mockVerifyPipelineJobExists.mockResolvedValue(true);
+  // Default: findUnique returns a file
+  mockFilesFindUnique.mockResolvedValue(null);
 });
 
 // ============================================================================
@@ -210,5 +229,252 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
 
     expect(result.permanentlyFailed).toBe(1);
     expect(mockFilesUpdateMany.mock.calls[0][0].where.pipeline_retry_count).toEqual({ gte: 3 });
+  });
+});
+
+// ============================================================================
+// Requeue Methods — Remove-Before-Enqueue Pattern
+// ============================================================================
+
+function makeStuckFile(overrides?: Partial<{
+  id: string;
+  name: string;
+  mime_type: string;
+  connection_scope_id: string | null;
+}>) {
+  return {
+    id: overrides?.id ?? FILE_ID_1,
+    name: overrides?.name ?? 'stuck.pdf',
+    mime_type: overrides?.mime_type ?? 'application/pdf',
+    connection_scope_id: overrides?.connection_scope_id ?? SCOPE_ID_1,
+  };
+}
+
+describe('FileRequeueRepairer.requeueStuckFiles()', () => {
+  it('calls remove → enqueue → verify in correct order for a stuck file', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+    const callOrder: string[] = [];
+
+    mockRemoveExistingPipelineJobs.mockImplementation(async () => { callOrder.push('remove'); });
+    mockAddFileProcessingFlow.mockImplementation(async () => { callOrder.push('enqueue'); });
+    mockVerifyPipelineJobExists.mockImplementation(async () => { callOrder.push('verify'); return true; });
+
+    const result = await repairer.requeueStuckFiles(USER_ID, [file]);
+
+    expect(result.stuckRequeued).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(callOrder).toEqual(['remove', 'enqueue', 'verify']);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledWith(FILE_ID_1);
+    expect(mockAddFileProcessingFlow).toHaveBeenCalledWith(expect.objectContaining({
+      fileId: FILE_ID_1,
+      userId: USER_ID,
+    }));
+    expect(mockVerifyPipelineJobExists).toHaveBeenCalledWith(FILE_ID_1);
+  });
+
+  it('counts as error when verify returns false (BullMQ dedup still blocking)', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+
+    mockVerifyPipelineJobExists.mockResolvedValue(false);
+
+    const result = await repairer.requeueStuckFiles(USER_ID, [file]);
+
+    expect(result.stuckRequeued).toBe(0);
+    expect(result.errors).toBe(1);
+    // remove and enqueue were still called
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledOnce();
+    expect(mockAddFileProcessingFlow).toHaveBeenCalledOnce();
+  });
+
+  it('skips remove+enqueue+verify when optimistic CAS returns count=0', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+
+    mockFilesUpdateMany.mockResolvedValue({ count: 0 });
+
+    const result = await repairer.requeueStuckFiles(USER_ID, [file]);
+
+    expect(result.stuckRequeued).toBe(0);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).not.toHaveBeenCalled();
+    expect(mockAddFileProcessingFlow).not.toHaveBeenCalled();
+    expect(mockVerifyPipelineJobExists).not.toHaveBeenCalled();
+  });
+
+  it('handles multiple files — one verify fails, others succeed', async () => {
+    const file1 = makeStuckFile({ id: FILE_ID_1 });
+    const file2 = makeStuckFile({ id: FILE_ID_2 });
+    const file3 = makeStuckFile({ id: FILE_ID_3, connection_scope_id: SCOPE_ID_2 });
+    const repairer = new FileRequeueRepairer();
+
+    mockVerifyPipelineJobExists
+      .mockResolvedValueOnce(true)   // file1 succeeds
+      .mockResolvedValueOnce(false)  // file2 fails verify
+      .mockResolvedValueOnce(true);  // file3 succeeds
+
+    const result = await repairer.requeueStuckFiles(USER_ID, [file1, file2, file3]);
+
+    expect(result.stuckRequeued).toBe(2);
+    expect(result.errors).toBe(1);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledTimes(3);
+    expect(mockAddFileProcessingFlow).toHaveBeenCalledTimes(3);
+  });
+
+  it('catches removeExistingPipelineJobs error and increments errors', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+
+    mockRemoveExistingPipelineJobs.mockRejectedValue(new Error('Redis down'));
+
+    const result = await repairer.requeueStuckFiles(USER_ID, [file]);
+
+    expect(result.stuckRequeued).toBe(0);
+    expect(result.errors).toBe(1);
+    // enqueue and verify should NOT be called since remove threw
+    expect(mockAddFileProcessingFlow).not.toHaveBeenCalled();
+    expect(mockVerifyPipelineJobExists).not.toHaveBeenCalled();
+  });
+});
+
+describe('FileRequeueRepairer.requeueFailedRetriable()', () => {
+  it('calls remove → enqueue → verify and resets retry count', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+
+    const result = await repairer.requeueFailedRetriable(USER_ID, [file]);
+
+    expect(result.failedRequeued).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledWith(FILE_ID_1);
+    expect(mockVerifyPipelineJobExists).toHaveBeenCalledWith(FILE_ID_1);
+
+    // Verify DB update resets retry count and clears error
+    const updateCall = mockFilesUpdateMany.mock.calls[0][0];
+    expect(updateCall.data.pipeline_status).toBe('queued');
+    expect(updateCall.data.pipeline_retry_count).toBe(0);
+    expect(updateCall.data.last_error).toBeNull();
+  });
+
+  it('counts as error when verify returns false', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+    mockVerifyPipelineJobExists.mockResolvedValue(false);
+
+    const result = await repairer.requeueFailedRetriable(USER_ID, [file]);
+
+    expect(result.failedRequeued).toBe(0);
+    expect(result.errors).toBe(1);
+  });
+});
+
+describe('FileRequeueRepairer.requeueMissingFromSearch()', () => {
+  it('calls remove → enqueue → verify for files found via findUnique', async () => {
+    const repairer = new FileRequeueRepairer();
+
+    mockFilesFindUnique.mockResolvedValue({
+      id: FILE_ID_1,
+      name: 'missing.pdf',
+      mime_type: 'application/pdf',
+      user_id: USER_ID,
+      connection_scope_id: SCOPE_ID_1,
+    });
+
+    const result = await repairer.requeueMissingFromSearch(USER_ID, [FILE_ID_1]);
+
+    expect(result.missingRequeued).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledWith(FILE_ID_1);
+    expect(mockAddFileProcessingFlow).toHaveBeenCalledWith(expect.objectContaining({
+      fileId: FILE_ID_1,
+    }));
+    expect(mockVerifyPipelineJobExists).toHaveBeenCalledWith(FILE_ID_1);
+  });
+
+  it('skips file not found in DB', async () => {
+    const repairer = new FileRequeueRepairer();
+    mockFilesFindUnique.mockResolvedValue(null);
+
+    const result = await repairer.requeueMissingFromSearch(USER_ID, [FILE_ID_1]);
+
+    expect(result.missingRequeued).toBe(0);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).not.toHaveBeenCalled();
+  });
+
+  it('counts as error when verify returns false', async () => {
+    const repairer = new FileRequeueRepairer();
+    mockFilesFindUnique.mockResolvedValue({
+      id: FILE_ID_1,
+      name: 'missing.pdf',
+      mime_type: 'application/pdf',
+      user_id: USER_ID,
+      connection_scope_id: SCOPE_ID_1,
+    });
+    mockVerifyPipelineJobExists.mockResolvedValue(false);
+
+    const result = await repairer.requeueMissingFromSearch(USER_ID, [FILE_ID_1]);
+
+    expect(result.missingRequeued).toBe(0);
+    expect(result.errors).toBe(1);
+  });
+});
+
+describe('FileRequeueRepairer.requeueReadyWithoutChunks()', () => {
+  it('calls remove → enqueue → verify', async () => {
+    const file = makeStuckFile({ name: 'nochunks.pdf' });
+    const repairer = new FileRequeueRepairer();
+
+    const result = await repairer.requeueReadyWithoutChunks(USER_ID, [file]);
+
+    expect(result.readyWithoutChunksRequeued).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledWith(FILE_ID_1);
+    expect(mockVerifyPipelineJobExists).toHaveBeenCalledWith(FILE_ID_1);
+  });
+});
+
+describe('FileRequeueRepairer.requeueImagesMissingEmbeddings()', () => {
+  it('calls remove → enqueue → verify for image file', async () => {
+    const repairer = new FileRequeueRepairer();
+    mockFilesFindUnique.mockResolvedValue({
+      id: FILE_ID_1,
+      name: 'photo.jpg',
+      mime_type: 'image/jpeg',
+      connection_scope_id: SCOPE_ID_1,
+    });
+
+    const result = await repairer.requeueImagesMissingEmbeddings(USER_ID, [FILE_ID_1]);
+
+    expect(result.imageRequeued).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledWith(FILE_ID_1);
+    expect(mockVerifyPipelineJobExists).toHaveBeenCalledWith(FILE_ID_1);
+  });
+});
+
+describe('FileRequeueRepairer.requeueStaleMetadata()', () => {
+  it('calls remove → enqueue → verify', async () => {
+    const file = makeStuckFile({ name: 'stale.pdf' });
+    const repairer = new FileRequeueRepairer();
+
+    const result = await repairer.requeueStaleMetadata(USER_ID, [file]);
+
+    expect(result.staleMetadataRequeued).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(mockRemoveExistingPipelineJobs).toHaveBeenCalledWith(FILE_ID_1);
+    expect(mockVerifyPipelineJobExists).toHaveBeenCalledWith(FILE_ID_1);
+  });
+
+  it('counts as error when verify returns false', async () => {
+    const file = makeStuckFile();
+    const repairer = new FileRequeueRepairer();
+    mockVerifyPipelineJobExists.mockResolvedValue(false);
+
+    const result = await repairer.requeueStaleMetadata(USER_ID, [file]);
+
+    expect(result.staleMetadataRequeued).toBe(0);
+    expect(result.errors).toBe(1);
   });
 });

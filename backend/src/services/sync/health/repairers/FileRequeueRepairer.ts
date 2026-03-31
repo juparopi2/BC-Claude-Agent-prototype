@@ -164,13 +164,21 @@ export class FileRequeueRepairer {
 
         if (result.count === 0) continue; // File already transitioned — skip enqueue
 
-        await getMessageQueue().addFileProcessingFlow({
+        const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
+        await mq.addFileProcessingFlow({
           fileId: file.id,
           batchId: file.connection_scope_id ?? fileId,
           userId: file.user_id,
           mimeType: file.mime_type,
           fileName: file.name,
         });
+
+        if (!(await mq.verifyPipelineJobExists(file.id))) {
+          this.logger.warn({ fileId: file.id, userId }, 'Pipeline job not found after enqueue in requeueMissingFromSearch');
+          errors++;
+          continue;
+        }
 
         this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         missingRequeued++;
@@ -228,13 +236,21 @@ export class FileRequeueRepairer {
 
         if (result.count === 0) continue; // Already transitioned — skip enqueue
 
-        await getMessageQueue().addFileProcessingFlow({
+        const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
+        await mq.addFileProcessingFlow({
           fileId: file.id,
           batchId: file.connection_scope_id ?? file.id,
           userId,
           mimeType: file.mime_type,
           fileName: file.name,
         });
+
+        if (!(await mq.verifyPipelineJobExists(file.id))) {
+          this.logger.warn({ fileId: file.id, userId }, 'Pipeline job not found after enqueue in requeueFailedRetriable');
+          errors++;
+          continue;
+        }
 
         this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         failedRequeued++;
@@ -294,13 +310,21 @@ export class FileRequeueRepairer {
 
         if (result.count === 0) continue; // File already reached 'ready'/'failed', or retries exhausted — skip
 
-        await getMessageQueue().addFileProcessingFlow({
+        const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
+        await mq.addFileProcessingFlow({
           fileId: file.id,
           batchId: file.connection_scope_id ?? file.id,
           userId,
           mimeType: file.mime_type,
           fileName: file.name,
         });
+
+        if (!(await mq.verifyPipelineJobExists(file.id))) {
+          this.logger.warn({ fileId: file.id, userId }, 'Pipeline job not found after enqueue in requeueStuckFiles');
+          errors++;
+          continue;
+        }
 
         this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         stuckRequeued++;
@@ -357,13 +381,21 @@ export class FileRequeueRepairer {
 
         if (result.count === 0) continue; // Already transitioned — skip enqueue
 
-        await getMessageQueue().addFileProcessingFlow({
+        const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
+        await mq.addFileProcessingFlow({
           fileId: file.id,
           batchId: file.connection_scope_id ?? file.id,
           userId,
           mimeType: file.mime_type,
           fileName: file.name,
         });
+
+        if (!(await mq.verifyPipelineJobExists(file.id))) {
+          this.logger.warn({ fileId: file.id, userId }, 'Pipeline job not found after enqueue in requeueImagesMissingEmbeddings');
+          errors++;
+          continue;
+        }
 
         this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         imageRequeued++;
@@ -418,13 +450,21 @@ export class FileRequeueRepairer {
 
         if (result.count === 0) continue; // Already transitioned — skip enqueue
 
-        await getMessageQueue().addFileProcessingFlow({
+        const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
+        await mq.addFileProcessingFlow({
           fileId: file.id,
           batchId: file.connection_scope_id ?? file.id,
           userId,
           mimeType: file.mime_type,
           fileName: file.name,
         });
+
+        if (!(await mq.verifyPipelineJobExists(file.id))) {
+          this.logger.warn({ fileId: file.id, userId }, 'Pipeline job not found after enqueue in requeueReadyWithoutChunks');
+          errors++;
+          continue;
+        }
 
         this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         readyWithoutChunksRequeued++;
@@ -478,13 +518,21 @@ export class FileRequeueRepairer {
 
         if (result.count === 0) continue; // Already transitioned — skip enqueue
 
-        await getMessageQueue().addFileProcessingFlow({
+        const mq = getMessageQueue();
+        await mq.removeExistingPipelineJobs(file.id);
+        await mq.addFileProcessingFlow({
           fileId: file.id,
           batchId: file.connection_scope_id ?? file.id,
           userId,
           mimeType: file.mime_type,
           fileName: file.name,
         });
+
+        if (!(await mq.verifyPipelineJobExists(file.id))) {
+          this.logger.warn({ fileId: file.id, userId }, 'Pipeline job not found after enqueue in requeueStaleMetadata');
+          errors++;
+          continue;
+        }
 
         this.accumulateScopeCount(scopeCounts, file.connection_scope_id);
         staleMetadataRequeued++;

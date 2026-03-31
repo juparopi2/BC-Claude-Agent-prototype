@@ -731,6 +731,69 @@ export class MessageQueue {
   }
 
   /**
+   * Remove existing pipeline jobs for a file across all 4 pipeline queues.
+   *
+   * Must be called BEFORE addFileProcessingFlow() when re-enqueueing a file,
+   * because ProcessingFlowFactory uses deterministic jobIds ({stage}--{fileId})
+   * and BullMQ deduplicates by jobId. Without removal, completed/failed jobs
+   * still in retention block the new flow from being created.
+   */
+  public async removeExistingPipelineJobs(fileId: string): Promise<void> {
+    await this.waitForReady();
+
+    const stages = [
+      { queue: QueueName.FILE_EXTRACT, prefix: 'extract' },
+      { queue: QueueName.FILE_CHUNK, prefix: 'chunk' },
+      { queue: QueueName.FILE_EMBED, prefix: 'embed' },
+      { queue: QueueName.FILE_PIPELINE_COMPLETE, prefix: 'pipeline-complete' },
+    ] as const;
+
+    for (const { queue: queueName, prefix } of stages) {
+      const queue = this.queueManager.getQueue(queueName);
+      if (!queue) continue;
+
+      const jobId = `${prefix}--${fileId}`;
+      try {
+        const job = await queue.getJob(jobId);
+        if (job) {
+          await job.remove();
+          this.log.debug({ fileId, jobId, queue: queueName }, 'Removed existing pipeline job before re-enqueue');
+        }
+      } catch (err) {
+        this.log.debug(
+          { fileId, jobId, queue: queueName, error: err instanceof Error ? err.message : String(err) },
+          'Could not remove pipeline job (may be active or already removed)',
+        );
+      }
+    }
+  }
+
+  /**
+   * Verify that the extract pipeline job exists for a file after enqueue.
+   *
+   * Returns true if "extract--{fileId}" exists in FILE_EXTRACT queue.
+   * Used to confirm FlowProducer.add() succeeded after re-enqueueing.
+   * Fails safe: returns false on any error.
+   */
+  public async verifyPipelineJobExists(fileId: string): Promise<boolean> {
+    await this.waitForReady();
+
+    try {
+      const queue = this.queueManager.getQueue(QueueName.FILE_EXTRACT);
+      if (!queue) return false;
+
+      const job = await queue.getJob(`extract--${fileId}`);
+      return job !== null;
+    } catch (err) {
+      this.log.warn(
+        { fileId, error: err instanceof Error ? err.message : String(err) },
+        'Failed to verify pipeline job existence',
+      );
+      return false;
+    }
+  }
+
+  /**
    * Pause Queue
    */
   public async pauseQueue(queueName: QueueName): Promise<void> {

@@ -20,6 +20,45 @@ import { PipelineTestHelper, createPipelineTestHelper } from '../helpers/Pipelin
 import { executeQuery } from '@/infrastructure/database/database';
 import { PIPELINE_STATUS, BATCH_STATUS } from '@bc-agent/shared';
 
+/**
+ * Purge all stale test data that matches the pipeline-test email domain.
+ * This handles rows left behind by crashed/interrupted previous runs that the
+ * per-test helper instance cannot track (unknown IDs).  Runs in FK-safe order:
+ * file_chunks → files → upload_batches → sessions/token_usage/usage_events → users.
+ */
+async function purgeStaleTestData(): Promise<void> {
+  // Collect user IDs for the test email domain first
+  const usersResult = await executeQuery<{ id: string }>(
+    `SELECT id FROM users WHERE email LIKE '%@pipeline-test.local'`
+  );
+  const staleUserIds: string[] = usersResult.recordset.map((r) => r.id);
+
+  if (staleUserIds.length === 0) return;
+
+  // Build a comma-separated quoted list safe for an IN clause (UUIDs, no injection risk)
+  const idList = staleUserIds.map((id) => `'${id}'`).join(',');
+
+  // 1. file_chunks (FK → files)
+  await executeQuery(`DELETE FROM file_chunks WHERE file_id IN (SELECT id FROM files WHERE user_id IN (${idList}))`);
+
+  // 2. image_embeddings (FK → files)
+  await executeQuery(`DELETE FROM image_embeddings WHERE file_id IN (SELECT id FROM files WHERE user_id IN (${idList}))`);
+
+  // 3. files (FK → users, upload_batches)
+  await executeQuery(`DELETE FROM files WHERE user_id IN (${idList})`);
+
+  // 4. upload_batches (FK → users)
+  await executeQuery(`DELETE FROM upload_batches WHERE user_id IN (${idList})`);
+
+  // 5. sessions / token_usage / usage_events (FK → users)
+  await executeQuery(`DELETE FROM sessions WHERE user_id IN (${idList})`);
+  await executeQuery(`DELETE FROM token_usage WHERE user_id IN (${idList})`);
+  await executeQuery(`DELETE FROM usage_events WHERE user_id IN (${idList})`);
+
+  // 6. users
+  await executeQuery(`DELETE FROM users WHERE id IN (${idList})`);
+}
+
 // Mock logger
 vi.mock('@/shared/utils/logger', () => ({
   logger: {
@@ -73,6 +112,13 @@ describe('Recovery and Cleanup Integration (PRD-05)', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+
+    // Remove any stale rows from crashed/interrupted previous runs BEFORE inserting
+    // fresh test data.  The cleanup helper only tracks IDs from the current instance,
+    // so rows left by a previously crashed run would otherwise remain and inflate the
+    // global counts that BatchTimeoutService / OrphanCleanupService report.
+    await purgeStaleTestData();
+
     helper = createPipelineTestHelper();
 
     const user = await helper.createTestUser();

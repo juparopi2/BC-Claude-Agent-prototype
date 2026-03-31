@@ -254,31 +254,27 @@ export class MentionScopeResolver {
    * Get all folder IDs in the subtree rooted at `folderId` (inclusive).
    * Returns `[folderId, child1, child2, ...]`.
    *
-   * Uses $queryRawUnsafe with parameterized values to avoid SQL injection.
+   * Uses $queryRaw tagged template to avoid SQL injection.
    * OPTION (MAXRECURSION 20) prevents runaway queries on deep trees.
    */
   private async getDescendantFolderIds(userId: string, folderId: string): Promise<string[]> {
-    const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
-      `
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       ;WITH folder_tree AS (
         SELECT id
         FROM files
-        WHERE id = @P1
-          AND user_id = @P2
+        WHERE id = ${folderId}
+          AND user_id = ${userId}
       UNION ALL
         SELECT f.id
         FROM files f
         INNER JOIN folder_tree ft ON f.parent_folder_id = ft.id
-        WHERE f.user_id = @P2
+        WHERE f.user_id = ${userId}
           AND f.is_folder = 1
           AND f.deletion_status IS NULL
       )
       SELECT id FROM folder_tree
       OPTION (MAXRECURSION 20)
-      `,
-      folderId,
-      userId
-    );
+      `;
 
     return rows.map(r => r.id);
   }
@@ -290,18 +286,17 @@ export class MentionScopeResolver {
    */
   private async countDescendantFiles(userId: string, folderId: string): Promise<number> {
     try {
-      const rows = await prisma.$queryRawUnsafe<Array<{ cnt: number }>>(
-        `
+      const rows = await prisma.$queryRaw<Array<{ cnt: number }>>`
         ;WITH folder_tree AS (
           SELECT id
           FROM files
-          WHERE id = @P1
-            AND user_id = @P2
+          WHERE id = ${folderId}
+            AND user_id = ${userId}
         UNION ALL
           SELECT f.id
           FROM files f
           INNER JOIN folder_tree ft ON f.parent_folder_id = ft.id
-          WHERE f.user_id = @P2
+          WHERE f.user_id = ${userId}
             AND f.is_folder = 1
             AND f.deletion_status IS NULL
         )
@@ -310,12 +305,9 @@ export class MentionScopeResolver {
         WHERE parent_folder_id IN (SELECT id FROM folder_tree)
           AND is_folder = 0
           AND deletion_status IS NULL
-          AND user_id = @P2
+          AND user_id = ${userId}
         OPTION (MAXRECURSION 20)
-        `,
-        folderId,
-        userId
-      );
+        `;
 
       return Number(rows[0]?.cnt ?? 0);
     } catch (err) {
@@ -331,19 +323,15 @@ export class MentionScopeResolver {
    */
   private async countFilesForSite(siteId: string, userId: string): Promise<number> {
     try {
-      const rows = await prisma.$queryRawUnsafe<Array<{ cnt: number }>>(
-        `
+      const rows = await prisma.$queryRaw<Array<{ cnt: number }>>`
         SELECT COUNT(*) AS cnt
         FROM files f
         INNER JOIN connection_scopes cs ON f.connection_scope_id = cs.id
-        WHERE cs.scope_site_id = @P1
-          AND f.user_id = @P2
+        WHERE cs.scope_site_id = ${siteId}
+          AND f.user_id = ${userId}
           AND f.deletion_status IS NULL
           AND f.is_folder = 0
-        `,
-        siteId,
-        userId
-      );
+        `;
 
       return Number(rows[0]?.cnt ?? 0);
     } catch (err) {

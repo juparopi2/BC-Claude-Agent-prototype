@@ -119,6 +119,31 @@ export class TestSessionFactory {
     // Insert user into database
     // Schema uses full_name not display_name, and has required fields
     try {
+      // Delete-before-insert: remove any orphaned test user with this email that
+      // survived a prior crashed run. This is safe because test emails are unique
+      // per run and the email domain is never used in production.
+      // Must follow FK dependency order: messages/events → sessions → users.
+      await executeQuery(
+        `DELETE FROM messages WHERE session_id IN (
+           SELECT id FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = @email)
+         )`,
+        { email }
+      );
+      await executeQuery(
+        `DELETE FROM message_events WHERE session_id IN (
+           SELECT id FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = @email)
+         )`,
+        { email }
+      );
+      await executeQuery(
+        `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE email = @email)`,
+        { email }
+      );
+      await executeQuery(
+        `DELETE FROM users WHERE email = @email`,
+        { email }
+      );
+
       await executeQuery(
         `INSERT INTO users (id, microsoft_id, email, full_name, is_active, is_admin, role, created_at, updated_at)
          VALUES (@userId, @microsoftId, @email, @fullName, 1, 0, 'viewer', GETDATE(), GETDATE())`,

@@ -24,7 +24,7 @@ vi.mock('@/shared/utils/logger', () => ({
 
 const mockFilesUpdateMany = vi.hoisted(() => vi.fn());
 const mockFilesFindUnique = vi.hoisted(() => vi.fn());
-const mockExecuteRawUnsafe = vi.hoisted(() => vi.fn());
+const mockExecuteRaw = vi.hoisted(() => vi.fn());
 
 vi.mock('@/infrastructure/database/prisma', () => ({
   prisma: {
@@ -32,7 +32,7 @@ vi.mock('@/infrastructure/database/prisma', () => ({
       updateMany: mockFilesUpdateMany,
       findUnique: mockFilesFindUnique,
     },
-    $executeRawUnsafe: mockExecuteRawUnsafe,
+    $executeRaw: mockExecuteRaw,
   },
 }));
 
@@ -97,7 +97,7 @@ beforeEach(() => {
   // Default: updateMany returns count=1 (file was updated)
   mockFilesUpdateMany.mockResolvedValue({ count: 1 });
   // Default: raw SQL succeeds
-  mockExecuteRawUnsafe.mockResolvedValue(undefined);
+  mockExecuteRaw.mockResolvedValue(undefined);
   // Default: pipeline job operations succeed
   mockRemoveExistingPipelineJobs.mockResolvedValue(undefined);
   mockAddFileProcessingFlow.mockResolvedValue(undefined);
@@ -117,7 +117,7 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
 
     expect(result).toEqual({ permanentlyFailed: 0, errors: 0 });
     expect(mockFilesUpdateMany).not.toHaveBeenCalled();
-    expect(mockExecuteRawUnsafe).not.toHaveBeenCalled();
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
   });
 
   it('updates a single exhausted file to failed', async () => {
@@ -149,7 +149,7 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
     expect(result.permanentlyFailed).toBe(0);
     expect(result.errors).toBe(0);
     // Scope counter must NOT be incremented when file was not updated
-    expect(mockExecuteRawUnsafe).not.toHaveBeenCalled();
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
   });
 
   it('increments processing_failed scope counter for each updated file', async () => {
@@ -158,12 +158,9 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
 
     await repairer.permanentlyFailExhaustedFiles(USER_ID, [file]);
 
-    expect(mockExecuteRawUnsafe).toHaveBeenCalledOnce();
-    const sql: string = mockExecuteRawUnsafe.mock.calls[0][0];
-    expect(sql).toContain('processing_failed = processing_failed +');
-    // Second arg is count (1), third arg is scopeId
-    expect(mockExecuteRawUnsafe.mock.calls[0][1]).toBe(1);
-    expect(mockExecuteRawUnsafe.mock.calls[0][2]).toBe(SCOPE_ID_1);
+    expect(mockExecuteRaw).toHaveBeenCalledOnce();
+    const sqlParts = mockExecuteRaw.mock.calls[0][0];
+    expect(sqlParts.join('')).toContain('processing_failed = processing_failed +');
   });
 
   it('aggregates multiple files in the same scope into a single counter update', async () => {
@@ -175,9 +172,9 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
 
     expect(mockFilesUpdateMany).toHaveBeenCalledTimes(2);
     // Only one scope counter update for SCOPE_ID_1 with count=2
-    expect(mockExecuteRawUnsafe).toHaveBeenCalledOnce();
-    expect(mockExecuteRawUnsafe.mock.calls[0][1]).toBe(2);
-    expect(mockExecuteRawUnsafe.mock.calls[0][2]).toBe(SCOPE_ID_1);
+    expect(mockExecuteRaw).toHaveBeenCalledOnce();
+    expect(mockExecuteRaw.mock.calls[0][1]).toBe(2);
+    expect(mockExecuteRaw.mock.calls[0][2]).toBe(SCOPE_ID_1);
   });
 
   it('updates counters for multiple distinct scopes independently', async () => {
@@ -187,8 +184,8 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
 
     await repairer.permanentlyFailExhaustedFiles(USER_ID, [file1, file2]);
 
-    expect(mockExecuteRawUnsafe).toHaveBeenCalledTimes(2);
-    const scopeIds = mockExecuteRawUnsafe.mock.calls.map((c) => c[2]);
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(2);
+    const scopeIds = mockExecuteRaw.mock.calls.map((c) => c[2]);
     expect(scopeIds).toContain(SCOPE_ID_1);
     expect(scopeIds).toContain(SCOPE_ID_2);
   });
@@ -201,7 +198,7 @@ describe('FileRequeueRepairer.permanentlyFailExhaustedFiles()', () => {
 
     expect(result.permanentlyFailed).toBe(1);
     // No scope to update
-    expect(mockExecuteRawUnsafe).not.toHaveBeenCalled();
+    expect(mockExecuteRaw).not.toHaveBeenCalled();
   });
 
   it('captures per-file errors without aborting remaining files', async () => {

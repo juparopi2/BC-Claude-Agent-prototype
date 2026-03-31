@@ -32,6 +32,21 @@ describe('E2E: Token Persistence (Phase 1A/1B)', () => {
   beforeAll(async () => {
     await initDatabase();
 
+    // Pre-run cleanup: delete any hardcoded message IDs that may have been left
+    // behind by a previous test run that crashed before afterAll could execute.
+    const hardcodedIds = [
+      'msg_01QR8X3Z9KM2NP4JL6H5VYWT7S',
+      'toolu_01GkXz8YLvJQYPxBvKPmD7Bk',
+      'toolu_01GkXz8YLvJQYPxBvKPmD7Bk_result',
+    ];
+    for (const id of hardcodedIds) {
+      try {
+        await executeQuery(`DELETE FROM messages WHERE id = @id`, { id });
+      } catch {
+        // Ignore — row simply does not exist
+      }
+    }
+
     // Create test user first (required for FK constraint on sessions.user_id)
     await executeQuery(`
       INSERT INTO users (id, email, full_name, is_active, created_at, updated_at)

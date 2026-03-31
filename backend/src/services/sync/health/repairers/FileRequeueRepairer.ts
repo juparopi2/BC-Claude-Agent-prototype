@@ -60,45 +60,34 @@ export class FileRequeueRepairer {
       if (!scopeId) continue;
       try {
         if (adjustment === 'decrement_failed') {
-          await prisma.$executeRawUnsafe(
-            `UPDATE connection_scopes
-             SET processing_failed = CASE WHEN processing_failed >= @P1 THEN processing_failed - @P1 ELSE 0 END,
-                 processing_status = 'processing',
-                 updated_at = GETUTCDATE()
-             WHERE id = @P2`,
-            count,
-            scopeId,
-          );
+          await prisma.$executeRaw`
+            UPDATE connection_scopes
+            SET processing_failed = CASE WHEN processing_failed >= ${count} THEN processing_failed - ${count} ELSE 0 END,
+                processing_status = 'processing',
+                updated_at = GETUTCDATE()
+            WHERE id = ${scopeId}`;
         } else if (adjustment === 'decrement_completed') {
-          await prisma.$executeRawUnsafe(
-            `UPDATE connection_scopes
-             SET processing_completed = CASE WHEN processing_completed >= @P1 THEN processing_completed - @P1 ELSE 0 END,
-                 processing_status = 'processing',
-                 updated_at = GETUTCDATE()
-             WHERE id = @P2`,
-            count,
-            scopeId,
-          );
+          await prisma.$executeRaw`
+            UPDATE connection_scopes
+            SET processing_completed = CASE WHEN processing_completed >= ${count} THEN processing_completed - ${count} ELSE 0 END,
+                processing_status = 'processing',
+                updated_at = GETUTCDATE()
+            WHERE id = ${scopeId}`;
         } else if (adjustment === 'increment_failed') {
           // Permanently failed stuck files: increment processing_failed since they never
           // reached a terminal state — FilePipelineCompleteWorker will not run for them.
-          await prisma.$executeRawUnsafe(
-            `UPDATE connection_scopes
-             SET processing_failed = processing_failed + @P1,
-                 updated_at = GETUTCDATE()
-             WHERE id = @P2`,
-            count,
-            scopeId,
-          );
+          await prisma.$executeRaw`
+            UPDATE connection_scopes
+            SET processing_failed = processing_failed + ${count},
+                updated_at = GETUTCDATE()
+            WHERE id = ${scopeId}`;
         } else {
           // status_only: just reset processing_status for stuck files
-          await prisma.$executeRawUnsafe(
-            `UPDATE connection_scopes
-             SET processing_status = 'processing',
-                 updated_at = GETUTCDATE()
-             WHERE id = @P1`,
-            scopeId,
-          );
+          await prisma.$executeRaw`
+            UPDATE connection_scopes
+            SET processing_status = 'processing',
+                updated_at = GETUTCDATE()
+            WHERE id = ${scopeId}`;
         }
 
         this.logger.debug({ scopeId, count, adjustment }, 'Adjusted scope counters after requeue');

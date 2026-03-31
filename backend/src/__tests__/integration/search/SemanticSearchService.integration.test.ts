@@ -71,8 +71,9 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
             fileName: 'other-user-photo.jpg',
         });
 
-        // Wait for indexing
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Wait for Azure AI Search indexing propagation (eventually consistent).
+        // 3s was insufficient under load — Azure docs recommend up to 10s for near-real-time.
+        await new Promise(resolve => setTimeout(resolve, 8000));
     });
 
     afterAll(async () => {
@@ -87,12 +88,25 @@ describe.skipIf(!runIntegrationTests)('SemanticSearchService Integration - Unifi
     });
 
     it('should return both text and image results in unified search', async () => {
-        const result = await semanticSearchService.searchRelevantFiles({
+        // Azure AI Search is eventually consistent — retry with backoff
+        // to handle indexing propagation delay under load.
+        let result = await semanticSearchService.searchRelevantFiles({
             userId: TEST_USER_ID,
             query: 'warehouse inventory',
             threshold: 0.0, // Low threshold to get all results
             maxFiles: 10,
         });
+
+        // Retry up to 2 times with 5s waits if indexing hasn't propagated yet
+        for (let attempt = 0; attempt < 2 && result.results.length === 0; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            result = await semanticSearchService.searchRelevantFiles({
+                userId: TEST_USER_ID,
+                query: 'warehouse inventory',
+                threshold: 0.0,
+                maxFiles: 10,
+            });
+        }
 
         // Should find both text and image results
         expect(result.results.length).toBeGreaterThanOrEqual(1);

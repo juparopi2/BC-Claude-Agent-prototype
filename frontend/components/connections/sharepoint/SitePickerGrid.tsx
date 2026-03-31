@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import Fuse, { type IFuseOptions } from 'fuse.js'
 import { Search, Loader2 } from 'lucide-react'
 import { SharePointLogo } from '@/components/icons'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -17,8 +18,6 @@ interface SitePickerGridProps {
   sites: SharePointSite[]
   selectedSiteIds: Set<string>
   onToggleSite: (siteId: string) => void
-  searchQuery: string
-  onSearchChange: (query: string) => void
   isLoading: boolean
   onLoadMore: () => void
   hasMore: boolean
@@ -26,31 +25,34 @@ interface SitePickerGridProps {
   siteSyncInfo?: Map<string, SiteSyncInfo>
 }
 
+const FUSE_OPTIONS: IFuseOptions<SharePointSite> = {
+  keys: [
+    { name: 'displayName', weight: 0.7 },
+    { name: 'webUrl', weight: 0.3 },
+  ],
+  threshold: 0.4,
+  distance: 100,
+  minMatchCharLength: 1,
+}
+
 export function SitePickerGrid({
   sites,
   selectedSiteIds,
   onToggleSite,
-  searchQuery,
-  onSearchChange,
   isLoading,
   onLoadMore,
   hasMore,
   isLoadingMore,
   siteSyncInfo,
 }: SitePickerGridProps) {
-  const [localQuery, setLocalQuery] = useState(searchQuery)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
-  // Debounced search
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      onSearchChange(localQuery)
-    }, 300)
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [localQuery, onSearchChange])
+  const fuse = useMemo(() => new Fuse(sites, FUSE_OPTIONS), [sites])
+
+  const filteredSites = useMemo(() => {
+    if (!searchQuery.trim()) return sites
+    return fuse.search(searchQuery).map((result) => result.item)
+  }, [fuse, searchQuery, sites])
 
   const formatDate = useCallback((dateStr: string) => {
     try {
@@ -70,8 +72,8 @@ export function SitePickerGrid({
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
-          value={localQuery}
-          onChange={(e) => setLocalQuery(e.target.value)}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search sites..."
           className="pl-9 h-9"
         />
@@ -84,7 +86,7 @@ export function SitePickerGrid({
             <Loader2 className="size-4 animate-spin" />
             <span className="text-sm">Loading sites...</span>
           </div>
-        ) : sites.length === 0 ? (
+        ) : filteredSites.length === 0 ? (
           <div className="flex items-center justify-center h-[200px] text-muted-foreground">
             <span className="text-sm">
               {searchQuery ? 'No sites match your search' : 'No accessible sites found'}
@@ -92,7 +94,7 @@ export function SitePickerGrid({
           </div>
         ) : (
           <div className="divide-y">
-            {sites.map((site) => (
+            {filteredSites.map((site) => (
               <label
                 key={site.siteId}
                 className="flex items-start gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors"
@@ -123,8 +125,8 @@ export function SitePickerGrid({
               </label>
             ))}
 
-            {/* Load more button */}
-            {hasMore && (
+            {/* Load more button — only show when not filtering */}
+            {hasMore && !searchQuery && (
               <div className="p-3 text-center">
                 <Button
                   variant="ghost"

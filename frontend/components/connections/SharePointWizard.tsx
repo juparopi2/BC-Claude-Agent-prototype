@@ -217,7 +217,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
   const [sites, setSites] = useState<SharePointSite[]>([])
   const [selectedSiteIds, setSelectedSiteIds] = useState<Set<string>>(new Set())
   const [isSitesLoading, setIsSitesLoading] = useState(false)
-  const [siteSearchQuery, setSiteSearchQuery] = useState('')
   const [siteNextPageToken, setSiteNextPageToken] = useState<string | null>(null)
   const [isSitesLoadingMore, setIsSitesLoadingMore] = useState(false)
 
@@ -274,7 +273,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     setSites([])
     setSelectedSiteIds(new Set())
     setIsSitesLoading(false)
-    setSiteSearchQuery('')
     setSiteNextPageToken(null)
     setIsSitesLoadingMore(false)
     setSiteLibraries(new Map())
@@ -360,12 +358,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     const fetchSites = async () => {
       setIsSitesLoading(true)
       try {
-        const params = new URLSearchParams()
-        if (siteSearchQuery) params.set('search', siteSearchQuery)
-
         const [sitesResponse, scopesResponse] = await Promise.all([
           fetch(
-            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/sites?${params}`,
+            `${env.apiUrl}${CONNECTIONS_API.BASE}/${connectionId}/sites?search=*&$top=50`,
             { credentials: 'include' }
           ),
           fetch(
@@ -423,7 +418,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
     fetchSites()
     return () => { cancelled = true }
-  }, [step, connectionId, siteSearchQuery, setSharepointSiteCache])
+  }, [step, connectionId, setSharepointSiteCache])
 
   const handleLoadMoreSites = useCallback(async () => {
     if (!connectionId || !siteNextPageToken || isSitesLoadingMore) return
@@ -431,7 +426,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     setIsSitesLoadingMore(true)
     try {
       const params = new URLSearchParams()
-      if (siteSearchQuery) params.set('search', siteSearchQuery)
       params.set('pageToken', siteNextPageToken)
 
       const response = await fetch(
@@ -454,7 +448,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
     } finally {
       setIsSitesLoadingMore(false)
     }
-  }, [connectionId, siteNextPageToken, siteSearchQuery, isSitesLoadingMore, setSharepointSiteCache])
+  }, [connectionId, siteNextPageToken, isSitesLoadingMore, setSharepointSiteCache])
 
   const handleToggleSite = useCallback((siteId: string) => {
     setSelectedSiteIds(prev => {
@@ -466,12 +460,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
       }
       return next
     })
-  }, [])
-
-  const handleSiteSearchChange = useCallback((query: string) => {
-    setSiteSearchQuery(query)
-    setSites([])
-    setSiteNextPageToken(null)
   }, [])
 
   // ============================================
@@ -1217,8 +1205,6 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
               sites={sites}
               selectedSiteIds={selectedSiteIds}
               onToggleSite={handleToggleSite}
-              searchQuery={siteSearchQuery}
-              onSearchChange={handleSiteSearchChange}
               isLoading={isSitesLoading}
               onLoadMore={handleLoadMoreSites}
               hasMore={!!siteNextPageToken}
@@ -1292,9 +1278,9 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
               {Array.from(siteLibraries.entries()).map(([siteId, siteEntry]) => (
                 <div key={siteId}>
                   {/* Site header */}
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border-b">
-                    <SharePointLogo className="size-4" />
-                    <span className="text-sm font-medium">{siteEntry.site.displayName}</span>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 border-b min-w-0">
+                    <SharePointLogo className="size-4 shrink-0" />
+                    <span className="text-sm font-medium truncate">{siteEntry.site.displayName}</span>
                   </div>
 
                   {siteEntry.isLoading ? (
@@ -1337,7 +1323,7 @@ export function SharePointWizard({ isOpen, onClose, initialConnectionId }: Share
 
                             <BookOpen className="size-4 shrink-0 text-[#038387]" />
 
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 truncate">
                               <span className="text-sm">{lib.displayName}</span>
                               <span className="text-xs text-muted-foreground ml-2">
                                 {[

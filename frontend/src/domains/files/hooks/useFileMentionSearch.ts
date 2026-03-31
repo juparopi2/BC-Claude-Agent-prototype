@@ -8,8 +8,9 @@
  * @module domains/files/hooks/useFileMentionSearch
  */
 
-import { useState, useEffect } from 'react';
-import type { ParsedFile } from '@bc-agent/shared';
+import { useState, useEffect, useMemo } from 'react';
+import Fuse from 'fuse.js';
+import type { ParsedFile, SharePointSite } from '@bc-agent/shared';
 import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
@@ -66,6 +67,17 @@ export function useFileMentionSearch(query: string) {
 
   const sharepointSiteCache = useFolderTreeStore((s) => s.sharepointSiteCache);
 
+  const siteFuse = useMemo(
+    () =>
+      new Fuse<SharePointSite>(sharepointSiteCache, {
+        keys: [{ name: 'displayName', weight: 1.0 }],
+        threshold: 0.4,
+        distance: 100,
+        minMatchCharLength: 1,
+      }),
+    [sharepointSiteCache],
+  );
+
   useEffect(() => {
     if (!query || query.length < 1) {
       setResults([]);
@@ -75,12 +87,10 @@ export function useFileMentionSearch(query: string) {
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        // --- Local site search (case-insensitive substring match) ---
-        const lowerQuery = query.toLowerCase();
-        const matchingSites = sharepointSiteCache
-          .filter((site) => site.displayName.toLowerCase().includes(lowerQuery))
-          .slice(0, 3)
-          .map((site) => buildSiteResult(site.siteId, site.displayName));
+        // --- Local site search (fuzzy match via fuse.js) ---
+        const matchingSites = siteFuse
+          .search(query, { limit: 3 })
+          .map((result) => buildSiteResult(result.item.siteId, result.item.displayName));
 
         // --- Remote file search ---
         const api = getFileApiClient();
@@ -95,7 +105,7 @@ export function useFileMentionSearch(query: string) {
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [query, sharepointSiteCache]);
+  }, [query, siteFuse]);
 
   return { results, isSearching };
 }

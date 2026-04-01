@@ -196,8 +196,10 @@ export class MentionScopeResolver {
         resolvedCount: resolvedMentions.length,
         warningCount: warnings.length,
         hasFilter: searchFilter !== null,
+        searchFilter: searchFilter ?? '(none)',
+        filterParts,
       },
-      'Mention scope resolved'
+      'Mention scope resolved — full OData filter'
     );
 
     return {
@@ -228,6 +230,13 @@ export class MentionScopeResolver {
       try {
         // Collect all folder IDs in the subtree (root + all descendants that are folders)
         const allFolderIds = await this.getDescendantFolderIds(userId, folderId);
+
+        // LOG POINT 1: Full CTE expansion result — critical for diagnosing scope filter issues
+        this.logger.debug(
+          { folderId, folderName: mention.name, userId, allFolderIds, depth: allFolderIds.length },
+          'CTE folder expansion result — all descendant folder IDs'
+        );
+
         nodes.push({
           mentionId: folderId,
           mentionName: mention.name,

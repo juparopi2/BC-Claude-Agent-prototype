@@ -751,6 +751,11 @@ export class VectorSearchService {
       searchFilter += ` and ${query.additionalFilter}`;
     }
 
+    logger.debug(
+      { searchFilter, hasAdditionalFilter: !!query.additionalFilter, fetchTopK },
+      'VectorSearchService: complete search filter for Azure AI Search'
+    );
+
     // Build search options
     const searchOptions: Record<string, unknown> = {
       filter: searchFilter,
@@ -860,6 +865,18 @@ export class VectorSearchService {
         imageCaption: doc.imageCaption,
       });
     }
+
+    // LOG POINT 7: Raw result count BEFORE sorting/trimming — helps distinguish "no results from Azure" vs "filtered out"
+    logger.debug(
+      {
+        rawCandidates: results.length,
+        finalTopK,
+        minScore,
+        useSemanticRanker,
+        hasAdditionalFilter: !!query.additionalFilter,
+      },
+      'VectorSearchService: raw candidates before sort/trim'
+    );
 
     // Sort by score descending and take top N
     results.sort((a, b) => b.score - a.score);

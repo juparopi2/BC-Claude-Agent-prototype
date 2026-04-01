@@ -50,19 +50,19 @@ function buildScopeFilter(config: RunnableConfig): string | undefined {
   // Preferred: pre-built OData filter from MentionScopeResolver
   const scopeFilter = config?.configurable?.scopeFilter as string | undefined;
   if (scopeFilter) {
-    logger.info({ filter: scopeFilter.slice(0, 200) }, 'Using pre-built scope filter');
+    logger.info({ scopeFilter }, 'RAG tool using pre-built scope filter from MentionScopeResolver');
     return scopeFilter;
   }
 
   // Legacy fallback: build from raw scopeFileIds
   const scopeFileIds = config?.configurable?.scopeFileIds as string[] | undefined;
   if (!scopeFileIds?.length) {
-    logger.debug('No scopeFilter or scopeFileIds — searching globally');
+    logger.debug('No scopeFilter or scopeFileIds — RAG tool searching globally');
     return undefined;
   }
   const normalized = scopeFileIds.map(id => id.toUpperCase());
   const filter = `search.in(fileId, '${normalized.join(',')}', ',')`;
-  logger.info({ scopeCount: normalized.length, filter: filter.slice(0, 200) }, 'Scope filter built from legacy scopeFileIds');
+  logger.info({ scopeCount: normalized.length, filter }, 'RAG tool scope filter built from legacy scopeFileIds');
   return filter;
 }
 

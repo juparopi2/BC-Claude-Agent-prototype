@@ -289,6 +289,8 @@ export class SemanticSearchService {
       queryLength: query.length,
       threshold,
       totalCandidates: semanticResults.length,
+      afterExcludeFilter: filteredResults.length,
+      uniqueFiles: fileMap.size,
       matchingFiles: finalResults.length,
       textResults: textCount,
       imageResults: imageCount,
@@ -296,7 +298,8 @@ export class SemanticSearchService {
       searchMode,
       sortBy: sortBy ?? 'relevance',
       extractiveAnswerCount: extractiveAnswers.length,
-    }, 'PRD-200/PRD-203: Semantic search completed');
+      additionalFilter: callerAdditionalFilter ?? '(none)',
+    }, 'SemanticSearchService: search pipeline completed — full filter trace');
 
     // PRD-203: Resolve extractive answers with file context
     const resolvedAnswers = extractiveAnswers.length > 0

@@ -86,6 +86,32 @@ npx tsx scripts/connectors/debug-rag-search-flow.ts
 npx tsx scripts/operations/benchmark-search.ts --user-id <ID>
 ```
 
+### "Folder/site @mention scope returns no results"
+
+```bash
+# 1. Diagnose parentFolderId/siteId population + CTE expansion + filter test
+npx tsx scripts/diagnostics/diagnose-scope-filter.ts --userId <ID>
+npx tsx scripts/diagnostics/diagnose-scope-filter.ts --userId <ID> --folderId <FOLDER-UUID>
+npx tsx scripts/diagnostics/diagnose-scope-filter.ts --userId <ID> --env dev   # Against dev
+npx tsx scripts/diagnostics/diagnose-scope-filter.ts --userId <ID> --env prod  # Against prod
+
+# 2. Runtime log tracing (add to server start or .env)
+LOG_SERVICES=MentionScopeResolver,FileContextPreparer,SemanticSearchHandler,RagTools,VectorSearchService,SemanticSearchService
+```
+
+**Scope filter log points** (8 points across the pipeline, all at `debug` or `info` level):
+
+| # | Service | Log Message Contains | What to Check |
+|---|---------|---------------------|---------------|
+| 1 | MentionScopeResolver | `CTE folder expansion result` | allFolderIds array — are subfolders included? |
+| 2 | MentionScopeResolver | `full OData filter` | searchFilter string — is it well-formed? |
+| 3 | FileContextPreparer | `filter will be passed to search` | searchFilter — did it survive resolution? |
+| 4 | SemanticSearchHandler | `Scope filter resolved` | additionalFilter — was it applied? |
+| 5 | RagTools | `pre-built scope filter` | scopeFilter — did it reach the RAG tool? |
+| 6 | VectorSearchService | `complete search filter` | searchFilter — full filter including userId |
+| 7 | VectorSearchService | `raw candidates before sort` | rawCandidates — 0 means Azure returned nothing |
+| 8 | SemanticSearchService | `search pipeline completed` | additionalFilter + matchingFiles count |
+
 ### "Files are stuck / processing failed"
 
 ```bash
@@ -275,6 +301,7 @@ npx tsx scripts/database/update-search-schema.ts --apply
 | `capture-websocket-events.ts` | WebSocket event capture during live chat | (interactive) |
 | `extract-session-logs.ts` | Extract logs for a session from JSON log file | `<sessionId>`, `[logFilePath]` |
 | `check-file-health-api.ts` | Verify FileHealthService returns expected data | `--userId` |
+| `diagnose-scope-filter.ts` | **Folder/site scope filter diagnostic**: parentFolderId population, CTE expansion, OData filter test, siteId check | `--userId`, `--folderId`, `--env dev\|prod`, `--verbose` |
 | `diagnose-enforcer.ts` | Verify FirstCallToolEnforcer with real ChatAnthropic | (diagnostic) |
 | `simulate-file-health-issues.ts` | Create real errors to trigger FileHealthWarning types (dev only) | `--userId`, `--confirm-dev`, `--revert` |
 | `reset-all-simulated.ts` | Emergency reset of simulated health issues | `--userId` |

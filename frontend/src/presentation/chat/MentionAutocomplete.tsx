@@ -11,8 +11,8 @@
 
 import { useRef, useEffect } from 'react';
 import type { ParsedFile } from '@bc-agent/shared';
-import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
-import { useFileMentionSearch, SITE_MENTION_MIME_TYPE } from '@/src/domains/files';
+import { FILE_SOURCE_TYPE, MENTION_MIME_TYPE } from '@bc-agent/shared';
+import { useFileMentionSearch } from '@/src/domains/files';
 import { getFileSourceUI } from '@/src/domains/files/utils/fileSourceUI';
 import { FileText, Folder, Globe, Image, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,7 +39,7 @@ interface MentionAutocompleteProps {
  */
 function getFileIcon(file: ParsedFile) {
   // Site results use the Globe icon with no overlay
-  if (file.mimeType === SITE_MENTION_MIME_TYPE) {
+  if (file.mimeType === MENTION_MIME_TYPE.SITE) {
     return (
       <span className="relative inline-flex flex-shrink-0">
         <Globe className="size-4 text-teal-600" />
@@ -143,7 +143,7 @@ export function MentionAutocomplete({
         >
           {getFileIcon(file)}
           <span className="truncate flex-1">{file.name}</span>
-          {file.mimeType === SITE_MENTION_MIME_TYPE ? (
+          {file.mimeType === MENTION_MIME_TYPE.SITE ? (
             <span className="text-xs text-teal-600 ml-1">SharePoint site</span>
           ) : file.sourceType !== FILE_SOURCE_TYPE.LOCAL ? (
             <span

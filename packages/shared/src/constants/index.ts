@@ -154,6 +154,13 @@ export {
   type ResourceExpectation,
 } from './file-health-state';
 
+// Mention Constants (scope context for chat)
+export {
+  MENTION_TYPE,
+  MENTION_MIME_TYPE,
+  type MentionType,
+} from './mention.constants';
+
 // Onboarding Constants
 export {
   TOUR_ID,

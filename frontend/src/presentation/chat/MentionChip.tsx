@@ -10,7 +10,8 @@
  */
 
 import type { FileMention } from '@bc-agent/shared';
-import { X, FileText, Folder, Image } from 'lucide-react';
+import { MENTION_TYPE, MENTION_MIME_TYPE } from '@bc-agent/shared';
+import { X, FileText, Folder, Image, Globe, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MentionChipProps {
@@ -21,9 +22,15 @@ interface MentionChipProps {
 }
 
 /**
- * Get icon for file type
+ * Get icon for mention type — distinguishes sites, libraries, folders, images, and files.
  */
 function getMentionIcon(mention: FileMention) {
+  if (mention.mimeType === MENTION_MIME_TYPE.LIBRARY) {
+    return <BookOpen className="size-3 text-teal-600" />;
+  }
+  if (mention.type === MENTION_TYPE.SITE || mention.mimeType === MENTION_MIME_TYPE.SITE) {
+    return <Globe className="size-3 text-teal-600" />;
+  }
   if (mention.isFolder) return <Folder className="size-3 text-amber-500" />;
   if (mention.mimeType?.startsWith('image/')) return <Image className="size-3" />;
   return <FileText className="size-3" />;

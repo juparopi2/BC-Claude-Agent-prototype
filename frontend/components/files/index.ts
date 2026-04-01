@@ -26,3 +26,4 @@ export { FolderTreeItem } from './FolderTreeItem';
 // Controls
 export { CreateFolderDialog } from './CreateFolderDialog';
 export { FileContextMenu } from './FileContextMenu';
+export { ScopeContextMenu } from './ScopeContextMenu';

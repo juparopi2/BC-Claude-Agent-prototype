@@ -11,12 +11,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import Fuse from 'fuse.js';
 import type { ParsedFile, SharePointSite } from '@bc-agent/shared';
-import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, MENTION_MIME_TYPE } from '@bc-agent/shared';
 import { getFileApiClient } from '@/src/infrastructure/api';
 import { useFolderTreeStore } from '../stores/folderTreeStore';
-
-/** Synthetic mimeType used to identify SharePoint site results in the mention list */
-export const SITE_MENTION_MIME_TYPE = 'application/x-sharepoint-site';
 
 /**
  * Build a synthetic ParsedFile-like object representing a SharePoint site.
@@ -28,7 +25,7 @@ function buildSiteResult(siteId: string, displayName: string): ParsedFile {
     userId: '',
     parentFolderId: null,
     name: displayName,
-    mimeType: SITE_MENTION_MIME_TYPE,
+    mimeType: MENTION_MIME_TYPE.SITE,
     sizeBytes: 0,
     blobPath: null,
     sourceType: FILE_SOURCE_TYPE.SHAREPOINT,

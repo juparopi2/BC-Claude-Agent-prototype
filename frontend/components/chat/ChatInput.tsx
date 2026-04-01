@@ -19,9 +19,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
 import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton, MentionHighlightOverlay } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
-import { SITE_MENTION_MIME_TYPE } from '@/src/domains/files';
+import { MENTION_MIME_TYPE, buildChatAttachmentAcceptString } from '@bc-agent/shared';
 import { FILE_MENTION_ADD_EVENT } from '@/src/domains/chat/utils/mentionEvent';
-import { buildChatAttachmentAcceptString } from '@bc-agent/shared';
 import { cn } from '@/lib/utils';
 import { validateChatAttachmentFiles, buildAttachmentTooltipText } from '@/src/domains/chat/utils/chatAttachmentValidation';
 import { toast } from 'sonner';
@@ -217,14 +216,14 @@ export default function ChatInput({
    * Handle selecting a file or site from autocomplete
    */
   const handleMentionSelect = (file: ParsedFile) => {
-    const isSite = file.mimeType === SITE_MENTION_MIME_TYPE;
+    const isSite = file.mimeType === MENTION_MIME_TYPE.SITE;
 
     const mention: FileMention = isSite
       ? {
           fileId: file.id,
           name: file.name,
           isFolder: false,
-          mimeType: SITE_MENTION_MIME_TYPE,
+          mimeType: MENTION_MIME_TYPE.SITE,
           type: 'site',
           siteId: file.id,
         }
@@ -282,7 +281,7 @@ export default function ChatInput({
    * Handle drag-and-drop of files from file panel
    */
   const handleDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('application/x-file-mention')) {
+    if (e.dataTransfer.types.includes(MENTION_MIME_TYPE.FILE_DRAG)) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setIsDragOver(true);
@@ -296,7 +295,7 @@ export default function ChatInput({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
-    const data = e.dataTransfer.getData('application/x-file-mention');
+    const data = e.dataTransfer.getData(MENTION_MIME_TYPE.FILE_DRAG);
     if (data) {
       try {
         const parsed = JSON.parse(data);

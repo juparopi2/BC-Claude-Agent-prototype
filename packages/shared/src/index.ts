@@ -601,6 +601,11 @@ export {
   getValidCategories,
   type FileTypeCategory,
 
+  // Mention Constants (scope context for chat)
+  MENTION_TYPE,
+  MENTION_MIME_TYPE,
+  type MentionType,
+
   // Onboarding Constants
   TOUR_ID,
   TIP_ID,

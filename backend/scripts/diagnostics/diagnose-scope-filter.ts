@@ -276,11 +276,13 @@ async function crossReferenceDbVsIndex(
       ORDER BY name
     `;
 
-    const dbFolderIds = new Set(dbFolders.map(f => f.id));
+    // Normalize to UPPERCASE for case-insensitive comparison
+    const dbFolderIds = new Set(dbFolders.map(f => f.id.toUpperCase()));
+    const indexedUpperIds = new Set([...indexedParentIds].map(id => id.toUpperCase()));
 
     // parentFolderIds in index that don't exist as folders in DB
     const orphanedInIndex: string[] = [];
-    for (const pid of indexedParentIds) {
+    for (const pid of indexedUpperIds) {
       if (!dbFolderIds.has(pid)) {
         orphanedInIndex.push(pid);
       }
@@ -289,7 +291,7 @@ async function crossReferenceDbVsIndex(
     // DB folders that never appear as parentFolderId in index
     const neverReferenced: string[] = [];
     for (const f of dbFolders) {
-      if (!indexedParentIds.has(f.id)) {
+      if (!indexedUpperIds.has(f.id.toUpperCase())) {
         neverReferenced.push(`${f.id} (${f.name})`);
       }
     }

@@ -28,8 +28,10 @@ import type { MessageQueue } from '@/infrastructure/queue/MessageQueue';
 // Mock External Services BEFORE imports
 // ============================================================================
 
-// Mock LangGraph
-const mockStreamFn = vi.fn();
+// Mock LangGraph — vi.hoisted ensures mockStreamFn is available when vi.mock factory runs
+const { mockStreamFn } = vi.hoisted(() => ({
+  mockStreamFn: vi.fn(),
+}));
 
 vi.mock('@/modules/agents/supervisor', () => ({
   getSupervisorGraphAdapter: vi.fn().mockReturnValue({

@@ -402,7 +402,7 @@ export function normalizeAIMessage(
 
     // String content messages may still have tool_calls (e.g. handoff-back messages
     // created by langgraph-supervisor with addHandoffBackMessages: true).
-    // Extract tool_request events so they can be paired with tool_response in BatchResultNormalizer.
+    // Extract tool_request events so they can be paired with tool_response in DeltaNormalizer.
     const toolCalls = (message as { tool_calls?: LangChainToolCall[] }).tool_calls;
     if (toolCalls?.length) {
       for (const tc of toolCalls) {
@@ -583,7 +583,7 @@ export function normalizeAIMessage(
       }
     }
 
-    // 3. Regular tool requests last (their results come from ToolMessages via BatchResultNormalizer)
+    // 3. Regular tool requests last (their results come from ToolMessages via DeltaNormalizer)
     events.push(...regularToolRequests);
 
     // 4. Re-index originalIndex after segment emission to maintain monotonic ordering

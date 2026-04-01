@@ -35,10 +35,10 @@ import { normalizeToolArgs } from '@domains/agent/tools';
 /**
  * Convert a NormalizedAgentEvent to AgentEvent for WebSocket emission.
  *
- * Pure function that transforms normalized events from BatchResultNormalizer
+ * Pure function that transforms normalized events from DeltaNormalizer
  * into the format expected by WebSocket clients.
  *
- * @param normalized - The normalized event from BatchResultNormalizer
+ * @param normalized - The normalized event from DeltaNormalizer
  * @param ctx - Execution context for accessing citedSources
  * @returns AgentEvent ready for emission
  */

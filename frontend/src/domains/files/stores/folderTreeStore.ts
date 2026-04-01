@@ -231,7 +231,20 @@ export const useFolderTreeStore = create<FolderTreeState & FolderTreeActions>()(
       },
 
       setSharepointSites: (sites) => {
-        set({ sharepointSites: sites });
+        // Derive sharepointSiteCache for @ mention search (useFileMentionSearch).
+        // Only populate if cache is empty — the SharePointWizard may set richer data later.
+        const currentCache = get().sharepointSiteCache;
+        const derivedCache = currentCache.length > 0
+          ? currentCache
+          : sites.map((s): SharePointSite => ({
+              siteId: s.siteId,
+              displayName: s.displayName,
+              description: null,
+              webUrl: '',
+              isPersonalSite: false,
+              lastModifiedAt: '',
+            }));
+        set({ sharepointSites: sites, sharepointSiteCache: derivedCache });
       },
 
       setActiveSiteContext: (context) => {

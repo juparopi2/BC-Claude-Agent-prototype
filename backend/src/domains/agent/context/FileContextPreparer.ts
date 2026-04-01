@@ -119,10 +119,11 @@ export class FileContextPreparer implements IFileContextPreparer {
 
       this.logger.info({
         inputScopeCount: rawScopeFileIds.length,
-        resolvedMentions: resolution.resolvedMentions.map(rm => ({ name: rm.name, type: rm.type })),
+        resolvedMentions: resolution.resolvedMentions.map(rm => ({ name: rm.name, type: rm.type, id: rm.id })),
         warningCount: resolution.warnings.length,
         hasFilter: resolution.isScoped,
-      }, 'Resolved @mention scope via MentionScopeResolver');
+        searchFilter: resolution.searchFilter ?? '(none)',
+      }, 'Resolved @mention scope via MentionScopeResolver — filter will be passed to search');
 
       if (resolution.warnings.length > 0) {
         this.logger.warn({ warnings: resolution.warnings }, 'Mention scope resolution warnings');

@@ -6,10 +6,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Badge } from '@/components/ui/badge';
 import { useFolderTreeStore } from '@/src/domains/files/stores/folderTreeStore';
 import { getFileApiClient } from '@/src/infrastructure/api';
-import { FILE_SOURCE_TYPE } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, MENTION_TYPE, MENTION_MIME_TYPE } from '@bc-agent/shared';
 import type { ParsedFile } from '@bc-agent/shared';
 import type { SharePointLibraryNode } from '@/src/domains/files/types/siteNode.types';
 import { FolderTreeItem } from './FolderTreeItem';
+import { ScopeContextMenu } from './ScopeContextMenu';
 
 // Empty array constant to avoid creating new references
 const EMPTY_FOLDERS: ParsedFile[] = [];
@@ -117,6 +118,13 @@ export const LibraryTreeItem = memo(function LibraryTreeItem({
 
   return (
     <Collapsible open={isExpanded} onOpenChange={handleToggleExpand}>
+      <ScopeContextMenu
+        scopeId={library.driveId}
+        name={library.displayName}
+        scopeType={MENTION_TYPE.SITE}
+        siteId={siteId}
+        mimeType={MENTION_MIME_TYPE.LIBRARY}
+      >
       <div
         className="flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-accent/50 transition-colors"
         style={{ paddingLeft: `${level * 12 + 8}px` }}
@@ -150,6 +158,7 @@ export const LibraryTreeItem = memo(function LibraryTreeItem({
           )}
         </div>
       </div>
+      </ScopeContextMenu>
 
       <CollapsibleContent>
         {folders.map((folder) => (

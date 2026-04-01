@@ -19,9 +19,9 @@ This domain does NOT own:
 - **LLM Configuration**: Model selection and provider constraints live in `core/langchain/`
 - **Transport**: WebSocket handling lives in `services/websocket/`
 
-## Orchestration Pipeline
+## Orchestration Pipeline (Progressive Delivery)
 
-The pipeline executes synchronously for each user message. Each stage has a single responsibility:
+The pipeline delivers events **progressively** during graph execution. Each graph node boundary (supervisor routing, worker response, tool execution) emits events immediately via Socket.IO — users see thinking, tools, and messages appear incrementally instead of waiting for the full response.
 
 ```
 User Prompt
@@ -31,28 +31,34 @@ User Prompt
 │  Context Building    │  Prepare files, search results, conversation history
 └─────────┬───────────┘
           ▼
-┌─────────────────────┐
-│  Graph Execution     │  Run LangGraph (supervisor routes to workers)
-└─────────┬───────────┘
-          ▼
-┌─────────────────────┐
-│  Result Normalization│  Convert provider-specific output → NormalizedAgentEvent[]
-└─────────┬───────────┘
-          ▼
-┌─────────────────────┐
-│  Sequence Allocation │  Reserve atomic sequence numbers via Redis
-└─────────┬───────────┘
-          ▼
-┌─────────────────────┐
-│  Event Processing    │  Attribute, filter, emit, and persist each event
-└─────────┬───────────┘
+┌─────────────────────────────────────────────────────┐
+│  Streaming Graph Execution (SupervisorGraphAdapter)  │
+│  yields StreamingGraphStep at each node boundary     │
+│                                                      │
+│  For each step:                                      │
+│  ┌────────────────────┐                              │
+│  │ Delta Detection     │  slice(previousMessageCount)│
+│  └────────┬───────────┘                              │
+│           ▼                                          │
+│  ┌────────────────────┐                              │
+│  │ Delta Normalization │  DeltaNormalizer per-step   │
+│  └────────┬───────────┘                              │
+│           ▼                                          │
+│  ┌────────────────────┐                              │
+│  │ Sequence Allocation │  Redis INCRBY per-delta    │
+│  └────────┬───────────┘                              │
+│           ▼                                          │
+│  ┌────────────────────┐                              │
+│  │ Event Processing    │  Emit via Socket.IO NOW    │
+│  └────────────────────┘                              │
+└─────────────────────────────────────────────────────┘
           ▼
 ┌─────────────────────┐
 │  Tool Finalization   │  Close orphan tool lifecycles, persist remaining pairs
 └─────────────────────┘
 ```
 
-**Key principle**: Each stage receives the output of the previous stage and transforms it. Stages do not reach back to previous stages or skip ahead. This makes the pipeline testable in isolation.
+**Key principle**: Events are emitted AS the graph executes, not after. Each delta (new messages from a graph step) is normalized, sequenced, and emitted immediately. The `complete` event is emitted after the stream ends.
 
 ## Event Classification
 

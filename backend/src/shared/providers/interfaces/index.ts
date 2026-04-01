@@ -1,2 +1,2 @@
 export * from './INormalizedEvent';
-export * from './IBatchResultNormalizer';
+export * from './IDeltaNormalizer';

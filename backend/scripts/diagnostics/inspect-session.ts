@@ -14,6 +14,7 @@
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { getPositionalArg, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ============================================================================
 // Types
@@ -553,6 +554,10 @@ function displayIssues(issues: PotentialIssue[]): void {
 async function main() {
   const { sessionIdOrUrl, verbose, showEvents } = parseArgs();
   const sessionId = extractSessionId(sessionIdOrUrl);
+
+  // Resolve remote environment if --env is passed
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
 
   const prisma = createPrisma();
 

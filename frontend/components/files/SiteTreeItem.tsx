@@ -4,7 +4,9 @@ import { useState, useCallback, memo, useMemo } from 'react';
 import { Globe, ChevronRight, ChevronDown } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
+import { MENTION_TYPE } from '@bc-agent/shared';
 import { LibraryTreeItem } from './LibraryTreeItem';
+import { ScopeContextMenu } from './ScopeContextMenu';
 import type { ParsedFile } from '@bc-agent/shared';
 import type { SharePointSiteNode } from '@/src/domains/files/types/siteNode.types';
 
@@ -53,6 +55,12 @@ export const SiteTreeItem = memo(function SiteTreeItem({
 
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <ScopeContextMenu
+        scopeId={site.siteId}
+        name={site.displayName}
+        scopeType={MENTION_TYPE.SITE}
+        siteId={site.siteId}
+      >
       <div
         className="flex items-center gap-1 py-1 px-2 rounded cursor-pointer hover:bg-accent/50 transition-colors"
         style={{ paddingLeft: `${level * 12 + 8}px` }}
@@ -84,6 +92,7 @@ export const SiteTreeItem = memo(function SiteTreeItem({
           )}
         </div>
       </div>
+      </ScopeContextMenu>
 
       <CollapsibleContent>
         {site.libraries.map((library) => (

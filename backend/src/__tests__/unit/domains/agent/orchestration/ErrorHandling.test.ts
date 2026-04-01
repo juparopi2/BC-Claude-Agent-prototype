@@ -21,13 +21,20 @@ import {
 import type { AgentEvent } from '@bc-agent/shared';
 
 // Mock the graph
-vi.mock('@/modules/agents/supervisor', () => ({
-  getSupervisorGraphAdapter: vi.fn().mockReturnValue({
-    invoke: vi.fn(),
-  }),
-  initializeSupervisorGraph: vi.fn(),
-  resumeSupervisor: vi.fn(),
-}));
+vi.mock('@/modules/agents/supervisor', () => {
+  const mockInvoke = vi.fn();
+  return {
+    getSupervisorGraphAdapter: vi.fn().mockReturnValue({
+      invoke: mockInvoke,
+      async *stream(inputs: unknown, options?: { signal?: AbortSignal }) {
+        const result = await mockInvoke(inputs, options);
+        yield result;
+      },
+    }),
+    initializeSupervisorGraph: vi.fn(),
+    resumeSupervisor: vi.fn(),
+  };
+});
 
 vi.mock('@langchain/core/messages', async (importOriginal) => {
   const original = await importOriginal<typeof import('@langchain/core/messages')>();
@@ -108,6 +115,13 @@ const mockTrackClaudeUsage = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({
     trackClaudeUsage: mockTrackClaudeUsage,
+    trackServerToolUsage: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock('@/services/token-usage', () => ({
+  getTokenUsageService: vi.fn(() => ({
+    recordUsage: vi.fn(),
   })),
 }));
 

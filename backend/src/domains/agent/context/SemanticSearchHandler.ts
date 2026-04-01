@@ -88,6 +88,16 @@ export class SemanticSearchHandler implements ISemanticSearchHandler {
           : legacyFilter;
       }
 
+      this.logger.debug(
+        {
+          userId,
+          hasScopeFilter: !!scopeFilter,
+          hasLegacyScope: scopeFileIds.length > 0,
+          additionalFilter: serviceOptions.additionalFilter ?? '(none)',
+        },
+        'Scope filter resolved for SemanticSearchService'
+      );
+
       const response = await this.searchService!.searchRelevantFiles(serviceOptions);
 
       // Transform results to simpler format

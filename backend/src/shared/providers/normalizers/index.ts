@@ -1,1 +1,1 @@
-export * from './BatchResultNormalizer';
+export * from './DeltaNormalizer';

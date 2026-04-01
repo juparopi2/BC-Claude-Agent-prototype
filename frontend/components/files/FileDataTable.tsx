@@ -38,7 +38,7 @@ import {
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 import type { ParsedFile } from '@bc-agent/shared';
-import { FILE_SOURCE_TYPE, PROVIDER_ID } from '@bc-agent/shared';
+import { FILE_SOURCE_TYPE, PROVIDER_ID, MENTION_MIME_TYPE } from '@bc-agent/shared';
 import { Folder, Upload, GripVertical } from 'lucide-react';
 import { OneDriveLogo, SharePointLogo } from '@/components/icons';
 import { Button } from '@/components/ui/button';
@@ -467,7 +467,7 @@ export function FileDataTable() {
           }));
 
           e.dataTransfer.setData(
-            'application/x-file-mention',
+            MENTION_MIME_TYPE.FILE_DRAG,
             JSON.stringify(mentions)
           );
           e.dataTransfer.effectAllowed = 'copy';

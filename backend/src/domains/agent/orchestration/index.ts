@@ -90,9 +90,8 @@ export type {
 export {
   GraphExecutor,
   createGraphExecutor,
-  executeGraph,
 } from './execution/GraphExecutor';
-export type { ICompiledGraph, GraphExecutionOptions } from './execution/GraphExecutor';
+export type { IStreamableGraph, GraphExecutionOptions, StreamingGraphStep } from './execution/GraphExecutor';
 
 // Execution Pipeline
 export {

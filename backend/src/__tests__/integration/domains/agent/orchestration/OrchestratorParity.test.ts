@@ -9,7 +9,7 @@
  * Background:
  * - FakeAgentOrchestrator: Used in integration/E2E tests (no Claude API calls)
  * - AgentOrchestrator: Production code that calls Claude API
- * - Both now use synchronous execution model with invoke()
+ * - Both use the progressive execution model (executeProgressive → stream())
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -18,9 +18,11 @@ import type { AgentEvent } from '@bc-agent/shared';
 import { AIMessage } from '@langchain/core/messages';
 
 // Mock external dependencies for the real AgentOrchestrator
+const mockStreamFn = vi.fn();
+
 vi.mock('@/modules/agents/supervisor', () => ({
   getSupervisorGraphAdapter: vi.fn().mockReturnValue({
-    invoke: vi.fn(),
+    stream: mockStreamFn,
   }),
   initializeSupervisorGraph: vi.fn(),
   resumeSupervisor: vi.fn(),
@@ -62,38 +64,80 @@ vi.mock('@domains/agent/persistence', () => ({
       timestamp: '2025-12-22T10:00:00.000Z',
       eventId: 'event-123',
     }),
+    getCheckpointMessageCount: vi.fn().mockResolvedValue(0),
+    updateCheckpointMessageCount: vi.fn().mockResolvedValue(undefined),
+    persistAgentChangedAsync: vi.fn(),
   })),
 }));
 
-// Now import with mocks in place
-import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
+vi.mock('@services/events/EventStore', () => ({
+  getEventStore: vi.fn(() => ({
+    reserveSequenceNumbers: vi.fn().mockResolvedValue([]),
+  })),
+}));
+
+vi.mock('@/domains/agent/citations', () => ({
+  getCitationExtractor: vi.fn(() => ({
+    producesCitations: vi.fn().mockReturnValue(false),
+    extract: vi.fn().mockReturnValue([]),
+  })),
+}));
+
+vi.mock('@/domains/chat-attachments', () => ({
+  getAttachmentContentResolver: vi.fn(() => ({
+    resolve: vi.fn().mockResolvedValue([]),
+  })),
+  getChatAttachmentService: vi.fn(() => ({
+    getAttachmentSummaries: vi.fn().mockResolvedValue([]),
+  })),
+}));
+
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
+  getUsageTrackingService: vi.fn(() => ({
+    trackClaudeUsage: vi.fn().mockResolvedValue(undefined),
+    trackServerToolUsage: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock('@/services/token-usage', () => ({
+  getTokenUsageService: vi.fn(() => ({
+    recordUsage: vi.fn(),
+  })),
+}));
+
+vi.mock('@domains/agent/context', () => ({
+  createFileContextPreparer: vi.fn(() => ({
+    prepare: vi.fn().mockResolvedValue({ contextText: '' }),
+  })),
+}));
+
 import {
   createAgentOrchestrator,
   __resetAgentOrchestrator,
 } from '@domains/agent/orchestration/AgentOrchestrator';
 
 /**
- * Create a mock AgentState result from orchestratorGraph.invoke()
+ * Create a mock stream that yields a single step with the given content.
  */
-function createMockInvokeResult(content: string) {
-  return {
+function createMockStream(content: string) {
+  const step = {
     messages: [
-      // User message
       { content: 'Hello', _getType: () => 'human' },
-      // AI response
       new AIMessage({
         content,
         response_metadata: {
           stop_reason: 'end_turn',
-          usage: {
-            input_tokens: 50,
-            output_tokens: 10,
-          },
+          usage: { input_tokens: 50, output_tokens: 10 },
         },
       }),
     ],
     toolExecutions: [],
+    stepNumber: 1,
+    usedModel: null,
   };
+  return (async function* () {
+    yield step;
+  })();
 }
 
 describe('OrchestratorParity', () => {
@@ -105,10 +149,8 @@ describe('OrchestratorParity', () => {
     vi.clearAllMocks();
     __resetAgentOrchestrator();
 
-    // Setup mock for invoke to return proper result
-    vi.mocked((getSupervisorGraphAdapter() as any).invoke).mockResolvedValue(
-      createMockInvokeResult('Done')
-    );
+    // Setup mock stream to yield a single step each time it is called
+    mockStreamFn.mockImplementation(() => createMockStream('Done'));
   });
 
   afterEach(() => {

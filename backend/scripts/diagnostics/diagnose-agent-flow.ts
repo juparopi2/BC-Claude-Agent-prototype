@@ -20,6 +20,7 @@
 import 'dotenv/config';
 import { createPrisma } from '../_shared/prisma';
 import { getFlag, getNumericFlag, getPositionalArg, hasFlag } from '../_shared/args';
+import { getTargetEnv, resolveEnvironment } from '../_shared/env-resolver';
 
 // ─── ANSI Colors ─────────────────────────────────────────────────
 const RED = '\x1b[31m';
@@ -534,6 +535,10 @@ ${BOLD}LOG_SERVICES for live debugging:${RESET}
 `);
     process.exit(0);
   }
+
+  // Resolve remote environment if --env is passed
+  const targetEnv = getTargetEnv();
+  if (targetEnv) await resolveEnvironment(targetEnv);
 
   const verbose = hasFlag('--verbose') || hasFlag('-v');
   const userId = getFlag('--user');

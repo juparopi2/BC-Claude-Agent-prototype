@@ -202,9 +202,9 @@ export class VectorSearchService {
       isImage: false,
       fileName: chunk.fileName || null,
       sizeBytes: chunk.sizeBytes ?? null,
-      siteId: chunk.siteId ?? null,
+      siteId: chunk.siteId?.toUpperCase() ?? null,
       sourceType: chunk.sourceType ?? null,
-      parentFolderId: chunk.parentFolderId ?? null,
+      parentFolderId: chunk.parentFolderId?.toUpperCase() ?? null,
     }));
 
     // Diagnostic: log field values for first document to trace field coverage gaps
@@ -520,9 +520,9 @@ export class VectorSearchService {
       fileName: fileName || null,
       sizeBytes: sizeBytes ?? null,
       fileModifiedAt: fileModifiedAt || null,
-      siteId: siteId ?? null,
+      siteId: siteId?.toUpperCase() ?? null,
       sourceType: sourceType ?? null,
-      parentFolderId: parentFolderId ?? null,
+      parentFolderId: parentFolderId?.toUpperCase() ?? null,
       imageCaption: caption || null,
     };
 

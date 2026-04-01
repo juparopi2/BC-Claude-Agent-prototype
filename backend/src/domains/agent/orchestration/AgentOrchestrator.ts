@@ -35,7 +35,8 @@
 
 import { createChildLogger } from '@/shared/utils/logger';
 import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
-import { getBatchResultNormalizer, type BatchResultNormalizer } from '@shared/providers/normalizers/BatchResultNormalizer';
+import { getDeltaNormalizer } from '@shared/providers/normalizers/DeltaNormalizer';
+import type { IDeltaNormalizer } from '@shared/providers/interfaces/IDeltaNormalizer';
 import { randomUUID } from 'crypto';
 import type {
   IAgentOrchestrator,
@@ -58,7 +59,7 @@ import { getEventStore, type EventStore } from '@services/events/EventStore';
 import { getCitationExtractor, type ICitationExtractor } from '@/domains/agent/citations';
 import { createMessageContextBuilder, type MessageContextBuilder } from './context/MessageContextBuilder';
 import { createGraphExecutor, type GraphExecutor } from './execution/GraphExecutor';
-import type { ICompiledGraph } from './execution/GraphExecutor';
+import type { IStreamableGraph } from './execution/GraphExecutor';
 import { createExecutionPipeline, type ExecutionPipeline } from './execution/ExecutionPipeline';
 import { getUsageTrackingService } from '@/domains/billing/tracking/UsageTrackingService';
 import { getTokenUsageService } from '@/services/token-usage';
@@ -70,11 +71,11 @@ import { classifyLlmError } from '@/shared/errors/LlmErrorClassifier';
 export interface AgentOrchestratorDependencies {
   fileContextPreparer?: IFileContextPreparer;
   persistenceCoordinator?: IPersistenceCoordinator;
-  normalizer?: BatchResultNormalizer;
+  deltaNormalizer?: IDeltaNormalizer;
   eventStore?: EventStore;
   citationExtractor?: ICitationExtractor;
   attachmentContentResolver?: AttachmentContentResolver;
-  graph?: ICompiledGraph;
+  graph?: IStreamableGraph;
 }
 
 /**
@@ -97,7 +98,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
   constructor(deps?: AgentOrchestratorDependencies) {
     const fileContextPreparer = deps?.fileContextPreparer ?? createFileContextPreparer();
     this.persistenceCoordinator = deps?.persistenceCoordinator ?? getPersistenceCoordinator();
-    const normalizer = deps?.normalizer ?? getBatchResultNormalizer();
+    const deltaNormalizer = deps?.deltaNormalizer ?? getDeltaNormalizer();
     this.eventStore = deps?.eventStore ?? getEventStore();
     const citationExtractor = deps?.citationExtractor ?? getCitationExtractor();
     const attachmentContentResolver = deps?.attachmentContentResolver ?? getAttachmentContentResolver();
@@ -111,7 +112,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
     this.executionPipeline = createExecutionPipeline({
       messageContextBuilder: this.messageContextBuilder,
       graphExecutor: this.graphExecutor,
-      normalizer,
+      deltaNormalizer,
       persistenceCoordinator: this.persistenceCoordinator,
       eventStore: this.eventStore,
       citationExtractor,
@@ -199,23 +200,23 @@ export class AgentOrchestrator implements IAgentOrchestrator {
       // =========================================================================
       // 5. DELEGATE TO EXECUTION PIPELINE
       // =========================================================================
-      const pipelineResult = await this.executionPipeline.execute(
-        prompt,
-        sessionId,
-        userId ?? '',
-        ctx,
-        {
-          attachments: options?.attachments,
-          enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
-          chatAttachments: options?.chatAttachments,
-          enableThinking: options?.enableThinking,
-          thinkingBudget: options?.thinkingBudget,
-          timeoutMs: ctx.timeoutMs,
-          targetAgentId: options?.targetAgentId,
-          mentionedFileIds: options?.mentionedFileIds,
-          mentions: options?.mentions,
-          enableWebSearch: options?.enableWebSearch,
-        }
+      // Always use progressive (streaming) execution. Direct agent invocations
+      // are handled inside SupervisorGraphAdapter.stream() via a single-yield path.
+      const pipelineOptions = {
+        attachments: options?.attachments,
+        enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
+        chatAttachments: options?.chatAttachments,
+        enableThinking: options?.enableThinking,
+        thinkingBudget: options?.thinkingBudget,
+        timeoutMs: ctx.timeoutMs,
+        targetAgentId: options?.targetAgentId,
+        mentionedFileIds: options?.mentionedFileIds,
+        mentions: options?.mentions,
+        enableWebSearch: options?.enableWebSearch,
+      };
+
+      const pipelineResult = await this.executionPipeline.executeProgressive(
+        prompt, sessionId, userId ?? '', ctx, pipelineOptions
       );
 
       this.logger.info(

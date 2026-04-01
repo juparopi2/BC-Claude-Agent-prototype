@@ -205,8 +205,8 @@ export interface InterruptInfo {
 /**
  * Adapt supervisor graph result to AgentState format.
  *
- * Bridges the gap between createSupervisor output and the existing
- * event pipeline (BatchResultNormalizer → EventSequencer → EventProcessor).
+ * Used by stream() for direct agent invocations and by resumeSupervisor()
+ * after interrupt resume.
  *
  * @param result - Raw supervisor graph output
  * @param sessionId - Session ID for context

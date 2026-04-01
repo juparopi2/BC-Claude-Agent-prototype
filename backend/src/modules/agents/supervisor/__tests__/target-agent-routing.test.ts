@@ -2,7 +2,7 @@
  * Target Agent Routing Tests
  *
  * Tests for targetAgentId-based direct agent invocation,
- * which bypasses the supervisor LLM.
+ * which bypasses the supervisor LLM and yields a single step.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -75,12 +75,16 @@ vi.mock('@/infrastructure/checkpointer', () => ({
   getCheckpointer: vi.fn().mockReturnValue({}),
 }));
 
-// Mock analytics
-vi.mock('@/domains/analytics', () => ({
-  getAgentAnalyticsService: vi.fn().mockReturnValue({
-    recordInvocation: vi.fn().mockResolvedValue(undefined),
-  }),
-}));
+// ============================================================================
+// Helper: collect all steps from an async iterable
+// ============================================================================
+async function collectSteps<T>(iterable: AsyncIterable<T>): Promise<T[]> {
+  const steps: T[] = [];
+  for await (const step of iterable) {
+    steps.push(step);
+  }
+  return steps;
+}
 
 // ============================================================================
 // Tests
@@ -99,7 +103,7 @@ describe('targetAgentId routing', () => {
   it('should invoke target agent directly when targetAgentId matches a registered agent', async () => {
     const adapter = getSupervisorGraphAdapter();
 
-    await adapter.invoke({
+    await collectSteps(adapter.stream({
       messages: [{ content: 'list all customers' }],
       context: {
         userId: 'TEST-USER',
@@ -108,7 +112,7 @@ describe('targetAgentId routing', () => {
           targetAgentId: AGENT_ID.BC_AGENT,
         },
       },
-    });
+    }));
 
     // The agent's invoke should be called (direct invocation)
     expect(mockAgentInvoke).toHaveBeenCalled();
@@ -116,11 +120,29 @@ describe('targetAgentId routing', () => {
     expect(mockSupervisorStream).not.toHaveBeenCalled();
   });
 
+  it('should yield exactly one step for direct agent invocation', async () => {
+    const adapter = getSupervisorGraphAdapter();
+
+    const steps = await collectSteps(adapter.stream({
+      messages: [{ content: 'list all customers' }],
+      context: {
+        userId: 'TEST-USER',
+        sessionId: 'TEST-SESSION',
+        options: {
+          targetAgentId: AGENT_ID.BC_AGENT,
+        },
+      },
+    }));
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0]?.stepNumber).toBe(1);
+  });
+
   it('should pass prompt through unmodified (no prefix stripping)', async () => {
     const adapter = getSupervisorGraphAdapter();
     const originalPrompt = '/bc list all customers';
 
-    await adapter.invoke({
+    await collectSteps(adapter.stream({
       messages: [{ content: originalPrompt }],
       context: {
         userId: 'TEST-USER',
@@ -129,7 +151,7 @@ describe('targetAgentId routing', () => {
           targetAgentId: AGENT_ID.BC_AGENT,
         },
       },
-    });
+    }));
 
     // The prompt should be passed as-is, not stripped
     const invokeCall = mockAgentInvoke.mock.calls[0]!;
@@ -140,7 +162,7 @@ describe('targetAgentId routing', () => {
   it('should fall through to supervisor LLM when targetAgentId is "auto"', async () => {
     const adapter = getSupervisorGraphAdapter();
 
-    await adapter.invoke({
+    await collectSteps(adapter.stream({
       messages: [{ content: 'hello' }],
       context: {
         userId: 'TEST-USER',
@@ -149,7 +171,7 @@ describe('targetAgentId routing', () => {
           targetAgentId: 'auto',
         },
       },
-    });
+    }));
 
     // Supervisor stream should be called (fallthrough)
     expect(mockSupervisorStream).toHaveBeenCalled();
@@ -160,13 +182,13 @@ describe('targetAgentId routing', () => {
   it('should fall through to supervisor LLM when targetAgentId is undefined', async () => {
     const adapter = getSupervisorGraphAdapter();
 
-    await adapter.invoke({
+    await collectSteps(adapter.stream({
       messages: [{ content: 'hello' }],
       context: {
         userId: 'TEST-USER',
         sessionId: 'TEST-SESSION',
       },
-    });
+    }));
 
     // Supervisor stream should be called (fallthrough)
     expect(mockSupervisorStream).toHaveBeenCalled();
@@ -177,7 +199,7 @@ describe('targetAgentId routing', () => {
   it('should fall through to supervisor LLM when targetAgentId is unknown', async () => {
     const adapter = getSupervisorGraphAdapter();
 
-    await adapter.invoke({
+    await collectSteps(adapter.stream({
       messages: [{ content: 'hello' }],
       context: {
         userId: 'TEST-USER',
@@ -186,7 +208,7 @@ describe('targetAgentId routing', () => {
           targetAgentId: 'nonexistent-agent',
         },
       },
-    });
+    }));
 
     // Supervisor stream should be called (fallthrough after warning)
     expect(mockSupervisorStream).toHaveBeenCalled();

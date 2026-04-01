@@ -29,9 +29,11 @@ import type { MessageQueue } from '@/infrastructure/queue/MessageQueue';
 // ============================================================================
 
 // Mock LangGraph
+const mockStreamFn = vi.fn();
+
 vi.mock('@/modules/agents/supervisor', () => ({
   getSupervisorGraphAdapter: vi.fn().mockReturnValue({
-    invoke: vi.fn(),
+    stream: mockStreamFn,
   }),
   initializeSupervisorGraph: vi.fn(),
   resumeSupervisor: vi.fn(),
@@ -69,8 +71,39 @@ vi.mock('@/services/files/context/PromptBuilder', () => ({
   }),
 }));
 
+// Mock billing and token tracking (fire-and-forget in AgentOrchestrator)
+vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
+  getUsageTrackingService: vi.fn(() => ({
+    trackClaudeUsage: vi.fn().mockResolvedValue(undefined),
+    trackServerToolUsage: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock('@/services/token-usage', () => ({
+  getTokenUsageService: vi.fn(() => ({
+    recordUsage: vi.fn(),
+  })),
+}));
+
+// Mock citations
+vi.mock('@/domains/agent/citations', () => ({
+  getCitationExtractor: vi.fn(() => ({
+    producesCitations: vi.fn().mockReturnValue(false),
+    extract: vi.fn().mockReturnValue([]),
+  })),
+}));
+
+// Mock chat attachments
+vi.mock('@/domains/chat-attachments', () => ({
+  getAttachmentContentResolver: vi.fn(() => ({
+    resolve: vi.fn().mockResolvedValue([]),
+  })),
+  getChatAttachmentService: vi.fn(() => ({
+    getAttachmentSummaries: vi.fn().mockResolvedValue([]),
+  })),
+}));
+
 // Import after mocks are set up
-import { getSupervisorGraphAdapter } from '@/modules/agents/supervisor';
 import { FileService } from '@/services/files/FileService';
 import { getSemanticSearchService } from '@/services/semantic-search/SemanticSearchService';
 
@@ -79,10 +112,10 @@ import { getSemanticSearchService } from '@/services/semantic-search/SemanticSea
 // ============================================================================
 
 /**
- * Create a mock AgentState result from orchestratorGraph.invoke()
+ * Create a mock stream that yields a single step with the given content.
  */
-function createMockInvokeResult(content: string, inputTokens = 50, outputTokens = 10) {
-  return {
+function createMockStream(content: string, inputTokens = 50, outputTokens = 10) {
+  const step = {
     messages: [
       { content: 'Test prompt', _getType: () => 'human' },
       new AIMessage({
@@ -97,7 +130,23 @@ function createMockInvokeResult(content: string, inputTokens = 50, outputTokens 
       }),
     ],
     toolExecutions: [],
+    stepNumber: 1,
+    usedModel: null,
   };
+  return (async function* () {
+    yield step;
+  })();
+}
+
+/**
+ * Create a stream that throws an error.
+ */
+function createFailingStream(error: Error) {
+  return (async function* () {
+    throw error;
+    // eslint-disable-next-line no-unreachable
+    yield {} as never;
+  })();
 }
 
 // ============================================================================
@@ -105,7 +154,6 @@ function createMockInvokeResult(content: string, inputTokens = 50, outputTokens 
 // ============================================================================
 
 describe('AgentOrchestrator Integration', () => {
-  let mockInvoke: Mock;
   let mockGetFile: Mock;
   let mockSearchRelevantFiles: Mock;
   let mockAppendEvent: Mock;
@@ -117,9 +165,9 @@ describe('AgentOrchestrator Integration', () => {
   beforeEach(() => {
     // Reset singleton
     __resetAgentOrchestrator();
+    mockStreamFn.mockImplementation(() => createMockStream('Hello World!', 50, 10));
 
     // Get references to mocked module functions
-    mockInvoke = (getSupervisorGraphAdapter() as any).invoke as Mock;
     mockGetFile = FileService.getInstance().getFile as Mock;
     mockSearchRelevantFiles = getSemanticSearchService().searchRelevantFiles as Mock;
 
@@ -175,8 +223,7 @@ describe('AgentOrchestrator Integration', () => {
 
   describe('simple text response flow', () => {
     it('should process simple text response end-to-end', async () => {
-      // Arrange: Mock invoke to return response
-      mockInvoke.mockResolvedValue(createMockInvokeResult('Hello World!', 50, 10));
+      // Arrange: mockStreamFn already set up in beforeEach
 
       // Create orchestrator with mocked persistence
       const orchestrator = createAgentOrchestrator({
@@ -224,8 +271,8 @@ describe('AgentOrchestrator Integration', () => {
 
   describe('event emission', () => {
     it('should emit events with auto-incrementing index', async () => {
-      // Arrange
-      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
+      // Arrange — mockStreamFn set in beforeEach
+      mockStreamFn.mockImplementation(() => createMockStream('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
       const events: AgentEvent[] = [];
@@ -256,8 +303,8 @@ describe('AgentOrchestrator Integration', () => {
 
   describe('error handling', () => {
     it('should emit error event when LangGraph execution fails', async () => {
-      // Arrange: Mock LangGraph failure
-      mockInvoke.mockRejectedValue(new Error('LangGraph execution failed'));
+      // Arrange: Mock LangGraph stream failure
+      mockStreamFn.mockImplementation(() => createFailingStream(new Error('LangGraph execution failed')));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
       const events: AgentEvent[] = [];
@@ -281,8 +328,6 @@ describe('AgentOrchestrator Integration', () => {
     it('should propagate persistence errors', async () => {
       // Arrange: Mock persistence failure
       mockAppendEvent.mockRejectedValueOnce(new Error('Database connection failed'));
-
-      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 
@@ -331,7 +376,7 @@ describe('AgentOrchestrator Integration', () => {
 
   describe('persistence integration', () => {
     it('should persist user message before execution', async () => {
-      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
+      mockStreamFn.mockImplementation(() => createMockStream('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 
@@ -351,7 +396,7 @@ describe('AgentOrchestrator Integration', () => {
     });
 
     it('should persist agent message after execution', async () => {
-      mockInvoke.mockResolvedValue(createMockInvokeResult('Response', 50, 10));
+      mockStreamFn.mockImplementation(() => createMockStream('Response', 50, 10));
 
       const orchestrator = createAgentOrchestrator({ persistenceCoordinator });
 

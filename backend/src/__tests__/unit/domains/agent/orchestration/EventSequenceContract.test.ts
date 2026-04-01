@@ -26,13 +26,20 @@ import {
 } from '@domains/agent/orchestration/AgentOrchestrator';
 
 // Mock the graph
-vi.mock('@/modules/agents/supervisor', () => ({
-  getSupervisorGraphAdapter: vi.fn().mockReturnValue({
-    invoke: vi.fn(),
-  }),
-  initializeSupervisorGraph: vi.fn(),
-  resumeSupervisor: vi.fn(),
-}));
+vi.mock('@/modules/agents/supervisor', () => {
+  const mockInvoke = vi.fn();
+  return {
+    getSupervisorGraphAdapter: vi.fn().mockReturnValue({
+      invoke: mockInvoke,
+      async *stream(inputs: unknown) {
+        const result = await mockInvoke(inputs);
+        yield result;
+      },
+    }),
+    initializeSupervisorGraph: vi.fn(),
+    resumeSupervisor: vi.fn(),
+  };
+});
 
 vi.mock('@langchain/core/messages', async (importOriginal) => {
   const original = await importOriginal<typeof import('@langchain/core/messages')>();
@@ -113,6 +120,13 @@ vi.mock('@/domains/chat-attachments', () => ({
 vi.mock('@/domains/billing/tracking/UsageTrackingService', () => ({
   getUsageTrackingService: vi.fn(() => ({
     trackClaudeUsage: vi.fn().mockResolvedValue(undefined),
+    trackServerToolUsage: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock('@/services/token-usage', () => ({
+  getTokenUsageService: vi.fn(() => ({
+    recordUsage: vi.fn(),
   })),
 }));
 

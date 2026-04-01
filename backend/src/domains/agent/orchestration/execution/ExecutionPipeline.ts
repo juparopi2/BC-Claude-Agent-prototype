@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { NormalizedAgentEvent, NormalizedToolRequestEvent, AgentIdentity } from '@bc-agent/shared';
+import type { NormalizedAgentEvent, NormalizedToolRequestEvent, NormalizedCompleteEvent, AgentIdentity } from '@bc-agent/shared';
 import { isInternalTool } from '@bc-agent/shared';
 import {
   AGENT_ID,
@@ -29,7 +29,7 @@ import {
   AGENT_COLOR,
   type AgentId,
 } from '@bc-agent/shared';
-import type { IBatchResultNormalizer } from '@shared/providers/interfaces/IBatchResultNormalizer';
+import type { IDeltaNormalizer } from '@shared/providers/interfaces/IDeltaNormalizer';
 import type { IPersistenceCoordinator } from '@domains/agent/persistence';
 import type { ICitationExtractor } from '@/domains/agent/citations';
 import type { EventStore } from '@services/events/EventStore';
@@ -39,9 +39,8 @@ import type { AgentExecutionResult } from '../types';
 import type { MessageContextBuilder, MessageContextOptions } from '../context/MessageContextBuilder';
 import type { GraphExecutor } from './GraphExecutor';
 import {
-  countPersistableEvents,
-  assignPreAllocatedSequences,
   getSequenceDebugInfo,
+  reserveAndAssignSequences,
 } from '../events/EventSequencer';
 import { processNormalizedEvent, trackAssistantMessageState } from '../events/EventProcessor';
 import { createChildLogger } from '@/shared/utils/logger';
@@ -54,7 +53,7 @@ const logger = createChildLogger({ service: 'ExecutionPipeline' });
 export interface ExecutionPipelineDependencies {
   messageContextBuilder: MessageContextBuilder;
   graphExecutor: GraphExecutor;
-  normalizer: IBatchResultNormalizer;
+  deltaNormalizer: IDeltaNormalizer;
   persistenceCoordinator: IPersistenceCoordinator;
   eventStore: EventStore;
   citationExtractor: ICitationExtractor;
@@ -87,7 +86,12 @@ export class ExecutionPipeline {
   constructor(private readonly deps: ExecutionPipelineDependencies) {}
 
   /**
-   * Execute the full pipeline.
+   * Execute the full pipeline in progressive (streaming) mode.
+   *
+   * Events are emitted to the client incrementally at each graph node boundary,
+   * rather than buffered until graph execution completes. This provides a
+   * sub-2-second first-event latency for all turns, including direct agent
+   * invocations which are handled via a single-yield streaming path.
    *
    * @param prompt - User's message prompt
    * @param sessionId - Session ID
@@ -96,7 +100,7 @@ export class ExecutionPipeline {
    * @param options - Execution options
    * @returns Pipeline result
    */
-  async execute(
+  async executeProgressive(
     prompt: string,
     sessionId: string,
     userId: string,
@@ -106,7 +110,7 @@ export class ExecutionPipeline {
     const {
       messageContextBuilder,
       graphExecutor,
-      normalizer,
+      deltaNormalizer,
       persistenceCoordinator,
       eventStore,
       citationExtractor,
@@ -128,111 +132,172 @@ export class ExecutionPipeline {
         hasContextText: !!contextResult.contextText,
         attachedFiles: contextResult.filesIncluded?.length ?? 0,
       },
-      'Message context built'
+      'Message context built (progressive)'
     );
 
     // Stage 1.5: Read historical message count for delta tracking (PRD-100)
     const checkpointMessageCount = await persistenceCoordinator.getCheckpointMessageCount(sessionId);
 
-    // Stage 2: Execute graph
-    const graphResult = await graphExecutor.execute(inputs, {
+    // Stage 2: Execute graph in streaming mode — yields one step per graph node boundary
+    const streamingOptions = {
       timeoutMs: options?.timeoutMs ?? ctx.timeoutMs,
-    });
+    };
 
-    // Stage 3: Normalize results (skip historical messages from previous turns)
-    const normalizedEvents = normalizer.normalize(graphResult, sessionId, {
-      includeComplete: true,
-      skipMessages: checkpointMessageCount,
-    });
-
-    if (checkpointMessageCount > 0) {
-      logger.info({
-        sessionId,
-        checkpointMessageCount,
-        totalMessagesAfterExecution: graphResult.messages?.length ?? 0,
-        newMessages: (graphResult.messages?.length ?? 0) - checkpointMessageCount,
-      }, 'Delta tracking: skipping historical messages');
-    }
-
-    logger.info({
-      sessionId,
-      eventCount: normalizedEvents.length,
-      eventTypes: normalizedEvents.map(e => e.type),
-    }, 'Normalized events from graph result');
-
-    // Stage 4: Pre-allocate sequences
-    const sequencesNeeded = countPersistableEvents(normalizedEvents);
-    const reservedSeqs = await eventStore.reserveSequenceNumbers(sessionId, sequencesNeeded);
-    assignPreAllocatedSequences(normalizedEvents, reservedSeqs);
-
-    logger.debug({
-      sessionId,
-      sequencesNeeded,
-      assignments: getSequenceDebugInfo(normalizedEvents),
-    }, 'Pre-allocated sequence numbers for events');
-
-    // Stage 5: Process and emit events with per-event agent attribution
-    // Fallback agentId from batch-level detection (used when sourceAgentId missing)
-    const fallbackAgentId = graphResult.currentAgentIdentity?.agentId;
-
+    // Accumulators across all deltas
+    let previousMessageCount = checkpointMessageCount;
+    let previousToolExecutionCount = 0;
     let finalContent = '';
     let finalMessageId: string = agentMessageId;
     const toolsUsed: string[] = [];
     let previousAgentId: string | undefined;
+    const allEmittedEvents: NormalizedAgentEvent[] = [];
+    let lastStepRef: import('./GraphExecutor').StreamingGraphStep | null = null;
 
-    for (const event of normalizedEvents) {
-      // Per-event agent attribution: prefer sourceAgentId, fall back to batch identity
-      const eventAgentId = event.sourceAgentId || fallbackAgentId;
+    try {
+      for await (const step of graphExecutor.executeStreaming(inputs, streamingOptions)) {
+        lastStepRef = step;
 
-      // Emit agent_changed event when agent transitions (skip for 'complete' events)
-      if (eventAgentId && eventAgentId !== previousAgentId && event.type !== 'complete') {
-        emitAgentChanged(ctx, sessionId, previousAgentId, eventAgentId);
+        // Delta detection: slice only NEW messages from this graph step
+        const deltaMessages = step.messages.slice(previousMessageCount);
+        const deltaToolExecutions = (step.toolExecutions ?? []).slice(previousToolExecutionCount);
 
-        // Persist agent transition for audit trail
-        persistenceCoordinator.persistAgentChangedAsync(sessionId, {
-          eventId: randomUUID(),
-          previousAgentId,
-          currentAgentId: eventAgentId,
-          handoffType: previousAgentId ? 'agent_handoff' : 'supervisor_routing',
-          timestamp: new Date().toISOString(),
-        });
+        if (deltaMessages.length === 0 && deltaToolExecutions.length === 0) {
+          logger.debug({ sessionId, stepNumber: step.stepNumber }, 'Empty delta — skipping');
+          continue;
+        }
 
-        previousAgentId = eventAgentId;
+        previousMessageCount = step.messages.length;
+        previousToolExecutionCount = (step.toolExecutions ?? []).length;
+
+        logger.debug({
+          sessionId,
+          stepNumber: step.stepNumber,
+          deltaMessageCount: deltaMessages.length,
+          deltaToolExecutionCount: deltaToolExecutions.length,
+        }, 'Processing streaming delta');
+
+        // Stage 3 (per delta): Normalize delta messages into events
+        // NOTE: We do NOT pass isLastStep here for complete event generation.
+        // Instead, the complete event is created manually after the loop ends
+        // to avoid lookahead complexity and keep the approach cleaner.
+        const deltaEvents = deltaNormalizer.normalizeDelta(
+          { messages: deltaMessages, toolExecutions: deltaToolExecutions, isLastStep: false },
+          sessionId
+        );
+
+        if (deltaEvents.length === 0) {
+          logger.debug({ sessionId, stepNumber: step.stepNumber }, 'Delta normalization produced zero events — skipping');
+          continue;
+        }
+
+        // Stage 4 (per delta): Reserve and assign sequence numbers incrementally
+        await reserveAndAssignSequences(deltaEvents, sessionId, eventStore);
+
+        logger.debug({
+          sessionId,
+          stepNumber: step.stepNumber,
+          eventCount: deltaEvents.length,
+          eventTypes: deltaEvents.map(e => e.type),
+          assignments: getSequenceDebugInfo(deltaEvents),
+        }, 'Delta events sequenced');
+
+        // Stage 5 (per delta): Process and emit events with per-event agent attribution
+        // Fallback agentId from step-level identity (used when sourceAgentId missing)
+        const fallbackAgentId = step.currentAgentIdentity?.agentId;
+
+        for (const event of deltaEvents) {
+          // Per-event agent attribution: prefer sourceAgentId, fall back to step identity
+          const eventAgentId = event.sourceAgentId || fallbackAgentId;
+
+          // Emit agent_changed when agent transitions (skip for 'complete' events)
+          if (eventAgentId && eventAgentId !== previousAgentId && event.type !== 'complete') {
+            emitAgentChanged(ctx, sessionId, previousAgentId, eventAgentId);
+
+            // Persist agent transition for audit trail
+            persistenceCoordinator.persistAgentChangedAsync(sessionId, {
+              eventId: randomUUID(),
+              previousAgentId,
+              currentAgentId: eventAgentId,
+              handoffType: previousAgentId ? 'agent_handoff' : 'supervisor_routing',
+              timestamp: new Date().toISOString(),
+            });
+
+            previousAgentId = eventAgentId;
+          }
+
+          await processNormalizedEvent(
+            event,
+            ctx,
+            sessionId,
+            agentMessageId,
+            { persistenceCoordinator, citationExtractor },
+            eventAgentId
+          );
+
+          // Track state from assistant_message
+          const tracked = trackAssistantMessageState(event, ctx);
+          if (tracked.finalContent) {
+            finalContent = tracked.finalContent;
+            finalMessageId = tracked.finalMessageId!;
+          }
+
+          // Track tools used (skip internal infrastructure tools)
+          if (event.type === 'tool_request') {
+            const toolEvent = event as NormalizedToolRequestEvent;
+            if (!isInternalTool(toolEvent.toolName)) {
+              toolsUsed.push(toolEvent.toolName);
+            }
+          }
+        }
+
+        allEmittedEvents.push(...deltaEvents);
       }
 
+      // After stream loop: manually create and emit the complete event.
+      // We do NOT pass isLastStep:true into normalizeDelta because DeltaNormalizer
+      // returns early when messages.length === 0. The complete event is simpler
+      // to construct directly here — cleaner than encoding lookahead into normalizeDelta.
+      const completeEvent: NormalizedCompleteEvent = {
+        type: 'complete',
+        eventId: randomUUID(),
+        sessionId,
+        timestamp: new Date().toISOString(),
+        originalIndex: allEmittedEvents.length,
+        persistenceStrategy: 'transient',
+        reason: 'success',
+        stopReason: 'end_turn',
+        usedModel: lastStepRef?.usedModel ?? undefined,
+      };
+
       await processNormalizedEvent(
-        event,
+        completeEvent,
         ctx,
         sessionId,
         agentMessageId,
         { persistenceCoordinator, citationExtractor },
-        eventAgentId
+        undefined
       );
-
-      // Track state from assistant_message
-      const tracked = trackAssistantMessageState(event, ctx);
-      if (tracked.finalContent) {
-        finalContent = tracked.finalContent;
-        finalMessageId = tracked.finalMessageId!;
-      }
-
-      // Track tools used (skip internal infrastructure tools)
-      if (event.type === 'tool_request') {
-        const toolEvent = event as NormalizedToolRequestEvent;
-        if (!isInternalTool(toolEvent.toolName)) {
-          toolsUsed.push(toolEvent.toolName);
-        }
-      }
+      allEmittedEvents.push(completeEvent);
+    } catch (error) {
+      // Stage 6 (on error): Finalize tool lifecycle before rethrowing
+      await ctx.toolLifecycleManager.finalizeAndPersistOrphans(sessionId, persistenceCoordinator);
+      throw error;
     }
 
-    // Stage 6: Finalize tool lifecycle
+    // Stage 6: Finalize tool lifecycle (normal path)
     await ctx.toolLifecycleManager.finalizeAndPersistOrphans(sessionId, persistenceCoordinator);
 
     // Stage 7: Update checkpoint message count for next turn (PRD-100)
-    const totalMessages = graphResult.messages?.length ?? 0;
+    const totalMessages = lastStepRef?.messages.length ?? 0;
     if (totalMessages > 0) {
       await persistenceCoordinator.updateCheckpointMessageCount(sessionId, totalMessages);
     }
+
+    logger.info({
+      sessionId,
+      totalDeltaEvents: allEmittedEvents.length,
+      eventTypes: allEmittedEvents.map(e => e.type),
+    }, 'Progressive pipeline completed');
 
     return {
       result: {
@@ -249,8 +314,8 @@ export class ExecutionPipeline {
         toolsUsed,
         success: true,
       },
-      events: normalizedEvents,
-      usedModel: graphResult.usedModel ?? null,
+      events: allEmittedEvents,
+      usedModel: lastStepRef?.usedModel ?? null,
     };
   }
 }

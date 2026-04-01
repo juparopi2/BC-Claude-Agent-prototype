@@ -52,22 +52,25 @@ describe('supervisor-graph', () => {
   });
 
   describe('getSupervisorGraphAdapter', () => {
-    it('should return an object with invoke method', () => {
+    it('should return an object with stream method', () => {
       const adapter = getSupervisorGraphAdapter();
 
       expect(adapter).toBeDefined();
-      expect(adapter).toHaveProperty('invoke');
-      expect(typeof adapter.invoke).toBe('function');
+      expect(adapter).toHaveProperty('stream');
+      expect(typeof adapter.stream).toBe('function');
     });
 
-    it('should throw error when invoke is called before initialization', async () => {
+    it('should throw error when stream is called before initialization', async () => {
       const adapter = getSupervisorGraphAdapter();
 
       await expect(async () => {
-        await adapter.invoke({
+        // Consume the async generator to trigger the throw
+        for await (const _ of adapter.stream({
           messages: [],
           context: { userId: 'test', sessionId: 'test' },
-        });
+        })) {
+          // no-op
+        }
       }).rejects.toThrow('Supervisor graph not initialized');
     });
 
@@ -82,9 +85,9 @@ describe('supervisor-graph', () => {
       const adapter1 = getSupervisorGraphAdapter();
       const adapter2 = getSupervisorGraphAdapter();
 
-      expect(typeof adapter1.invoke).toBe('function');
-      expect(typeof adapter2.invoke).toBe('function');
-      expect(adapter1.invoke).toBe(adapter2.invoke);
+      expect(typeof adapter1.stream).toBe('function');
+      expect(typeof adapter2.stream).toBe('function');
+      expect(adapter1.stream).toBe(adapter2.stream);
     });
   });
 });

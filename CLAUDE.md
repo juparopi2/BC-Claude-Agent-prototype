@@ -11,10 +11,10 @@
 - **Screaming Architecture**: `domains/` = pure business logic, `services/` = infrastructure, `modules/` = agent implementations
 - **Stateless singletons** with `ExecutionContext` per-request (see `domains/agent/CLAUDE.md`)
 - **Two-Phase Persistence**: Redis sequence numbers (sync, ~10ms) → BullMQ (async, ~600ms) → Azure SQL
-- **Provider agnostic**: `NormalizedAgentEvent` always — `BatchResultNormalizer` converts from any LLM
+- **Provider agnostic**: `NormalizedAgentEvent` always — `DeltaNormalizer` converts from any LLM
 - **`@bc-agent/shared`** = single source of truth for types, event definitions, agent identifiers, classification logic
 - **Supervisor-worker pattern**: supervisor routes (with thinking), workers execute domain tools (deterministic temperature)
-- **Event pipeline**: Context → Graph Execution → Normalization → Sequencing → Event Processing → Tool Finalization
+- **Progressive event delivery**: Events emitted at each graph node boundary via streaming — Context → Streaming Graph → (per-delta: Normalize → Sequence → Emit) → Tool Finalization
 
 ## 3. Golden Rules
 

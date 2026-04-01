@@ -2,8 +2,7 @@
  * Supervisor Graph
  *
  * Core module that builds, compiles, and adapts the createSupervisor() graph.
- * Implements ICompiledGraph interface so it integrates seamlessly with
- * the existing GraphExecutor → ExecutionPipeline → EventProcessor chain.
+ * Implements IStreamableGraph for the progressive event delivery pipeline.
  *
  * @module modules/agents/supervisor/supervisor-graph
  */
@@ -12,18 +11,17 @@ import { Command } from '@langchain/langgraph';
 import { createSupervisor } from '@langchain/langgraph-supervisor';
 import { HumanMessage, SystemMessage, type BaseMessage, type MessageContent } from '@langchain/core/messages';
 import type { LanguageModelLike } from '@langchain/core/language_models/base';
-import { AGENT_ID, type AgentId, type SessionFileReference } from '@bc-agent/shared';
+import { AGENT_ID, type AgentId } from '@bc-agent/shared';
 import { ModelFactory } from '@/core/langchain/ModelFactory';
 import { getModelConfig } from '@/infrastructure/config/models';
-import type { ICompiledGraph } from '@/domains/agent/orchestration/execution/GraphExecutor';
+import type { IStreamableGraph, StreamingGraphStep } from '@/domains/agent/orchestration/execution/GraphExecutor';
 import type { AgentState } from '../orchestrator/state';
 import { buildSupervisorPrompt } from './supervisor-prompt';
 import { buildReactAgents, type BuiltAgent } from './agent-builders';
 
-import { adaptSupervisorResult, detectAgentIdentity } from './result-adapter';
+import { adaptSupervisorResult } from './result-adapter';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getCheckpointer } from '@/infrastructure/checkpointer';
-import { getAgentAnalyticsService } from '@/domains/analytics';
 
 const logger = createChildLogger({ service: 'SupervisorGraph' });
 
@@ -192,20 +190,30 @@ export async function initializeSupervisorGraph(): Promise<void> {
 /**
  * Supervisor Graph Adapter
  *
- * Implements ICompiledGraph so it can be used as a drop-in replacement
- * for the old orchestratorGraph in GraphExecutor.
+ * Implements IStreamableGraph for progressive event delivery.
  *
  * Flow:
  * 1. Extract userId/sessionId from inputs.context
- * 2. Check for targetAgentId → direct agent invocation (bypass supervisor LLM)
- * 3. Normal → supervisor.invoke() with configurable userId
- * 4. Adapt result → AgentState for event pipeline
+ * 2. Check for targetAgentId → direct agent invocation (single-yield streaming)
+ * 3. Normal → supervisor graph streaming with per-step yields
  */
-class SupervisorGraphAdapter implements ICompiledGraph {
-  async invoke(
+class SupervisorGraphAdapter implements IStreamableGraph {
+  /**
+   * Stream the supervisor graph, yielding one StreamingGraphStep per graph node boundary.
+   * Implements IStreamableGraph for progressive event delivery.
+   *
+   * Direct agent invocations (targetAgentId) are handled via a single-yield path
+   * that invokes the target agent directly and yields the adapted result.
+   *
+   * @param inputs - Graph inputs (same shape as invoke())
+   * @param options - Execution options
+   * @yields StreamingGraphStep for each graph node boundary
+   * @throws Error if graph is not initialized
+   */
+  async *stream(
     inputs: unknown,
     options?: { recursionLimit?: number; signal?: AbortSignal }
-  ): Promise<AgentState> {
+  ): AsyncIterable<StreamingGraphStep> {
     if (!compiledSupervisor) {
       throw new Error('Supervisor graph not initialized. Call initializeSupervisorGraph() first.');
     }
@@ -234,19 +242,18 @@ class SupervisorGraphAdapter implements ICompiledGraph {
         ? (lastMessage as { content: MessageContent }).content
         : '';
 
-    // 1. Check for targetAgentId (direct agent invocation, bypass supervisor LLM)
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
     const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
     const scopeFileIds = typedInputs.context?.options?.scopeFileIds as string[] | undefined;
-    // Pre-built OData scope filter from MentionScopeResolver (preferred over scopeFileIds for RAG tools)
     const scopeFilter = typedInputs.context?.options?.scopeFilter as string | undefined;
     const chatImageEmbeddings = typedInputs.context?.options?.chatImageEmbeddings as
       | Array<{ attachmentId: string; name: string; embedding: number[] }>
       | undefined;
     const sessionFileReferences = typedInputs.context?.options?.sessionFileReferences as
-      | SessionFileReference[]
+      | import('@bc-agent/shared').SessionFileReference[]
       | undefined;
 
+    // Direct agent invocation: invoke the target agent and yield a single step
     if (targetAgentId && targetAgentId !== 'auto' && targetAgentId !== 'supervisor') {
       // When web search is enabled with a non-research target, fall through to supervisor
       // so it can coordinate research-agent first, then the target agent.
@@ -260,14 +267,12 @@ class SupervisorGraphAdapter implements ICompiledGraph {
         const targetAgent = agentMap.get(targetAgentId as AgentId);
         if (targetAgent) {
           logger.info(
-            { targetAgentId },
-            'Direct agent invocation via targetAgentId, bypassing supervisor LLM'
+            { targetAgentId, sessionId },
+            'Direct agent invocation via streaming (single-yield)'
           );
 
           const agentResult = await targetAgent.agent.invoke(
-            {
-              messages: [new HumanMessage({ content: messageContent })],
-            },
+            { messages: [new HumanMessage({ content: messageContent })] },
             {
               configurable: {
                 thread_id: `directed-${sessionId}-${Date.now()}`,
@@ -283,23 +288,25 @@ class SupervisorGraphAdapter implements ICompiledGraph {
             }
           );
 
-          return adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
+          const adapted = adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
+          yield {
+            messages: adapted.messages,
+            toolExecutions: adapted.toolExecutions ?? [],
+            stepNumber: 1,
+            usedModel: adapted.usedModel ?? null,
+            currentAgentIdentity: adapted.currentAgentIdentity,
+          };
+          return; // Single yield for direct invocations
         }
+
         logger.debug(
           { targetAgentId },
-          'targetAgentId not found in worker agentMap, using supervisor routing'
+          'targetAgentId not found in worker agentMap, falling through to supervisor routing'
         );
       }
     }
 
-    // 2. Normal flow → supervisor LLM routes (auto mode)
-    // Note: container_upload blocks are stripped by preModelHook before the supervisor
-    // LLM sees them. Worker agents (research-agent) receive the original messages
-    // from graph state with container_upload blocks intact.
-
-    // Augment prompt with web search hint when enableWebSearch is true.
-    // This guides the supervisor to prefer the research-agent for the current request.
-    // Preserve content blocks (string or array) — prepend hint as a text block when needed.
+    // Build supervisor content with optional web search hint (same as invoke())
     const supervisorContent: MessageContent = enableWebSearch
       ? (typeof messageContent === 'string'
         ? `[WEB SEARCH ENABLED] You MUST route this request to research-agent for web research.\n\n${messageContent}`
@@ -307,128 +314,60 @@ class SupervisorGraphAdapter implements ICompiledGraph {
       : messageContent;
 
     if (enableWebSearch) {
-      logger.info({ sessionId }, 'Web search enabled — augmenting supervisor prompt with research-agent hint');
+      logger.info({ sessionId }, 'Web search enabled — augmenting supervisor prompt with research-agent hint (stream)');
     }
 
-    logger.info(
-      {
-        hasScopeFileIds: !!scopeFileIds?.length,
-        scopeCount: scopeFileIds?.length ?? 0,
-        hasScopeFilter: !!scopeFilter,
-      },
-      'Invoking supervisor with scope'
-    );
-
+    const threadId = `session-${sessionId}`;
     const invocationId = `inv-${Date.now()}`;
+    let stepNumber = 0;
+
     logger.info(
       { sessionId, userId, messageCount: messages.length, invocationId },
-      'Invoking supervisor graph'
+      'Streaming supervisor graph'
     );
 
-    const threadId = `session-${sessionId}`;
-    const startTime = Date.now();
-
-    let result: SupervisorState = { messages: [] };
-    let stepCount = 0;
-    try {
-      const stream = await compiledSupervisor.stream(
-        { messages: [new HumanMessage({ content: supervisorContent })] },
-        {
-          configurable: { thread_id: threadId, userId, invocationId, scopeFileIds, scopeFilter, chatImageEmbeddings, sessionFileReferences },
-          recursionLimit: options?.recursionLimit ?? 100,
-          signal: options?.signal,
-          streamMode: 'values',
-        }
-      );
-      let lastStepTime = startTime;
-      for await (const state of stream) {
-        stepCount++;
-        const now = Date.now();
-        const lastMsg = state.messages?.at(-1);
-
-        // Check if current state messages contain container_upload blocks
-        const stateMessages = (state.messages ?? []) as BaseMessage[];
-        const hasContainerUploads = stateMessages.some(m => {
-          if (!Array.isArray(m.content)) return false;
-          return (m.content as Array<{ type?: string }>).some(b => b.type === 'container_upload');
-        });
-
-        logger.info(
-          {
-            sessionId,
-            invocationId,
-            step: stepCount,
-            stepDurationMs: now - lastStepTime,
-            totalElapsedMs: now - startTime,
-            messageCount: state.messages?.length ?? 0,
-            lastMessageType: lastMsg?.constructor?.name ?? 'unknown',
-            lastMessageName: (lastMsg as { name?: string })?.name,
-            hasContainerUploads,
-          },
-          'Graph step completed'
-        );
-        lastStepTime = now;
-        result = state;
+    const stream = await compiledSupervisor.stream(
+      { messages: [new HumanMessage({ content: supervisorContent })] },
+      {
+        configurable: {
+          thread_id: threadId,
+          userId,
+          invocationId,
+          scopeFileIds,
+          scopeFilter,
+          chatImageEmbeddings,
+          sessionFileReferences,
+        },
+        recursionLimit: options?.recursionLimit ?? 100,
+        signal: options?.signal,
+        streamMode: 'values',
       }
+    );
 
-      logger.info({ sessionId, totalSteps: stepCount }, 'Supervisor graph completed');
-    } catch (error) {
-      const totalElapsedMs = Date.now() - startTime;
-      const errorInfo = error instanceof Error
-        ? { message: error.message, name: error.name, code: (error as unknown as Record<string, unknown>).code }
-        : { value: String(error) };
-      logger.error(
+    for await (const state of stream) {
+      stepNumber++;
+      const agentState = state as unknown as AgentState;
+
+      logger.debug(
         {
           sessionId,
           invocationId,
-          totalSteps: stepCount,
-          totalElapsedMs,
-          error: errorInfo,
+          stepNumber,
+          messageCount: state.messages?.length ?? 0,
         },
-        'Supervisor graph execution failed'
+        'Supervisor stream step'
       );
 
-      // Record failed invocation analytics (fire-and-forget)
-      getAgentAnalyticsService().recordInvocation({
-        agentId: AGENT_ID.SUPERVISOR,
-        success: false,
-        inputTokens: 0,
-        outputTokens: 0,
-        latencyMs: totalElapsedMs,
-      });
-      throw error;
+      yield {
+        messages: state.messages ?? [],
+        toolExecutions: agentState.toolExecutions ?? [],
+        stepNumber,
+        usedModel: agentState.usedModel ?? null,
+        currentAgentIdentity: agentState.currentAgentIdentity,
+      };
     }
 
-    // Record successful invocation analytics (fire-and-forget)
-    const identity = detectAgentIdentity(result.messages);
-    getAgentAnalyticsService().recordInvocation({
-      agentId: identity.agentId,
-      success: true,
-      inputTokens: 0,
-      outputTokens: 0,
-      latencyMs: Date.now() - startTime,
-    });
-
-    // 3. Check for interrupts
-    const state = await compiledSupervisor.getState({ configurable: { thread_id: threadId } });
-    const isInterrupted = state?.tasks?.some(
-      (t: GraphTask) => t.interrupts && t.interrupts.length > 0
-    );
-
-    if (isInterrupted) {
-      logger.info({ sessionId, threadId }, 'Supervisor execution interrupted, awaiting user input');
-
-      const interruptValue = state.tasks
-        ?.flatMap((t: GraphTask) => t.interrupts || [])
-        ?.map((i: { value: unknown }) => i.value)?.[0];
-
-      return adaptSupervisorResult(result, sessionId, {
-        isInterrupted: true,
-        question: typeof interruptValue === 'string' ? interruptValue : JSON.stringify(interruptValue),
-      });
-    }
-
-    return adaptSupervisorResult(result, sessionId);
+    logger.info({ sessionId, totalSteps: stepNumber }, 'Supervisor stream completed');
   }
 }
 
@@ -463,11 +402,11 @@ export async function resumeSupervisor(
 
 /**
  * Get the SupervisorGraphAdapter singleton.
- * Implements ICompiledGraph for drop-in replacement in GraphExecutor.
+ * Implements IStreamableGraph for progressive event delivery.
  */
 let adapterInstance: SupervisorGraphAdapter | null = null;
 
-export function getSupervisorGraphAdapter(): ICompiledGraph {
+export function getSupervisorGraphAdapter(): IStreamableGraph {
   if (!adapterInstance) {
     adapterInstance = new SupervisorGraphAdapter();
   }

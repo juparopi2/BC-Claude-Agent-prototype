@@ -8,3 +8,4 @@ export * from './EnvironmentFacade';
 export * from './feature-flags';
 export * from './models';
 export * from './pricing.config';
+export * from './rate-limits';

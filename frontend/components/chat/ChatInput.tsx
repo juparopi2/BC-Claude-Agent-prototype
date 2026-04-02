@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Send, Square, WifiOff, Mic, Paperclip, Globe, Loader2 } from 'lucide-react';
+import { RainbowButton } from '@/components/ui/rainbow-button';
 import { FileAttachmentChip, InputOptionsBar, MentionAutocomplete, MentionChip, AudioReactiveMicButton, MentionHighlightOverlay } from '@/src/presentation/chat';
 import type { FileMention, ParsedFile } from '@bc-agent/shared';
 import { MENTION_MIME_TYPE, buildChatAttachmentAcceptString } from '@bc-agent/shared';
@@ -329,6 +330,9 @@ export default function ChatInput({
   // Web search toggle state
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
+  // Max Mode toggle state — switches supervisor to Sonnet 4.6 for this message
+  const [maxModeEnabled, setMaxModeEnabled] = useState(false);
+
   // Use socket from parent if provided, otherwise create local instance
   const shouldUseLocalSocket = propsIsConnected === undefined && !onSend && !!sessionId;
   const localSocket = useSocketConnection({
@@ -391,6 +395,7 @@ export default function ChatInput({
         targetAgentId: isDirected ? selectedAgentId : undefined,
         mentionedFileIds: allMentionIds.length > 0 ? allMentionIds : undefined,
         enableWebSearch: webSearchEnabled || undefined,
+        enableMaxMode: maxModeEnabled || undefined,
         mentions: mentions.length > 0 ? [...mentions] : undefined,
       };
       sendMessage(message, options);
@@ -404,8 +409,9 @@ export default function ChatInput({
       clearMentions();
     }
 
-    // Reset web search toggle after sending
+    // Reset web search and max mode toggles after sending
     setWebSearchEnabled(false);
+    setMaxModeEnabled(false);
 
     // Close autocomplete
     setIsAutocompleteOpen(false);
@@ -647,6 +653,24 @@ export default function ChatInput({
           />
 
           <div className="flex items-center gap-1 ml-auto" data-tour="web-search-attachments">
+            {/* Max Mode button — always leftmost in the toolbar, TODO commented for now
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <RainbowButton
+                    active={maxModeEnabled}
+                    disabled={effectiveIsBusy || disabled}
+                    onClick={() => setMaxModeEnabled(!maxModeEnabled)}
+                    data-testid="max-mode-toggle"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">Best for complex tasks</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            */}
+            
             {/* Mic button — visible in options row when there's text (continue dictation) */}
             {canSend && (
               <div className="relative">
@@ -729,6 +753,7 @@ export default function ChatInput({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
           </div>
         </div>
 

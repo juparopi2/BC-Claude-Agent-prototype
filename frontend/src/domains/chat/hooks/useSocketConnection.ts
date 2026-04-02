@@ -57,6 +57,7 @@ export interface UseSocketConnectionReturn {
       targetAgentId?: string;
       mentionedFileIds?: string[];
       enableWebSearch?: boolean;
+      enableMaxMode?: boolean;
       mentions?: import('@bc-agent/shared').FileMention[];
     }
   ) => void;
@@ -244,6 +245,7 @@ export function useSocketConnection(
         targetAgentId?: string;
         mentionedFileIds?: string[];
         enableWebSearch?: boolean;
+        enableMaxMode?: boolean;
         mentions?: import('@bc-agent/shared').FileMention[];
       }
     ) => {
@@ -291,6 +293,7 @@ export function useSocketConnection(
         targetAgentId: opts?.targetAgentId,
         mentionedFileIds: opts?.mentionedFileIds,
         enableWebSearch: opts?.enableWebSearch,
+        enableMaxMode: opts?.enableMaxMode,
         mentions: opts?.mentions,
       });
 

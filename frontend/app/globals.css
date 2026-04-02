@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -45,6 +46,13 @@
 
 :root {
   --radius: 0.625rem;
+  /* Rainbow button gradient colors */
+  --color-1: #ff0000;
+  --color-2: #ff8c00;
+  --color-3: #00c8ff;
+  --color-4: #7b2fff;
+  --color-5: #ff00c8;
+  --speed: 2s;
   --background: oklch(1 0 0);
   --foreground: oklch(0.129 0.042 264.695);
   --card: oklch(1 0 0);
@@ -155,4 +163,72 @@
   50% {
     opacity: 0.5;
   }
+}
+
+/* ============================================================
+   Rainbow button — animated border via background-clip on the button itself
+   ============================================================ */
+@keyframes rainbow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/*
+ * Applied directly to the <button> element — no wrapper needed.
+ *
+ * background-clip trick:
+ *   Layer 1 (fill gradient) → padding-box: covers the button interior
+ *   Layer 2 (rainbow gradient) → border-box: visible only in the 1.5px border ring
+ *
+ * background-color is forced transparent so Tailwind ghost hover classes
+ * (hover:bg-accent sets background-color) cannot bleed into the border area.
+ * Hover fill is controlled via background-image layer 1 in the state classes.
+ */
+.rainbow-border {
+  border: 1.5px solid transparent !important;
+  background-size: 200% !important;
+  background-clip: padding-box, border-box !important;
+  background-origin: border-box !important;
+  background-color: transparent !important;
+  transition: box-shadow 0.2s;
+}
+
+/*
+ * Inactive — no visible border, transparent fill (ghost-like).
+ * Both layers are transparent so the 1.5px border ring is invisible.
+ */
+.rainbow-border-inactive:hover:not(:disabled) {
+  background-image:
+    linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(transparent, transparent) !important;
+}
+
+/*
+ * Active — rainbow border activates. Accent fill with subtle animated rainbow shimmer.
+ * Animation only runs when active.
+ */
+.rainbow-border-active {
+  animation: rainbow var(--speed, 2s) infinite linear;
+  background-image:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--color-1) 7%, var(--accent)),
+      color-mix(in srgb, var(--color-5) 7%, var(--accent)),
+      color-mix(in srgb, var(--color-3) 7%, var(--accent)),
+      color-mix(in srgb, var(--color-4) 7%, var(--accent)),
+      color-mix(in srgb, var(--color-2) 7%, var(--accent))
+    ),
+    linear-gradient(90deg, var(--color-1), var(--color-5), var(--color-3), var(--color-4), var(--color-2)) !important;
+}
+.rainbow-border-active:hover:not(:disabled) {
+  background-image:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--color-1) 14%, var(--accent)),
+      color-mix(in srgb, var(--color-5) 14%, var(--accent)),
+      color-mix(in srgb, var(--color-3) 14%, var(--accent)),
+      color-mix(in srgb, var(--color-4) 14%, var(--accent)),
+      color-mix(in srgb, var(--color-2) 14%, var(--accent))
+    ),
+    linear-gradient(90deg, var(--color-1), var(--color-5), var(--color-3), var(--color-4), var(--color-2)) !important;
+  box-shadow: 0 0 8px 2px rgba(138, 100, 255, 0.3), 0 0 14px 4px rgba(255, 0, 180, 0.15);
 }

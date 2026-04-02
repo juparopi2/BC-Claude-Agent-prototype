@@ -122,6 +122,14 @@ export interface ChatMessageData {
    * @default false
    */
   enableWebSearch?: boolean;
+
+  /**
+   * Enable Max Mode for this message.
+   * When true, switches the supervisor to Claude Sonnet 4.6 instead of Haiku 4.5.
+   * Resets after every send — this is a per-message option, not a persistent preference.
+   * @default false
+   */
+  enableMaxMode?: boolean;
 }
 
 /**

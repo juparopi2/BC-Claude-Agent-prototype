@@ -15,14 +15,16 @@
  *    - Currently safe: only supervisor has thinking, workers have tools
  *
  * Role Summary:
- * | Role            | Thinking | Temperature |
- * |-----------------|----------|-------------|
- * | supervisor      | enabled  | omitted     |
- * | bc_agent        | disabled | 0.3         |
- * | rag_agent       | disabled | 0.5         |
- * | graphing_agent  | disabled | 0.2         |
- * | research_agent  | disabled | 0.5         |
- * | session_title   | disabled | 0.7         |
+ * | Role            | Model       | Thinking | Temperature |
+ * |-----------------|-------------|----------|-------------|
+ * | supervisor      | haiku-4.5   | enabled  | omitted     |
+ * | supervisor_max  | sonnet-4.6  | enabled  | omitted     | ← Max Mode
+ * | bc_agent        | haiku-4.5   | disabled | 0.3         |
+ * | rag_agent       | haiku-4.5   | disabled | 0.5         |
+ * | graphing_agent  | haiku-4.5   | disabled | 0.2         |
+ * | research_agent  | haiku-4.5   | disabled | 0.5         |
+ * | worker_max      | sonnet-4.6  | disabled | 0.3         | ← Max Mode (future use)
+ * | session_title   | haiku-4.5   | disabled | 0.7         |
  *
  * @see backend/src/core/langchain/CLAUDE.md - Full domain documentation
  * @see backend/src/core/langchain/ModelFactory.ts - Factory implementation
@@ -42,6 +44,8 @@ import type { ModelProvider } from '@/core/langchain/ModelFactory';
  */
 export const AnthropicModels = {
   HAIKU_4_5: 'claude-haiku-4-5-20251001',
+  /** Sonnet 4.6 — used by Max Mode for enhanced reasoning */
+  SONNET_4_6: 'claude-sonnet-4-6-20251220',
 } as const;
 
 export type AnthropicModelId = (typeof AnthropicModels)[keyof typeof AnthropicModels];
@@ -89,10 +93,12 @@ export const FallbackModels = {
  */
 export type ModelRole =
   | 'supervisor'        // Lightweight supervisor routing between agents
+  | 'supervisor_max'    // Max Mode supervisor — Sonnet 4.6 for enhanced routing
   | 'bc_agent'          // Business Central operations
   | 'rag_agent'         // RAG/Knowledge retrieval
   | 'graphing_agent'    // Data visualization and chart configuration
   | 'research_agent'    // Web research, data analysis, and code execution
+  | 'worker_max'        // Max Mode worker config anchor — Sonnet 4.6 (future use)
   | 'session_title';    // Generate session titles
 
 /**
@@ -146,6 +152,20 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     maxTokens: 16384, // Must be > budget_tokens when thinking is enabled
     streaming: true,
     thinking: { type: 'enabled', budget_tokens: 5000 }, // Safe: supervisor has no tool_choice
+    promptCaching: true,
+  },
+
+  supervisor_max: {
+    role: 'supervisor_max',
+    description: 'Max Mode supervisor — Sonnet 4.6 for complex routing and enhanced reasoning',
+    modelString: AnthropicModels.SONNET_4_6,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
+    provider: 'anthropic',
+    modelName: AnthropicModels.SONNET_4_6,
+    temperature: 0.0, // Omitted at runtime when thinking is enabled (API → 1.0)
+    maxTokens: 16384, // Must be > budget_tokens when thinking is enabled
+    streaming: true,
+    thinking: { type: 'enabled', budget_tokens: 10000 }, // Higher budget than default supervisor
     promptCaching: true,
   },
 
@@ -204,6 +224,20 @@ export const ModelRoleConfigs: Record<ModelRole, RoleModelConfig> = {
     thinking: { type: 'disabled' },
     promptCaching: true,
     serverTools: ['web_search', 'web_fetch', 'code_execution'],
+  },
+
+  worker_max: {
+    role: 'worker_max',
+    description: 'Max Mode worker config anchor — Sonnet 4.6 for enhanced agent responses (future use)',
+    modelString: AnthropicModels.SONNET_4_6,
+    fallback: FallbackModels.OPENAI_GPT4O_MINI,
+    provider: 'anthropic',
+    modelName: AnthropicModels.SONNET_4_6,
+    temperature: 0.3,
+    maxTokens: 32000,
+    streaming: true,
+    thinking: { type: 'disabled' },
+    promptCaching: true,
   },
 
   session_title: {

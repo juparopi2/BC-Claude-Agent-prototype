@@ -46,6 +46,10 @@ export const MODEL_PRICING: Record<string, ClaudeModelPricing> = {
     inputPerMillion: 1.0, outputPerMillion: 5.0,
     cacheWritePerMillion: 1.25, cacheReadPerMillion: 0.10,
   },
+  [AnthropicModels.SONNET_4_6]: {
+    inputPerMillion: 3.0, outputPerMillion: 15.0,
+    cacheWritePerMillion: 3.75, cacheReadPerMillion: 0.30,
+  },
   'claude-3-5-sonnet-20241022': {
     inputPerMillion: 3.0, outputPerMillion: 15.0,
     cacheWritePerMillion: 3.75, cacheReadPerMillion: 0.30,
@@ -71,6 +75,12 @@ export const DEFAULT_PRICING_MODEL = AnthropicModels.HAIKU_4_5;
  */
 // Safe: HAIKU_4_5 is defined in MODEL_PRICING above
 const DEFAULT_PRICING = MODEL_PRICING[AnthropicModels.HAIKU_4_5] as ClaudeModelPricing;
+
+/**
+ * Markup multiplier applied to cost-basis when calculating overage charges.
+ * 25% markup covers processing overhead and margin on overage usage.
+ */
+const OVERAGE_MARKUP = 1.25;
 
 /**
  * Get pricing for a specific model, defaulting to Haiku if unknown.
@@ -103,6 +113,45 @@ export function calculateModelTokenCost(
      outputTokens * p.outputPerMillion +
      cacheWriteTokens * p.cacheWritePerMillion +
      cacheReadTokens * p.cacheReadPerMillion) / 1_000_000
+  );
+}
+
+/**
+ * Calculate overage cost using the period's actual model mix.
+ *
+ * Derives the effective cost-per-token from the period's real usage data
+ * (already tracked per-request with model-specific pricing), then applies
+ * the 25% overage markup to that weighted-average rate.
+ *
+ * This correctly handles Max Mode (Sonnet 4.6) usage: if a user spent half
+ * their tokens on Sonnet and half on Haiku, the overage rate reflects that
+ * blended cost rather than defaulting to Haiku rates for everyone.
+ *
+ * @param tokensOverQuota - Tokens exceeding the plan quota
+ * @param apiCallsOverQuota - API calls exceeding the plan quota
+ * @param storageOverQuota - Storage bytes exceeding the plan quota
+ * @param periodTokens - Total tokens consumed in the billing period
+ * @param periodCost - Total token cost in USD for the period (model-aware)
+ * @returns Total overage cost in USD
+ */
+export function calculateModelAwareOverageCost(
+  tokensOverQuota: number,
+  apiCallsOverQuota: number,
+  storageOverQuota: number,
+  periodTokens: number,
+  periodCost: number,
+): number {
+  // Weighted-average cost per token from actual model mix.
+  // Falls back to Haiku input rate if no usage data is available.
+  const effectiveCostPerToken =
+    periodTokens > 0 && periodCost > 0
+      ? periodCost / periodTokens
+      : DEFAULT_PRICING.inputPerMillion / 1_000_000;
+
+  return (
+    tokensOverQuota * effectiveCostPerToken * OVERAGE_MARKUP +
+    apiCallsOverQuota * PAYG_RATES.api_call +
+    storageOverQuota * PAYG_RATES.storage_per_byte
   );
 }
 

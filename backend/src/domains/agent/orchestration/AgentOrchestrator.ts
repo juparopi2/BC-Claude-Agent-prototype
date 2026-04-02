@@ -213,6 +213,7 @@ export class AgentOrchestrator implements IAgentOrchestrator {
         mentionedFileIds: options?.mentionedFileIds,
         mentions: options?.mentions,
         enableWebSearch: options?.enableWebSearch,
+        enableMaxMode: options?.enableMaxMode,
       };
 
       const pipelineResult = await this.executionPipeline.executeProgressive(

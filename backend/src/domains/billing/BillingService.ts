@@ -30,7 +30,7 @@ import type { ConnectionPool } from 'mssql';
 import sql from 'mssql';
 import { createChildLogger } from '@/shared/utils/logger';
 import { getPool } from '@/infrastructure/database/database';
-import { PRICING_PLANS, PAYG_RATES, calculateOverageCost } from '@/infrastructure/config/pricing.config';
+import { PRICING_PLANS, PAYG_RATES, calculateOverageCost, calculateModelAwareOverageCost } from '@/infrastructure/config/pricing.config';
 import type {
   PlanTier,
   BillingRecordDbRow,
@@ -205,7 +205,13 @@ export class BillingService {
         const apiCallsOverQuota = Math.max(0, currentApiCallUsage - monthlyApiCallLimit);
         const storageOverQuota = Math.max(0, currentStorageUsage - storageLimitBytes);
 
-        overageCost = calculateOverageCost(tokensOverQuota, apiCallsOverQuota, storageOverQuota);
+        // Use model-aware overage: derives the effective per-token rate from the
+        // period's actual usage cost (already tracked per model), so Max Mode
+        // (Sonnet 4.6) tokens are charged at Sonnet rates, not Haiku defaults.
+        overageCost = calculateModelAwareOverageCost(
+          tokensOverQuota, apiCallsOverQuota, storageOverQuota,
+          totalTokens, usageCost,
+        );
       }
 
       // Calculate total cost
@@ -498,7 +504,10 @@ export class BillingService {
         const apiCallsOverQuota = Math.max(0, currentApiCallUsage - monthlyApiCallLimit);
         const storageOverQuota = Math.max(0, currentStorageUsage - storageLimitBytes);
 
-        overageCost = calculateOverageCost(tokensOverQuota, apiCallsOverQuota, storageOverQuota);
+        overageCost = calculateModelAwareOverageCost(
+          tokensOverQuota, apiCallsOverQuota, storageOverQuota,
+          currentTokenUsage, usageCost,
+        );
       }
 
       const totalCost = baseCost + usageCost + overageCost;

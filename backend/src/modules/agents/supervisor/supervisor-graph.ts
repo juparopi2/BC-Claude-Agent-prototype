@@ -21,7 +21,14 @@ import { buildReactAgents, type BuiltAgent } from './agent-builders';
 
 import { adaptSupervisorResult } from './result-adapter';
 import { createChildLogger } from '@/shared/utils/logger';
+import { retryLlmCall } from '@/shared/utils/retry';
+import { isRetryableLlmError } from '@/shared/errors/LlmErrorClassifier';
 import { getCheckpointer } from '@/infrastructure/checkpointer';
+import {
+  RATE_LIMIT_RETRY_DELAY_MS,
+  RATE_LIMIT_MAX_RETRY_DELAY_MS,
+  RATE_LIMIT_MAX_RETRIES,
+} from '@/infrastructure/config/rate-limits';
 
 const logger = createChildLogger({ service: 'SupervisorGraph' });
 
@@ -51,9 +58,23 @@ interface CompiledSupervisorGraph {
 }
 
 /**
+ * LangGraph retry policy shape.
+ * Typed inline to avoid dependency on langgraph internal exports.
+ */
+interface LangGraphRetryPolicy {
+  maxAttempts?: number;
+  initialInterval?: number;
+  maxInterval?: number;
+  backoffFactor?: number;
+  retryOn?: ((e: Error) => boolean) | string[];
+}
+
+/**
  * Module-level singleton state.
  */
 let compiledSupervisor: CompiledSupervisorGraph | null = null;
+/** Max Mode compiled graph — uses Sonnet 4.6 as supervisor. Workers unchanged. */
+let compiledSupervisorMax: CompiledSupervisorGraph | null = null;
 let agentMap: Map<AgentId, BuiltAgent> = new Map();
 let initialized = false;
 
@@ -154,7 +175,18 @@ export async function initializeSupervisorGraph(): Promise<void> {
   // 4. Get durable checkpointer (initialized in server.ts before this)
   const checkpointer = getCheckpointer();
 
-  // 5. Create and compile supervisor
+  // 5. Build retry policy — applied at compile time so LangGraph retries failing
+  // NODES (not the entire graph). Only 429 and 529 are retried; supervisor routing
+  // decisions are preserved in checkpoints and not re-run on retry.
+  const retryPolicy: LangGraphRetryPolicy = {
+    maxAttempts: RATE_LIMIT_MAX_RETRIES + 1,
+    initialInterval: RATE_LIMIT_RETRY_DELAY_MS,
+    maxInterval: RATE_LIMIT_MAX_RETRY_DELAY_MS,
+    backoffFactor: 2,
+    retryOn: isRetryableLlmError,
+  };
+
+  // 6. Create and compile the DEFAULT supervisor graph (Haiku 4.5)
   // NOTE: Type casts required due to duplicate @langchain/core packages
   // (root node_modules has different version than backend node_modules).
   // Structurally identical at runtime. Fix: root package.json overrides.
@@ -174,7 +206,39 @@ export async function initializeSupervisorGraph(): Promise<void> {
     },
   } as Parameters<typeof createSupervisor>[0]);
 
-  compiledSupervisor = workflow.compile({ checkpointer }) as unknown as CompiledSupervisorGraph;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  compiledSupervisor = workflow.compile({ checkpointer, ...(retryPolicy as any) }) as unknown as CompiledSupervisorGraph;
+
+  // 7. Create and compile the MAX MODE supervisor graph (Sonnet 4.6)
+  // Same agents, checkpointer, prompt, and hooks — only the supervisor LLM differs.
+  // Workers are shared instances and retain their own model configs (Haiku 4.5).
+  const supervisorModelMax = await ModelFactory.create('supervisor_max');
+  const supervisorConfigMax = getModelConfig('supervisor_max');
+  const promptMax = supervisorConfigMax.promptCaching
+    ? new SystemMessage({
+        content: [{
+          type: 'text',
+          text: promptText,
+          cache_control: { type: 'ephemeral' } as { type: 'ephemeral' },
+        }],
+      })
+    : promptText;
+
+  const workflowMax = createSupervisor({
+    agents: builtAgents.map(a => a.agent) as Parameters<typeof createSupervisor>[0]['agents'],
+    llm: supervisorModelMax as LanguageModelLike,
+    prompt: promptMax,
+    addHandoffBackMessages: true,
+    outputMode: 'full_history',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    preModelHook: (state: Record<string, any>) => {
+      const messages = (state.messages ?? []) as BaseMessage[];
+      return { llmInputMessages: stripContainerUploads(messages) };
+    },
+  } as Parameters<typeof createSupervisor>[0]);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  compiledSupervisorMax = workflowMax.compile({ checkpointer, ...(retryPolicy as any) }) as unknown as CompiledSupervisorGraph;
 
   initialized = true;
 
@@ -183,7 +247,7 @@ export async function initializeSupervisorGraph(): Promise<void> {
       agentCount: builtAgents.length,
       agentIds: builtAgents.map(a => a.id),
     },
-    'Supervisor graph initialized successfully'
+    'Supervisor graph initialized successfully (default: Haiku 4.5, max-mode: Sonnet 4.6)'
   );
 }
 
@@ -226,6 +290,7 @@ class SupervisorGraphAdapter implements IStreamableGraph {
         options?: {
           targetAgentId?: string;
           enableWebSearch?: boolean;
+          enableMaxMode?: boolean;
           [key: string]: unknown;
         };
       };
@@ -244,6 +309,7 @@ class SupervisorGraphAdapter implements IStreamableGraph {
 
     const targetAgentId = typedInputs.context?.options?.targetAgentId;
     const enableWebSearch = typedInputs.context?.options?.enableWebSearch;
+    const enableMaxMode = typedInputs.context?.options?.enableMaxMode === true;
     const scopeFileIds = typedInputs.context?.options?.scopeFileIds as string[] | undefined;
     const scopeFilter = typedInputs.context?.options?.scopeFilter as string | undefined;
     const chatImageEmbeddings = typedInputs.context?.options?.chatImageEmbeddings as
@@ -271,21 +337,23 @@ class SupervisorGraphAdapter implements IStreamableGraph {
             'Direct agent invocation via streaming (single-yield)'
           );
 
-          const agentResult = await targetAgent.agent.invoke(
-            { messages: [new HumanMessage({ content: messageContent })] },
-            {
-              configurable: {
-                thread_id: `directed-${sessionId}-${Date.now()}`,
-                userId,
-                invocationId: `inv-${Date.now()}`,
-                scopeFileIds,
-                scopeFilter,
-                chatImageEmbeddings,
-                sessionFileReferences,
-              },
-              recursionLimit: options?.recursionLimit ?? 100,
-              signal: options?.signal,
-            }
+          const agentResult = await retryLlmCall(() =>
+            targetAgent.agent.invoke(
+              { messages: [new HumanMessage({ content: messageContent })] },
+              {
+                configurable: {
+                  thread_id: `directed-${sessionId}-${Date.now()}`,
+                  userId,
+                  invocationId: `inv-${Date.now()}`,
+                  scopeFileIds,
+                  scopeFilter,
+                  chatImageEmbeddings,
+                  sessionFileReferences,
+                },
+                recursionLimit: options?.recursionLimit ?? 100,
+                signal: options?.signal,
+              }
+            )
           );
 
           const adapted = adaptSupervisorResult(agentResult as { messages: BaseMessage[] }, sessionId);
@@ -317,16 +385,25 @@ class SupervisorGraphAdapter implements IStreamableGraph {
       logger.info({ sessionId }, 'Web search enabled — augmenting supervisor prompt with research-agent hint (stream)');
     }
 
+    // Select active graph based on enableMaxMode
+    if (enableMaxMode) {
+      if (!compiledSupervisorMax) {
+        throw new Error('Max mode supervisor graph not initialized. Call initializeSupervisorGraph() first.');
+      }
+      logger.info({ sessionId }, 'Max mode enabled — using Sonnet 4.6 supervisor graph');
+    }
+    const activeGraph = enableMaxMode ? compiledSupervisorMax! : compiledSupervisor;
+
     const threadId = `session-${sessionId}`;
     const invocationId = `inv-${Date.now()}`;
     let stepNumber = 0;
 
     logger.info(
-      { sessionId, userId, messageCount: messages.length, invocationId },
+      { sessionId, userId, messageCount: messages.length, invocationId, enableMaxMode },
       'Streaming supervisor graph'
     );
 
-    const stream = await compiledSupervisor.stream(
+    const stream = await activeGraph.stream(
       { messages: [new HumanMessage({ content: supervisorContent })] },
       {
         configurable: {
@@ -419,6 +496,7 @@ export function getSupervisorGraphAdapter(): IStreamableGraph {
  */
 export function __resetSupervisorGraph(): void {
   compiledSupervisor = null;
+  compiledSupervisorMax = null;
   agentMap = new Map();
   initialized = false;
   adapterInstance = null;

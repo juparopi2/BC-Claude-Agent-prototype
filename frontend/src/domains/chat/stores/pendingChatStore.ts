@@ -54,6 +54,9 @@ export interface PendingChatState {
 
   /** Enable web search for real-time web information */
   enableWebSearch: boolean;
+
+  /** Enable Max Mode — supervisor uses Sonnet 4.6 for this message */
+  enableMaxMode: boolean;
 }
 
 /**
@@ -63,6 +66,7 @@ export interface PendingChatActions {
   setMessage: (message: string) => void;
   setUseMyContext: (enabled: boolean) => void;
   setEnableWebSearch: (enabled: boolean) => void;
+  setEnableMaxMode: (enabled: boolean) => void;
   setSelectedAgent: (agent: string | null) => void;
   addMention: (mention: FileMention) => void;
   removeMention: (fileId: string) => void;
@@ -88,6 +92,7 @@ const initialState: PendingChatState = {
   pendingFiles: [],
   hasPendingChat: false,
   enableWebSearch: false,
+  enableMaxMode: false,
 };
 
 // ============================================================================
@@ -104,6 +109,8 @@ export const usePendingChatStore = create<PendingChatStore>()(
       setUseMyContext: (enabled) => set({ useMyContext: enabled }),
 
       setEnableWebSearch: (enabled) => set({ enableWebSearch: enabled }),
+
+      setEnableMaxMode: (enabled) => set({ enableMaxMode: enabled }),
 
       setSelectedAgent: (agent) => set({ selectedAgent: agent }),
 
@@ -146,6 +153,7 @@ export const usePendingChatStore = create<PendingChatStore>()(
         pendingFiles: state.pendingFiles,
         hasPendingChat: state.hasPendingChat,
         enableWebSearch: state.enableWebSearch,
+        enableMaxMode: state.enableMaxMode,
       }),
     }
   )

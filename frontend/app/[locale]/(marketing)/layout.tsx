@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { getMessages, getTranslations, setRequestLocale } from 'next-intl/server';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
 import { MarketingHeader } from '@/src/domains/marketing/components/shared/MarketingHeader';
 import { MarketingFooter } from '@/src/domains/marketing/components/shared/MarketingFooter';

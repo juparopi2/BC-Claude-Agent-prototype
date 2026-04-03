@@ -1,10 +1,11 @@
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { SplitText } from 'gsap/SplitText';
 
 // Register plugins once — GSAP is idempotent on re-registration
 if (typeof window !== 'undefined') {
-  gsap.registerPlugin(useGSAP, ScrollTrigger);
+  gsap.registerPlugin(useGSAP, ScrollTrigger, SplitText);
 }
 
 /**
@@ -19,4 +20,4 @@ if (typeof window !== 'undefined') {
  * The scope parameter isolates selector queries to the container
  * and ensures automatic cleanup on unmount.
  */
-export { gsap, useGSAP, ScrollTrigger };
+export { gsap, useGSAP, ScrollTrigger, SplitText };

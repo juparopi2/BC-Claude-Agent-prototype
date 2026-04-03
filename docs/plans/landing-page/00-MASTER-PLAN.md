@@ -96,11 +96,11 @@ Usado como **referencia e inspiración**, no copy-paste. Estudiamos sus patterns
 
 ### Fase 1: Core Sections (secuencial)
 
-| PRD | Nombre | Deps |
-|---|---|---|
-| [PRD-LP-003](./PRD-LP-003-hero-section.md) | Hero Section | LP-001, LP-002 |
-| [PRD-LP-004](./PRD-LP-004-features-agents.md) | Features & Agents | LP-002 |
-| [PRD-LP-005](./PRD-LP-005-roadmap-waitlist.md) | Roadmap + Waitlist | LP-002 |
+| PRD | Nombre | Deps | Estado |
+|---|---|---|---|
+| [PRD-LP-003](./PRD-LP-003-hero-section.md) | Hero Section | LP-001, LP-002 | ✅ 2026-04-03 |
+| [PRD-LP-004](./PRD-LP-004-features-agents.md) | Features & Agents | LP-002 | |
+| [PRD-LP-005](./PRD-LP-005-roadmap-waitlist.md) | Roadmap + Waitlist | LP-002 | |
 
 ### Fase 2: Polish & Enhancement
 

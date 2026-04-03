@@ -1,6 +1,6 @@
 # PRD-LP-003: Hero Section
 
-**Estado**: Pendiente
+**Estado**: ✅ Completado (2026-04-03)
 **Fase**: 1 (Core Sections)
 **Dependencias**: LP-001 (foundation), LP-002 (content)
 **Bloquea**: LP-006 (scroll animations), LP-008 (remotion)
@@ -138,16 +138,16 @@ Opciones: SVG icons propios o badges con texto. NO usar logos oficiales de Micro
 
 ## 4. Criterios de Aceptación
 
-- [ ] Hero ocupa viewport completo al cargar la página
-- [ ] Headline se anima con SplitText word-by-word
-- [ ] Stats counters se animan (0 → valor final)
-- [ ] CTA "Get Early Access" scrollea a la sección waitlist
-- [ ] CTA "See How It Works" scrollea a la sección features
-- [ ] Visual placeholder tiene dimensiones definidas (sin layout shift)
-- [ ] Responsive en mobile, tablet, desktop
-- [ ] Dark mode funcional
-- [ ] Todas las strings vienen de i18n (`useTranslations('Marketing.hero')`)
-- [ ] Performance: animaciones a 60fps
+- [x] Hero ocupa viewport completo al cargar la página
+- [x] Headline se anima con SplitText word-by-word
+- [x] Stats counters se animan (0 → valor final)
+- [x] CTA "Get Early Access" scrollea a la sección waitlist
+- [x] CTA "See How It Works" scrollea a la sección features
+- [x] Visual placeholder tiene dimensiones definidas (sin layout shift)
+- [x] Responsive en mobile, tablet, desktop
+- [x] Dark mode funcional
+- [x] Todas las strings vienen de i18n (`useTranslations('Marketing.hero')`)
+- [x] Performance: animaciones a 60fps
 
 ---
 
@@ -162,3 +162,38 @@ Opciones: SVG icons propios o badges con texto. NO usar logos oficiales de Micro
 - `frontend/src/domains/marketing/components/hero/HeroVisual.tsx`
 - `frontend/src/domains/marketing/components/hero/HeroMicrosoftBadges.tsx`
 - `frontend/src/domains/marketing/components/hero/HeroBackground.tsx`
+
+---
+
+## 6. Notas de Implementación (2026-04-03)
+
+### Arquitectura
+
+- **Single `'use client'` boundary**: `HeroSection` es el único componente con `useTranslations` y `useGSAP`. Los 8 hijos son presentacionales puros que reciben strings como props.
+- **Container-presentational pattern**: HeroSection lee i18n, construye el array de stats, y orquesta el GSAP timeline.
+
+### Archivos Modificados
+
+- `frontend/src/domains/marketing/animations/gsap-config.ts` — Agregado `SplitText` al registro de plugins
+- `frontend/src/domains/marketing/hooks/useScrollAnimation.ts` — Agregado `SplitText` al re-export
+- `frontend/app/[locale]/(marketing)/page.tsx` — Stub de hero reemplazado con `<HeroSection />`
+
+### Decisiones Técnicas
+
+1. **SplitText type: 'words'** (no 'chars') — reveal por palabras, más legible y menos costoso en DOM
+2. **`.to()` pattern** en vez de `.from()` — `gsap.set()` establece estados iniciales, timeline anima hacia el estado final
+3. **Gradient blob como visual placeholder** — CSS + GSAP loops independientes del timeline principal
+4. **Text badges** para Microsoft ecosystem — sin logos oficiales, colores de marca inline
+5. **`parseStat()`** en HeroStats — extrae parte numérica y sufijo de strings como `"3+"` para count-up
+
+### Gotchas Descubiertos
+
+1. **Path alias**: `@/src/domains/marketing/...` (con `src/`), NO `@/domains/marketing/...`. El tsconfig mapea `@/*` → `frontend/*`.
+2. **React 19**: No existe `JSX` global namespace — omitir tipos de retorno `JSX.Element` explícitos.
+3. **`split.revert()`**: Obligatorio en cleanup de `useGSAP`. El hook limpia tweens automáticamente pero NO las mutaciones DOM de SplitText.
+
+### Impacto en PRDs Futuros
+
+- **LP-006**: ScrollTrigger ya registrado. Hero sections tienen clases GSAP estables para scroll animations.
+- **LP-007**: `HeroVisual` tiene `aspect-ratio: 16/10` fijo — reemplazar contenido sin layout shift.
+- **LP-008**: Hero visual puede ser target de Remotion overlay.

@@ -1,6 +1,6 @@
 # PRD-LP-005: Roadmap + Waitlist
 
-**Estado**: Pendiente
+**Estado**: ✅ 2026-04-03
 **Fase**: 1 (Core Sections)
 **Dependencias**: LP-001 (foundation, GSAP, design tokens), LP-002 (content)
 **Bloquea**: LP-006 (scroll animations)

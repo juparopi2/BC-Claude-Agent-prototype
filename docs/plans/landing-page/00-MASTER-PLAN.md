@@ -100,7 +100,7 @@ Usado como **referencia e inspiración**, no copy-paste. Estudiamos sus patterns
 |---|---|---|---|
 | [PRD-LP-003](./PRD-LP-003-hero-section.md) | Hero Section | LP-001, LP-002 | ✅ 2026-04-03 |
 | [PRD-LP-004](./PRD-LP-004-features-agents.md) | Features & Agents | LP-001, LP-002 | ✅ 2026-04-03 |
-| [PRD-LP-005](./PRD-LP-005-roadmap-waitlist.md) | Roadmap + Waitlist | LP-002 | |
+| [PRD-LP-005](./PRD-LP-005-roadmap-waitlist.md) | Roadmap + Waitlist | LP-001, LP-002 | ✅ 2026-04-03 |
 
 ### Fase 2: Polish & Enhancement
 
@@ -447,6 +447,47 @@ Batch de corrección que resolvió 13 gaps huérfanos identificados en la audito
 - LP-006: JSON-LD no necesita tocarse a menos que se quieran agregar más schemas (BreadcrumbList, etc.)
 - Owner: Proveer OG image (1200×630), contenido legal, y social links cuando estén listos
 
+### LP-005 (2026-04-03)
+
+**Correcciones al plan original:**
+
+1. **ScrollTrigger import no necesario explícitamente**: `gsap-config.ts` registra ScrollTrigger globalmente al importar el barrel `useScrollAnimation`. FeaturesSection y AgentsSection tampoco lo importan explícitamente. Importar `ScrollTrigger` como named import causa warnings de ESLint (`no-unused-vars`). Solución: no importar, confiar en el registro global.
+
+2. **`'All'` filter label necesita i18n**: El PRD no especificaba i18n para el label "All" del filtro. Se agregó `statusLabels.all` a los 3 JSONs (en/es/da) y se reemplazó el string hardcoded por `t('statusLabels.all')`.
+
+3. **Simplificación de componentes**: El PRD proponía `WaitlistSuccess.tsx` y `WaitlistError.tsx` como archivos separados. Se simplificó: los estados de éxito/error son inline dentro de `WaitlistForm.tsx` (~80 líneas total). Menos indirección, misma funcionalidad.
+
+4. **RoadmapFilter sin `beta`**: El PRD incluía 4 status (live, beta, development, planned) pero no hay items beta en los datos. El filtro solo muestra `[All, Live, In Development, Planned]` — beta se agrega automáticamente si se añaden items beta a `ROADMAP_ITEMS`.
+
+5. **`useWaitlist` hook con sentinels de i18n**: El hook retorna keys de i18n como sentinels (`'form.error.unimplemented'` o `'form.error.message'`), NO strings traducidos. Esto mantiene el hook testeable sin mocking de next-intl. `WaitlistForm` resuelve los sentinels a texto traducido.
+
+**Archivos creados:**
+- `frontend/src/domains/marketing/components/roadmap/StatusBadge.tsx` — 4-state badge (live/beta/dev/planned)
+- `frontend/src/domains/marketing/components/roadmap/RoadmapItem.tsx` — timeline entry con dot + connector
+- `frontend/src/domains/marketing/components/roadmap/RoadmapFilter.tsx` — tablist filter (All/Live/Dev/Planned)
+- `frontend/src/domains/marketing/components/roadmap/RoadmapTimeline.tsx` — vertical timeline + line div
+- `frontend/src/domains/marketing/components/roadmap/RoadmapSection.tsx` — container, GSAP, filter state
+- `frontend/src/domains/marketing/components/waitlist/WaitlistBenefits.tsx` — 4 benefit badges (Zap/Tag/Bell/MessageSquare)
+- `frontend/src/domains/marketing/components/waitlist/WaitlistForm.tsx` — email form + inline success/error states
+- `frontend/src/domains/marketing/components/waitlist/WaitlistSection.tsx` — container, GSAP, social proof count
+- `frontend/src/domains/marketing/hooks/useWaitlist.ts` — state machine (idle/submitting/success/error)
+- `frontend/src/domains/marketing/errors/WaitlistUnimplementedError.ts` — custom error class
+
+**Archivos modificados:**
+- `frontend/app/[locale]/(marketing)/page.tsx` — stubs reemplazados, pricing stub preservado
+- `frontend/src/domains/marketing/content/marketing-flags.ts` — `ROADMAP_ITEMS`, `ROADMAP_STATUS_COLORS`, `WAITLIST_ENABLED`, `WAITLIST_MOCK_COUNT`
+- `frontend/src/domains/marketing/content/index.ts` — barrel re-exports
+- `frontend/messages/en.json` — `statusLabels.all`
+- `frontend/messages/es.json` — `statusLabels.all` con `[ES]` prefix
+- `frontend/messages/da.json` — `statusLabels.all` con `[DA]` prefix
+
+**Impacto en PRDs futuros:**
+- LP-006: Ambas secciones tienen IDs (`#roadmap`, `#waitlist`) dentro de `#smooth-content`. ScrollSmoother se activa sin cambios.
+- LP-007: Sección `#roadmap` tiene items con `data-status` para posible sync de colores con chameleon.
+- LP-007b: Pricing stub preservado entre roadmap y waitlist — LP-007b solo reemplaza ese stub.
+- Waitlist backend: Cuando se implemente, cambiar `WAITLIST_ENABLED = true` y agregar `fetch` real en `useWaitlist.ts` dentro del `try` block.
+- LP-010: `statusLabels.all` ya tiene stubs `[ES]`/`[DA]` — traducir junto con el resto.
+
 ---
 
 ## 11. Auditoría de PRDs (2026-04-03)
@@ -562,6 +603,13 @@ Tareas que SOLO el owner puede completar, organizadas por cuándo se necesitan:
 | D15 | Coming Soon badges removidos de security (permissions, gdpr habilitados) | LP-004 owner decision | LP-004 |
 | D16 | Agent colors via inline styles desde `AGENT_COLOR`, no CSS custom properties | LP-004 design | LP-004 |
 | D17 | Animaciones consistentes: SplitText + fade-up stagger en todas las secciones | LP-004 owner decision | LP-004+ |
+| D18 | Filter tabs incluidos en roadmap, default "All", sin tab "Beta" (no hay items beta) | LP-005 implementación | LP-005 |
+| D19 | Inline form states en WaitlistForm (no archivos separados WaitlistSuccess/Error) | LP-005 propuesta | LP-005 |
+| D20 | WAITLIST_MOCK_COUNT = 247 (número realista pre-lanzamiento) | LP-005 implementación | LP-005 |
+| D21 | WAITLIST_ENABLED = false con WaitlistUnimplementedError graceful | LP-005 implementación | LP-005 |
+| D22 | ROADMAP_ITEMS como array estático en marketing-flags.ts (status programático, no derivado de i18n) | LP-005 propuesta | LP-005 |
+| D23 | useWaitlist retorna sentinels de i18n, no strings traducidos (testeable sin mocking next-intl) | LP-005 implementación | LP-005 |
+| D24 | ScrollTrigger no se importa explícitamente — registro global via gsap-config.ts es suficiente | LP-005 verify | LP-005+ |
 
 ### 10.5 Decisiones Pendientes (Requieren Input del Owner)
 
@@ -569,10 +617,10 @@ Tareas que SOLO el owner puede completar, organizadas por cuándo se necesitan:
 |---|---|---|---|
 | P1 | Hero visual placeholder (gradient blob / mockup / silueta camaleón) | Al implementar LP-003 | LP-003 |
 | P2 | Placement del camaleón (floating / section / hero) | Al implementar LP-007 | LP-007 |
-| P3 | Roadmap filter (mostrar / ocultar) | Al implementar LP-005 | LP-005 |
+| ~~P3~~ | ~~Roadmap filter~~ → D18: Incluido, default "All" | ✅ Resuelto LP-005 | LP-005 |
 | P4 | Snap scrolling (activar / desactivar) | Al implementar LP-006 | LP-006 |
 | P5 | Uso de logos Microsoft (legal) | Al implementar LP-003 | LP-003 |
-| P6 | Waitlist counter inicial (hardcoded number) | Al implementar LP-005 | LP-005 |
+| ~~P6~~ | ~~Waitlist counter inicial~~ → D20: WAITLIST_MOCK_COUNT = 247 | ✅ Resuelto LP-005 | LP-005 |
 | P7 | Proveedor de email para waitlist | Antes de ir a producción | Future PRD |
 | P8 | Precios finales | Antes de activar pricing flag | LP-007b |
 | P9 | Approach del interactive demo | Antes de LP-009 | LP-009 |

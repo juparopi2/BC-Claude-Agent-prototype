@@ -1,6 +1,6 @@
 # PRD-LP-002: Content Strategy
 
-**Estado**: Pendiente
+**Estado**: ✅ 2026-04-03
 **Fase**: 0 (Foundation)
 **Dependencias**: Ninguna (paralelo con LP-001)
 **Bloquea**: LP-003, LP-004, LP-005, LP-010
@@ -516,11 +516,11 @@ const t = useTranslations('Marketing.hero');
 
 ## 5. SEO Checklist
 
-- [ ] `<title>` tag con nombre de producto + propuesta de valor
-- [ ] `<meta name="description">` descriptivo (150-160 chars)
-- [ ] Open Graph tags: `og:title`, `og:description`, `og:image`, `og:type`, `og:url`
+- [x] `<title>` tag con nombre de producto + propuesta de valor
+- [x] `<meta name="description">` descriptivo (150-160 chars)
+- [x] Open Graph tags: `og:title`, `og:description`, `og:image`, `og:type`, `og:url`
 - [ ] Twitter Card tags: `twitter:card`, `twitter:title`, `twitter:description`
-- [ ] `<link rel="alternate" hreflang="x">` para cada locale
+- [x] `<link rel="alternate" hreflang="x">` para cada locale
 - [ ] `<link rel="canonical">` apuntando al locale default
 - [ ] Structured data (JSON-LD): Organization, WebSite, SoftwareApplication
 - [ ] `robots.txt` — permitir indexación de marketing, bloquear app
@@ -530,24 +530,30 @@ const t = useTranslations('Marketing.hero');
 
 ## 6. Criterios de Aceptación
 
-- [ ] `messages/en.json` contiene todos los namespaces documentados en este PRD
-- [ ] Todas las keys son accesibles via `useTranslations('Marketing.*')`
-- [ ] SEO meta tags renderizados correctamente (verificar con view-source)
-- [ ] OG tags validados (usar og debugger de Facebook o similar)
-- [ ] Ningún string hardcoded en componentes de marketing — todo viene de i18n
-- [ ] Copy es coherente en tono: profesional, directo, orientado a negocio
-- [ ] Agent descriptions son consistentes con `@bc-agent/shared` pero adaptadas a marketing
+- [x] `messages/en.json` contiene todos los namespaces documentados en este PRD
+- [x] Todas las keys son accesibles via `useTranslations('Marketing.*')`
+- [x] SEO meta tags renderizados correctamente (verificar con view-source)
+- [x] OG tags validados (usar og debugger de Facebook o similar)
+- [x] Ningún string hardcoded en componentes de marketing — todo viene de i18n
+- [x] Copy es coherente en tono: profesional, directo, orientado a negocio
+- [x] Agent descriptions son consistentes con `@bc-agent/shared` pero adaptadas a marketing
 
 ---
 
 ## 7. Archivos Afectados
 
 ### Modificados
-- `frontend/messages/en.json` — expansión con namespace `Marketing`
+- `frontend/messages/en.json` — ~200 keys bajo namespace `Marketing` (migrado de `marketing`)
+- `frontend/messages/es.json` — stub completo con prefijo `[ES]`
+- `frontend/messages/da.json` — stub completo con prefijo `[DA]`
+- `frontend/app/[locale]/(marketing)/layout.tsx` — `generateMetadata` reemplaza metadata estática
+- `frontend/src/domains/marketing/components/shared/MarketingHeader.tsx` — namespace `Marketing.header`
+- `frontend/src/domains/marketing/components/shared/MarketingFooter.tsx` — namespace `Marketing.footer` + key paths corregidos
+- `frontend/src/domains/marketing/components/shared/MarketingNav.tsx` — namespace `Marketing.header.nav` + `agents` link
 
-### Nuevos (futuros, creados por LP-010)
-- `frontend/messages/es.json`
-- `frontend/messages/da.json`
+### Nuevos
+- `frontend/src/domains/marketing/content/marketing-flags.ts` — constantes no-string (booleans, arrays, types)
+- `frontend/src/domains/marketing/content/index.ts` — barrel export
 
 ---
 
@@ -555,5 +561,19 @@ const t = useTranslations('Marketing.hero');
 
 - El copy en este PRD es la **versión inicial**. Se espera iteración durante el desarrollo de cada sección.
 - Los precios en la sección de pricing son **preliminares** y se confirmarán antes de hacer visible la sección.
-- Las keys marcadas con `"comingSoon": true` se renderizan con un badge visual en la UI.
+- Las keys marcadas con `"comingSoon": true` en el PRD original se movieron a `marketing-flags.ts` como `COMING_SOON_FEATURES` (next-intl no soporta booleans en JSON).
+- Las feature arrays de pricing se movieron a `marketing-flags.ts` como `PLAN_FEATURES` con `as const`.
 - El copy debe evitar jerga técnica excesiva. El público objetivo es **decision makers de negocio**, no necesariamente técnicos.
+
+---
+
+## 9. Implementación (2026-04-03)
+
+9 commits en main (`7e2ea86..1307e87`). Verificación SDD: PASS.
+
+### Decisiones de implementación
+1. Namespace migrado de `marketing` (lowercase) a `Marketing` (PascalCase) en commit atómico
+2. `comingSoon` booleans y `features` arrays en TypeScript (`marketing-flags.ts`), no en JSON
+3. `generateMetadata` con `getTranslations` de `next-intl/server` para SEO locale-aware
+4. Stubs es/da con prefijo `[ES]`/`[DA]` para visibilidad durante desarrollo
+5. Labels de LanguageSwitcher intencionalmente hardcodeados (nombres de idiomas son auto-referenciales)

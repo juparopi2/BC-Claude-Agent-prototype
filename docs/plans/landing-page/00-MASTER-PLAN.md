@@ -92,7 +92,7 @@ Usado como **referencia e inspiración**, no copy-paste. Estudiamos sus patterns
 | PRD | Nombre | Estado | Descripción |
 |---|---|---|---|
 | [PRD-LP-001](./PRD-LP-001-foundation.md) | Foundation & Layout | ✅ 2026-04-03 | Route group, GSAP setup, i18n routing, design tokens, header/footer/nav, language switcher |
-| [PRD-LP-002](./PRD-LP-002-content-strategy.md) | Content Strategy | Pendiente | i18n keys en `en.json`, copy/messaging, SEO metadata, OG tags |
+| [PRD-LP-002](./PRD-LP-002-content-strategy.md) | Content Strategy | ✅ 2026-04-03 | i18n keys en `en.json` (~200 keys), namespace migration, generateMetadata, marketing-flags.ts, es/da stubs |
 
 ### Fase 1: Core Sections (secuencial)
 
@@ -358,6 +358,27 @@ Extraídos de las decisiones tomadas durante la planificación. Estos principios
 - LP-003+: Los componentes de sección se renderizan dentro del marketing layout nested. No necesitan providers propios.
 - LP-006: ScrollSmoother divs ya están en el layout (`#smooth-wrapper`, `#smooth-content`). Solo necesita activar el JS.
 - LP-007: Canvas/img para chameleon va dentro de `#smooth-content`.
+
+### LP-002 (2026-04-03)
+
+**Correcciones al plan original:**
+
+1. **Namespace case collision**: LP-001 creó las keys bajo `marketing` (lowercase) pero el PRD especificaba `Marketing` (PascalCase). Se migró todo a `Marketing` en un commit atómico (3 JSONs + 3 componentes).
+
+2. **`comingSoon` booleans no van en JSON**: next-intl trata todos los valores como strings. Los booleans (`comingSoon: true` en security items) y arrays (`features` en pricing plans) se movieron a `marketing-flags.ts` como constantes TypeScript con `as const`.
+
+3. **`generateMetadata` requiere `params` como Promise**: En Next.js 16, `params` es `Promise<{ locale: string }>` — requiere `await params` antes de acceder al locale.
+
+4. **Stubs es/da con prefijo visual**: En vez de copiar el inglés tal cual, se prefijaron los strings con `[ES]`/`[DA]` para hacer visualmente obvio qué está sin traducir durante desarrollo.
+
+5. **MarketingFooter key paths rotos**: El componente de LP-001 usaba paths planos (`t('privacy')`) que no coincidían con la nueva estructura nested (`sections.legal.links.privacy`). Corregido en commit separado.
+
+**Impacto en PRDs futuros:**
+- LP-003+: Usar `useTranslations('Marketing.hero')` → `t('title')`, `t('subtitle')`, etc.
+- LP-004: Agents en `Marketing.agents.items.*`, features en `Marketing.features.items.*`
+- LP-005: Roadmap items en `Marketing.roadmap.items.*`, status es string que mapea a `statusLabels.*`
+- LP-007b: Pricing features NO están en JSON — importar `PLAN_FEATURES` de `marketing/content`
+- LP-010: Reemplazar strings con `[ES]`/`[DA]` prefix por traducciones reales
 
 ---
 

@@ -89,10 +89,10 @@ Usado como **referencia e inspiración**, no copy-paste. Estudiamos sus patterns
 
 ### Fase 0: Foundation (paralelo)
 
-| PRD | Nombre | Descripción |
-|---|---|---|
-| [PRD-LP-001](./PRD-LP-001-foundation.md) | Foundation & Layout | Route group, GSAP setup, i18n routing, design tokens, header/footer/nav, language switcher |
-| [PRD-LP-002](./PRD-LP-002-content-strategy.md) | Content Strategy | i18n keys en `en.json`, copy/messaging, SEO metadata, OG tags |
+| PRD | Nombre | Estado | Descripción |
+|---|---|---|---|
+| [PRD-LP-001](./PRD-LP-001-foundation.md) | Foundation & Layout | ✅ 2026-04-03 | Route group, GSAP setup, i18n routing, design tokens, header/footer/nav, language switcher |
+| [PRD-LP-002](./PRD-LP-002-content-strategy.md) | Content Strategy | Pendiente | i18n keys en `en.json`, copy/messaging, SEO metadata, OG tags |
 
 ### Fase 1: Core Sections (secuencial)
 
@@ -340,7 +340,28 @@ Extraídos de las decisiones tomadas durante la planificación. Estos principios
 
 ---
 
-## 10. Auditoría de PRDs (2026-04-03)
+## 10. Lecciones de Implementación
+
+### LP-001 (2026-04-03)
+
+**Correcciones al plan original:**
+
+1. **Layout standalone → nested**: Next.js App Router solo permite un root layout con `<html>`/`<body>`. El marketing layout es nested, no standalone. Se usa `HtmlLangSync` (client component con useEffect) para sincronizar `<html lang>` dinámicamente.
+
+2. **AuthProvider como gatekeeper**: El root layout envuelve TODO con AuthProvider, que redirige a `/login` si no está autenticado. Las rutas marketing necesitan ser marcadas como públicas explícitamente via regex.
+
+3. **next-intl v4 requiere `createNavigation`**: Para hooks de navegación client-side (useRouter, usePathname) se necesita crear helpers via `createNavigation(routing)` en un archivo dedicado (`i18n/navigation.ts`).
+
+4. **GSAP: registro mínimo**: Solo registrar los plugins que se usan inmediatamente (ScrollTrigger). Los premium (SplitText, ScrollSmoother) se agregan en LP-006 cuando se activen.
+
+**Impacto en PRDs futuros:**
+- LP-003+: Los componentes de sección se renderizan dentro del marketing layout nested. No necesitan providers propios.
+- LP-006: ScrollSmoother divs ya están en el layout (`#smooth-wrapper`, `#smooth-content`). Solo necesita activar el JS.
+- LP-007: Canvas/img para chameleon va dentro de `#smooth-content`.
+
+---
+
+## 11. Auditoría de PRDs (2026-04-03)
 
 ### 10.1 Correcciones Aplicadas
 

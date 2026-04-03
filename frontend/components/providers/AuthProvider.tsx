@@ -6,6 +6,11 @@ import { useAuthStore } from '@/src/domains/auth';
 import { Loader2 } from 'lucide-react';
 
 const PUBLIC_ROUTES = ['/login', '/'];
+const MARKETING_LOCALE_PREFIX = /^\/(en|es|da)(\/|$)/;
+
+function isPublicRoute(pathname: string): boolean {
+  return PUBLIC_ROUTES.includes(pathname) || MARKETING_LOCALE_PREFIX.test(pathname);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, checkAuth, connectSocket } = useAuthStore();
@@ -31,9 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isInitialized) return;
 
-    const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
-
-    if (!isAuthenticated && !isPublicRoute) {
+    if (!isAuthenticated && !isPublicRoute(pathname)) {
       router.push('/login');
     }
   }, [isAuthenticated, isInitialized, pathname, router]);

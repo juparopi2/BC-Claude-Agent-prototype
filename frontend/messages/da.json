@@ -1,0 +1,24 @@
+{
+  "marketing": {
+    "nav": {
+      "features": "Funktioner",
+      "roadmap": "Køreplan",
+      "pricing": "Priser",
+      "waitlist": "Tilmeld dig"
+    },
+    "header": {
+      "cta": "Tilmeld dig"
+    },
+    "footer": {
+      "tagline": "AI-drevet forretningsautomatisering til Microsoft-økosystemet.",
+      "privacy": "Privatlivspolitik",
+      "terms": "Servicevilkår",
+      "copyright": "© {year} MyWorkMate. Alle rettigheder forbeholdes."
+    },
+    "lang": {
+      "en": "English",
+      "es": "Español",
+      "da": "Dansk"
+    }
+  }
+}

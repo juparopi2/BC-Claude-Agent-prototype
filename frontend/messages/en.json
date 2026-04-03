@@ -1,4 +1,26 @@
 {
+  "marketing": {
+    "nav": {
+      "features": "Features",
+      "roadmap": "Roadmap",
+      "pricing": "Pricing",
+      "waitlist": "Join Waitlist"
+    },
+    "header": {
+      "cta": "Join Waitlist"
+    },
+    "footer": {
+      "tagline": "AI-powered business automation for the Microsoft ecosystem.",
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service",
+      "copyright": "© {year} MyWorkMate. All rights reserved."
+    },
+    "lang": {
+      "en": "English",
+      "es": "Español",
+      "da": "Dansk"
+    }
+  },
   "onboarding": {
     "tour": {
       "welcome": {

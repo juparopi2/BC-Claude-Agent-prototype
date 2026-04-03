@@ -1,9 +1,10 @@
 # PRD-LP-001: Foundation & Layout
 
-**Estado**: Pendiente
+**Estado**: ✅ Completado (2026-04-03)
 **Fase**: 0 (Foundation)
 **Dependencias**: Ninguna
 **Bloquea**: LP-003, LP-004, LP-005
+**SDD Change**: `lp-001-foundation` (archived)
 
 ---
 
@@ -315,16 +316,16 @@ export const metadata: Metadata = {
 
 ## 5. Criterios de Aceptación
 
-- [ ] `/{locale}/` renderiza la landing page con header y footer
-- [ ] Language switcher navega entre `/en/`, `/es/`, `/da/` (content en inglés para todos por ahora)
-- [ ] Header es sticky con backdrop-blur, responsive con hamburger en mobile
-- [ ] Footer renderiza con placeholders para links legales
-- [ ] GSAP está instalado y los plugins se registran sin errores en consola
-- [ ] Las rutas del portal existente (`/chat`, `/files`, etc.) NO se ven afectadas por el middleware de i18n
-- [ ] Dark mode funciona en la landing page
-- [ ] Lighthouse: 90+ en Performance para la página placeholder
-- [ ] No errores de TypeScript ni ESLint
-- [ ] Estructura de carpetas `src/domains/marketing/` creada
+- [x] `/{locale}/` renderiza la landing page con header y footer
+- [x] Language switcher navega entre `/en/`, `/es/`, `/da/` (content en inglés para todos por ahora)
+- [x] Header es sticky con backdrop-blur, responsive con hamburger en mobile
+- [x] Footer renderiza con placeholders para links legales
+- [x] GSAP está instalado y los plugins se registran sin errores en consola
+- [x] Las rutas del portal existente (`/chat`, `/files`, etc.) NO se ven afectadas por el middleware de i18n
+- [x] Dark mode funciona en la landing page
+- [ ] Lighthouse: 90+ en Performance para la página placeholder (pendiente medición)
+- [x] No errores de TypeScript ni ESLint
+- [x] Estructura de carpetas `src/domains/marketing/` creada
 
 ---
 
@@ -339,23 +340,56 @@ export const metadata: Metadata = {
 
 ---
 
-## 7. Archivos Afectados
+## 7. Archivos Afectados (Resultado Final)
 
-### Nuevos
-- `frontend/app/[locale]/(marketing)/layout.tsx`
-- `frontend/app/[locale]/(marketing)/page.tsx`
-- `frontend/i18n/routing.ts`
-- `frontend/middleware.ts`
-- `frontend/src/domains/marketing/components/shared/MarketingHeader.tsx`
-- `frontend/src/domains/marketing/components/shared/MarketingFooter.tsx`
-- `frontend/src/domains/marketing/components/shared/LanguageSwitcher.tsx`
-- `frontend/src/domains/marketing/components/shared/MarketingNav.tsx`
-- `frontend/src/domains/marketing/animations/gsap-config.ts`
-- `frontend/src/domains/marketing/hooks/useScrollAnimation.ts`
-- `frontend/src/domains/marketing/content/agents.ts`
+### Creados (14)
+- `frontend/middleware.ts` — next-intl middleware con allowlist matcher
+- `frontend/i18n/routing.ts` — defineRouting config
+- `frontend/i18n/navigation.ts` — createNavigation exports (Link, useRouter, usePathname)
+- `frontend/messages/es.json` — traducciones marketing español
+- `frontend/messages/da.json` — traducciones marketing danés
+- `frontend/app/[locale]/(marketing)/layout.tsx` — marketing layout (nested bajo root)
+- `frontend/app/[locale]/(marketing)/page.tsx` — landing page placeholder con section anchors
+- `frontend/src/domains/marketing/animations/gsap-config.ts` — registro de plugins GSAP
+- `frontend/src/domains/marketing/hooks/useScrollAnimation.ts` — re-export hook GSAP
+- `frontend/src/domains/marketing/components/shared/MarketingHeader.tsx` — header sticky responsive
+- `frontend/src/domains/marketing/components/shared/MarketingFooter.tsx` — footer con legal links
+- `frontend/src/domains/marketing/components/shared/MarketingNav.tsx` — smooth-scroll navigation
+- `frontend/src/domains/marketing/components/shared/LanguageSwitcher.tsx` — locale switcher dropdown
+- `frontend/src/domains/marketing/components/shared/HtmlLangSync.tsx` — sync `<html lang>` via useEffect
 
-### Modificados
-- `frontend/i18n/request.ts` — locale dinámico
-- `frontend/app/globals.css` — marketing design tokens
-- `frontend/package.json` — dependencias GSAP
-- `frontend/messages/en.json` — namespaces de marketing (base)
+### Modificados (4)
+- `frontend/i18n/request.ts` — locale dinámico via requestLocale + fallback
+- `frontend/app/globals.css` — marketing design tokens (light + dark)
+- `frontend/messages/en.json` — namespace `marketing` agregado
+- `frontend/components/providers/AuthProvider.tsx` — rutas marketing como públicas
+
+### No creados (diferidos)
+- `frontend/src/domains/marketing/content/agents.ts` — diferido a LP-004
+- `robots.txt` / `sitemap.xml` — diferidos, baja prioridad
+
+---
+
+## 8. Notas de Implementación
+
+### Descubrimientos Arquitectónicos
+
+**Next.js App Router: un solo root layout con `<html>`/`<body>`**
+El diseño original (ADR-001) asumía que el marketing layout podía ser un document shell independiente con su propio `<html>` y `<body>`. Esto es **incorrecto** — Next.js requiere un único root layout con tags de documento. Los route groups (`(marketing)`) crean layouts *nested*, no *standalone*. Solución: marketing layout es un fragment wrapper; `HtmlLangSync` client component sincroniza `<html lang>` via useEffect.
+
+**AuthProvider bloquea rutas marketing**
+El `AuthProvider` del root layout redirige a `/login` cualquier ruta que no esté en `PUBLIC_ROUTES`. Las rutas `/en/`, `/es/`, `/da/` no estaban incluidas. Solución: regex `MARKETING_LOCALE_PREFIX` agregada al check de rutas públicas.
+
+**next-intl v4 requiere `createNavigation`**
+Para navegación client-side typed (useRouter, usePathname), next-intl v4 requiere crear helpers via `createNavigation(routing)`. No existía en el PRD original. Se creó `i18n/navigation.ts`.
+
+**GSAP: registro mínimo de plugins**
+Solo se registran `useGSAP` y `ScrollTrigger` (necesarios para LP-003+). Los plugins premium (SplitText, ScrollSmoother, DrawSVG, MorphSVG, MotionPath) se difieren a LP-006 cuando se usen, manteniendo el bundle más pequeño.
+
+### Items Diferidos (Decisión Consciente)
+| Item | Razón | Cuándo |
+|------|-------|--------|
+| `--marketing-font-display` token | No requerido por spec; decidir con hero design | LP-003 |
+| Split `components/shared/` → `layout/` + `ui/` | 4 componentes no justifican el split | LP-004+ si crece |
+| Tokens en `@theme inline` | `var()` syntax es funcional | Solo si se necesitan utilities Tailwind |
+| Scoping de messages por namespace | Root provider pattern es correcto | No requerido |

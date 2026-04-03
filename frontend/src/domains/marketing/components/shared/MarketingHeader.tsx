@@ -15,7 +15,7 @@ interface MarketingHeaderProps {
 }
 
 export function MarketingHeader({ locale }: MarketingHeaderProps) {
-  const t = useTranslations('marketing.header');
+  const t = useTranslations('Marketing.header');
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 

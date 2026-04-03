@@ -1,24 +1,26 @@
 {
-  "marketing": {
-    "nav": {
-      "features": "Features",
-      "roadmap": "Roadmap",
-      "pricing": "Pricing",
-      "waitlist": "Join Waitlist"
-    },
+  "Marketing": {
     "header": {
-      "cta": "Join Waitlist"
+      "logo": "MyWorkMate",
+      "nav": {
+        "features": "Features",
+        "agents": "Agents",
+        "roadmap": "Roadmap",
+        "pricing": "Pricing",
+        "waitlist": "Get Early Access"
+      },
+      "cta": "Join Waitlist",
+      "languageSwitch": {
+        "en": "English",
+        "es": "Español",
+        "da": "Dansk"
+      }
     },
     "footer": {
-      "tagline": "AI-powered business automation for the Microsoft ecosystem.",
+      "tagline": "AI-Powered Business Automation",
       "privacy": "Privacy Policy",
       "terms": "Terms of Service",
       "copyright": "© {year} MyWorkMate. All rights reserved."
-    },
-    "lang": {
-      "en": "English",
-      "es": "Español",
-      "da": "Dansk"
     }
   },
   "onboarding": {

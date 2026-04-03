@@ -3,7 +3,7 @@ import { ThemeLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
 
 export function MarketingFooter() {
-  const t = useTranslations('marketing.footer');
+  const t = useTranslations('Marketing.footer');
   const year = new Date().getFullYear();
 
   return (

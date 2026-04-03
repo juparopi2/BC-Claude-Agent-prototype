@@ -1,24 +1,26 @@
 {
-  "marketing": {
-    "nav": {
-      "features": "Características",
-      "roadmap": "Hoja de Ruta",
-      "pricing": "Precios",
-      "waitlist": "Unirse a la Lista"
-    },
+  "Marketing": {
     "header": {
-      "cta": "Unirse a la Lista"
+      "logo": "MyWorkMate",
+      "nav": {
+        "features": "Características",
+        "agents": "Agentes",
+        "roadmap": "Hoja de Ruta",
+        "pricing": "Precios",
+        "waitlist": "Acceso Anticipado"
+      },
+      "cta": "Unirse a la Lista",
+      "languageSwitch": {
+        "en": "English",
+        "es": "Español",
+        "da": "Dansk"
+      }
     },
     "footer": {
       "tagline": "Automatización empresarial impulsada por IA para el ecosistema Microsoft.",
       "privacy": "Política de Privacidad",
       "terms": "Términos de Servicio",
       "copyright": "© {year} MyWorkMate. Todos los derechos reservados."
-    },
-    "lang": {
-      "en": "English",
-      "es": "Español",
-      "da": "Dansk"
     }
   }
 }

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
   { key: 'features', href: '#features' },
+  { key: 'agents', href: '#agents' },
   { key: 'roadmap', href: '#roadmap' },
   { key: 'pricing', href: '#pricing' },
   { key: 'waitlist', href: '#waitlist' },
@@ -16,7 +17,7 @@ interface MarketingNavProps {
 }
 
 export function MarketingNav({ orientation = 'horizontal', onItemClick }: MarketingNavProps) {
-  const t = useTranslations('marketing.nav');
+  const t = useTranslations('Marketing.header.nav');
 
   function handleClick(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
     e.preventDefault();

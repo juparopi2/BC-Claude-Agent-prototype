@@ -1,24 +1,26 @@
 {
-  "marketing": {
-    "nav": {
-      "features": "Funktioner",
-      "roadmap": "Køreplan",
-      "pricing": "Priser",
-      "waitlist": "Tilmeld dig"
-    },
+  "Marketing": {
     "header": {
-      "cta": "Tilmeld dig"
+      "logo": "MyWorkMate",
+      "nav": {
+        "features": "Funktioner",
+        "agents": "Agenter",
+        "roadmap": "Køreplan",
+        "pricing": "Priser",
+        "waitlist": "Tidlig Adgang"
+      },
+      "cta": "Tilmeld dig",
+      "languageSwitch": {
+        "en": "English",
+        "es": "Español",
+        "da": "Dansk"
+      }
     },
     "footer": {
       "tagline": "AI-drevet forretningsautomatisering til Microsoft-økosystemet.",
       "privacy": "Privatlivspolitik",
       "terms": "Servicevilkår",
       "copyright": "© {year} MyWorkMate. Alle rettigheder forbeholdes."
-    },
-    "lang": {
-      "en": "English",
-      "es": "Español",
-      "da": "Dansk"
     }
   }
 }

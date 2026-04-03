@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import {
   gsap,
   useGSAP,
-  ScrollTrigger,
   SplitText,
 } from '@/src/domains/marketing/hooks/useScrollAnimation';
 import { ROADMAP_ITEMS } from '@/src/domains/marketing/content';

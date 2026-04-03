@@ -40,7 +40,7 @@ export function HeroSection() {
       // 3. Create SplitText on the headline h1
       const split = new SplitText('.hero-headline', {
         type: 'words',
-        wordsClass: 'hero-headline-word inline-block overflow-hidden',
+        wordsClass: 'hero-headline-word inline-block overflow-hidden pb-[0.15em]',
       });
 
       // 4. Set initial state for split words
@@ -104,7 +104,7 @@ export function HeroSection() {
     <section
       id="hero"
       ref={containerRef}
-      className="hero-section relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 pt-20 sm:px-6 lg:px-8"
+      className="hero-section relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 pt-20 sm:px-6 lg:px-8 pb-20 "
     >
       <HeroBackground />
       <div className="relative z-10 mx-auto flex max-w-[var(--marketing-container-max-width)] flex-col items-center gap-6 text-center">

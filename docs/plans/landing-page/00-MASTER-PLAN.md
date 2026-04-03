@@ -99,7 +99,7 @@ Usado como **referencia e inspiración**, no copy-paste. Estudiamos sus patterns
 | PRD | Nombre | Deps | Estado |
 |---|---|---|---|
 | [PRD-LP-003](./PRD-LP-003-hero-section.md) | Hero Section | LP-001, LP-002 | ✅ 2026-04-03 |
-| [PRD-LP-004](./PRD-LP-004-features-agents.md) | Features & Agents | LP-002 | |
+| [PRD-LP-004](./PRD-LP-004-features-agents.md) | Features & Agents | LP-001, LP-002 | ✅ 2026-04-03 |
 | [PRD-LP-005](./PRD-LP-005-roadmap-waitlist.md) | Roadmap + Waitlist | LP-002 | |
 
 ### Fase 2: Polish & Enhancement
@@ -380,6 +380,48 @@ Extraídos de las decisiones tomadas durante la planificación. Estos principios
 - LP-007b: Pricing features NO están en JSON — importar `PLAN_FEATURES` de `marketing/content`
 - LP-010: Reemplazar strings con `[ES]`/`[DA]` prefix por traducciones reales
 
+### LP-004 (2026-04-03)
+
+**Correcciones al plan original:**
+
+1. **Bento grid en vez de highlighted+grid**: El PRD proponía 2 agent cards full-width + 3 en grid. El owner prefirió un bento grid asimétrico: Orchestrator (2 cols, 2 rows), KB y DataViz (1x1 cada uno), BC Expert (1x1), Research (2 cols). Más visualmente interesante.
+
+2. **Coming Soon removido**: El PRD incluía badges "Coming Soon" en permissions y GDPR. El owner decidió presentar todas las features como habilitadas — es la promesa de lanzamiento.
+
+3. **SplitText en todas las secciones**: El PRD original solo usaba SplitText en el hero. Se unificó el patrón: FeaturesSection, AgentsSection, y SecuritySection ahora usan SplitText para títulos con la misma animación.
+
+4. **Descender clipping fix**: SplitText envuelve palabras en `overflow-hidden`, lo cual corta descenders (g, y, p). Se agregó `pb-[0.15em]` a las word classes en HeroSection, FeaturesSection, AgentsSection y SecuritySection.
+
+5. **"Charts on Demand"**: El highlight de Data Visualization cambió de "10 Chart Types" a "Charts on Demand" por decisión del owner.
+
+6. **Container-presentational pattern**: Los componentes leaf (FeatureCard, AgentCard, SecurityBadge) son presentacionales puros — no usan `useTranslations`. Los containers resuelven las props y las pasan. Esto facilita testing y reutilización.
+
+7. **GSAP hover listeners con cleanup**: Los event listeners de hover en AgentsSection se registran en el scope de `useGSAP` y se limpian explícitamente en el return del cleanup.
+
+**Archivos creados:**
+- `frontend/src/domains/marketing/components/features/ComingSoonBadge.tsx` — CSS @keyframes pulse
+- `frontend/src/domains/marketing/components/features/FeatureCard.tsx` — Lucide icon, CSS hover
+- `frontend/src/domains/marketing/components/features/AgentCard.tsx` — color accent, bento-ready h-full
+- `frontend/src/domains/marketing/components/features/SecurityBadge.tsx` — shield icon, ComingSoon conditional
+- `frontend/src/domains/marketing/components/features/SecuritySection.tsx` — own useGSAP, SplitText, 3-col grid
+- `frontend/src/domains/marketing/components/features/FeaturesSection.tsx` — SplitText, 6-card grid, renders SecuritySection
+- `frontend/src/domains/marketing/components/features/AgentsSection.tsx` — bento grid, GSAP hover glows, SplitText
+
+**Archivos modificados:**
+- `frontend/app/[locale]/(marketing)/page.tsx` — stubs reemplazados por componentes reales
+- `frontend/app/globals.css` — `@keyframes coming-soon-pulse`
+- `frontend/src/domains/marketing/content/marketing-flags.ts` — `COMING_SOON_FEATURES = {}`
+- `frontend/src/domains/marketing/components/hero/HeroSection.tsx` — `pb-[0.15em]` fix
+- `frontend/messages/en.json` — "Charts on Demand"
+- `frontend/messages/es.json` — "[ES] Charts on Demand"
+- `frontend/messages/da.json` — "[DA] Charts on Demand"
+
+**Impacto en PRDs futuros:**
+- LP-005: Seguir el mismo patrón de animaciones (SplitText title, fade-up stagger, ScrollTrigger once:true)
+- LP-006: ScrollSmoother se activa sin cambios — las secciones ya tienen IDs y están dentro de `#smooth-content`
+- LP-007: Las secciones de agentes tienen `id="agents"` para chameleon color sync
+- LP-007b: ComingSoonBadge reutilizable si se necesita en pricing
+
 ### lp-foundation-gaps batch (2026-04-03)
 
 Batch de corrección que resolvió 13 gaps huérfanos identificados en la auditoría post LP-001/LP-002/LP-003.
@@ -464,7 +506,7 @@ LP-007 estimaba ~50MB para 150 frames. Cada frame decodificado a 1920x1080 RGBA 
 | Gap | Severidad | Dueño | Notas |
 |---|---|---|---|
 | **OG image** | Media | Owner (asset) + LP-003 addendum | Requiere imagen 1200×630. Metadata ya soporta `openGraph.image` cuando se provea |
-| **Section IDs para chameleon sync** | Baja | LP-004 | Cada feature/agent section debe tener `id`. El stub de `#agents` ya existe |
+| **Section IDs para chameleon sync** | Baja | ✅ LP-004 | `id="features"` y `id="agents"` con `aria-label` en secciones reales |
 | **DrawSVG checkmark en waitlist** | Baja | LP-006 | Animación de polish |
 | **Lighthouse 90+** | Media | Post-LP-006 | Medición transversal, no un PRD específico. Medir después de Fase 2 |
 | **Legal page content** | Baja | Owner | Placeholders listos, contenido real cuando el owner lo provea |
@@ -516,6 +558,10 @@ Tareas que SOLO el owner puede completar, organizadas por cuándo se necesitan:
 | D11 | Timeline vertical para roadmap (no bento grid) | LP-005 2.2 | LP-005 |
 | D12 | Naming PRD-LP-NNN | Conversación | Todos |
 | D13 | LP-001 + LP-002 en paralelo, luego secuencial | Conversación | Ejecución |
+| D14 | Agents en bento grid (no highlighted+grid) | LP-004 implementación | LP-004 |
+| D15 | Coming Soon badges removidos de security (permissions, gdpr habilitados) | LP-004 owner decision | LP-004 |
+| D16 | Agent colors via inline styles desde `AGENT_COLOR`, no CSS custom properties | LP-004 design | LP-004 |
+| D17 | Animaciones consistentes: SplitText + fade-up stagger en todas las secciones | LP-004 owner decision | LP-004+ |
 
 ### 10.5 Decisiones Pendientes (Requieren Input del Owner)
 

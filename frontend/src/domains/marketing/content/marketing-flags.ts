@@ -7,10 +7,7 @@
 export type RoadmapStatus = 'live' | 'beta' | 'development' | 'planned';
 
 /** Security items that show a "Coming Soon" badge */
-export const COMING_SOON_FEATURES = {
-  permissions: true,
-  gdpr: true,
-} as const;
+export const COMING_SOON_FEATURES = {} as const;
 
 /** Whether the pricing section is visible (hidden until prices are confirmed) */
 export const PRICING_VISIBLE = false;

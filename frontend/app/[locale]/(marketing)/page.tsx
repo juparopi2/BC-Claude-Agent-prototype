@@ -1,5 +1,7 @@
 import { setRequestLocale, getTranslations } from 'next-intl/server';
 import { HeroSection } from '@/src/domains/marketing/components/hero/HeroSection';
+import { FeaturesSection } from '@/src/domains/marketing/components/features/FeaturesSection';
+import { AgentsSection } from '@/src/domains/marketing/components/features/AgentsSection';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.myworkmate.ai';
 
@@ -36,13 +38,9 @@ export default async function LandingPage({
 
       <HeroSection />
 
-      <section id="features" className="py-[var(--marketing-section-gap-lg)]">
-        <p className="text-center text-muted-foreground">Features — PRD-LP-004</p>
-      </section>
+      <FeaturesSection />
 
-      <section id="agents" className="py-[var(--marketing-section-gap)]">
-        <p className="text-center text-muted-foreground">Agents — PRD-LP-004</p>
-      </section>
+      <AgentsSection />
 
       <section id="roadmap" className="py-[var(--marketing-section-gap)]">
         <p className="text-center text-muted-foreground">Roadmap — PRD-LP-005</p>

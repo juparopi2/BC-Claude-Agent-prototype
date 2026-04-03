@@ -178,6 +178,12 @@
   }
 }
 
+/* Coming Soon badge pulse for marketing */
+@keyframes coming-soon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* Upload progress pulse animation */
 @keyframes pulse-text {
   0%, 100% {

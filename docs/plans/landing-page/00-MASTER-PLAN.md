@@ -380,6 +380,31 @@ Extraídos de las decisiones tomadas durante la planificación. Estos principios
 - LP-007b: Pricing features NO están en JSON — importar `PLAN_FEATURES` de `marketing/content`
 - LP-010: Reemplazar strings con `[ES]`/`[DA]` prefix por traducciones reales
 
+### lp-foundation-gaps batch (2026-04-03)
+
+Batch de corrección que resolvió 13 gaps huérfanos identificados en la auditoría post LP-001/LP-002/LP-003.
+
+**Archivos creados:**
+- `frontend/app/robots.ts` — robots.txt generation
+- `frontend/app/sitemap.ts` — sitemap.xml con hreflang para 3 locales + legal pages
+- `frontend/src/domains/marketing/content/agents.ts` — re-exports de `@bc-agent/shared`
+- `frontend/app/[locale]/(marketing)/privacy/page.tsx` — placeholder
+- `frontend/app/[locale]/(marketing)/terms/page.tsx` — placeholder
+
+**Archivos modificados:**
+- `frontend/app/[locale]/(marketing)/layout.tsx` — metadata completa (og:url, og:locale, Twitter Cards, canonical, JSON-LD Organization)
+- `frontend/app/[locale]/(marketing)/page.tsx` — JSON-LD SoftwareApplication, #agents stub section
+- `frontend/src/domains/marketing/components/shared/MarketingFooter.tsx` — `Link` de next-intl en vez de `<a href="#">`
+- `frontend/src/domains/marketing/content/index.ts` — barrel export de agents
+- `frontend/messages/en.json` — `Marketing.legal` namespace
+- `frontend/messages/es.json` — `Marketing.legal` namespace con `[ES]` prefix
+- `frontend/messages/da.json` — `Marketing.legal` namespace con `[DA]` prefix
+
+**Impacto en PRDs futuros:**
+- LP-004: `agents.ts` y `AGENT_I18N_KEY_MAP` listos para consumir. Section `#agents` ya tiene stub.
+- LP-006: JSON-LD no necesita tocarse a menos que se quieran agregar más schemas (BreadcrumbList, etc.)
+- Owner: Proveer OG image (1200×630), contenido legal, y social links cuando estén listos
+
 ---
 
 ## 11. Auditoría de PRDs (2026-04-03)
@@ -414,16 +439,36 @@ LP-006 requiere `<div id="smooth-wrapper"><div id="smooth-content">` en el marke
 #### Canvas memory para chameleon
 LP-007 estimaba ~50MB para 150 frames. Cada frame decodificado a 1920x1080 RGBA = ~8MB. 150 frames = ~1.2GB. **Corrección**: reducir a 60-80 frames con resolución 960x540 (~2MB/frame = ~120-160MB). Sprite sheet como alternativa preferida.
 
-### 10.2 Gaps Identificados (Sin PRD Asignado)
+### 10.2 Gaps Identificados y Resolución
+
+#### Resueltos — lp-foundation-gaps batch (2026-04-03)
 
 | Gap | Severidad | Resolución |
 |---|---|---|
-| **OG image** | Media | Se crea durante LP-003 como parte del hero visual |
-| **robots.txt + sitemap.xml** | Media | Se agregan a LP-001 como entregables adicionales |
-| **Legal pages** (privacy, terms) | Baja | Placeholders en LP-001 footer, contenido provisto por el owner |
-| **`agents.ts` content file** | Baja | LP-001 crea el archivo, LP-004 lo consume. Especificación: re-export + adapt de `@bc-agent/shared` |
-| **Section IDs para chameleon sync** | Baja | LP-004 debe definir `id` en cada feature/agent section. Se agrega como requisito. |
-| **DrawSVG checkmark en waitlist** | Baja | Se mueve a LP-006 scope (es una animación de polish) |
+| **robots.txt** | Media | ✅ Creado `frontend/app/robots.ts` — permite locales, bloquea rutas internas |
+| **sitemap.xml** | Media | ✅ Creado `frontend/app/sitemap.ts` — 3 locales + legal pages con hreflang |
+| **Twitter Cards** | Media | ✅ Agregado `twitter` a `generateMetadata` en layout.tsx |
+| **Canonical link** | Media | ✅ Agregado `alternates.canonical` con URL absoluta por locale |
+| **og:url** | Baja | ✅ Agregado `openGraph.url` con locale |
+| **og:locale** | Baja | ✅ Mapping en→en_US, es→es_ES, da→da_DK |
+| **JSON-LD Organization** | Media | ✅ Script en layout.tsx (schema.org/Organization) |
+| **JSON-LD SoftwareApplication** | Media | ✅ Script en page.tsx con descripción i18n |
+| **Legal pages** (privacy, terms) | Baja | ✅ Rutas placeholder creadas, contenido pendiente del owner |
+| **Footer dead links** | Baja | ✅ `href="#"` → `Link` de next-intl apuntando a `/privacy`, `/terms` |
+| **`agents.ts` content file** | Baja | ✅ Re-exports de `@bc-agent/shared` + `AGENT_I18N_KEY_MAP`. LP-004 lo consume |
+| **#agents section stub** | Baja | ✅ `<section id="agents">` en page.tsx entre features y roadmap |
+| **i18n legal keys** | Baja | ✅ `Marketing.legal.privacy/terms` en en/es/da.json |
+
+#### Pendientes — con dueño asignado
+
+| Gap | Severidad | Dueño | Notas |
+|---|---|---|---|
+| **OG image** | Media | Owner (asset) + LP-003 addendum | Requiere imagen 1200×630. Metadata ya soporta `openGraph.image` cuando se provea |
+| **Section IDs para chameleon sync** | Baja | LP-004 | Cada feature/agent section debe tener `id`. El stub de `#agents` ya existe |
+| **DrawSVG checkmark en waitlist** | Baja | LP-006 | Animación de polish |
+| **Lighthouse 90+** | Media | Post-LP-006 | Medición transversal, no un PRD específico. Medir después de Fase 2 |
+| **Legal page content** | Baja | Owner | Placeholders listos, contenido real cuando el owner lo provea |
+| **Social links (footer)** | Baja | Owner | Footer social section tiene href="#", requiere URLs reales |
 
 ### 10.3 Prerrequisitos del Owner
 

@@ -339,6 +339,16 @@
           }
         }
       }
+    },
+    "legal": {
+      "privacy": {
+        "title": "[ES] Privacy Policy",
+        "placeholder": "[ES] Our privacy policy is being prepared. Check back soon."
+      },
+      "terms": {
+        "title": "[ES] Terms of Service",
+        "placeholder": "[ES] Our terms of service are being prepared. Check back soon."
+      }
     }
   }
 }

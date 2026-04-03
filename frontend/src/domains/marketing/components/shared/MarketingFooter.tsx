@@ -1,4 +1,5 @@
 import { useTranslations } from 'next-intl';
+import { Link } from '@/i18n/navigation';
 import { ThemeLogo } from '@/components/icons';
 import { Separator } from '@/components/ui/separator';
 
@@ -21,12 +22,12 @@ export function MarketingFooter() {
           {/* Legal links */}
           <div className="flex flex-col gap-2">
             <h3 className="text-sm font-semibold text-foreground">{t('sections.legal.title')}</h3>
-            <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/privacy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t('sections.legal.links.privacy')}
-            </a>
-            <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            </Link>
+            <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
               {t('sections.legal.links.terms')}
-            </a>
+            </Link>
           </div>
 
           {/* Social */}

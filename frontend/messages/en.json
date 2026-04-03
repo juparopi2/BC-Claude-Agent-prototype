@@ -339,6 +339,16 @@
           }
         }
       }
+    },
+    "legal": {
+      "privacy": {
+        "title": "Privacy Policy",
+        "placeholder": "Our privacy policy is being prepared. Check back soon."
+      },
+      "terms": {
+        "title": "Terms of Service",
+        "placeholder": "Our terms of service are being prepared. Check back soon."
+      }
     }
   },
   "onboarding": {

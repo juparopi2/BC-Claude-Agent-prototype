@@ -9,20 +9,25 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Globe } from 'lucide-react';
+import { FlagGB, FlagES, FlagDK } from '@/components/icons';
 
-const LOCALE_LABELS: Record<string, { label: string; flag: string }> = {
-  en: { label: 'English', flag: '🇬🇧' },
-  es: { label: 'Español', flag: '🇪🇸' },
-  da: { label: 'Dansk', flag: '🇩🇰' },
+const FLAG_COMPONENTS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
+  en: FlagGB,
+  es: FlagES,
+  da: FlagDK,
+};
+
+const LOCALE_LABELS: Record<string, string> = {
+  en: 'English',
+  es: 'Español',
+  da: 'Dansk',
 };
 
 interface LanguageSwitcherProps {
   currentLocale: string;
-  compact?: boolean;
 }
 
-export function LanguageSwitcher({ currentLocale, compact }: LanguageSwitcherProps) {
+export function LanguageSwitcher({ currentLocale }: LanguageSwitcherProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -30,32 +35,28 @@ export function LanguageSwitcher({ currentLocale, compact }: LanguageSwitcherPro
     router.replace(pathname, { locale: newLocale });
   }
 
-  const current = LOCALE_LABELS[currentLocale] ?? LOCALE_LABELS.en;
+  const CurrentFlag = FLAG_COMPONENTS[currentLocale] ?? FlagGB;
+  const currentLabel = LOCALE_LABELS[currentLocale] ?? 'English';
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size={compact ? 'icon' : 'sm'} className="gap-1.5">
-          {compact ? (
-            <Globe className="h-4 w-4" />
-          ) : (
-            <>
-              <span>{current.flag}</span>
-              <span className="uppercase text-xs font-medium">{currentLocale}</span>
-            </>
-          )}
+        <Button variant="ghost" size="icon">
+          <CurrentFlag className="h-4 w-6 rounded-sm" />
+          <span className="sr-only">{currentLabel}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {routing.locales.map((locale) => {
-          const { label, flag } = LOCALE_LABELS[locale] ?? { label: locale, flag: '' };
+          const Flag = FLAG_COMPONENTS[locale] ?? FlagGB;
+          const label = LOCALE_LABELS[locale] ?? locale;
           return (
             <DropdownMenuItem
               key={locale}
               onClick={() => switchLocale(locale)}
               className={locale === currentLocale ? 'bg-accent' : ''}
             >
-              <span className="mr-2">{flag}</span>
+              <Flag className="mr-2 h-3.5 w-5 rounded-sm" />
               {label}
             </DropdownMenuItem>
           );

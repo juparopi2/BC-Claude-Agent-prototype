@@ -9,6 +9,7 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MarketingNav } from './MarketingNav';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { ThemeToggle } from './ThemeToggle';
 
 interface MarketingHeaderProps {
   locale: string;
@@ -53,6 +54,7 @@ export function MarketingHeader({ locale }: MarketingHeaderProps) {
         {/* Desktop nav */}
         <div className="hidden md:flex md:items-center md:gap-2">
           <MarketingNav />
+          <ThemeToggle />
           <LanguageSwitcher currentLocale={locale} />
           <Button size="sm" onClick={handleCtaClick}>
             {t('cta')}
@@ -61,7 +63,8 @@ export function MarketingHeader({ locale }: MarketingHeaderProps) {
 
         {/* Mobile menu */}
         <div className="flex items-center gap-2 md:hidden">
-          <LanguageSwitcher currentLocale={locale} compact />
+          <ThemeToggle />
+          <LanguageSwitcher currentLocale={locale} />
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon">

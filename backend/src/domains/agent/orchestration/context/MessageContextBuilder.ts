@@ -71,6 +71,8 @@ export interface MessageContextOptions {
   }>;
   /** Enable web search capability — supervisor will be hinted to prefer research-agent */
   enableWebSearch?: boolean;
+  /** Enable Max Mode — supervisor uses Sonnet 4.6 instead of Haiku 4.5 */
+  enableMaxMode?: boolean;
 }
 
 /**
@@ -99,6 +101,7 @@ export interface MessageContextBuildResult {
         thinkingBudget: number;
         targetAgentId?: string;
         enableWebSearch?: boolean;
+        enableMaxMode?: boolean;
         scopeFileIds?: string[];
         /** Pre-built OData scope filter from MentionScopeResolver for RAG tools. */
         scopeFilter?: string;
@@ -247,6 +250,7 @@ export function buildGraphInputs(
         thinkingBudget: options?.thinkingBudget ?? 10000,
         targetAgentId: options?.targetAgentId,
         enableWebSearch: options?.enableWebSearch,
+        enableMaxMode: options?.enableMaxMode,
         scopeFileIds: contextResult.mentionScope?.scopeFileIds,
         // Pass the pre-built OData filter for RAG tools (preferred over raw scopeFileIds)
         scopeFilter: contextResult.mentionScope?.searchFilter ?? undefined,

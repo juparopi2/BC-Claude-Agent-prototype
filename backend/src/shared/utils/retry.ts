@@ -8,6 +8,12 @@
  */
 
 import { logger } from './logger';
+import {
+  RATE_LIMIT_RETRY_DELAY_MS,
+  RATE_LIMIT_MAX_RETRY_DELAY_MS,
+  RATE_LIMIT_MAX_RETRIES,
+} from '@/infrastructure/config/rate-limits';
+import { isRetryableLlmError, classifyLlmError } from '@/shared/errors/LlmErrorClassifier';
 
 /**
  * Retry Options
@@ -33,6 +39,15 @@ export interface RetryOptions {
 
   /** Callback on each retry attempt */
   onRetry?: (attempt: number, error: Error, nextDelay: number) => void;
+
+  /**
+   * Dynamic retry delay override. Called before the standard backoff calculation.
+   * When it returns a number, that delay is used (still subject to maxDelay cap).
+   * When it returns undefined, standard exponential backoff is used.
+   *
+   * Primary use case: Anthropic API retry-after header via LlmErrorClassifier.
+   */
+  getRetryDelay?: (error: Error, attempt: number) => number | undefined;
 }
 
 /**
@@ -52,6 +67,7 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
       nextDelayMs: nextDelay,
     });
   },
+  getRetryDelay: () => undefined,
 };
 
 /**
@@ -113,9 +129,14 @@ export async function retryWithBackoff<T>(
         throw lastError;
       }
 
-      // Calculate next delay with exponential backoff
-      const exponentialDelay = opts.baseDelay * Math.pow(opts.factor, attempt);
-      const cappedDelay = Math.min(exponentialDelay, opts.maxDelay);
+      // Check for dynamic delay override (e.g., API retry-after header)
+      const overrideDelay = opts.getRetryDelay(lastError, attempt);
+
+      // Use override if provided, otherwise exponential backoff
+      const rawDelay = overrideDelay !== undefined
+        ? overrideDelay
+        : opts.baseDelay * Math.pow(opts.factor, attempt);
+      const cappedDelay = Math.min(rawDelay, opts.maxDelay);
 
       // Add jitter to prevent thundering herd
       const jitterAmount = cappedDelay * opts.jitter;
@@ -295,6 +316,50 @@ export const RetryPredicates = {
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// =============================================================================
+// LLM-SPECIFIC RETRY HELPER
+// =============================================================================
+
+/**
+ * Retry wrapper pre-configured for LLM API calls.
+ *
+ * Retries only 429 (RateLimitError) and 529 (overloaded) errors.
+ * Honors the API's retry-after header when available (via LlmErrorClassifier).
+ * Falls back to exponential backoff derived from the rate-limits config.
+ *
+ * @param fn - Async function making the LLM call
+ * @returns Promise resolving to the function's return value
+ * @throws Last error after all retries exhausted, or immediately for non-retryable errors
+ */
+export async function retryLlmCall<T>(fn: () => Promise<T>): Promise<T> {
+
+  const llmLogger = logger.child({ component: 'retryLlmCall' });
+
+  return retryWithBackoff(fn, {
+    maxRetries: RATE_LIMIT_MAX_RETRIES,
+    baseDelay: RATE_LIMIT_RETRY_DELAY_MS,
+    maxDelay: RATE_LIMIT_MAX_RETRY_DELAY_MS,
+    factor: 2,
+    jitter: 0.1,
+    isRetryable: isRetryableLlmError,
+    getRetryDelay: (error: Error) => {
+      const classified = classifyLlmError(error);
+      return classified.retryAfterMs;
+    },
+    onRetry: (attempt, error, nextDelayMs) => {
+      const classified = classifyLlmError(error);
+      llmLogger.warn({
+        attempt,
+        error: error.message,
+        nextDelayMs,
+        classification: classified.retryAfterMs !== undefined
+          ? `retry-after ${classified.retryAfterMs}ms`
+          : 'exponential backoff',
+      }, 'Retrying LLM call');
+    },
+  });
 }
 
 /**

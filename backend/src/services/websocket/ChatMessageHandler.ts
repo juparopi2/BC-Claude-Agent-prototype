@@ -173,6 +173,7 @@ export class ChatMessageHandler {
           targetAgentId: data.targetAgentId,
           mentionedFileIds: data.mentionedFileIds,
           enableWebSearch: data.enableWebSearch,
+          enableMaxMode: data.enableMaxMode,
           mentions: data.mentions,
         }
       );

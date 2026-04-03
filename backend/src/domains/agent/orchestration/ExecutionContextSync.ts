@@ -91,6 +91,14 @@ export interface ExecuteSyncOptions {
   enableWebSearch?: boolean;
 
   /**
+   * Enable Max Mode for this message.
+   * When true, the supervisor uses Sonnet 4.6 instead of the default Haiku 4.5.
+   * Resets after every send — this is a per-message option.
+   * @default false
+   */
+  enableMaxMode?: boolean;
+
+  /**
    * Full mention metadata for persistence.
    * Stored in user message metadata JSON for reconstruction.
    */

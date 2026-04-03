@@ -27,6 +27,8 @@ export interface SendMessageOptions {
   mentionedFileIds?: string[];
   /** Enable web search for real-time web information */
   enableWebSearch?: boolean;
+  /** Enable Max Mode — supervisor uses Sonnet 4.6 for this message */
+  enableMaxMode?: boolean;
 }
 
 /**
@@ -114,6 +116,7 @@ export function useSendMessage(sessionId: string): UseSendMessageReturn {
         enableAutoSemanticSearch: options?.enableAutoSemanticSearch,
         mentionedFileIds: options?.mentionedFileIds,
         enableWebSearch: options?.enableWebSearch,
+        enableMaxMode: options?.enableMaxMode,
       });
     },
     [socketSendMessage]

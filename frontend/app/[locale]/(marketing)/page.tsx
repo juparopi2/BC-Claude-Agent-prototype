@@ -4,6 +4,7 @@ import { FeaturesSection } from '@/src/domains/marketing/components/features/Fea
 import { AgentsSection } from '@/src/domains/marketing/components/features/AgentsSection';
 import { RoadmapSection } from '@/src/domains/marketing/components/roadmap/RoadmapSection';
 import { WaitlistSection } from '@/src/domains/marketing/components/waitlist/WaitlistSection';
+import { PRICING_VISIBLE } from '@/src/domains/marketing/content';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.myworkmate.ai';
 
@@ -46,9 +47,12 @@ export default async function LandingPage({
 
       <RoadmapSection />
 
-      <section id="pricing" className="py-[var(--marketing-section-gap)]">
-        <p className="text-center text-muted-foreground">Pricing — PRD-LP-007b</p>
-      </section>
+      {/* Pricing — PRD-LP-007b (hidden until PRICING_VISIBLE flag is enabled) */}
+      {PRICING_VISIBLE && (
+        <section id="pricing" className="py-[var(--marketing-section-gap)]">
+          <p className="text-center text-muted-foreground">Pricing — PRD-LP-007b</p>
+        </section>
+      )}
 
       <WaitlistSection />
     </div>

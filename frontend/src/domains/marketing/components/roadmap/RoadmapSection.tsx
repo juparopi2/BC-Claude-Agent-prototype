@@ -134,31 +134,36 @@ export function RoadmapSection() {
       id="roadmap"
       ref={containerRef}
       aria-label="Product roadmap"
-      className="py-[var(--marketing-section-gap)] px-4 sm:px-6 lg:px-8"
+      className="px-4 sm:px-6 lg:px-8"
     >
-      <div className="mx-auto max-w-[var(--marketing-container-max-width)]">
-        {/* Header */}
-        <div className="mb-12 text-center">
-          <span className="roadmap-badge inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-4 py-1.5 text-sm font-medium text-foreground">
-            {t('badge')}
-          </span>
-          <h2 className="roadmap-title mt-6 text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
-            {t('title')}
-          </h2>
-          <p className="roadmap-subtitle mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            {t('subtitle')}
-          </p>
+      {/* Sticky header — pins at the top of the viewport while the timeline scrolls beneath it */}
+      <div className="roadmap-sticky-header sticky top-0 z-10 bg-background/95 pb-6 pt-[var(--marketing-section-gap)] backdrop-blur-sm">
+        <div className="mx-auto max-w-[var(--marketing-container-max-width)]">
+          {/* Header */}
+          <div className="mb-8 text-center">
+            <span className="roadmap-badge inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-4 py-1.5 text-sm font-medium text-foreground">
+              {t('badge')}
+            </span>
+            <h2 className="roadmap-title mt-6 text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+              {t('title')}
+            </h2>
+            <p className="roadmap-subtitle mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+              {t('subtitle')}
+            </p>
+          </div>
+
+          {/* Filter */}
+          <RoadmapFilter
+            activeFilter={activeFilter}
+            onFilterChange={handleFilterChange}
+            statusLabels={filterStatusLabels}
+          />
         </div>
+      </div>
 
-        {/* Filter */}
-        <RoadmapFilter
-          activeFilter={activeFilter}
-          onFilterChange={handleFilterChange}
-          statusLabels={filterStatusLabels}
-        />
-
-        {/* Timeline — always receives ALL items; filter controls visibility via GSAP */}
-        <div className="mx-auto max-w-2xl">
+      {/* Timeline — scrolls naturally; sticky header remains visible until section leaves viewport */}
+      <div className="pb-[var(--marketing-section-gap)]">
+        <div className="mx-auto max-w-2xl pt-8">
           <RoadmapTimeline items={resolvedItems} statusLabels={statusLabelsRecord} />
         </div>
       </div>

@@ -1,11 +1,11 @@
 {
   "Marketing": {
     "meta": {
-      "title": "[ES] MyWorkMate — AI-Powered Business Automation",
-      "description": "[ES] Connect intelligent AI agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint. Automate operations, gain insights, and transform how your team works.",
-      "ogTitle": "[ES] MyWorkMate — Your AI Business Command Center",
-      "ogDescription": "[ES] Multi-agent AI platform that connects to your Microsoft ecosystem. Automate ERP queries, analyze documents, visualize data — all through natural conversation.",
-      "keywords": "[ES] AI business assistant, Business Central AI, Dynamics 365 automation, Microsoft AI agent, ERP automation, knowledge base AI, multi-agent orchestration"
+      "title": "MyWorkMate — Automatización Empresarial con IA",
+      "description": "Conecte agentes de IA inteligentes a Microsoft Dynamics 365 Business Central, OneDrive y SharePoint. Automatice operaciones, obtenga información clave y transforme la forma en que trabaja su equipo.",
+      "ogTitle": "MyWorkMate — Su Centro de Comando Empresarial con IA",
+      "ogDescription": "Plataforma multi-agente de IA que se conecta a su ecosistema Microsoft. Automatice consultas ERP, analice documentos y visualice datos — todo mediante conversación natural.",
+      "keywords": "asistente empresarial IA, Business Central AI, automatización Dynamics 365, agente IA Microsoft, automatización ERP, base de conocimiento IA, orquestación multi-agente"
     },
     "header": {
       "logo": "MyWorkMate",
@@ -16,7 +16,7 @@
         "pricing": "Precios",
         "waitlist": "Acceso Anticipado"
       },
-      "cta": "Unirse a la Lista",
+      "cta": "Únase a la Lista de Espera",
       "languageSwitch": {
         "en": "English",
         "es": "Español",
@@ -24,297 +24,297 @@
       }
     },
     "hero": {
-      "badge": "[ES] AI-Powered Business Automation",
-      "title": "[ES] Your Business Runs on Data. Let AI Run With It.",
-      "subtitle": "[ES] MyWorkMate connects intelligent agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint — turning natural conversations into real business actions.",
+      "badge": "Automatización Empresarial con IA",
+      "title": "Su Empresa Vive de los Datos. Deje que la IA Trabaje con Ellos.",
+      "subtitle": "MyWorkMate conecta agentes inteligentes a Microsoft Dynamics 365 Business Central, OneDrive y SharePoint — convirtiendo conversaciones naturales en acciones empresariales reales.",
       "cta": {
-        "primary": "[ES] Get Early Access",
-        "secondary": "[ES] See How It Works"
+        "primary": "Obtenga Acceso Anticipado",
+        "secondary": "Vea Cómo Funciona"
       },
       "stats": {
         "agents": {
           "value": "5",
-          "label": "[ES] Specialized Agents"
+          "label": "Agentes Especializados"
         },
         "integrations": {
           "value": "3+",
-          "label": "[ES] Microsoft Integrations"
+          "label": "Integraciones Microsoft"
         },
         "chartTypes": {
           "value": "10",
-          "label": "[ES] Visualization Types"
+          "label": "Tipos de Visualización"
         }
       },
-      "trustedBy": "[ES] Built for the Microsoft Ecosystem"
+      "trustedBy": "Construido para el Ecosistema Microsoft"
     },
     "features": {
-      "badge": "[ES] Platform Capabilities",
-      "title": "[ES] Everything Your Business Needs, One Conversation Away",
-      "subtitle": "[ES] From ERP queries to document analysis, data visualization to web research — MyWorkMate brings the power of specialized AI agents to your daily operations.",
+      "badge": "Capacidades de la Plataforma",
+      "title": "Todo lo que su Empresa Necesita, a una Conversación de Distancia",
+      "subtitle": "Desde consultas ERP hasta análisis de documentos, visualización de datos e investigación web — MyWorkMate pone el poder de los agentes IA especializados al servicio de sus operaciones diarias.",
       "items": {
         "erp": {
-          "title": "[ES] ERP Intelligence",
-          "description": "[ES] Query customers, vendors, invoices, sales orders, and inventory directly from Business Central. Create and modify records through natural language.",
-          "highlight": "[ES] Read & Write to Dynamics 365"
+          "title": "Inteligencia ERP",
+          "description": "Consulte clientes, proveedores, facturas, pedidos de venta e inventario directamente desde Business Central. Cree y modifique registros mediante lenguaje natural.",
+          "highlight": "Lectura y Escritura en Dynamics 365"
         },
         "knowledge": {
-          "title": "[ES] Knowledge Base",
-          "description": "[ES] Upload documents and let AI understand them. Semantic search finds answers across your entire document library — PDFs, spreadsheets, presentations.",
-          "highlight": "[ES] Semantic Search with RAG"
+          "title": "Base de Conocimiento",
+          "description": "Suba documentos y deje que la IA los comprenda. La búsqueda semántica encuentra respuestas en toda su biblioteca — PDFs, hojas de cálculo, presentaciones.",
+          "highlight": "Búsqueda Semántica con RAG"
         },
         "orchestration": {
-          "title": "[ES] Smart Orchestration",
-          "description": "[ES] Ask anything. The Orchestrator automatically routes your question to the right specialist agent, combining their capabilities when needed.",
-          "highlight": "[ES] Multi-Agent Routing"
+          "title": "Orquestación Inteligente",
+          "description": "Pregunte lo que necesite. El Orquestador dirige automáticamente su consulta al agente especialista adecuado, combinando capacidades cuando es necesario.",
+          "highlight": "Enrutamiento Multi-Agente"
         },
         "visualization": {
-          "title": "[ES] Data Visualization",
-          "description": "[ES] Transform raw data into clear insights. Bar charts, line graphs, KPI dashboards, combo charts — generated from your data in seconds.",
-          "highlight": "[ES] Charts on Demand"
+          "title": "Visualización de Datos",
+          "description": "Transforme datos en bruto en información clara. Gráficos de barras, líneas, paneles KPI, gráficos combinados — generados desde sus datos en segundos.",
+          "highlight": "Gráficos bajo Demanda"
         },
         "research": {
-          "title": "[ES] Research & Analysis",
-          "description": "[ES] Real-time web search, data analysis with Python execution, and document generation. Your personal research assistant for complex questions.",
-          "highlight": "[ES] Web + Code Execution"
+          "title": "Investigación y Análisis",
+          "description": "Búsqueda web en tiempo real, análisis de datos con ejecución de Python y generación de documentos. Su asistente de investigación personal para preguntas complejas.",
+          "highlight": "Web + Ejecución de Código"
         },
         "files": {
-          "title": "[ES] Cloud File Sync",
-          "description": "[ES] Connect OneDrive and SharePoint libraries. Your cloud documents become instantly searchable and available to AI agents.",
-          "highlight": "[ES] OneDrive & SharePoint"
+          "title": "Sincronización de Archivos en la Nube",
+          "description": "Conecte bibliotecas de OneDrive y SharePoint. Sus documentos en la nube se vuelven inmediatamente buscables y disponibles para los agentes IA.",
+          "highlight": "OneDrive y SharePoint"
         }
       }
     },
     "agents": {
-      "badge": "[ES] Meet Your AI Team",
-      "title": "[ES] Specialized Agents That Work Together",
-      "subtitle": "[ES] Each agent is an expert in its domain. The Orchestrator coordinates them seamlessly, so you just ask — and the right expert answers.",
+      "badge": "Conozca su Equipo de IA",
+      "title": "Agentes Especializados que Trabajan Juntos",
+      "subtitle": "Cada agente es experto en su dominio. El Orquestador los coordina sin fricciones — usted pregunta y el experto correcto responde.",
       "items": {
         "supervisor": {
-          "name": "[ES] Orchestrator",
-          "role": "[ES] Routes & Coordinates",
-          "description": "[ES] Analyzes your question and automatically selects the best specialist. Combines multiple agents when complex tasks require it."
+          "name": "Orquestador",
+          "role": "Enruta y Coordina",
+          "description": "Analiza su pregunta y selecciona automáticamente al mejor especialista. Combina múltiples agentes cuando las tareas complejas lo requieren."
         },
         "bcAgent": {
-          "name": "[ES] Business Central Expert",
-          "role": "[ES] ERP Operations",
-          "description": "[ES] Direct access to Dynamics 365 Business Central. Query financial data, manage inventory, process sales orders — all through conversation."
+          "name": "Experto en Business Central",
+          "role": "Operaciones ERP",
+          "description": "Acceso directo a Dynamics 365 Business Central. Consulte datos financieros, gestione inventario y procese pedidos de venta — todo mediante conversación."
         },
         "ragAgent": {
-          "name": "[ES] Knowledge Base Expert",
-          "role": "[ES] Document Intelligence",
-          "description": "[ES] Searches your uploaded documents using semantic understanding. Finds precise answers across thousands of pages instantly."
+          "name": "Experto en Base de Conocimiento",
+          "role": "Inteligencia Documental",
+          "description": "Busca en sus documentos cargados con comprensión semántica. Encuentra respuestas precisas entre miles de páginas al instante."
         },
         "graphingAgent": {
-          "name": "[ES] Data Visualization Expert",
-          "role": "[ES] Charts & Insights",
-          "description": "[ES] Transforms numbers into visual stories. From simple bar charts to complex KPI dashboards — all generated from your data."
+          "name": "Experto en Visualización de Datos",
+          "role": "Gráficos e Insights",
+          "description": "Transforma números en historias visuales. Desde gráficos de barras simples hasta paneles KPI complejos — todo generado desde sus datos."
         },
         "researchAgent": {
-          "name": "[ES] Research & Analysis",
-          "role": "[ES] Web Research & Code",
-          "description": "[ES] Searches the web, analyzes data with Python, and generates comprehensive reports. Your research team, available 24/7."
+          "name": "Investigación y Análisis",
+          "role": "Investigación Web y Código",
+          "description": "Busca en la web, analiza datos con Python y genera informes completos. Su equipo de investigación disponible las 24 horas, los 7 días."
         }
       },
-      "cta": "[ES] See All Agents in Action"
+      "cta": "Ver Todos los Agentes en Acción"
     },
     "roadmap": {
-      "badge": "[ES] What's Coming",
-      "title": "[ES] We're Just Getting Started",
-      "subtitle": "[ES] MyWorkMate is evolving fast. Here's what's live today and what's on the horizon.",
+      "badge": "Lo que Viene",
+      "title": "Apenas Estamos Comenzando",
+      "subtitle": "MyWorkMate evoluciona rápidamente. Esto es lo que está activo hoy y lo que está en el horizonte.",
       "statusLabels": {
-        "all": "[ES] All",
-        "live": "[ES] Live",
-        "beta": "[ES] Beta",
-        "development": "[ES] In Development",
-        "planned": "[ES] Planned"
+        "all": "Todos",
+        "live": "Activo",
+        "beta": "Beta",
+        "development": "En Desarrollo",
+        "planned": "Planificado"
       },
       "items": {
         "multiAgent": {
-          "title": "[ES] Multi-Agent Orchestration",
-          "description": "[ES] Supervisor routes to 5 specialized agents automatically",
+          "title": "Orquestación Multi-Agente",
+          "description": "El supervisor enruta a 5 agentes especializados automáticamente",
           "status": "live"
         },
         "bcIntegration": {
-          "title": "[ES] Business Central Integration",
-          "description": "[ES] Full read & write access to Dynamics 365 Business Central",
+          "title": "Integración con Business Central",
+          "description": "Acceso completo de lectura y escritura a Dynamics 365 Business Central",
           "status": "live"
         },
         "knowledgeBase": {
-          "title": "[ES] Knowledge Base (RAG)",
-          "description": "[ES] Upload, search, and analyze documents with AI",
+          "title": "Base de Conocimiento (RAG)",
+          "description": "Cargue, busque y analice documentos con IA",
           "status": "live"
         },
         "dataViz": {
-          "title": "[ES] Data Visualization",
-          "description": "[ES] 10 chart types generated from structured data",
+          "title": "Visualización de Datos",
+          "description": "10 tipos de gráficos generados desde datos estructurados",
           "status": "live"
         },
         "cloudSync": {
-          "title": "[ES] OneDrive & SharePoint Sync",
-          "description": "[ES] Connect cloud libraries for seamless document access",
+          "title": "Sincronización con OneDrive y SharePoint",
+          "description": "Conecte bibliotecas en la nube para acceso fluido a documentos",
           "status": "live"
         },
         "webResearch": {
-          "title": "[ES] Web Research & Code Execution",
-          "description": "[ES] Real-time web search and Python sandbox",
+          "title": "Investigación Web y Ejecución de Código",
+          "description": "Búsqueda web en tiempo real y sandbox de Python",
           "status": "live"
         },
         "mobileApp": {
-          "title": "[ES] Mobile Application",
-          "description": "[ES] Full MyWorkMate experience on your phone",
+          "title": "Aplicación Móvil",
+          "description": "La experiencia completa de MyWorkMate en su teléfono",
           "status": "planned"
         },
         "granularPermissions": {
-          "title": "[ES] Granular Permissions",
-          "description": "[ES] Always-allow vs require-approval per action",
+          "title": "Permisos Granulares",
+          "description": "Permiso permanente o aprobación requerida por acción",
           "status": "development"
         },
         "agentMemory": {
-          "title": "[ES] Persistent Memory",
-          "description": "[ES] Agents remember context across conversations",
+          "title": "Memoria Persistente",
+          "description": "Los agentes recuerdan el contexto entre conversaciones",
           "status": "development"
         },
         "parallelAgents": {
-          "title": "[ES] Parallel Agent Execution",
-          "description": "[ES] Multiple agents working simultaneously on complex tasks",
+          "title": "Ejecución Paralela de Agentes",
+          "description": "Múltiples agentes trabajando simultáneamente en tareas complejas",
           "status": "planned"
         },
         "workflows": {
-          "title": "[ES] Automated Workflows",
-          "description": "[ES] Create repeatable tasks triggered by events or commands",
+          "title": "Flujos de Trabajo Automatizados",
+          "description": "Cree tareas repetibles activadas por eventos o comandos",
           "status": "planned"
         },
         "customAgents": {
-          "title": "[ES] Custom Agent Builder",
-          "description": "[ES] Create your own agents with custom skills and MCP tools",
+          "title": "Constructor de Agentes Personalizados",
+          "description": "Cree sus propios agentes con habilidades y herramientas MCP personalizadas",
           "status": "planned"
         },
         "environments": {
-          "title": "[ES] Organization Environments",
-          "description": "[ES] Team management, billing controls, and usage tracking",
+          "title": "Entornos Organizacionales",
+          "description": "Gestión de equipos, controles de facturación y seguimiento de uso",
           "status": "planned"
         },
         "deepResearch": {
-          "title": "[ES] Deep Research Mode",
-          "description": "[ES] Autonomous multi-step research with source synthesis",
+          "title": "Modo de Investigación Profunda",
+          "description": "Investigación autónoma multi-paso con síntesis de fuentes",
           "status": "planned"
         }
       }
     },
     "waitlist": {
-      "badge": "[ES] Early Access",
-      "title": "[ES] Be First to Experience the Future of Business AI",
-      "subtitle": "[ES] Join the waitlist for priority access. We'll notify you as new features launch and you'll get exclusive early-bird pricing.",
+      "badge": "Acceso Anticipado",
+      "title": "Sea el Primero en Experimentar el Futuro de la IA Empresarial",
+      "subtitle": "Únase a la lista de espera para acceso prioritario. Le notificaremos cuando se lancen nuevas funciones y recibirá precios exclusivos para los primeros usuarios.",
       "form": {
-        "emailPlaceholder": "[ES] your@email.com",
-        "submit": "[ES] Join the Waitlist",
-        "submitting": "[ES] Joining...",
+        "emailPlaceholder": "su@email.com",
+        "submit": "Únase a la Lista de Espera",
+        "submitting": "Uniéndose...",
         "success": {
-          "title": "[ES] You're on the list!",
-          "message": "[ES] We'll reach out soon with updates and early access details."
+          "title": "¡Está en la lista!",
+          "message": "Pronto nos pondremos en contacto con actualizaciones y detalles de acceso anticipado."
         },
         "error": {
-          "title": "[ES] Something went wrong",
-          "message": "[ES] Please try again later. We're working on it.",
-          "unimplemented": "[ES] Waitlist service is being set up. Check back soon!"
+          "title": "Algo salió mal",
+          "message": "Por favor, inténtelo de nuevo más tarde. Estamos trabajando en ello.",
+          "unimplemented": "El servicio de lista de espera está siendo configurado. ¡Vuelva pronto!"
         }
       },
       "benefits": {
-        "earlyAccess": "[ES] Priority access to new features",
-        "pricing": "[ES] Exclusive early-bird pricing",
-        "updates": "[ES] Regular development updates",
-        "feedback": "[ES] Shape the product with your feedback"
+        "earlyAccess": "Acceso prioritario a nuevas funciones",
+        "pricing": "Precios exclusivos para los primeros usuarios",
+        "updates": "Actualizaciones regulares de desarrollo",
+        "feedback": "Dé forma al producto con su opinión"
       },
-      "count": "[ES] Join {count}+ others on the waitlist"
+      "count": "Únase a {count}+ personas en la lista de espera"
     },
     "pricing": {
-      "badge": "[ES] Simple Pricing",
-      "title": "[ES] Plans That Scale With Your Business",
-      "subtitle": "[ES] Start free. Upgrade when you need more power.",
+      "badge": "Precios Simples",
+      "title": "Planes que Crecen con su Empresa",
+      "subtitle": "Comience gratis. Amplíe cuando necesite más potencia.",
       "toggle": {
-        "monthly": "[ES] Monthly",
-        "annual": "[ES] Annual",
-        "annualDiscount": "[ES] Save 20%"
+        "monthly": "Mensual",
+        "annual": "Anual",
+        "annualDiscount": "Ahorre 20%"
       },
       "plans": {
         "free": {
-          "name": "[ES] Free",
+          "name": "Gratuito",
           "price": "$0",
-          "period": "[ES] /month",
-          "description": "[ES] Explore and test the platform",
-          "cta": "[ES] Get Started Free"
+          "period": "/mes",
+          "description": "Explore y pruebe la plataforma",
+          "cta": "Comience Gratis"
         },
         "starter": {
-          "name": "[ES] Starter",
+          "name": "Inicial",
           "price": "$25",
-          "period": "[ES] /month",
-          "description": "[ES] For regular users and small teams",
-          "cta": "[ES] Join Waitlist — Starter"
+          "period": "/mes",
+          "description": "Para usuarios regulares y equipos pequeños",
+          "cta": "Únase a la Lista — Inicial"
         },
         "professional": {
-          "name": "[ES] Professional",
+          "name": "Profesional",
           "price": "$199",
-          "period": "[ES] /month",
-          "description": "[ES] For power users and growing businesses",
-          "cta": "[ES] Join Waitlist — Professional"
+          "period": "/mes",
+          "description": "Para usuarios avanzados y empresas en crecimiento",
+          "cta": "Únase a la Lista — Profesional"
         }
       },
       "faq": {
-        "title": "[ES] Frequently Asked Questions",
+        "title": "Preguntas Frecuentes",
         "items": {
           "trial": {
-            "question": "[ES] Is there a free trial for paid plans?",
-            "answer": "[ES] Yes, all paid plans include a 14-day free trial. No credit card required."
+            "question": "¿Existe un período de prueba gratuito para los planes de pago?",
+            "answer": "Sí, todos los planes de pago incluyen 14 días de prueba gratuita. No se requiere tarjeta de crédito."
           },
           "cancel": {
-            "question": "[ES] Can I cancel anytime?",
-            "answer": "[ES] Absolutely. Cancel anytime with no fees. Your data remains accessible for 30 days after cancellation."
+            "question": "¿Puedo cancelar en cualquier momento?",
+            "answer": "Por supuesto. Cancele cuando quiera sin cargos adicionales. Sus datos permanecen accesibles durante 30 días tras la cancelación."
           },
           "enterprise": {
-            "question": "[ES] Do you offer enterprise plans?",
-            "answer": "[ES] Yes. Contact us for custom pricing, dedicated support, and on-premise deployment options."
+            "question": "¿Ofrecen planes empresariales?",
+            "answer": "Sí. Contáctenos para precios personalizados, soporte dedicado y opciones de despliegue en sus instalaciones."
           }
         }
       }
     },
     "security": {
-      "badge": "[ES] Enterprise-Ready Security",
-      "title": "[ES] Built for Businesses That Take Security Seriously",
-      "subtitle": "[ES] Your data stays yours. Every interaction is secured, every action is auditable, every access is controlled.",
+      "badge": "Seguridad para Empresas",
+      "title": "Construido para Empresas que Toman la Seguridad en Serio",
+      "subtitle": "Sus datos son suyos. Cada interacción está protegida, cada acción es auditable, cada acceso está controlado.",
       "items": {
         "encryption": {
-          "title": "[ES] Encrypted at Rest & Transit",
-          "description": "[ES] AES-256-GCM encryption for stored tokens. TLS for all communications."
+          "title": "Cifrado en Reposo y en Tránsito",
+          "description": "Cifrado AES-256-GCM para tokens almacenados. TLS para todas las comunicaciones."
         },
         "tenantIsolation": {
-          "title": "[ES] Tenant Isolation",
-          "description": "[ES] Strict data separation. Your documents, sessions, and AI interactions are invisible to other users."
+          "title": "Aislamiento de Inquilino",
+          "description": "Separación estricta de datos. Sus documentos, sesiones e interacciones con IA son invisibles para otros usuarios."
         },
         "permissions": {
-          "title": "[ES] Granular Permissions",
-          "description": "[ES] Control what agents can do. Some actions always require your approval — you decide which."
+          "title": "Permisos Granulares",
+          "description": "Controle lo que los agentes pueden hacer. Algunas acciones siempre requieren su aprobación — usted decide cuáles."
         },
         "gdpr": {
-          "title": "[ES] GDPR Compliant",
-          "description": "[ES] Full data portability and right to deletion. Cascade delete removes all PII on request."
+          "title": "Conforme con el RGPD",
+          "description": "Portabilidad completa de datos y derecho a la eliminación. La eliminación en cascada borra todos los datos personales bajo petición."
         },
         "audit": {
-          "title": "[ES] Full Audit Trail",
-          "description": "[ES] Every agent action, every tool call, every decision — logged and traceable."
+          "title": "Registro de Auditoría Completo",
+          "description": "Cada acción de agente, cada llamada a herramienta, cada decisión — registrada y trazable."
         },
         "oauth": {
-          "title": "[ES] Microsoft SSO",
-          "description": "[ES] Sign in with your existing Microsoft account. No new passwords to manage."
+          "title": "SSO de Microsoft",
+          "description": "Inicie sesión con su cuenta Microsoft existente. Sin contraseñas nuevas que gestionar."
         }
       }
     },
     "footer": {
       "tagline": "Automatización empresarial impulsada por IA para el ecosistema Microsoft.",
-      "builtWith": "[ES] Built for the Microsoft Ecosystem",
+      "builtWith": "Construido para el Ecosistema Microsoft",
       "copyright": "© {year} MyWorkMate. Todos los derechos reservados.",
       "sections": {
         "product": {
-          "title": "[ES] Product",
+          "title": "Producto",
           "links": {
             "features": "Características",
             "agents": "Agentes",
@@ -323,32 +323,32 @@
           }
         },
         "company": {
-          "title": "[ES] Company",
+          "title": "Empresa",
           "links": {
-            "about": "[ES] About",
-            "blog": "[ES] Blog",
-            "careers": "[ES] Careers",
-            "contact": "[ES] Contact"
+            "about": "Nosotros",
+            "blog": "Blog",
+            "careers": "Empleo",
+            "contact": "Contacto"
           }
         },
         "legal": {
-          "title": "[ES] Legal",
+          "title": "Legal",
           "links": {
             "privacy": "Política de Privacidad",
             "terms": "Términos de Servicio",
-            "gdpr": "[ES] GDPR"
+            "gdpr": "RGPD"
           }
         }
       }
     },
     "legal": {
       "privacy": {
-        "title": "[ES] Privacy Policy",
-        "placeholder": "[ES] Our privacy policy is being prepared. Check back soon."
+        "title": "Política de Privacidad",
+        "placeholder": "Nuestra política de privacidad está siendo elaborada. Vuelva pronto."
       },
       "terms": {
-        "title": "[ES] Terms of Service",
-        "placeholder": "[ES] Our terms of service are being prepared. Check back soon."
+        "title": "Términos de Servicio",
+        "placeholder": "Nuestros términos de servicio están siendo elaborados. Vuelva pronto."
       }
     }
   }

@@ -1,5 +1,12 @@
 {
   "Marketing": {
+    "meta": {
+      "title": "MyWorkMate — AI-Powered Business Automation",
+      "description": "Connect intelligent AI agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint. Automate operations, gain insights, and transform how your team works.",
+      "ogTitle": "MyWorkMate — Your AI Business Command Center",
+      "ogDescription": "Multi-agent AI platform that connects to your Microsoft ecosystem. Automate ERP queries, analyze documents, visualize data — all through natural conversation.",
+      "keywords": "AI business assistant, Business Central AI, Dynamics 365 automation, Microsoft AI agent, ERP automation, knowledge base AI, multi-agent orchestration"
+    },
     "header": {
       "logo": "MyWorkMate",
       "nav": {
@@ -14,6 +21,67 @@
         "en": "English",
         "es": "Español",
         "da": "Dansk"
+      }
+    },
+    "hero": {
+      "badge": "AI-Powered Business Automation",
+      "title": "Your Business Runs on Data. Let AI Run With It.",
+      "subtitle": "MyWorkMate connects intelligent agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint — turning natural conversations into real business actions.",
+      "cta": {
+        "primary": "Get Early Access",
+        "secondary": "See How It Works"
+      },
+      "stats": {
+        "agents": {
+          "value": "5",
+          "label": "Specialized Agents"
+        },
+        "integrations": {
+          "value": "3+",
+          "label": "Microsoft Integrations"
+        },
+        "chartTypes": {
+          "value": "10",
+          "label": "Visualization Types"
+        }
+      },
+      "trustedBy": "Built for the Microsoft Ecosystem"
+    },
+    "features": {
+      "badge": "Platform Capabilities",
+      "title": "Everything Your Business Needs, One Conversation Away",
+      "subtitle": "From ERP queries to document analysis, data visualization to web research — MyWorkMate brings the power of specialized AI agents to your daily operations.",
+      "items": {
+        "erp": {
+          "title": "ERP Intelligence",
+          "description": "Query customers, vendors, invoices, sales orders, and inventory directly from Business Central. Create and modify records through natural language.",
+          "highlight": "Read & Write to Dynamics 365"
+        },
+        "knowledge": {
+          "title": "Knowledge Base",
+          "description": "Upload documents and let AI understand them. Semantic search finds answers across your entire document library — PDFs, spreadsheets, presentations.",
+          "highlight": "Semantic Search with RAG"
+        },
+        "orchestration": {
+          "title": "Smart Orchestration",
+          "description": "Ask anything. The Orchestrator automatically routes your question to the right specialist agent, combining their capabilities when needed.",
+          "highlight": "Multi-Agent Routing"
+        },
+        "visualization": {
+          "title": "Data Visualization",
+          "description": "Transform raw data into clear insights. Bar charts, line graphs, KPI dashboards, combo charts — generated from your data in seconds.",
+          "highlight": "10 Chart Types"
+        },
+        "research": {
+          "title": "Research & Analysis",
+          "description": "Real-time web search, data analysis with Python execution, and document generation. Your personal research assistant for complex questions.",
+          "highlight": "Web + Code Execution"
+        },
+        "files": {
+          "title": "Cloud File Sync",
+          "description": "Connect OneDrive and SharePoint libraries. Your cloud documents become instantly searchable and available to AI agents.",
+          "highlight": "OneDrive & SharePoint"
+        }
       }
     },
     "footer": {

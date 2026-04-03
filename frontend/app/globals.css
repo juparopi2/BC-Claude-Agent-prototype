@@ -100,7 +100,7 @@
   --marketing-glow-green: rgba(34, 197, 94, 0.2);
   --marketing-section-gap: 5rem;
   --marketing-section-gap-lg: 8rem;
-  --marketing-container-max-width: 1280px;
+  --marketing-container-max-width: 1180px;
   --marketing-card-bg: oklch(0.99 0.002 247.858);
   --marketing-card-border: oklch(0.92 0.015 255.508);
   --marketing-hero-size: clamp(2.5rem, 6vw, 5rem);

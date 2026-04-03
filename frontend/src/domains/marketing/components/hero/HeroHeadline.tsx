@@ -8,7 +8,7 @@ interface HeroHeadlineProps {
 export function HeroHeadline({ text }: HeroHeadlineProps) {
   return (
     <h1
-      className="hero-headline font-bold leading-tight tracking-tight text-foreground"
+      className="hero-headline font-bold leading-[1] tracking-tight text-foreground"
       style={{ fontSize: 'var(--marketing-hero-size)' }}
     >
       {text}

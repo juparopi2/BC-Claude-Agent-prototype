@@ -1,18 +1,23 @@
 'use client';
 
-// Aspect-ratio wrapper is intentional: prevents CLS when LP-007 replaces
-// this placeholder with the chameleon interactive visual.
+import Image from 'next/image';
+import { useTheme } from 'next-themes';
 
 export function HeroVisual() {
+  const { resolvedTheme } = useTheme();
+  const src = resolvedTheme === 'dark'
+    ? '/images/hero/hero-preview-dark.png'
+    : '/images/hero/hero-preview-light.png';
+
   return (
-    <div
-      aria-hidden="true"
-      role="presentation"
-      className="hero-visual mx-auto w-full max-w-2xl"
-      style={{ aspectRatio: '16 / 10' }}
-    >
-      <div className="hero-visual-inner relative h-full w-full overflow-hidden rounded-2xl border"
-        style={{ borderColor: 'var(--marketing-card-border)', background: 'var(--marketing-card-bg)' }}
+    <div className="hero-visual mx-auto w-full">
+      {/* Glow background — slightly larger than the image */}
+      <div
+        className="hero-visual-inner relative overflow-hidden rounded-3xl border py-6 px-36"
+        style={{
+          borderColor: 'var(--marketing-card-border)',
+          background: 'var(--marketing-card-bg)',
+        }}
       >
         {/* Blob 1 — blue, top-right */}
         <div
@@ -24,6 +29,18 @@ export function HeroVisual() {
           className="hero-visual-blob-2 absolute -bottom-16 -left-16 h-72 w-72 rounded-full blur-3xl"
           style={{ background: 'var(--marketing-glow-violet)' }}
         />
+
+        {/* Screenshot floating on top */}
+        <div className="relative rounded-xl shadow-2xl" style={{ aspectRatio: '16 / 10' }}>
+          <Image
+            src={src}
+            alt="MyWorkMate app interface showing chat sessions, file management, and SharePoint integration"
+            fill
+            className="rounded-xl object-cover object-top"
+            priority
+            sizes="(max-width: 672px) 100vw, 672px"
+          />
+        </div>
       </div>
     </div>
   );

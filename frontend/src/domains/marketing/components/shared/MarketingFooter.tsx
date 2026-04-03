@@ -20,12 +20,12 @@ export function MarketingFooter() {
 
           {/* Legal links */}
           <div className="flex flex-col gap-2">
-            <h3 className="text-sm font-semibold text-foreground">Legal</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('sections.legal.title')}</h3>
             <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              {t('privacy')}
+              {t('sections.legal.links.privacy')}
             </a>
             <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              {t('terms')}
+              {t('sections.legal.links.terms')}
             </a>
           </div>
 

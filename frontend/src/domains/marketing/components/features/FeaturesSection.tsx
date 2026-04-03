@@ -12,12 +12,12 @@ import { FeatureCard } from './FeatureCard';
 import { SecuritySection } from './SecuritySection';
 
 const FEATURE_ITEMS = [
-  { i18nKey: 'erp', icon: Database },
-  { i18nKey: 'knowledge', icon: BookOpen },
-  { i18nKey: 'orchestration', icon: Workflow },
-  { i18nKey: 'visualization', icon: BarChart3 },
-  { i18nKey: 'research', icon: Search },
-  { i18nKey: 'files', icon: Cloud },
+  { i18nKey: 'erp', icon: Database, color: '#3B82F6' },          // BC Agent
+  { i18nKey: 'knowledge', icon: BookOpen, color: '#10B981' },     // RAG Agent
+  { i18nKey: 'orchestration', icon: Workflow, color: '#8B5CF6' }, // Supervisor
+  { i18nKey: 'visualization', icon: BarChart3, color: '#F59E0B' },// Graphing Agent
+  { i18nKey: 'research', icon: Search, color: '#6366F1' },        // Research Agent
+  { i18nKey: 'files', icon: Cloud, color: '#3B82F6' },            // Corporate blue
 ] as const;
 
 export function FeaturesSection() {
@@ -96,6 +96,7 @@ export function FeaturesSection() {
             <FeatureCard
               key={item.i18nKey}
               icon={item.icon}
+              color={item.color}
               title={t(`items.${item.i18nKey}.title`)}
               description={t(`items.${item.i18nKey}.description`)}
               highlight={t(`items.${item.i18nKey}.highlight`)}

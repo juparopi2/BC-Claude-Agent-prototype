@@ -24,9 +24,9 @@
       }
     },
     "hero": {
-      "badge": "Automatización Empresarial con IA",
-      "title": "Su Empresa Vive de los Datos. Deje que la IA Trabaje con Ellos.",
-      "subtitle": "MyWorkMate conecta agentes inteligentes a Microsoft Dynamics 365 Business Central, OneDrive y SharePoint — convirtiendo conversaciones naturales en acciones empresariales reales.",
+      "badge": "Dynamics 365 + IA",
+      "title": "Su Compañero de IA para Dynamics 365 Business Central",
+      "subtitle": "Optimice sus procesos de negocio con agentes de IA inteligentes conectados directamente a Business Central. Análisis de documentos, visualización de datos e investigación web complementan su ERP — todo mediante conversación natural.",
       "cta": {
         "primary": "Obtenga Acceso Anticipado",
         "secondary": "Vea Cómo Funciona"
@@ -50,7 +50,7 @@
     "features": {
       "badge": "Capacidades de la Plataforma",
       "title": "Todo lo que su Empresa Necesita, a una Conversación de Distancia",
-      "subtitle": "Desde consultas ERP hasta análisis de documentos, visualización de datos e investigación web — MyWorkMate pone el poder de los agentes IA especializados al servicio de sus operaciones diarias.",
+      "subtitle": "Desde operaciones en Dynamics 365 Business Central hasta análisis de documentos, visualización de datos e investigación web — MyWorkMate pone el poder de los agentes IA especializados al servicio de sus flujos de trabajo diarios.",
       "items": {
         "erp": {
           "title": "Inteligencia ERP",

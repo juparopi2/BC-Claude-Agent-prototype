@@ -24,9 +24,9 @@
       }
     },
     "hero": {
-      "badge": "AI-drevet forretningsautomatisering",
-      "title": "Din virksomhed kører på data. Lad AI køre med.",
-      "subtitle": "MyWorkMate forbinder intelligente agenter til Microsoft Dynamics 365 Business Central, OneDrive og SharePoint — og omsætter naturlige samtaler til reelle forretningshandlinger.",
+      "badge": "Dynamics 365 + AI",
+      "title": "Din AI-ledsager til Dynamics 365 Business Central",
+      "subtitle": "Optimer dine forretningsprocesser med intelligente AI-agenter forbundet direkte til Business Central. Dokumentanalyse, datavisualisering og webresearch supplerer dit ERP — alt via naturlig samtale.",
       "cta": {
         "primary": "Få tidlig adgang",
         "secondary": "Se hvordan det virker"
@@ -50,7 +50,7 @@
     "features": {
       "badge": "Platformens muligheder",
       "title": "Alt din virksomhed behøver — én samtale væk",
-      "subtitle": "Fra ERP-forespørgsler til dokumentanalyse, datavisualisering til webresearch — MyWorkMate bringer styrken fra specialiserede AI-agenter ind i din daglige drift.",
+      "subtitle": "Fra Dynamics 365 Business Central-operationer til dokumentanalyse, datavisualisering til webresearch — MyWorkMate bringer styrken fra specialiserede AI-agenter ind i dine daglige arbejdsgange.",
       "items": {
         "erp": {
           "title": "ERP-intelligens",

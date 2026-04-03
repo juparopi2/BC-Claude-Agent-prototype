@@ -24,9 +24,9 @@
       }
     },
     "hero": {
-      "badge": "AI-Powered Business Automation",
-      "title": "Your Business Runs on Data. Let AI Run With It.",
-      "subtitle": "MyWorkMate connects intelligent agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint — turning natural conversations into real business actions.",
+      "badge": "Dynamics 365 + AI",
+      "title": "Your AI Companion for Dynamics 365 Business Central",
+      "subtitle": "Optimize your business processes with intelligent AI agents connected directly to Business Central. Document analysis, data visualization, and web research complement your ERP — all through natural conversation.",
       "cta": {
         "primary": "Get Early Access",
         "secondary": "See How It Works"
@@ -50,7 +50,7 @@
     "features": {
       "badge": "Platform Capabilities",
       "title": "Everything Your Business Needs, One Conversation Away",
-      "subtitle": "From ERP queries to document analysis, data visualization to web research — MyWorkMate brings the power of specialized AI agents to your daily operations.",
+      "subtitle": "From Dynamics 365 Business Central operations to document analysis, data visualization to web research — MyWorkMate brings the power of specialized AI agents to your daily workflows.",
       "items": {
         "erp": {
           "title": "ERP Intelligence",

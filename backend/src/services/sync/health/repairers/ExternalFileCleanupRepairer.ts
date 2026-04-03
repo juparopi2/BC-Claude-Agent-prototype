@@ -6,8 +6,10 @@
  *
  *   • external_not_found       — OneDrive/SharePoint files that returned a
  *                                Graph API 404 (file deleted or moved externally)
- *   • disconnected_connection  — Files whose connection was disconnected, expired,
- *                                or hard-deleted (files are inaccessible via Graph)
+ *   • disconnected_connection  — Files whose connection was explicitly disconnected
+ *                                (status='disconnected') or hard-deleted. Token
+ *                                expiration alone does NOT trigger cleanup — expired
+ *                                tokens are transient and will be refreshed.
  *
  * Cleanup sequence per file:
  *   1. Vector cleanup (best-effort) — delete AI Search index chunks

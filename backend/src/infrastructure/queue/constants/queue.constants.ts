@@ -178,7 +178,8 @@ export const JOB_RETENTION = {
     failed: { count: 50, age: 86400 },    // 1 day
   },
   FILE_PROCESSING_PIPELINE: {
-    completed: { count: 50, age: 3600 },   // 1 hour
+    /** immediate removal prevents duplicate job ID collisions on re-enqueue after sync reconnection */
+    completed: true,
     failed: { count: 100, age: 86400 },    // 24 hours (DLQ takes over)
   },
 } as const;

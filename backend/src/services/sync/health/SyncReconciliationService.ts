@@ -253,7 +253,7 @@ export class SyncReconciliationService {
     // h. Folder hierarchy issues
     const folderHierarchyIssues = await new FolderHierarchyDetector().detectIssues(normalizedId);
 
-    // i. Files on disconnected/expired connections
+    // i. Files on explicitly disconnected connections (status='disconnected') or hard-deleted connections
     const disconnectedResult = await new DisconnectedFilesDetector().detect(normalizedId);
     const disconnectedConnectionFiles = disconnectedResult.items;
 
@@ -427,7 +427,7 @@ export class SyncReconciliationService {
         imagesMissingEmbeddingsCount: imagesMissingEmbeddings.length,
         externalNotFoundCount: externalNotFound.length,
         disconnectedConnectionFiles: undefined,
-        disconnectedConnectionFilesCount: disconnectedConnectionFiles.length,
+        disconnectedConnectionFilesCount: disconnectedConnectionFiles.length, // explicit disconnects + hard-deleted only (not expired)
         orphanedChildrenCount: folderHierarchyIssues.orphanedChildren.length,
         missingScopeRootsCount: folderHierarchyIssues.missingScopeRoots.length,
         scopesToResyncCount: folderHierarchyIssues.scopeIdsToResync.length,

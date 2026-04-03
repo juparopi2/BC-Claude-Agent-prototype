@@ -5,7 +5,8 @@
  * scenarios are covered in a two-pass query:
  *
  *   Pass 1 (Prisma): Files with a connections row whose status is
- *     'disconnected' or 'expired'.
+ *     'disconnected'. Token expiration ('expired') is transient and will be
+ *     refreshed; only explicit user disconnects warrant file cleanup.
  *
  *   Pass 2 (Raw SQL): Files with a non-null connection_id that references a
  *     connections row that was hard-deleted (no matching row exists).
@@ -26,7 +27,7 @@ export class DisconnectedFilesDetector implements DriftDetector<string> {
   private readonly logger = createChildLogger({ service: 'DisconnectedFilesDetector' });
 
   async detect(userId: string): Promise<DetectionResult<string>> {
-    // ── Pass 1: disconnected / expired connection rows ─────────────────────
+    // ── Pass 1: explicitly disconnected connection rows ────────────────────
 
     const disconnectedFileRows = await prisma.files.findMany({
       where: {
@@ -35,7 +36,7 @@ export class DisconnectedFilesDetector implements DriftDetector<string> {
         deletion_status: null,
         connection_id: { not: null },
         connections: {
-          status: { in: ['disconnected', 'expired'] },
+          status: { in: ['disconnected'] },
         },
       },
       select: { id: true },

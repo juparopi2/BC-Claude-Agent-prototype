@@ -1,5 +1,12 @@
 {
   "Marketing": {
+    "meta": {
+      "title": "[DA] MyWorkMate — AI-Powered Business Automation",
+      "description": "[DA] Connect intelligent AI agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint. Automate operations, gain insights, and transform how your team works.",
+      "ogTitle": "[DA] MyWorkMate — Your AI Business Command Center",
+      "ogDescription": "[DA] Multi-agent AI platform that connects to your Microsoft ecosystem. Automate ERP queries, analyze documents, visualize data — all through natural conversation.",
+      "keywords": "[DA] AI business assistant, Business Central AI, Dynamics 365 automation, Microsoft AI agent, ERP automation, knowledge base AI, multi-agent orchestration"
+    },
     "header": {
       "logo": "MyWorkMate",
       "nav": {
@@ -16,11 +23,322 @@
         "da": "Dansk"
       }
     },
+    "hero": {
+      "badge": "[DA] AI-Powered Business Automation",
+      "title": "[DA] Your Business Runs on Data. Let AI Run With It.",
+      "subtitle": "[DA] MyWorkMate connects intelligent agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint — turning natural conversations into real business actions.",
+      "cta": {
+        "primary": "[DA] Get Early Access",
+        "secondary": "[DA] See How It Works"
+      },
+      "stats": {
+        "agents": {
+          "value": "5",
+          "label": "[DA] Specialized Agents"
+        },
+        "integrations": {
+          "value": "3+",
+          "label": "[DA] Microsoft Integrations"
+        },
+        "chartTypes": {
+          "value": "10",
+          "label": "[DA] Visualization Types"
+        }
+      },
+      "trustedBy": "[DA] Built for the Microsoft Ecosystem"
+    },
+    "features": {
+      "badge": "[DA] Platform Capabilities",
+      "title": "[DA] Everything Your Business Needs, One Conversation Away",
+      "subtitle": "[DA] From ERP queries to document analysis, data visualization to web research — MyWorkMate brings the power of specialized AI agents to your daily operations.",
+      "items": {
+        "erp": {
+          "title": "[DA] ERP Intelligence",
+          "description": "[DA] Query customers, vendors, invoices, sales orders, and inventory directly from Business Central. Create and modify records through natural language.",
+          "highlight": "[DA] Read & Write to Dynamics 365"
+        },
+        "knowledge": {
+          "title": "[DA] Knowledge Base",
+          "description": "[DA] Upload documents and let AI understand them. Semantic search finds answers across your entire document library — PDFs, spreadsheets, presentations.",
+          "highlight": "[DA] Semantic Search with RAG"
+        },
+        "orchestration": {
+          "title": "[DA] Smart Orchestration",
+          "description": "[DA] Ask anything. The Orchestrator automatically routes your question to the right specialist agent, combining their capabilities when needed.",
+          "highlight": "[DA] Multi-Agent Routing"
+        },
+        "visualization": {
+          "title": "[DA] Data Visualization",
+          "description": "[DA] Transform raw data into clear insights. Bar charts, line graphs, KPI dashboards, combo charts — generated from your data in seconds.",
+          "highlight": "[DA] 10 Chart Types"
+        },
+        "research": {
+          "title": "[DA] Research & Analysis",
+          "description": "[DA] Real-time web search, data analysis with Python execution, and document generation. Your personal research assistant for complex questions.",
+          "highlight": "[DA] Web + Code Execution"
+        },
+        "files": {
+          "title": "[DA] Cloud File Sync",
+          "description": "[DA] Connect OneDrive and SharePoint libraries. Your cloud documents become instantly searchable and available to AI agents.",
+          "highlight": "[DA] OneDrive & SharePoint"
+        }
+      }
+    },
+    "agents": {
+      "badge": "[DA] Meet Your AI Team",
+      "title": "[DA] Specialized Agents That Work Together",
+      "subtitle": "[DA] Each agent is an expert in its domain. The Orchestrator coordinates them seamlessly, so you just ask — and the right expert answers.",
+      "items": {
+        "supervisor": {
+          "name": "[DA] Orchestrator",
+          "role": "[DA] Routes & Coordinates",
+          "description": "[DA] Analyzes your question and automatically selects the best specialist. Combines multiple agents when complex tasks require it."
+        },
+        "bcAgent": {
+          "name": "[DA] Business Central Expert",
+          "role": "[DA] ERP Operations",
+          "description": "[DA] Direct access to Dynamics 365 Business Central. Query financial data, manage inventory, process sales orders — all through conversation."
+        },
+        "ragAgent": {
+          "name": "[DA] Knowledge Base Expert",
+          "role": "[DA] Document Intelligence",
+          "description": "[DA] Searches your uploaded documents using semantic understanding. Finds precise answers across thousands of pages instantly."
+        },
+        "graphingAgent": {
+          "name": "[DA] Data Visualization Expert",
+          "role": "[DA] Charts & Insights",
+          "description": "[DA] Transforms numbers into visual stories. From simple bar charts to complex KPI dashboards — all generated from your data."
+        },
+        "researchAgent": {
+          "name": "[DA] Research & Analysis",
+          "role": "[DA] Web Research & Code",
+          "description": "[DA] Searches the web, analyzes data with Python, and generates comprehensive reports. Your research team, available 24/7."
+        }
+      },
+      "cta": "[DA] See All Agents in Action"
+    },
+    "roadmap": {
+      "badge": "[DA] What's Coming",
+      "title": "[DA] We're Just Getting Started",
+      "subtitle": "[DA] MyWorkMate is evolving fast. Here's what's live today and what's on the horizon.",
+      "statusLabels": {
+        "live": "[DA] Live",
+        "beta": "[DA] Beta",
+        "development": "[DA] In Development",
+        "planned": "[DA] Planned"
+      },
+      "items": {
+        "multiAgent": {
+          "title": "[DA] Multi-Agent Orchestration",
+          "description": "[DA] Supervisor routes to 5 specialized agents automatically",
+          "status": "live"
+        },
+        "bcIntegration": {
+          "title": "[DA] Business Central Integration",
+          "description": "[DA] Full read & write access to Dynamics 365 Business Central",
+          "status": "live"
+        },
+        "knowledgeBase": {
+          "title": "[DA] Knowledge Base (RAG)",
+          "description": "[DA] Upload, search, and analyze documents with AI",
+          "status": "live"
+        },
+        "dataViz": {
+          "title": "[DA] Data Visualization",
+          "description": "[DA] 10 chart types generated from structured data",
+          "status": "live"
+        },
+        "cloudSync": {
+          "title": "[DA] OneDrive & SharePoint Sync",
+          "description": "[DA] Connect cloud libraries for seamless document access",
+          "status": "live"
+        },
+        "webResearch": {
+          "title": "[DA] Web Research & Code Execution",
+          "description": "[DA] Real-time web search and Python sandbox",
+          "status": "live"
+        },
+        "mobileApp": {
+          "title": "[DA] Mobile Application",
+          "description": "[DA] Full MyWorkMate experience on your phone",
+          "status": "planned"
+        },
+        "granularPermissions": {
+          "title": "[DA] Granular Permissions",
+          "description": "[DA] Always-allow vs require-approval per action",
+          "status": "development"
+        },
+        "agentMemory": {
+          "title": "[DA] Persistent Memory",
+          "description": "[DA] Agents remember context across conversations",
+          "status": "development"
+        },
+        "parallelAgents": {
+          "title": "[DA] Parallel Agent Execution",
+          "description": "[DA] Multiple agents working simultaneously on complex tasks",
+          "status": "planned"
+        },
+        "workflows": {
+          "title": "[DA] Automated Workflows",
+          "description": "[DA] Create repeatable tasks triggered by events or commands",
+          "status": "planned"
+        },
+        "customAgents": {
+          "title": "[DA] Custom Agent Builder",
+          "description": "[DA] Create your own agents with custom skills and MCP tools",
+          "status": "planned"
+        },
+        "environments": {
+          "title": "[DA] Organization Environments",
+          "description": "[DA] Team management, billing controls, and usage tracking",
+          "status": "planned"
+        },
+        "deepResearch": {
+          "title": "[DA] Deep Research Mode",
+          "description": "[DA] Autonomous multi-step research with source synthesis",
+          "status": "planned"
+        }
+      }
+    },
+    "waitlist": {
+      "badge": "[DA] Early Access",
+      "title": "[DA] Be First to Experience the Future of Business AI",
+      "subtitle": "[DA] Join the waitlist for priority access. We'll notify you as new features launch and you'll get exclusive early-bird pricing.",
+      "form": {
+        "emailPlaceholder": "[DA] your@email.com",
+        "submit": "[DA] Join the Waitlist",
+        "submitting": "[DA] Joining...",
+        "success": {
+          "title": "[DA] You're on the list!",
+          "message": "[DA] We'll reach out soon with updates and early access details."
+        },
+        "error": {
+          "title": "[DA] Something went wrong",
+          "message": "[DA] Please try again later. We're working on it.",
+          "unimplemented": "[DA] Waitlist service is being set up. Check back soon!"
+        }
+      },
+      "benefits": {
+        "earlyAccess": "[DA] Priority access to new features",
+        "pricing": "[DA] Exclusive early-bird pricing",
+        "updates": "[DA] Regular development updates",
+        "feedback": "[DA] Shape the product with your feedback"
+      },
+      "count": "[DA] Join {count}+ others on the waitlist"
+    },
+    "pricing": {
+      "badge": "[DA] Simple Pricing",
+      "title": "[DA] Plans That Scale With Your Business",
+      "subtitle": "[DA] Start free. Upgrade when you need more power.",
+      "toggle": {
+        "monthly": "[DA] Monthly",
+        "annual": "[DA] Annual",
+        "annualDiscount": "[DA] Save 20%"
+      },
+      "plans": {
+        "free": {
+          "name": "[DA] Free",
+          "price": "$0",
+          "period": "[DA] /month",
+          "description": "[DA] Explore and test the platform",
+          "cta": "[DA] Get Started Free"
+        },
+        "starter": {
+          "name": "[DA] Starter",
+          "price": "$25",
+          "period": "[DA] /month",
+          "description": "[DA] For regular users and small teams",
+          "cta": "[DA] Join Waitlist — Starter"
+        },
+        "professional": {
+          "name": "[DA] Professional",
+          "price": "$199",
+          "period": "[DA] /month",
+          "description": "[DA] For power users and growing businesses",
+          "cta": "[DA] Join Waitlist — Professional"
+        }
+      },
+      "faq": {
+        "title": "[DA] Frequently Asked Questions",
+        "items": {
+          "trial": {
+            "question": "[DA] Is there a free trial for paid plans?",
+            "answer": "[DA] Yes, all paid plans include a 14-day free trial. No credit card required."
+          },
+          "cancel": {
+            "question": "[DA] Can I cancel anytime?",
+            "answer": "[DA] Absolutely. Cancel anytime with no fees. Your data remains accessible for 30 days after cancellation."
+          },
+          "enterprise": {
+            "question": "[DA] Do you offer enterprise plans?",
+            "answer": "[DA] Yes. Contact us for custom pricing, dedicated support, and on-premise deployment options."
+          }
+        }
+      }
+    },
+    "security": {
+      "badge": "[DA] Enterprise-Ready Security",
+      "title": "[DA] Built for Businesses That Take Security Seriously",
+      "subtitle": "[DA] Your data stays yours. Every interaction is secured, every action is auditable, every access is controlled.",
+      "items": {
+        "encryption": {
+          "title": "[DA] Encrypted at Rest & Transit",
+          "description": "[DA] AES-256-GCM encryption for stored tokens. TLS for all communications."
+        },
+        "tenantIsolation": {
+          "title": "[DA] Tenant Isolation",
+          "description": "[DA] Strict data separation. Your documents, sessions, and AI interactions are invisible to other users."
+        },
+        "permissions": {
+          "title": "[DA] Granular Permissions",
+          "description": "[DA] Control what agents can do. Some actions always require your approval — you decide which."
+        },
+        "gdpr": {
+          "title": "[DA] GDPR Compliant",
+          "description": "[DA] Full data portability and right to deletion. Cascade delete removes all PII on request."
+        },
+        "audit": {
+          "title": "[DA] Full Audit Trail",
+          "description": "[DA] Every agent action, every tool call, every decision — logged and traceable."
+        },
+        "oauth": {
+          "title": "[DA] Microsoft SSO",
+          "description": "[DA] Sign in with your existing Microsoft account. No new passwords to manage."
+        }
+      }
+    },
     "footer": {
       "tagline": "AI-drevet forretningsautomatisering til Microsoft-økosystemet.",
-      "privacy": "Privatlivspolitik",
-      "terms": "Servicevilkår",
-      "copyright": "© {year} MyWorkMate. Alle rettigheder forbeholdes."
+      "builtWith": "[DA] Built for the Microsoft Ecosystem",
+      "copyright": "© {year} MyWorkMate. Alle rettigheder forbeholdes.",
+      "sections": {
+        "product": {
+          "title": "[DA] Product",
+          "links": {
+            "features": "Funktioner",
+            "agents": "Agenter",
+            "pricing": "Priser",
+            "roadmap": "Køreplan"
+          }
+        },
+        "company": {
+          "title": "[DA] Company",
+          "links": {
+            "about": "[DA] About",
+            "blog": "[DA] Blog",
+            "careers": "[DA] Careers",
+            "contact": "[DA] Contact"
+          }
+        },
+        "legal": {
+          "title": "[DA] Legal",
+          "links": {
+            "privacy": "Privatlivspolitik",
+            "terms": "Servicevilkår",
+            "gdpr": "[DA] GDPR"
+          }
+        }
+      }
     }
   }
 }

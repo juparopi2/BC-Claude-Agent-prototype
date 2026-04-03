@@ -1,5 +1,12 @@
 {
   "Marketing": {
+    "meta": {
+      "title": "[ES] MyWorkMate — AI-Powered Business Automation",
+      "description": "[ES] Connect intelligent AI agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint. Automate operations, gain insights, and transform how your team works.",
+      "ogTitle": "[ES] MyWorkMate — Your AI Business Command Center",
+      "ogDescription": "[ES] Multi-agent AI platform that connects to your Microsoft ecosystem. Automate ERP queries, analyze documents, visualize data — all through natural conversation.",
+      "keywords": "[ES] AI business assistant, Business Central AI, Dynamics 365 automation, Microsoft AI agent, ERP automation, knowledge base AI, multi-agent orchestration"
+    },
     "header": {
       "logo": "MyWorkMate",
       "nav": {
@@ -16,11 +23,322 @@
         "da": "Dansk"
       }
     },
+    "hero": {
+      "badge": "[ES] AI-Powered Business Automation",
+      "title": "[ES] Your Business Runs on Data. Let AI Run With It.",
+      "subtitle": "[ES] MyWorkMate connects intelligent agents to Microsoft Dynamics 365 Business Central, OneDrive, and SharePoint — turning natural conversations into real business actions.",
+      "cta": {
+        "primary": "[ES] Get Early Access",
+        "secondary": "[ES] See How It Works"
+      },
+      "stats": {
+        "agents": {
+          "value": "5",
+          "label": "[ES] Specialized Agents"
+        },
+        "integrations": {
+          "value": "3+",
+          "label": "[ES] Microsoft Integrations"
+        },
+        "chartTypes": {
+          "value": "10",
+          "label": "[ES] Visualization Types"
+        }
+      },
+      "trustedBy": "[ES] Built for the Microsoft Ecosystem"
+    },
+    "features": {
+      "badge": "[ES] Platform Capabilities",
+      "title": "[ES] Everything Your Business Needs, One Conversation Away",
+      "subtitle": "[ES] From ERP queries to document analysis, data visualization to web research — MyWorkMate brings the power of specialized AI agents to your daily operations.",
+      "items": {
+        "erp": {
+          "title": "[ES] ERP Intelligence",
+          "description": "[ES] Query customers, vendors, invoices, sales orders, and inventory directly from Business Central. Create and modify records through natural language.",
+          "highlight": "[ES] Read & Write to Dynamics 365"
+        },
+        "knowledge": {
+          "title": "[ES] Knowledge Base",
+          "description": "[ES] Upload documents and let AI understand them. Semantic search finds answers across your entire document library — PDFs, spreadsheets, presentations.",
+          "highlight": "[ES] Semantic Search with RAG"
+        },
+        "orchestration": {
+          "title": "[ES] Smart Orchestration",
+          "description": "[ES] Ask anything. The Orchestrator automatically routes your question to the right specialist agent, combining their capabilities when needed.",
+          "highlight": "[ES] Multi-Agent Routing"
+        },
+        "visualization": {
+          "title": "[ES] Data Visualization",
+          "description": "[ES] Transform raw data into clear insights. Bar charts, line graphs, KPI dashboards, combo charts — generated from your data in seconds.",
+          "highlight": "[ES] 10 Chart Types"
+        },
+        "research": {
+          "title": "[ES] Research & Analysis",
+          "description": "[ES] Real-time web search, data analysis with Python execution, and document generation. Your personal research assistant for complex questions.",
+          "highlight": "[ES] Web + Code Execution"
+        },
+        "files": {
+          "title": "[ES] Cloud File Sync",
+          "description": "[ES] Connect OneDrive and SharePoint libraries. Your cloud documents become instantly searchable and available to AI agents.",
+          "highlight": "[ES] OneDrive & SharePoint"
+        }
+      }
+    },
+    "agents": {
+      "badge": "[ES] Meet Your AI Team",
+      "title": "[ES] Specialized Agents That Work Together",
+      "subtitle": "[ES] Each agent is an expert in its domain. The Orchestrator coordinates them seamlessly, so you just ask — and the right expert answers.",
+      "items": {
+        "supervisor": {
+          "name": "[ES] Orchestrator",
+          "role": "[ES] Routes & Coordinates",
+          "description": "[ES] Analyzes your question and automatically selects the best specialist. Combines multiple agents when complex tasks require it."
+        },
+        "bcAgent": {
+          "name": "[ES] Business Central Expert",
+          "role": "[ES] ERP Operations",
+          "description": "[ES] Direct access to Dynamics 365 Business Central. Query financial data, manage inventory, process sales orders — all through conversation."
+        },
+        "ragAgent": {
+          "name": "[ES] Knowledge Base Expert",
+          "role": "[ES] Document Intelligence",
+          "description": "[ES] Searches your uploaded documents using semantic understanding. Finds precise answers across thousands of pages instantly."
+        },
+        "graphingAgent": {
+          "name": "[ES] Data Visualization Expert",
+          "role": "[ES] Charts & Insights",
+          "description": "[ES] Transforms numbers into visual stories. From simple bar charts to complex KPI dashboards — all generated from your data."
+        },
+        "researchAgent": {
+          "name": "[ES] Research & Analysis",
+          "role": "[ES] Web Research & Code",
+          "description": "[ES] Searches the web, analyzes data with Python, and generates comprehensive reports. Your research team, available 24/7."
+        }
+      },
+      "cta": "[ES] See All Agents in Action"
+    },
+    "roadmap": {
+      "badge": "[ES] What's Coming",
+      "title": "[ES] We're Just Getting Started",
+      "subtitle": "[ES] MyWorkMate is evolving fast. Here's what's live today and what's on the horizon.",
+      "statusLabels": {
+        "live": "[ES] Live",
+        "beta": "[ES] Beta",
+        "development": "[ES] In Development",
+        "planned": "[ES] Planned"
+      },
+      "items": {
+        "multiAgent": {
+          "title": "[ES] Multi-Agent Orchestration",
+          "description": "[ES] Supervisor routes to 5 specialized agents automatically",
+          "status": "live"
+        },
+        "bcIntegration": {
+          "title": "[ES] Business Central Integration",
+          "description": "[ES] Full read & write access to Dynamics 365 Business Central",
+          "status": "live"
+        },
+        "knowledgeBase": {
+          "title": "[ES] Knowledge Base (RAG)",
+          "description": "[ES] Upload, search, and analyze documents with AI",
+          "status": "live"
+        },
+        "dataViz": {
+          "title": "[ES] Data Visualization",
+          "description": "[ES] 10 chart types generated from structured data",
+          "status": "live"
+        },
+        "cloudSync": {
+          "title": "[ES] OneDrive & SharePoint Sync",
+          "description": "[ES] Connect cloud libraries for seamless document access",
+          "status": "live"
+        },
+        "webResearch": {
+          "title": "[ES] Web Research & Code Execution",
+          "description": "[ES] Real-time web search and Python sandbox",
+          "status": "live"
+        },
+        "mobileApp": {
+          "title": "[ES] Mobile Application",
+          "description": "[ES] Full MyWorkMate experience on your phone",
+          "status": "planned"
+        },
+        "granularPermissions": {
+          "title": "[ES] Granular Permissions",
+          "description": "[ES] Always-allow vs require-approval per action",
+          "status": "development"
+        },
+        "agentMemory": {
+          "title": "[ES] Persistent Memory",
+          "description": "[ES] Agents remember context across conversations",
+          "status": "development"
+        },
+        "parallelAgents": {
+          "title": "[ES] Parallel Agent Execution",
+          "description": "[ES] Multiple agents working simultaneously on complex tasks",
+          "status": "planned"
+        },
+        "workflows": {
+          "title": "[ES] Automated Workflows",
+          "description": "[ES] Create repeatable tasks triggered by events or commands",
+          "status": "planned"
+        },
+        "customAgents": {
+          "title": "[ES] Custom Agent Builder",
+          "description": "[ES] Create your own agents with custom skills and MCP tools",
+          "status": "planned"
+        },
+        "environments": {
+          "title": "[ES] Organization Environments",
+          "description": "[ES] Team management, billing controls, and usage tracking",
+          "status": "planned"
+        },
+        "deepResearch": {
+          "title": "[ES] Deep Research Mode",
+          "description": "[ES] Autonomous multi-step research with source synthesis",
+          "status": "planned"
+        }
+      }
+    },
+    "waitlist": {
+      "badge": "[ES] Early Access",
+      "title": "[ES] Be First to Experience the Future of Business AI",
+      "subtitle": "[ES] Join the waitlist for priority access. We'll notify you as new features launch and you'll get exclusive early-bird pricing.",
+      "form": {
+        "emailPlaceholder": "[ES] your@email.com",
+        "submit": "[ES] Join the Waitlist",
+        "submitting": "[ES] Joining...",
+        "success": {
+          "title": "[ES] You're on the list!",
+          "message": "[ES] We'll reach out soon with updates and early access details."
+        },
+        "error": {
+          "title": "[ES] Something went wrong",
+          "message": "[ES] Please try again later. We're working on it.",
+          "unimplemented": "[ES] Waitlist service is being set up. Check back soon!"
+        }
+      },
+      "benefits": {
+        "earlyAccess": "[ES] Priority access to new features",
+        "pricing": "[ES] Exclusive early-bird pricing",
+        "updates": "[ES] Regular development updates",
+        "feedback": "[ES] Shape the product with your feedback"
+      },
+      "count": "[ES] Join {count}+ others on the waitlist"
+    },
+    "pricing": {
+      "badge": "[ES] Simple Pricing",
+      "title": "[ES] Plans That Scale With Your Business",
+      "subtitle": "[ES] Start free. Upgrade when you need more power.",
+      "toggle": {
+        "monthly": "[ES] Monthly",
+        "annual": "[ES] Annual",
+        "annualDiscount": "[ES] Save 20%"
+      },
+      "plans": {
+        "free": {
+          "name": "[ES] Free",
+          "price": "$0",
+          "period": "[ES] /month",
+          "description": "[ES] Explore and test the platform",
+          "cta": "[ES] Get Started Free"
+        },
+        "starter": {
+          "name": "[ES] Starter",
+          "price": "$25",
+          "period": "[ES] /month",
+          "description": "[ES] For regular users and small teams",
+          "cta": "[ES] Join Waitlist — Starter"
+        },
+        "professional": {
+          "name": "[ES] Professional",
+          "price": "$199",
+          "period": "[ES] /month",
+          "description": "[ES] For power users and growing businesses",
+          "cta": "[ES] Join Waitlist — Professional"
+        }
+      },
+      "faq": {
+        "title": "[ES] Frequently Asked Questions",
+        "items": {
+          "trial": {
+            "question": "[ES] Is there a free trial for paid plans?",
+            "answer": "[ES] Yes, all paid plans include a 14-day free trial. No credit card required."
+          },
+          "cancel": {
+            "question": "[ES] Can I cancel anytime?",
+            "answer": "[ES] Absolutely. Cancel anytime with no fees. Your data remains accessible for 30 days after cancellation."
+          },
+          "enterprise": {
+            "question": "[ES] Do you offer enterprise plans?",
+            "answer": "[ES] Yes. Contact us for custom pricing, dedicated support, and on-premise deployment options."
+          }
+        }
+      }
+    },
+    "security": {
+      "badge": "[ES] Enterprise-Ready Security",
+      "title": "[ES] Built for Businesses That Take Security Seriously",
+      "subtitle": "[ES] Your data stays yours. Every interaction is secured, every action is auditable, every access is controlled.",
+      "items": {
+        "encryption": {
+          "title": "[ES] Encrypted at Rest & Transit",
+          "description": "[ES] AES-256-GCM encryption for stored tokens. TLS for all communications."
+        },
+        "tenantIsolation": {
+          "title": "[ES] Tenant Isolation",
+          "description": "[ES] Strict data separation. Your documents, sessions, and AI interactions are invisible to other users."
+        },
+        "permissions": {
+          "title": "[ES] Granular Permissions",
+          "description": "[ES] Control what agents can do. Some actions always require your approval — you decide which."
+        },
+        "gdpr": {
+          "title": "[ES] GDPR Compliant",
+          "description": "[ES] Full data portability and right to deletion. Cascade delete removes all PII on request."
+        },
+        "audit": {
+          "title": "[ES] Full Audit Trail",
+          "description": "[ES] Every agent action, every tool call, every decision — logged and traceable."
+        },
+        "oauth": {
+          "title": "[ES] Microsoft SSO",
+          "description": "[ES] Sign in with your existing Microsoft account. No new passwords to manage."
+        }
+      }
+    },
     "footer": {
       "tagline": "Automatización empresarial impulsada por IA para el ecosistema Microsoft.",
-      "privacy": "Política de Privacidad",
-      "terms": "Términos de Servicio",
-      "copyright": "© {year} MyWorkMate. Todos los derechos reservados."
+      "builtWith": "[ES] Built for the Microsoft Ecosystem",
+      "copyright": "© {year} MyWorkMate. Todos los derechos reservados.",
+      "sections": {
+        "product": {
+          "title": "[ES] Product",
+          "links": {
+            "features": "Características",
+            "agents": "Agentes",
+            "pricing": "Precios",
+            "roadmap": "Hoja de Ruta"
+          }
+        },
+        "company": {
+          "title": "[ES] Company",
+          "links": {
+            "about": "[ES] About",
+            "blog": "[ES] Blog",
+            "careers": "[ES] Careers",
+            "contact": "[ES] Contact"
+          }
+        },
+        "legal": {
+          "title": "[ES] Legal",
+          "links": {
+            "privacy": "Política de Privacidad",
+            "terms": "Términos de Servicio",
+            "gdpr": "[ES] GDPR"
+          }
+        }
+      }
     }
   }
 }

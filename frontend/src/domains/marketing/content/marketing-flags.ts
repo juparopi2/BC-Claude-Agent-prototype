@@ -42,3 +42,42 @@ export const PLAN_FEATURES = {
     'Granular permissions',
   ],
 } as const;
+
+// --- LP-005: Roadmap ---
+
+export interface RoadmapItemConfig {
+  readonly i18nKey: string;
+  readonly status: RoadmapStatus;
+}
+
+export const ROADMAP_STATUS_COLORS: Record<RoadmapStatus, string> = {
+  live: '#10B981',
+  beta: '#F59E0B',
+  development: '#3B82F6',
+  planned: '#6b7280',
+} as const;
+
+export const ROADMAP_ITEMS: readonly RoadmapItemConfig[] = [
+  // Live
+  { i18nKey: 'multiAgent', status: 'live' },
+  { i18nKey: 'bcIntegration', status: 'live' },
+  { i18nKey: 'knowledgeBase', status: 'live' },
+  { i18nKey: 'dataViz', status: 'live' },
+  { i18nKey: 'cloudSync', status: 'live' },
+  { i18nKey: 'webResearch', status: 'live' },
+  // In Development
+  { i18nKey: 'granularPermissions', status: 'development' },
+  { i18nKey: 'agentMemory', status: 'development' },
+  // Planned
+  { i18nKey: 'mobileApp', status: 'planned' },
+  { i18nKey: 'parallelAgents', status: 'planned' },
+  { i18nKey: 'workflows', status: 'planned' },
+  { i18nKey: 'customAgents', status: 'planned' },
+  { i18nKey: 'environments', status: 'planned' },
+  { i18nKey: 'deepResearch', status: 'planned' },
+] as const;
+
+// --- LP-005: Waitlist ---
+
+export const WAITLIST_ENABLED = false;
+export const WAITLIST_MOCK_COUNT = 247;

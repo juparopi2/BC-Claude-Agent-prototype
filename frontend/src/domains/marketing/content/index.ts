@@ -4,6 +4,11 @@ export {
   PRICING_VISIBLE,
   HIGHLIGHTED_PLAN,
   PLAN_FEATURES,
+  type RoadmapItemConfig,
+  ROADMAP_STATUS_COLORS,
+  ROADMAP_ITEMS,
+  WAITLIST_ENABLED,
+  WAITLIST_MOCK_COUNT,
 } from './marketing-flags';
 
 export {

@@ -122,6 +122,7 @@
       "title": "[ES] We're Just Getting Started",
       "subtitle": "[ES] MyWorkMate is evolving fast. Here's what's live today and what's on the horizon.",
       "statusLabels": {
+        "all": "[ES] All",
         "live": "[ES] Live",
         "beta": "[ES] Beta",
         "development": "[ES] In Development",

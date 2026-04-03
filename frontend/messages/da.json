@@ -122,6 +122,7 @@
       "title": "[DA] We're Just Getting Started",
       "subtitle": "[DA] MyWorkMate is evolving fast. Here's what's live today and what's on the horizon.",
       "statusLabels": {
+        "all": "[DA] All",
         "live": "[DA] Live",
         "beta": "[DA] Beta",
         "development": "[DA] In Development",

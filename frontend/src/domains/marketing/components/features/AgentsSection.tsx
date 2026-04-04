@@ -157,7 +157,7 @@ export function AgentsSection() {
             />
             {t('badge')}
           </div>
-          <h2 className="agents-title text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+          <h2 className="agents-title text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl" style={{ fontFamily: 'var(--font-marketing-heading)' }}>
             {t('title')}
           </h2>
           <p className="agents-subtitle max-w-2xl text-base text-muted-foreground sm:text-lg">

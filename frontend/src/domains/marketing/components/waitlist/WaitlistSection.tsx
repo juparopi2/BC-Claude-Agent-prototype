@@ -74,7 +74,7 @@ export function WaitlistSection() {
         </span>
 
         {/* Title */}
-        <h2 className="waitlist-title mt-6 text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl">
+        <h2 className="waitlist-title mt-6 text-3xl font-bold tracking-tight text-foreground sm:text-4xl lg:text-5xl" style={{ fontFamily: 'var(--font-marketing-heading)' }}>
           {t('title')}
         </h2>
 

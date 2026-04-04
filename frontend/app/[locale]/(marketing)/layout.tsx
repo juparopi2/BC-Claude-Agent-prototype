@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
+import { sfProDisplay } from '@/src/fonts/sf-pro';
 import { MarketingHeader } from '@/src/domains/marketing/components/shared/MarketingHeader';
 import { MarketingFooter } from '@/src/domains/marketing/components/shared/MarketingFooter';
 import { HtmlLangSync } from '@/src/domains/marketing/components/shared/HtmlLangSync';
@@ -72,7 +73,7 @@ export default async function MarketingLayout({
   };
 
   return (
-    <>
+    <div className={sfProDisplay.variable}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
@@ -86,6 +87,6 @@ export default async function MarketingLayout({
           <MarketingFooter />
         </div>
       </div>
-    </>
+    </div>
   );
 }

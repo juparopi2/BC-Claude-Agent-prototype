@@ -38,7 +38,8 @@ export function HeroVisual() {
             fill
             className="rounded-xl object-cover object-top"
             priority
-            sizes="(max-width: 672px) 100vw, 672px"
+            quality={95}
+            sizes="(max-width: 640px) calc(100vw - 2rem), (max-width: 1024px) calc(100vw - 3rem), 900px"
           />
         </div>
       </div>

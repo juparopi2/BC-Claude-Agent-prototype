@@ -105,6 +105,7 @@
   --marketing-card-border: oklch(0.92 0.015 255.508);
   --marketing-hero-size: clamp(2.5rem, 6vw, 5rem);
   --marketing-subhero-size: clamp(1.125rem, 2vw, 1.375rem);
+  --font-marketing-heading: var(--font-sf-pro-display), -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 .dark {

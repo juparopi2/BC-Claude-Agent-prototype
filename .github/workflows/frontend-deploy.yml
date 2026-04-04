@@ -164,7 +164,7 @@ jobs:
           echo "Waiting 60 seconds for Next.js server startup..."
           sleep 60
           echo "Testing frontend endpoint..."
-          curl -f --max-time 30 ${{ steps.get_url.outputs.url }} || exit 1
+          curl -f --max-time 30 "${{ steps.get_url.outputs.url }}/api/health" || exit 1
 
       - name: Deployment Summary
         run: |

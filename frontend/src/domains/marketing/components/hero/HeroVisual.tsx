@@ -13,7 +13,7 @@ export function HeroVisual() {
     <div className="hero-visual mx-auto w-full">
       {/* Glow background — slightly larger than the image */}
       <div
-        className="hero-visual-inner relative overflow-hidden rounded-3xl border py-6 px-36"
+        className="hero-visual-inner relative overflow-hidden rounded-3xl border py-6 px-4 sm:px-16 lg:px-36"
         style={{
           borderColor: 'var(--marketing-card-border)',
           background: 'var(--marketing-card-bg)',

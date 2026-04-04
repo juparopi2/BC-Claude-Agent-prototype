@@ -21,13 +21,13 @@ function parseStat(value: string): { numeric: number; suffix: string } {
 
 export function HeroStats({ items }: HeroStatsProps) {
   return (
-    <div className="hero-stats flex gap-8 overflow-x-auto pb-2 sm:overflow-visible sm:justify-center">
+    <div className="hero-stats flex flex-wrap justify-center gap-3 pb-2 sm:gap-8">
       {items.map((item) => {
         const { numeric, suffix } = parseStat(item.value);
         return (
           <div
             key={item.label}
-            className="hero-stat-item flex shrink-0 flex-col items-center gap-1 rounded-xl border px-6 py-4"
+            className="hero-stat-item flex shrink-0 flex-col items-center gap-1 rounded-xl border px-4 py-3 sm:px-6 sm:py-4"
             style={{
               background: 'var(--marketing-card-bg)',
               borderColor: 'var(--marketing-card-border)',

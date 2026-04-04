@@ -14,7 +14,7 @@ interface RoadmapCardProps {
 export function RoadmapCard({ title, description, status, statusLabel }: RoadmapCardProps) {
   return (
     <div
-      className="roadmap-card flex-shrink-0 w-[80vw] sm:w-[300px] rounded-2xl border p-5 transition-shadow duration-300 hover:shadow-lg"
+      className="roadmap-card w-full sm:w-[300px] sm:flex-shrink-0 rounded-2xl border p-5 transition-shadow duration-300 hover:shadow-lg"
       data-status={status}
       style={{
         borderColor: 'var(--marketing-card-border)',

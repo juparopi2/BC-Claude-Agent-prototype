@@ -73,7 +73,7 @@ export default async function MarketingLayout({
   };
 
   return (
-    <div className={sfProDisplay.variable}>
+    <div className={`${sfProDisplay.variable} overflow-x-hidden`}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}

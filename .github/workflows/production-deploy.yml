@@ -596,7 +596,7 @@ jobs:
 
           MAX_RETRIES=5
           for i in $(seq 1 $MAX_RETRIES); do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$REVISION_FQDN" 2>&1)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://$REVISION_FQDN/api/health" 2>&1)
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Frontend health check passed!"
               break

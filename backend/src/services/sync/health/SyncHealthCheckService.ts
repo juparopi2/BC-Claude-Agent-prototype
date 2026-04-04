@@ -19,6 +19,7 @@ import { prisma } from '@/infrastructure/database/prisma';
 import { getRedisClient } from '@/infrastructure/redis/redis-client';
 import { getSyncRecoveryService } from './SyncRecoveryService';
 import { getSocketIO, isSocketServiceInitialized } from '@/services/websocket/SocketService';
+import { getGraphTokenManager } from '@/services/connectors/GraphTokenManager';
 import { SYNC_WS_EVENTS } from '@bc-agent/shared';
 import type {
   SyncHealthCheckMetrics,
@@ -42,6 +43,10 @@ const HIGH_FAILURE_RATE_THRESHOLD = 0.5; // 50%
 const STUCK_PIPELINE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 const STUCK_PIPELINE_STATUSES = ['queued', 'extracting', 'chunking', 'embedding'] as const;
 const MAX_BACKOFF_ATTEMPTS = 5;
+/** TTL (seconds) for the proactive token refresh cooldown key per connection */
+const TOKEN_REFRESH_COOLDOWN_SECONDS = 900; // 15 minutes — aligns with health check interval
+/** Query window (ms) for connections approaching token expiry */
+const TOKEN_EXPIRY_LOOKAHEAD_MS = 10 * 60 * 1000; // 10 minutes
 /** Delay in ms before each retry attempt (index = attemptCount - 1) */
 const BACKOFF_SCHEDULE_MS = [
   0,               // attempt 1: immediate
@@ -246,6 +251,9 @@ export class SyncHealthCheckService {
           });
       }
     }
+
+    // Proactive token refresh: prevent connections from going expired between user logins
+    await this.refreshNearExpiryTokens();
 
     metrics.durationMs = Date.now() - startTime;
 
@@ -681,6 +689,104 @@ export class SyncHealthCheckService {
       );
       return true;
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Private: refreshNearExpiryTokens()
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Proactively refresh tokens for connected connections whose access tokens
+   * are within the lookahead window of expiry.
+   *
+   * Calling `getValidToken()` is sufficient — it already handles the 5-minute
+   * expiry buffer, MSAL silent refresh, and token persistence.  On failure it
+   * calls `markConnectionExpired()` internally (expected, non-fatal).
+   *
+   * A per-connection Redis cooldown key (`sync:token_refresh:{connectionId}`,
+   * TTL 15 min) prevents redundant refresh attempts within the same health
+   * check cycle.
+   */
+  private async refreshNearExpiryTokens(): Promise<void> {
+    const lookaheadCutoff = new Date(Date.now() + TOKEN_EXPIRY_LOOKAHEAD_MS);
+
+    let connections: { id: string }[];
+
+    try {
+      connections = await prisma.connections.findMany({
+        where: {
+          status: 'connected',
+          token_expires_at: {
+            not: null,
+            lt: lookaheadCutoff,
+          },
+        },
+        select: { id: true },
+      });
+    } catch (err) {
+      const errorInfo =
+        err instanceof Error
+          ? { message: err.message, name: err.name }
+          : { value: String(err) };
+      this.logger.warn(
+        { error: errorInfo },
+        'refreshNearExpiryTokens: DB query failed, skipping',
+      );
+      return;
+    }
+
+    if (connections.length === 0) {
+      return;
+    }
+
+    const client = getRedisClient();
+
+    let refreshed = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const { id: connectionId } of connections) {
+      const cooldownKey = `sync:token_refresh:${connectionId}`;
+
+      // Check Redis cooldown — avoid redundant attempts within the same cycle
+      if (client) {
+        try {
+          const existing = await client.get(cooldownKey);
+          if (existing !== null) {
+            skipped++;
+            continue;
+          }
+        } catch (err) {
+          // Redis unavailable — proceed without cooldown check
+          this.logger.debug(
+            { connectionId, error: err instanceof Error ? err.message : String(err) },
+            'refreshNearExpiryTokens: Redis cooldown check failed, proceeding',
+          );
+        }
+      }
+
+      try {
+        await getGraphTokenManager().getValidToken(connectionId);
+        refreshed++;
+      } catch {
+        // Expected: connection may be expired — getValidToken() handles markConnectionExpired() internally
+        failed++;
+      }
+
+      // Set cooldown after each attempt (success or failure) to prevent retry storms
+      if (client) {
+        try {
+          await client.set(cooldownKey, '1', { EX: TOKEN_REFRESH_COOLDOWN_SECONDS });
+        } catch {
+          // Best-effort — cooldown failure does not block the check
+        }
+      }
+    }
+
+    this.logger.info(
+      { refreshed, failed, skipped, total: connections.length },
+      'refreshNearExpiryTokens: complete',
+    );
   }
 }
 

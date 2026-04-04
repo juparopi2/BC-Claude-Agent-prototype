@@ -1,0 +1,355 @@
+{
+  "Marketing": {
+    "meta": {
+      "title": "MyWorkMate — AI-drevet forretningsautomatisering",
+      "description": "Forbind intelligente AI-agenter til Microsoft Dynamics 365 Business Central, OneDrive og SharePoint. Automatiser driften, få indsigt og forandre måden dit team arbejder på.",
+      "ogTitle": "MyWorkMate — Dit AI-drevne forretningscenter",
+      "ogDescription": "Multi-agent AI-platform der forbinder til dit Microsoft-økosystem. Automatiser ERP-forespørgsler, analyser dokumenter, visualiser data — alt via naturlig samtale.",
+      "keywords": "AI forretningsassistent, Business Central AI, Dynamics 365 automatisering, Microsoft AI-agent, ERP-automatisering, vidensbase AI, multi-agent orkestrering"
+    },
+    "header": {
+      "logo": "MyWorkMate",
+      "nav": {
+        "features": "Funktioner",
+        "agents": "Agenter",
+        "roadmap": "Køreplan",
+        "pricing": "Priser",
+        "waitlist": "Tidlig adgang"
+      },
+      "cta": "Tilmeld dig ventelisten",
+      "languageSwitch": {
+        "en": "English",
+        "es": "Español",
+        "da": "Dansk"
+      }
+    },
+    "hero": {
+      "badge": "Dynamics 365 + AI",
+      "title": "Din AI-ledsager til Dynamics 365 Business Central",
+      "subtitle": "Optimer dine forretningsprocesser med intelligente AI-agenter forbundet direkte til Business Central. Dokumentanalyse, datavisualisering og webresearch supplerer dit ERP — alt via naturlig samtale.",
+      "cta": {
+        "primary": "Få tidlig adgang",
+        "secondary": "Se hvordan det virker"
+      },
+      "stats": {
+        "agents": {
+          "value": "5",
+          "label": "Specialiserede agenter"
+        },
+        "integrations": {
+          "value": "3+",
+          "label": "Microsoft-integrationer"
+        },
+        "chartTypes": {
+          "value": "10",
+          "label": "Visualiseringstyper"
+        }
+      },
+      "trustedBy": "Bygget til Microsoft-økosystemet"
+    },
+    "features": {
+      "badge": "Platformens muligheder",
+      "title": "Alt din virksomhed behøver — én samtale væk",
+      "subtitle": "Fra Dynamics 365 Business Central-operationer til dokumentanalyse, datavisualisering til webresearch — MyWorkMate bringer styrken fra specialiserede AI-agenter ind i dine daglige arbejdsgange.",
+      "items": {
+        "erp": {
+          "title": "ERP-intelligens",
+          "description": "Forespørg kunder, leverandører, fakturaer, salgsordrer og lagerbeholdning direkte fra Business Central. Opret og rediger poster via naturligt sprog.",
+          "highlight": "Læs og skriv til Dynamics 365"
+        },
+        "knowledge": {
+          "title": "Vidensbase",
+          "description": "Upload dokumenter og lad AI forstå dem. Semantisk søgning finder svar på tværs af hele dit dokumentbibliotek — PDF-filer, regneark, præsentationer.",
+          "highlight": "Semantisk søgning med RAG"
+        },
+        "orchestration": {
+          "title": "Smart orkestrering",
+          "description": "Spørg om hvad som helst. Orkestratoren sender automatisk dit spørgsmål videre til den rette specialistagent og kombinerer deres kompetencer efter behov.",
+          "highlight": "Multi-agent routing"
+        },
+        "visualization": {
+          "title": "Datavisualisering",
+          "description": "Omsæt rå data til klare indsigter. Søjlediagrammer, linjediagrammer, KPI-dashboards, kombidiagrammer — genereret fra dine data på sekunder.",
+          "highlight": "Diagrammer på forespørgsel"
+        },
+        "research": {
+          "title": "Research og analyse",
+          "description": "Realtids-websøgning, dataanalyse med Python og dokumentgenerering. Din personlige researchassistent til komplekse spørgsmål.",
+          "highlight": "Web og kodeafvikling"
+        },
+        "files": {
+          "title": "Cloud-filsynkronisering",
+          "description": "Forbind OneDrive- og SharePoint-biblioteker. Dine cloud-dokumenter bliver øjeblikkeligt søgbare og tilgængelige for AI-agenter.",
+          "highlight": "OneDrive og SharePoint"
+        }
+      }
+    },
+    "agents": {
+      "badge": "Mød dit AI-team",
+      "title": "Specialiserede agenter der arbejder sammen",
+      "subtitle": "Hver agent er ekspert inden for sit område. Orkestratoren koordinerer dem problemfrit — du spørger blot, og den rette ekspert svarer.",
+      "items": {
+        "supervisor": {
+          "name": "Orkestrator",
+          "role": "Router og koordinerer",
+          "description": "Analyserer dit spørgsmål og vælger automatisk den bedste specialist. Kombinerer flere agenter, når komplekse opgaver kræver det."
+        },
+        "bcAgent": {
+          "name": "Business Central-ekspert",
+          "role": "ERP-operationer",
+          "description": "Direkte adgang til Dynamics 365 Business Central. Forespørg finansielle data, administrer lager, behandl salgsordrer — alt via samtale."
+        },
+        "ragAgent": {
+          "name": "Vidensbase-ekspert",
+          "role": "Dokumentintelligens",
+          "description": "Søger i dine uploadede dokumenter med semantisk forståelse. Finder præcise svar på tværs af tusindvis af sider øjeblikkeligt."
+        },
+        "graphingAgent": {
+          "name": "Datavisualiseringsekspert",
+          "role": "Diagrammer og indsigter",
+          "description": "Omsætter tal til visuelle fortællinger. Fra enkle søjlediagrammer til komplekse KPI-dashboards — alt genereret fra dine data."
+        },
+        "researchAgent": {
+          "name": "Research og analyse",
+          "role": "Websøgning og kode",
+          "description": "Søger på nettet, analyserer data med Python og genererer fyldestgørende rapporter. Dit researchteam — tilgængeligt 24/7."
+        }
+      },
+      "cta": "Se alle agenter i aktion"
+    },
+    "roadmap": {
+      "badge": "Hvad kommer der",
+      "title": "Vi er kun lige begyndt",
+      "subtitle": "MyWorkMate udvikler sig hurtigt. Her er hvad der er aktivt i dag, og hvad der er på vej.",
+      "statusLabels": {
+        "all": "Alle",
+        "live": "Aktiv",
+        "beta": "Beta",
+        "development": "Under udvikling",
+        "planned": "Planlagt"
+      },
+      "items": {
+        "multiAgent": {
+          "title": "Multi-agent orkestrering",
+          "description": "Supervisor router automatisk til 5 specialiserede agenter",
+          "status": "live"
+        },
+        "bcIntegration": {
+          "title": "Business Central-integration",
+          "description": "Fuld læse- og skriveadgang til Dynamics 365 Business Central",
+          "status": "live"
+        },
+        "knowledgeBase": {
+          "title": "Vidensbase (RAG)",
+          "description": "Upload, søg og analyser dokumenter med AI",
+          "status": "live"
+        },
+        "dataViz": {
+          "title": "Datavisualisering",
+          "description": "10 diagramtyper genereret fra strukturerede data",
+          "status": "live"
+        },
+        "cloudSync": {
+          "title": "OneDrive og SharePoint-synkronisering",
+          "description": "Forbind cloud-biblioteker for problemfri dokumentadgang",
+          "status": "live"
+        },
+        "webResearch": {
+          "title": "Webresearch og kodeafvikling",
+          "description": "Realtids-websøgning og Python-sandkasse",
+          "status": "live"
+        },
+        "mobileApp": {
+          "title": "Mobilapplikation",
+          "description": "Den fulde MyWorkMate-oplevelse på din telefon",
+          "status": "planned"
+        },
+        "granularPermissions": {
+          "title": "Detaljerede tilladelser",
+          "description": "Altid-tillad vs. kræv godkendelse pr. handling",
+          "status": "development"
+        },
+        "agentMemory": {
+          "title": "Vedvarende hukommelse",
+          "description": "Agenter husker kontekst på tværs af samtaler",
+          "status": "development"
+        },
+        "parallelAgents": {
+          "title": "Parallel agentafvikling",
+          "description": "Flere agenter arbejder samtidigt på komplekse opgaver",
+          "status": "planned"
+        },
+        "workflows": {
+          "title": "Automatiserede arbejdsgange",
+          "description": "Opret gentagelige opgaver udløst af hændelser eller kommandoer",
+          "status": "planned"
+        },
+        "customAgents": {
+          "title": "Byg din egen agent",
+          "description": "Opret dine egne agenter med brugerdefinerede kompetencer og MCP-værktøjer",
+          "status": "planned"
+        },
+        "environments": {
+          "title": "Organisationsmiljøer",
+          "description": "Teamadministration, faktureringskontrols og forbrugssporing",
+          "status": "planned"
+        },
+        "deepResearch": {
+          "title": "Dyb researchtilstand",
+          "description": "Autonom flertrins-research med kildsyntetisering",
+          "status": "planned"
+        }
+      }
+    },
+    "waitlist": {
+      "badge": "Tidlig adgang",
+      "title": "Vær den første til at opleve fremtidens forretnings-AI",
+      "subtitle": "Tilmeld dig ventelisten og få prioriteret adgang. Vi giver dig besked, når nye funktioner lanceres — og du får eksklusiv early bird-pris.",
+      "form": {
+        "emailPlaceholder": "din@email.dk",
+        "submit": "Tilmeld dig ventelisten",
+        "submitting": "Tilmelder...",
+        "success": {
+          "title": "Du er på listen!",
+          "message": "Vi kontakter dig snart med opdateringer og detaljer om tidlig adgang."
+        },
+        "error": {
+          "title": "Noget gik galt",
+          "message": "Prøv igen senere. Vi arbejder på det.",
+          "unimplemented": "Ventelistetjenesten er ved at blive sat op. Kom snart tilbage!"
+        }
+      },
+      "benefits": {
+        "earlyAccess": "Prioriteret adgang til nye funktioner",
+        "pricing": "Eksklusiv early bird-pris",
+        "updates": "Løbende udviklingsopdateringer",
+        "feedback": "Vær med til at forme produktet med din feedback"
+      },
+      "count": "Tilslut dig {count}+ andre på ventelisten"
+    },
+    "pricing": {
+      "badge": "Enkel prissætning",
+      "title": "Planer der skalerer med din virksomhed",
+      "subtitle": "Start gratis. Opgrader, når du har brug for mere.",
+      "toggle": {
+        "monthly": "Månedlig",
+        "annual": "Årlig",
+        "annualDiscount": "Spar 20%"
+      },
+      "plans": {
+        "free": {
+          "name": "Gratis",
+          "price": "$0",
+          "period": "/måned",
+          "description": "Udforsk og test platformen",
+          "cta": "Kom i gang gratis"
+        },
+        "starter": {
+          "name": "Starter",
+          "price": "$25",
+          "period": "/måned",
+          "description": "Til regelmæssige brugere og små teams",
+          "cta": "Tilmeld ventelisten — Starter"
+        },
+        "professional": {
+          "name": "Professional",
+          "price": "$199",
+          "period": "/måned",
+          "description": "Til superbrugere og voksende virksomheder",
+          "cta": "Tilmeld ventelisten — Professional"
+        }
+      },
+      "faq": {
+        "title": "Ofte stillede spørgsmål",
+        "items": {
+          "trial": {
+            "question": "Er der en gratis prøveperiode for betalte planer?",
+            "answer": "Ja, alle betalte planer inkluderer 14 dages gratis prøveperiode. Intet kreditkort kræves."
+          },
+          "cancel": {
+            "question": "Kan jeg annullere når som helst?",
+            "answer": "Absolut. Annuller når som helst uden gebyrer. Dine data forbliver tilgængelige i 30 dage efter annullering."
+          },
+          "enterprise": {
+            "question": "Tilbyder I enterprise-planer?",
+            "answer": "Ja. Kontakt os for brugerdefineret prissætning, dedikeret support og muligheder for on-premise installation."
+          }
+        }
+      }
+    },
+    "security": {
+      "badge": "Sikkerhed på enterprise-niveau",
+      "title": "Bygget til virksomheder der tager sikkerhed alvorligt",
+      "subtitle": "Dine data forbliver dine. Enhver interaktion er sikret, enhver handling kan auditeres, enhver adgang er kontrolleret.",
+      "items": {
+        "encryption": {
+          "title": "Krypteret i hvile og transit",
+          "description": "AES-256-GCM-kryptering af gemte tokens. TLS til al kommunikation."
+        },
+        "tenantIsolation": {
+          "title": "Tenant-isolation",
+          "description": "Streng dataadskillelse. Dine dokumenter, sessioner og AI-interaktioner er usynlige for andre brugere."
+        },
+        "permissions": {
+          "title": "Detaljerede tilladelser",
+          "description": "Kontroller, hvad agenter må gøre. Visse handlinger kræver altid din godkendelse — du bestemmer hvilke."
+        },
+        "gdpr": {
+          "title": "GDPR-kompatibel",
+          "description": "Fuld dataportabilitet og ret til sletning. Kaskadeslettelse fjerner al persondata på forespørgsel."
+        },
+        "audit": {
+          "title": "Fuld auditsporing",
+          "description": "Enhver agenthandling, hvert værktøjskald, enhver beslutning — logget og sporbar."
+        },
+        "oauth": {
+          "title": "Microsoft SSO",
+          "description": "Log ind med din eksisterende Microsoft-konto. Ingen nye adgangskoder at håndtere."
+        }
+      }
+    },
+    "footer": {
+      "tagline": "AI-drevet forretningsautomatisering til Microsoft-økosystemet.",
+      "builtWith": "Bygget til Microsoft-økosystemet",
+      "copyright": "© {year} MyWorkMate. Alle rettigheder forbeholdes.",
+      "sections": {
+        "product": {
+          "title": "Produkt",
+          "links": {
+            "features": "Funktioner",
+            "agents": "Agenter",
+            "pricing": "Priser",
+            "roadmap": "Køreplan"
+          }
+        },
+        "company": {
+          "title": "Virksomhed",
+          "links": {
+            "about": "Om os",
+            "blog": "Blog",
+            "careers": "Karriere",
+            "contact": "Kontakt"
+          }
+        },
+        "legal": {
+          "title": "Juridisk",
+          "links": {
+            "privacy": "Privatlivspolitik",
+            "terms": "Servicevilkår",
+            "gdpr": "GDPR"
+          }
+        }
+      }
+    },
+    "legal": {
+      "privacy": {
+        "title": "Privatlivspolitik",
+        "placeholder": "Vores privatlivspolitik er ved at blive udarbejdet. Kom snart tilbage."
+      },
+      "terms": {
+        "title": "Servicevilkår",
+        "placeholder": "Vores servicevilkår er ved at blive udarbejdet. Kom snart tilbage."
+      }
+    }
+  }
+}

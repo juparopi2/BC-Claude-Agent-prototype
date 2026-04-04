@@ -1365,6 +1365,145 @@ function configureSocketIO(): void {
           });
         };
 
+        // ── Phase 0: Refresh expired connections BEFORE reconciliation ────────
+        // Reconciliation reads connection status. If connections are still
+        // 'expired' at that point, it treats files as unreachable and
+        // soft-deletes them. Refreshing here first prevents that data loss.
+        try {
+          const joinLogger = createChildLogger({ service: 'SocketUserJoin' });
+          const { prisma: db } = await import('@/infrastructure/database/prisma');
+          const { ConfidentialClientApplication } = await import('@azure/msal-node');
+          const { MsalRedisCachePlugin } = await import('@/domains/auth/oauth/MsalRedisCachePlugin');
+          const { getGraphTokenManager } = await import('@/services/connectors/GraphTokenManager');
+          const { GRAPH_API_SCOPES } = await import('@bc-agent/shared');
+
+          const oauthSession = (authSocket.request as { session?: { microsoftOAuth?: MicrosoftOAuthSession } })
+            .session?.microsoftOAuth;
+          const homeAccountId = oauthSession?.homeAccountId;
+          const msalPartitionKey = oauthSession?.msalPartitionKey;
+
+          if (homeAccountId && msalPartitionKey) {
+            const expiredConnections = await db.connections.findMany({
+              where: { user_id: authenticatedUserId, status: 'expired' },
+              select: { id: true, provider: true, scopes_granted: true },
+            });
+
+            if (expiredConnections.length > 0) {
+              joinLogger.info(
+                { userId: authenticatedUserId, count: expiredConnections.length },
+                '[SocketUserJoin] Refreshing expired connections before reconciliation'
+              );
+
+              const REFRESH_TIMEOUT_MS = 15_000;
+
+              const refreshOne = async (conn: { id: string; provider: string; scopes_granted: string | null }) => {
+                const clientId = process.env.MICROSOFT_CLIENT_ID;
+                const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+                const authority =
+                  process.env.MICROSOFT_AUTHORITY ??
+                  `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID ?? 'common'}`;
+
+                if (!clientId || !clientSecret) {
+                  throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be configured');
+                }
+
+                const msalClient = new ConfidentialClientApplication({
+                  auth: { clientId, clientSecret, authority },
+                  cache: { cachePlugin: new MsalRedisCachePlugin(msalPartitionKey) },
+                });
+
+                const tokenCache = msalClient.getTokenCache();
+                const account = await tokenCache.getAccountByHomeId(homeAccountId);
+
+                if (!account) {
+                  joinLogger.info(
+                    { userId: authenticatedUserId, connectionId: conn.id },
+                    '[SocketUserJoin] MSAL account not found in cache; skipping connection refresh'
+                  );
+                  return;
+                }
+
+                const scopes = conn.scopes_granted
+                  ? conn.scopes_granted.split(' ').filter(Boolean)
+                  : [GRAPH_API_SCOPES.FILES_READ_ALL];
+
+                const silentResult = await msalClient.acquireTokenSilent({ account, scopes });
+
+                if (!silentResult?.accessToken) {
+                  joinLogger.info(
+                    { userId: authenticatedUserId, connectionId: conn.id },
+                    '[SocketUserJoin] Silent refresh returned no token; skipping'
+                  );
+                  return;
+                }
+
+                const expiresAt = silentResult.expiresOn ?? new Date(Date.now() + 3600 * 1000);
+                const tokenManager = getGraphTokenManager();
+                await tokenManager.storeTokens(conn.id, {
+                  accessToken: silentResult.accessToken,
+                  expiresAt,
+                });
+
+                joinLogger.info(
+                  { userId: authenticatedUserId, connectionId: conn.id, provider: conn.provider },
+                  '[SocketUserJoin] Expired connection refreshed successfully'
+                );
+              };
+
+              const refreshPromises = expiredConnections.map((conn) =>
+                Promise.race([
+                  refreshOne(conn),
+                  new Promise<void>((_, reject) =>
+                    setTimeout(() => reject(new Error(`Refresh timeout for connection ${conn.id}`)), REFRESH_TIMEOUT_MS)
+                  ),
+                ])
+              );
+
+              const results = await Promise.allSettled(refreshPromises);
+              const failed = results.filter((r) => r.status === 'rejected');
+              if (failed.length > 0) {
+                joinLogger.warn(
+                  {
+                    userId: authenticatedUserId,
+                    failedCount: failed.length,
+                    errors: failed.map((r) => (r as PromiseRejectedResult).reason?.message),
+                  },
+                  '[SocketUserJoin] Some connection refreshes failed (non-blocking)'
+                );
+              }
+            }
+          } else {
+            joinLogger.info(
+              { userId: authenticatedUserId },
+              '[SocketUserJoin] No MSAL session credentials; skipping pre-reconciliation connection refresh'
+            );
+          }
+        } catch (refreshErr) {
+          const joinLogger = createChildLogger({ service: 'SocketUserJoin' });
+          joinLogger.warn(
+            {
+              error: refreshErr instanceof Error ? refreshErr.message : String(refreshErr),
+              userId: authenticatedUserId,
+            },
+            '[SocketUserJoin] Pre-reconciliation connection refresh phase failed (non-blocking); continuing to reconciliation'
+          );
+        }
+
+        // ── Phase 1: Delta sync for stale scopes before reconciliation ────────
+        // Syncing stale scopes first ensures the DB reflects the latest remote
+        // state before reconciliation runs its consistency checks.
+        try {
+          const { syncStaleScopes } = await import('@/services/sync/health/LoginDeltaSyncService');
+          await syncStaleScopes(authenticatedUserId);
+        } catch (err) {
+          // Fire-and-forget — never block login
+          logger.warn({ error: err instanceof Error ? err.message : String(err), userId: authenticatedUserId },
+            '[Socket.IO] Login delta sync failed (non-blocking)');
+        }
+
+        // ── Phase 2: Reconciliation ────────────────────────────────────────
+        // PRD-300: Fire-and-forget reconciliation on login/reconnect
+        // Respects 5-min Redis cooldown — safe for rapid reconnects
         try {
           const { getSyncReconciliationService } = await import('@/services/sync/health');
 
@@ -1395,16 +1534,6 @@ function configureSocketIO(): void {
           if (msg.includes('cooldown') || msg.includes('in progress')) return;
           logger.warn({ error: msg, userId: authenticatedUserId },
             '[Socket.IO] Login reconciliation failed (non-blocking)');
-        }
-
-        // ── Phase 5: Delta sync for stale scopes on login ──────────────────
-        try {
-          const { syncStaleScopes } = await import('@/services/sync/health/LoginDeltaSyncService');
-          await syncStaleScopes(authenticatedUserId);
-        } catch (err) {
-          // Fire-and-forget — never block login
-          logger.warn({ error: err instanceof Error ? err.message : String(err), userId: authenticatedUserId },
-            '[Socket.IO] Login delta sync failed (non-blocking)');
         }
       })();
     });

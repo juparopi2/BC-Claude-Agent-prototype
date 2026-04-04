@@ -91,6 +91,29 @@
   --bc-amber: hsl(45 93% 47%);                /* Amber para thinking/processing */
   --thinking-bg: hsl(45 100% 96%);            /* Fondo suave para secciones de thinking */
   --tool-bg: hsl(210 100% 97%);               /* Fondo suave para cards de herramientas */
+
+  /* Marketing Landing Page Tokens */
+  --marketing-hero-from: hsl(221.2 83.2% 53.3%);
+  --marketing-hero-to: hsl(258 80% 60%);
+  --marketing-glow-blue: rgba(59, 130, 246, 0.35);
+  --marketing-glow-violet: rgba(139, 92, 246, 0.25);
+  --marketing-glow-green: rgba(34, 197, 94, 0.2);
+  --marketing-section-gap: 5rem;
+  --marketing-section-gap-lg: 8rem;
+  --marketing-container-max-width: 1180px;
+  --marketing-card-bg: oklch(0.99 0.002 247.858);
+  --marketing-card-border: oklch(0.92 0.015 255.508);
+  --marketing-hero-size: clamp(2.5rem, 6vw, 5rem);
+  --marketing-subhero-size: clamp(1.125rem, 2vw, 1.375rem);
+  --font-marketing-heading: var(--font-sf-pro-display), -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+}
+
+/* Mobile override — hero text must fit 375px viewports */
+@media (max-width: 639px) {
+  :root {
+    --marketing-hero-size: clamp(1.75rem, 8vw, 2.5rem);
+    --marketing-subhero-size: clamp(1rem, 3.5vw, 1.25rem);
+  }
 }
 
 .dark {
@@ -132,6 +155,15 @@
   --bc-amber: hsl(45 93% 55%);                /* Amber más brillante en dark */
   --thinking-bg: hsl(45 20% 15%);             /* Fondo oscuro para thinking */
   --tool-bg: hsl(210 20% 15%);                /* Fondo oscuro para tools */
+
+  /* Marketing Landing Page Tokens - Dark Mode */
+  --marketing-hero-from: hsl(221.2 83.2% 48%);
+  --marketing-hero-to: hsl(258 80% 55%);
+  --marketing-glow-blue: rgba(96, 165, 250, 0.3);
+  --marketing-glow-violet: rgba(167, 139, 250, 0.25);
+  --marketing-glow-green: rgba(74, 222, 128, 0.2);
+  --marketing-card-bg: oklch(0.165 0.042 264.695);
+  --marketing-card-border: oklch(0.25 0.04 264.695);
 }
 
 @layer base {
@@ -153,6 +185,12 @@
     opacity: 1;
     transform: scale(1.015);
   }
+}
+
+/* Coming Soon badge pulse for marketing */
+@keyframes coming-soon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 /* Upload progress pulse animation */
